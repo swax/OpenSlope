@@ -1,0 +1,72 @@
+{
+  "name": "sky-color",
+  "target": "SLUS_203.26",
+  "targetSize": 2928240,
+  "formatVersion": 3,
+  "notes": "Overrides the 13 per-course WorldConf sky colours at load time. The hook runs after the current course record is selected and before its integer RGB fields are normalized. It indexes a 13x3-byte RGB table, updates the selected record, then returns to the stock conversion and graphics setter. On first application Snowknife reconstructs the table from the supported executable's WorldConf initializer, so this manifest carries no retail channel values and changing one slot leaves every other slot unchanged. Each region names the digest of the bytes it expects to replace, so apply is verify-before-write and revert restores the bytes saved from the target at apply time. Every byte of `patched` is this project's own hook code: the two instructions this hook displaces and must re-run are named by `graft` directives, which say where to copy each word from in your own executable, and read as `break` until apply fills them. Patch points: [Trailmap: 442-sky-color].",
+  "table": {
+    "region": 2,
+    "entrySize": 3,
+    "slots": [
+      "GARI",
+      "SNOW",
+      "ELYSIUM",
+      "MESA",
+      "MERQUER",
+      "ALOHA",
+      "PIPE",
+      "UNTRACK",
+      "MEGAPLE",
+      "BIGAIR",
+      "TRICK",
+      "ALASKA",
+      "UNKNOWN12"
+    ],
+    "seed": {
+      "kind": "mips-worldconf-initializer",
+      "fileOffset": 1412544,
+      "instructionCount": 1178,
+      "recordStride": 148,
+      "channelOffsets": [
+        72,
+        76,
+        80
+      ],
+      "sha256": "8e02a71dc15046847412510dce4963315628ac8faf1d42d01bf23fb8a0290b9d"
+    }
+  },
+  "regions": [
+    {
+      "fileOffset": 521736,
+      "length": 8,
+      "originalSha256": "b22a052604334b5a84d7e3ca45cd3c34c28a0c34b8fdda97a05e6fb7f5b48861",
+      "patched": "a8cf0a080d000000",
+      "graft": [
+        {
+          "at": 4,
+          "fromFileOffset": 521736,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "fileOffset": 1789600,
+      "length": 60,
+      "originalSha256": "55807650b8320d9b4532ba34d61a5acc6176d61cf97050c0e7e598f674976b5e",
+      "patched": "40180400212064003600033cd0f663242118640000006490480044ac010064904c0044ac02006490500044ac84f905080d0000000000000000000000",
+      "graft": [
+        {
+          "at": 48,
+          "fromFileOffset": 521740,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "fileOffset": 2492112,
+      "length": 48,
+      "originalSha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+      "patched": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

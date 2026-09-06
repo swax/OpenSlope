@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Keep the CLI at a zero-warning baseline. Reflection-populated JSON DTO fields use local, documented
+         CS0649 suppressions so this gate still catches every actionable compiler warning. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AssemblyName>snowknife</AssemblyName>
+    <RootNamespace>Snowknife</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Configurations>Debug</Configurations>
+  </PropertyGroup>
+
+  <Target Name="RequireDebugConfiguration" BeforeTargets="PrepareForBuild" Condition="'$(Configuration)' != 'Debug'">
+    <Error Text="Snowknife supports Debug builds only. Build with -c Debug." />
+  </Target>
+
+  <ItemGroup>
+    <!-- SSX-Library is a legacy-format dependency maintained as its own submodule. Its existing warning
+         backlog is visible when that project is built directly, but does not dilute Snowknife's zero-warning
+         gate. Keep analyzers and compiler warnings enabled for every source file owned by this project. -->
+    <ProjectReference Include="..\SSX-Library\SSX-Library\SSX-Library.csproj"
+                      AdditionalProperties="WarningLevel=0;RunAnalyzers=false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DiscUtils.Iso9660" Version="0.16.13" />
+    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+    <!-- Used directly by two dozen files; named here instead of borrowed through SSX-Library's reference so a
+         submodule bump cannot silently change the version this project compiles against. Same version as there. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Patches\**" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="schemas\**\*.schema.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The byte-level format readers/writers and the contract validator are internal because nothing outside
+         the CLI composes them; the suite tests them at that same level rather than widening their surface. -->
+    <InternalsVisibleTo Include="Snowknife.Tests" />
+  </ItemGroup>
+
+</Project>

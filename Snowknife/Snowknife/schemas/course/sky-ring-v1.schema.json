@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sky-ring-v1.schema.json",
+  "title": "OpenSlope extracted sky ring",
+  "description": "Sky composition geometry and texture slots measured locally from an extracted map's ring.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Schema", "Radius", "TopZ", "MidZ", "BottomZ", "GroundIndex", "GroundUvRadius", "Panels", "Tiles"],
+  "properties": {
+    "Schema": { "const": "openslope-sky-ring/v1" },
+    "Radius": { "type": "number", "exclusiveMinimum": 0 },
+    "TopZ": { "type": "number" },
+    "MidZ": { "type": "number" },
+    "BottomZ": { "type": "number" },
+    "GroundIndex": { "type": "integer", "minimum": 0 },
+    "GroundUvRadius": { "type": "number", "exclusiveMinimum": 0 },
+    "Panels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["Index", "Band", "AzFrom", "AzTo"],
+        "properties": {
+          "Index": { "type": "integer", "minimum": 0 },
+          "Band": { "enum": ["upper", "lower"] },
+          "AzFrom": { "type": "number" },
+          "AzTo": { "type": "number" }
+        }
+      }
+    },
+    "Tiles": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["Width", "Height"],
+        "properties": {
+          "Width": { "type": "integer", "minimum": 1 },
+          "Height": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

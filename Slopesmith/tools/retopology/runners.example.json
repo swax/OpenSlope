@@ -1,0 +1,39 @@
+{
+  "candidates": [
+    {
+      "id": "quadwild-bimdf",
+      "timeoutMs": 7200000,
+      "commands": [
+        {
+          "executable": "C:/Tools/quadwild-bimdf/build/Build/bin/quadwild.exe",
+          "args": ["{input}", "2", "C:/Tools/quadwild-bimdf/config/prep_config/basic_setup.txt"]
+        },
+        {
+          "executable": "C:/Tools/quadwild-bimdf/build/Build/bin/quad_from_patches.exe",
+          "args": ["{dir}/input_rem_p0.obj", "123", "C:/Tools/quadwild-bimdf/config/main_config/flow_noalign_lemon.txt"]
+        }
+      ],
+      "output": "{dir}/input_rem_p0_123_quadrangulation_smooth.obj"
+    },
+    {
+      "id": "instant-meshes",
+      "commands": [
+        {
+          "executable": "C:/Tools/Instant Meshes.exe",
+          "args": ["-o", "{output}", "-f", "{targetFaces}", "-r", "4", "-p", "4", "-d", "-b", "{input}"]
+        }
+      ],
+      "output": "candidates/instant-meshes.obj"
+    },
+    {
+      "id": "quadriflow",
+      "commands": [
+        {
+          "executable": "C:/Tools/quadriflow.exe",
+          "args": ["-i", "{input}", "-o", "{output}", "-f", "{targetFaces}", "-sharp"]
+        }
+      ],
+      "output": "candidates/quadriflow.obj"
+    }
+  ]
+}

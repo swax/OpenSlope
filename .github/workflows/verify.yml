@@ -1,0 +1,196 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # A manual run ignores the path filter and runs every suite. It is the only way to surface a failure in a
+  # suite no recent push happened to touch: a platform-specific bug in one component can sit unnoticed while
+  # every push changes another component alone and that job is skipped each time.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: Required hygiene gate (zero findings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      snowknife: ${{ steps.paths.outputs.snowknife }}
+      slopesmith: ${{ steps.paths.outputs.slopesmith }}
+
+    steps:
+      - name: Check out the toolkit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Select affected fast suites
+        id: paths
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        # The rule lives in tools/affected-suites.mjs, which the pre-push hook runs too, so a push is checked
+        # locally against exactly the selection CI will make. Node is on the runner image; no setup step needed.
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            node tools/affected-suites.mjs --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A repository's first push has an all-zero before SHA and the root commit has no parent.
+          # Treat every suite as affected instead of trying to diff against a nonexistent revision.
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            node tools/affected-suites.mjs --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            node tools/affected-suites.mjs "$BASE_SHA...$HEAD_SHA" | tee -a "$GITHUB_OUTPUT"
+          else
+            node tools/affected-suites.mjs "$BASE_SHA" "$HEAD_SHA" | tee -a "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: Trailmap/tools/requirements.txt
+
+      - name: Install Trailmap tool dependencies
+        run: python -m pip install --requirement Trailmap/tools/requirements.txt
+
+      - name: Repository hygiene gate
+        run: python tools/hygiene.py
+
+      - name: Write the complete known-debt report after a hygiene failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p TestResults
+          python Trailmap/tools/specs/repo_hygiene.py report > TestResults/repo-hygiene.txt
+
+      - name: Upload the repository hygiene report after a failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: repo-hygiene-report
+          path: TestResults/repo-hygiene.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  snowknife:
+    name: Snowknife
+    needs: hygiene
+    # Runs even when hygiene fails, so one push reports every problem instead of the suite failure surfacing
+    # only on the fix-up push. `!cancelled()` rather than `always()` keeps a cancelled run cancelled.
+    if: ${{ !cancelled() && needs.hygiene.outputs.snowknife == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the toolkit and format-library submodule
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Set up .NET 10.0.110
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.110
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+
+      - name: Run the fast Snowknife suite with coverage
+        timeout-minutes: 5
+        run: npm run verify:snowknife
+
+      - name: Upload Snowknife results after a failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: snowknife-test-results
+          path: TestResults
+          if-no-files-found: ignore
+          retention-days: 7
+
+  slopesmith:
+    name: Slopesmith
+    needs: hygiene
+    if: ${{ !cancelled() && needs.hygiene.outputs.slopesmith == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the toolkit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: Slopesmith/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install Slopesmith dependencies
+        timeout-minutes: 5
+        run: npm ci --prefix Slopesmith
+
+      - name: Type-check Slopesmith
+        run: npm --prefix Slopesmith run typecheck
+
+      - name: Lint Slopesmith
+        run: npm --prefix Slopesmith run lint
+
+      - name: Run the fast deterministic Slopesmith tier
+        timeout-minutes: 5
+        run: npm --prefix Slopesmith run test:fast
+
+      # About 15 s, and it keeps a broken client or server bundle from sitting on main until the nightly
+      # Windows run notices. The export smoke test stays nightly: it needs the .NET toolchain and a
+      # Snowknife build in this job, which would roughly double its billed minutes.
+      - name: Build Slopesmith
+        timeout-minutes: 5
+        run: npm --prefix Slopesmith run build
+
+  # Branch protection can require this stable result when server-side enforcement is enabled. The component
+  # jobs above are deliberately conditional; requiring either one directly would leave a docs-only change
+  # waiting forever for a check that was skipped.
+  # This job succeeds only when hygiene passed and every selected suite passed, while treating an unselected
+  # suite's `skipped` result as the intended outcome.
+  verification:
+    name: Required verification gate
+    needs: [hygiene, snowknife, slopesmith]
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Require hygiene and every selected suite
+        shell: bash
+        env:
+          HYGIENE_RESULT: ${{ needs.hygiene.result }}
+          SNOWKNIFE_RESULT: ${{ needs.snowknife.result }}
+          SLOPESMITH_RESULT: ${{ needs.slopesmith.result }}
+        run: |
+          echo "hygiene=$HYGIENE_RESULT snowknife=$SNOWKNIFE_RESULT slopesmith=$SLOPESMITH_RESULT"
+          [[ "$HYGIENE_RESULT" == success ]]
+          [[ "$SNOWKNIFE_RESULT" == success || "$SNOWKNIFE_RESULT" == skipped ]]
+          [[ "$SLOPESMITH_RESULT" == success || "$SLOPESMITH_RESULT" == skipped ]]

@@ -1,0 +1,92 @@
+Trailmap
+Copyright 2026 swax
+
+This product includes software and documentation developed as an independent,
+unofficial interoperability specification for SSX Tricky.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+these files except in compliance with the License. You may obtain a copy of the
+License in the LICENSE file distributed with this work, or at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+--------------------------------------------------------------------------------
+SCOPE OF THE LICENSE GRANT
+
+The Apache-2.0 grant above covers only the material authored under Trailmap/:
+the specifications in specs/, the research notes in research/, the tools in
+tools/, and the accompanying prose and data.
+
+It does NOT extend to, and this repository does not redistribute:
+
+  * SSX Tricky, its executables, disc contents, level data, textures, audio, or
+    any other retail game asset.
+  * Any trademark of Electronic Arts Inc.
+
+Files derived from retail game data are generated locally by the user from
+their own copy of the game and are excluded from version control. See the
+"Local-only inputs" section of README.md.
+
+The research/ directory and the citation definitions under specs/ carry addresses,
+field offsets, analyst-assigned function labels, retail identifiers, and short
+instruction quotations -- usually a single instruction, sometimes a short sequence,
+never a listing -- kept as evidence for the claims they support. No bulk disassembly listing or retail
+configuration/script passage is reproduced anywhere under Trailmap/; configuration
+and script references retain only field names and short fragments needed to identify
+an interface. Unless expressly marked as a retail symbol, RTTI name, or string-table
+entry, a `Subsystem_Verb` function name is an analyst's description. The
+patch generators under tools/patches/ and the probes under tools/instrumentation/ and
+tools/autotest/ carry no encoded instruction words: they recognise a build and verify a
+site by the digest of what it holds. Where a hook must re-execute the instruction its
+branch displaced, a probe reads that word from the running emulator at install and checks
+it by digest before building around it, and a patch generator names it by mnemonic and
+source address -- the same short quotation the citations carry -- and emits a directive
+naming where to copy that word from in your own executable rather than the word itself;
+the probes patch emulator memory only and produce no patched executable and no patch
+definition — what they write is capture and recovery data on your own machine. The Apache grant applies
+only to OpenSlope-authored
+selection, arrangement, commentary, tools, and expression; it does not purport to
+relicense any quoted third-party expression. Implementations consume specs/, not
+those citations.
+
+--------------------------------------------------------------------------------
+RETAIL-DERIVED FACTS
+
+A bounded class of retail-derived facts is carried in the tree itself: format
+and asset identifiers, enumeration and bank names, and measured functional
+constants. The authoritative data copies for the audio bank catalog and the
+per-surface response table are specs/data/external-sound-banks-v1.json and
+specs/data/ride-v1.json; each downstream component's NOTICE names the further
+retail-derived facts its own source carries. These are the functional interface
+implementations interoperate through, retained because interoperating requires
+them. Beyond them, the research notes and citation definitions quote measured
+values -- thresholds, frame tables, per-surface terms -- as evidence for the
+claims they support, and nothing more: no retail code, asset, or executable
+accompanies any of it, and everything else is generated locally from your own
+copy of the game and stays out of version control.
+
+--------------------------------------------------------------------------------
+TRADEMARKS
+
+SSX and SSX Tricky are trademarks of Electronic Arts Inc. This project is not
+affiliated with, sponsored by, or endorsed by Electronic Arts. All other
+trademarks are the property of their respective owners.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY REFERENCES
+
+This repository cites, but does not include or redistribute, the SSX-Library
+community format decoder:
+
+    SSX-Library — GlitcherOG, Erickson Munoz, Jaime Solsona
+    https://github.com/GlitcherOG/SSX-Library
+    The Snowknife/SSX-Library/ submodule is the fork at https://github.com/swax/SSX-Library,
+    which citations resolve against; it keeps the upstream licence.
+
+Citations into it are references to an external work under its own license.
+
+tools/analysis/vu_disasm.py decodes the PS2 VU1 instruction set. Its opcode
+tables are the ISA's own opcode-to-mnemonic map under Sony's VU naming; the
+PCSX2 emulator's VU disassembler (GPL-3.0, https://pcsx2.net) was consulted as
+a cross-reference while building them. No PCSX2 source is included or adapted,
+and the two differ where PCSX2 mislabels the accumulator SUBA group.

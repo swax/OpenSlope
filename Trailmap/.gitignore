@@ -1,0 +1,13 @@
+# Locally generated from your own disc — never committed. See README
+# "Local-only inputs". These are derived directly from retail data and are the
+# artifacts that must stay out of a published clone.
+extracted/
+**/analysis.sqlite
+tools/analysis/ssx_seed_data.py
+research/elf-map.md
+STRIP_REPORT.md
+
+*.iso
+
+__pycache__/
+*.py[cod]

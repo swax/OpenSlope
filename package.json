@@ -1,0 +1,39 @@
+{
+  "name": "openslope",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "description": "Open toolkit for authoring, converting, and riding original snowboard courses in the browser, Unity, and PS2.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/swax/OpenSlope.git"
+  },
+  "homepage": "https://github.com/swax/OpenSlope",
+  "keywords": [
+    "ssx",
+    "snowboarding",
+    "course-authoring",
+    "unity",
+    "vrchat",
+    "playstation-2",
+    "gltf"
+  ],
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "verify": "node tools/verify.mjs",
+    "verify:full": "node tools/verify.mjs --full",
+    "verify:snowknife": "node tools/snowknife-tests.mjs",
+    "verify:slopesmith": "node tools/verify.mjs --slopesmith",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "hygiene": "python tools/hygiene.py",
+    "hygiene:report": "python Trailmap/tools/specs/repo_hygiene.py report",
+    "hygiene:baseline": "python Trailmap/tools/specs/repo_hygiene.py baseline --write",
+    "actions:usage": "node tools/actions-usage.mjs",
+    "coverage:snowknife": "node tools/snowknife-tests.mjs",
+    "coverage:snowknife:full": "node tools/snowknife-tests.mjs --full",
+    "coverage:slopesmith": "npm --prefix Slopesmith run coverage",
+    "test:unity": "node tools/unity-tests.mjs",
+    "coverage:unity": "node tools/unity-tests.mjs"
+  }
+}

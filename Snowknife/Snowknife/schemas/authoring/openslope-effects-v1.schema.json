@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openslope-effects-v1.schema.json",
+  "title": "OpenSlope Effects interchange document",
+  "description": "Lossless, stable-ID authoring contract between Snowknife, Slopesmith, and Unity tooling.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "version",
+    "target",
+    "header",
+    "slots",
+    "graphs",
+    "functions",
+    "objectProperties",
+    "instances",
+    "physics",
+    "collisionModels",
+    "splines"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "kind": {
+      "enum": ["openslope-effects", "swx-effects"],
+      "description": "'swx-effects' is the pre-rename spelling; documents authored before the OpenSlope rename still carry it and stay valid."
+    },
+    "version": { "const": 1 },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game", "platform", "region", "level"],
+      "properties": {
+        "game": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 },
+        "region": { "type": "string", "minLength": 1 },
+        "executable": { "type": "string" },
+        "level": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fileName": { "type": "string" },
+        "byteLength": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["U1", "U2", "U3"],
+      "properties": {
+        "U1": { "type": "integer" },
+        "U2": { "type": "integer" },
+        "U3": { "type": "number" }
+      }
+    },
+    "slots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/slot" }
+    },
+    "graphs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/graph" }
+    },
+    "functions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/function" }
+    },
+    "objectProperties": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/objectProperty" }
+    },
+    "instances": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/instance" }
+    },
+    "physics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resource" }
+    },
+    "collisionModels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resource" }
+    },
+    "splines": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resource" }
+    },
+    "extensions": {
+      "description": "Namespaced, non-SSF data. Consumers may compile extensions they own; unknown namespaces remain ignorable.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "slopesmith": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "nativeCollisions": {
+              "description": "Placed-prop stable id to exact editable collision profile.",
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/nativeCollisionProfile" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "nativeCollisionProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "playerCollision", "responseMass", "playerBounce", "bounceAmount", "transform"],
+      "properties": {
+        "mode": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "playerCollision": { "type": "boolean" },
+        "responseMass": { "type": "number", "minimum": 0 },
+        "playerBounce": { "type": "boolean" },
+        "bounceAmount": { "type": "number", "minimum": 0 },
+        "physicsSource": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "body"],
+          "properties": {
+            "level": { "type": "string", "minLength": 1 },
+            "body": { "type": "integer", "minimum": 0 },
+            "instance": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "transform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["location", "rotation", "scale"],
+          "properties": {
+            "location": { "$ref": "#/$defs/vec3" },
+            "rotation": { "$ref": "#/$defs/vec4" },
+            "scale": { "$ref": "#/$defs/vec3" }
+          }
+        }
+      }
+    },
+    "vec3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "vec4": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "type": "number" }
+    },
+    "semanticType": {
+      "description": "Canonical engine-neutral meaning for the native mainType/payload opcode. Omit when unknown; experimental meanings must use an x- namespace.",
+      "oneOf": [
+        {
+          "enum": [
+            "animation.combo-trigger",
+            "animation.delta-grant",
+            "audio.play",
+            "camera.operation",
+            "condition.gate",
+            "condition.human-rider",
+            "condition.no-live-node",
+            "condition.random",
+            "condition.speed",
+            "counter.decrement",
+            "counter.mark",
+            "function.call",
+            "function.call-detached",
+            "hud.message",
+            "instance.flag-0x800.clear",
+            "instance.flag-0x800.set",
+            "instance.state",
+            "material.texture-frame",
+            "material.uv-offset-v",
+            "particle.collision",
+            "particle.timer",
+            "property.anim-combo",
+            "property.anim-delta",
+            "property.anim-object",
+            "property.anim-texture-flip",
+            "property.boost",
+            "property.breakable-kill",
+            "property.counter",
+            "property.cracked",
+            "property.crowd-box",
+            "property.dead-node",
+            "property.debounce",
+            "property.fence",
+            "property.flag",
+            "property.lap-boost",
+            "property.mesh-animation",
+            "property.movie",
+            "property.node-destroy",
+            "property.node-pause",
+            "property.node-tombstone",
+            "property.node-tombstone-flagged",
+            "property.particle",
+            "property.rail",
+            "property.random-boost",
+            "property.roller",
+            "property.texture-flip",
+            "property.timer",
+            "property.trick-trigger",
+            "property.tube-end-boost",
+            "property.uv-scroll",
+            "property.uv-scroll-texture-flip",
+            "property.z-boost",
+            "rider.boost",
+            "rider.reset",
+            "rider.teleport",
+            "score.multiplier",
+            "spline.animation",
+            "spline.toggle",
+            "time.bonus",
+            "trick.boost",
+            "wait"
+          ]
+        },
+        { "type": "string", "pattern": "^property\\.-?[0-9]+$" },
+        { "type": "string", "pattern": "^emitter\\.-?[0-9]+$" },
+        { "type": "string", "pattern": "^main\\.-?[0-9]+$" },
+        { "type": "string", "pattern": "^node\\.control\\.command--?[0-9]+$" },
+        { "type": "string", "pattern": "^x-[a-z0-9]+(?:[.-][a-z0-9]+)*$" }
+      ]
+    },
+    "reference": {
+      "oneOf": [
+        { "$ref": "#/$defs/id" },
+        { "type": "null" }
+      ]
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "data"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "originalIndex": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string" },
+        "data": { "type": "object", "additionalProperties": true },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mainType", "payload"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "originalIndex": { "type": "integer", "minimum": 0 },
+        "mainType": { "type": "integer" },
+        "semanticType": { "$ref": "#/$defs/semanticType" },
+        "payload": { "type": "object", "additionalProperties": true },
+        "references": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/reference" }
+        },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "nodes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "originalIndex": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string" },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "nodes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "originalIndex": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "maxLength": 16 },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "circumstances"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "originalIndex": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string" },
+        "circumstances": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["persistent", "collision", "slot3", "slot4", "trigger", "slot6", "slot7"],
+          "properties": {
+            "persistent": { "$ref": "#/$defs/reference" },
+            "collision": { "$ref": "#/$defs/reference" },
+            "slot3": { "$ref": "#/$defs/reference" },
+            "slot4": { "$ref": "#/$defs/reference" },
+            "trigger": { "$ref": "#/$defs/reference" },
+            "slot6": { "$ref": "#/$defs/reference" },
+            "slot7": { "$ref": "#/$defs/reference" }
+          }
+        },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "objectProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "data", "references"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "originalIndex": { "type": "integer", "minimum": 0 },
+        "data": { "type": "object", "additionalProperties": true },
+        "references": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["effectSlot", "physics", "collisionModel"],
+          "properties": {
+            "effectSlot": { "$ref": "#/$defs/reference" },
+            "physics": { "$ref": "#/$defs/reference" },
+            "collisionModel": { "$ref": "#/$defs/reference" }
+          }
+        },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "property"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "originalIndex": { "type": "integer", "minimum": 0 },
+        "property": { "$ref": "#/$defs/reference" },
+        "extensions": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

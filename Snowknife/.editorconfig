@@ -1,0 +1,54 @@
+# Snowknife's conventions, written down from the code as it stands so an editor stops second-guessing them.
+# Nothing here reformats existing code on its own: there is no EnforceCodeStyleInBuild, so the C# style
+# entries stay editor hints rather than build errors. Line endings are deliberately not set: the repository's
+# .gitattributes already declares them per extension, and the working tree carries a mix that the next
+# normalising commit settles. No `root = true`, so a repository-wide file can still add to these.
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+# File-scoped namespaces everywhere (84 of 84 files), usings above the namespace with System first.
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_using_directive_placement = outside_namespace:suggestion
+dotnet_sort_system_directives_first = true
+# Explicit types for built-ins (`string path = ...`, `int count = ...`); `var` once the type is on the right.
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+# Allman braces on declarations and blocks, with the one-line `try { ... } catch { ... }` and
+# `{ Log.Error(...); return 1; }` guard shapes kept as written.
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+# Comment blocks wrap around 110 columns; code is allowed to run longer.
+max_line_length = 120
+
+# Snowknife.csproj builds with AnalysisLevel latest-recommended under TreatWarningsAsErrors. Three of that
+# set's rules are wrong for this codebase as a whole and are kept as editor suggestions rather than errors;
+# everything else in the set builds clean.
+# CA1051: the JSON DTOs (SsxInstance, PropsBundle, the classifiers...) are reflection-populated public fields
+#         on purpose; properties would add boilerplate and change nothing on the wire.
+dotnet_diagnostic.CA1051.severity = suggestion
+# CA1822: the Services are instance classes composed in Program.cs and dispatched through the command table;
+#         a method that happens not to touch instance state today is not an API decision.
+dotnet_diagnostic.CA1822.severity = suggestion
+# CA1507: [JsonProperty("Schema")] names are the file-format contract; nameof would tie that contract to a
+#         C# rename, which is exactly backwards.
+dotnet_diagnostic.CA1507.severity = suggestion
+
+[*.{csproj,props,targets}]
+indent_size = 2
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

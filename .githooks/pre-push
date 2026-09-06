@@ -1,0 +1,6 @@
+#!/bin/sh
+# Runs the checks CI would run for this push before the push leaves the machine. See tools/pre-push.mjs.
+#
+#   npm run hooks:install               install: points core.hooksPath at this directory, once per clone
+#   OPENSLOPE_SKIP_PREPUSH=1 git push   skip once (git push --no-verify also works)
+exec node "$(git rev-parse --show-toplevel)/tools/pre-push.mjs" "$@"

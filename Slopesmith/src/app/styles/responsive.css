@@ -1,0 +1,71 @@
+/* ---- mobile: top bar scrolls; the toolbox stays put as a wide panel under it on the RIGHT:
+   content-height up to a cap with its sections scrolling inside. The nav gizmo keeps the upper-left
+   corner and may sit behind the open panel on a narrow phone; collapsing the header reveals it.
+
+   The `max-height` arm catches a phone in LANDSCAPE, which a `max-width` alone never does — a modern
+   handset is 852–932 px wide on its side, so the desktop dock and its desktop type were what you got on
+   the one orientation you actually ride in. ---- */
+@media (max-width: 760px), (max-height: 500px) {
+  .sp-brand > span { display: none; }
+  .sp-music-graph-back { padding: 0; }
+  .sp-music-graph-modal { width: 100vw; height: 100vh; max-width: none; border: 0; border-radius: 0; }
+  .sp-music-graph-head { padding: 8px 10px; }
+  .sp-music-graph-toolbar { align-items: flex-start; padding-left: 10px; }
+  .sp-music-graph-toolbar > span { display: none; }
+  .sp-music-graph-body { grid-template-columns: minmax(180px, 36vw) minmax(0, 1fr); }
+  :root { --side-w: 0px; --nav-gizmo-size: 105px; --nav-gizmo-scale: .82; }
+  #dock-right { left: auto; right: 0; bottom: auto; width: min(calc(100vw - 24px), var(--tool-panel-w)); max-height: 75vh;
+    border-left: 1px solid #2c3e50; box-sizing: border-box; }
+  .sp-fx-emitter-ramp { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sp-navgizmo { left: 12px; right: auto; }
+  body.os-screen-status .sp-navgizmo { top: calc(var(--bar-h) + 48px); }
+  /* caps are vh (the panel is content-height now, so the desktop % caps would not resolve) */
+  .sp-outliner { max-height: 15vh; }
+  #dock-right .lil-gui.lil-root { max-height: 75vh; }
+  /* scaled-down lil-gui: smaller type + tighter rows than the desktop panel */
+  #dock-right .lil-gui {
+    --font-size: 10px; --input-font-size: 10px; --widget-height: 18px; --title-height: 20px;
+    --padding: 4px; --spacing: 3px; --folder-indent: 5px; --name-width: 42%; --checkbox-size: 14px;
+  }
+  .sp-out-hdr { font-size: 10px; height: 20px; }
+  .sp-out-row { font-size: 11px; padding: 4px 7px; }
+  .sp-out-row.child { font-size: 10.5px; padding-left: 20px; }
+  #log { max-width: calc(100vw - 20px); font-size: 10px; }
+  #lowerleft, #lowerright.on { display: none; }
+}
+
+/* ---- touch devices: one compact pass over the whole chrome ----
+   The top bar never had a mobile pass at all (the query above only reaches the dock), so a phone got
+   desktop-sized pills over a 390 px-tall screen. */
+@media (pointer: coarse) {
+  /* Field sizing is NOT set here — the mobile block above owns every lil-gui metric, so the panel has one
+     owner. The page scale is pinned by the viewport meta, `touch-action` and the gesture handler at the
+     bottom of the file, not by inflating the fields. */
+  :root { --bar-content-h: 38px; --nav-gizmo-size: 105px; --nav-gizmo-scale: .82; }
+
+  .sp-btn, .sp-seg button { padding: 4px 8px; font-size: 11px; }
+  .sp-seg button.sp-seg-icon { padding: 4px 7px; }
+  .sp-seg button.sp-seg-icon svg, .sp-gizmo-btn svg { width: 14px; height: 14px; }
+  .sp-save-status { padding: 4px 2px; }
+  .sp-save-status svg { width: 14px; height: 14px; }
+  .sp-label, .sp-brand, .sp-gizmo-btn { font-size: 11px; }
+  .sp-brand img { height: 18px; }
+  .sp-menu-btn-icon svg { width: 14px; height: 14px; }
+  .sp-gizmo-lbl { font-size: 10px; }
+  .sp-menu-label { font-size: 12px; }
+  .sp-menu-group { font-size: 9px; }
+  .sp-menu-pop { min-width: 170px; }
+  .sp-frame-pill { padding: 6px 8px; }
+
+  #dock-right { width: min(calc(100vw - 24px), var(--tool-panel-w)); max-height: 75vh; }
+  #dock-right .lil-gui.lil-root { max-height: 75vh; }
+  .sp-outliner { max-height: 13vh; padding: 1px 3px 4px; }
+  .sp-out-row { padding: 3px 6px; }
+
+  /* A DIRECT-TOUCH ride can replace the editor chrome with its own controls. `pointer: coarse` alone is not
+     enough: a Quest controller ray is coarse too, but needs the ordinary toolbox/Stop button in flat Play. */
+  body.os-riding.os-touch-riding { --ride-hud-top: calc(env(safe-area-inset-top, 0px) + 8px);
+    --ride-hud-bottom: calc(env(safe-area-inset-bottom, 0px) + 2px); }
+  body.os-riding.os-touch-riding #dock-top, body.os-riding.os-touch-riding #dock-right,
+  body.os-riding.os-touch-riding #lowerleft { display: none; }
+}

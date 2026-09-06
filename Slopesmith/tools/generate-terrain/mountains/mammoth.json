@@ -1,0 +1,13 @@
+{
+  "name": "Mammoth",
+  "search_bbox": [-119.080, 37.600, -118.990, 37.670],
+  "box_m": 3000,
+  "npix": 3000,
+  "center_lonlat": [-119.024008, 37.638275],
+  "_notes": {
+    "search_bbox": "W,S,E,N lon/lat envelope to pull OSM downhill pistes from",
+    "box_m": "side of the square window in metres",
+    "npix": "output pixels per side (npix==box_m => 1 m/px)",
+    "center_lonlat": "pinned center (maximised piste capture). Set null to auto-derive from pistes."
+  }
+}

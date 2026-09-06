@@ -1,0 +1,39 @@
+{
+  "name": "debug-text",
+  "target": "SLES_505.45",
+  "formatVersion": 2,
+  "targetSize": 2933092,
+  "notes": "Gives SSF main type 12 a body: it posts the node's own inline UTF-16LE text to the in-race HUD event ring as a kind-10 banner, and the banner's string lookup is shimmed to return that pointer when the slot carries this patch's sentinel in its aux word. A real checkpoint crossing leaves aux 0 and gets the stock id and the stock lookup, so retail behaviour is unchanged. Retail sends main type 12 to the inert default, so a level authored with these nodes runs normally on an unpatched disc. Each region names the digest of the bytes it expects to replace, so apply is verify-before-write and revert restores the bytes saved at apply time. Patch points: [Trailmap: 443-debug-text].",
+  "regions": [
+    {
+      "fileOffset": 2545760,
+      "length": 4,
+      "originalSha256": "57fd925c5cb748ef641e401a071a8be889bbfb3fe98b3c90347c387315a9b8ab",
+      "patched": "90ca3b00"
+    },
+    {
+      "fileOffset": 680640,
+      "length": 4,
+      "originalSha256": "d28eb48ba273388e29646ebacf2e0992578f584b2d2f7c912cf53dc465b783ff",
+      "patched": "aff20e0c"
+    },
+    {
+      "fileOffset": 685372,
+      "length": 4,
+      "originalSha256": "f89e33155426bfe4ff9f741959fe2d285acd1287ff72326124090115358aaa3a",
+      "patched": "f6f20e08"
+    },
+    {
+      "fileOffset": 2874000,
+      "length": 104,
+      "originalSha256": "39f37f8d1931b3bdf767e7510dd69509fbf23af1f7654933d0a4d291cbdd4418",
+      "patched": "e800048e07008010140026265753073c2040013c006081440a000524d25c050c205884246cf10408010002241000618c5753193c030039100400628cce180b08000000003400013cf4ff598cec9139acf8ff598cf09139acfcff598cf49139ac0800e00300000000"
+    },
+    {
+      "fileOffset": 2874328,
+      "length": 32,
+      "originalSha256": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925",
+      "patched": "050082141000c18c030020140000000051990608000000008c99060800000000"
+    }
+  ]
+}
