@@ -1,0 +1,196 @@
+/* ---- docked layout: top bar (context/view/file), right toolbox (per-mode Tools, or the Scene
+       block in Info mode), bottom Assets ---- */
+#dock-top {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--bar-h); z-index: 20;
+  display: flex; align-items: center; gap: 8px;
+  padding: var(--safe-area-top) max(8px, env(safe-area-inset-right, 0px)) 0
+    max(8px, env(safe-area-inset-left, 0px)); box-sizing: border-box;
+  background: #0c141de8; border-bottom: 1px solid #2c3e50; overflow-x: auto; white-space: nowrap;
+}
+#dock-right {
+  position: fixed; top: var(--bar-h); bottom: 0; right: 0; width: var(--side-w); z-index: 20;
+  display: flex; flex-direction: column; pointer-events: none;
+}
+/* Only rendered panel surfaces intercept the viewport. When a panel is collapsed to its header, the empty
+   remainder of the dock becomes transparent and clickable, revealing any corner gizmo seated behind it. */
+#dock-right > * { pointer-events: auto; }
+/* lil-gui mounted inside the dock fills it and scrolls (instead of floating top-right) */
+#dock-right .lil-gui.lil-root {
+  width: 100%; max-height: 100%; overflow-y: auto; --background-color: #0c141de8;
+}
+/* Effects supplies its own card surfaces; leave the surrounding toolbox transparent to the viewport. */
+#dock-right .lil-gui.lil-root.sp-effects-tools { --background-color: transparent; }
+/* Shared guidance notes are real text rows rather than disabled inputs, so they can use the full toolbox
+   width and wrap in Reference and every other panel that uses the same note component. */
+.lil-gui .sp-note { margin: 3px var(--padding); padding: 6px 8px; box-sizing: border-box;
+  color: #d7e8f5; background: #172b39; border: 1px solid #315066; border-left: 3px solid #5d8db5;
+  border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+.lil-gui .sp-note.sp-vr-resolution-capped {
+  color: #ff8d8d; background: #2a171b; border-color: #663f47; border-left-color: #b85d6d;
+}
+/* A numbered walkthrough wears the same quiet blue as a note — it is guidance — but keeps real list markers,
+   so a reader can find the step they are on instead of re-reading a paragraph. */
+.lil-gui .sp-steps { margin: 3px var(--padding); padding: 6px 8px 6px 21px; box-sizing: border-box;
+  color: #d7e8f5; background: #172b39; border: 1px solid #315066; border-left: 3px solid #5d8db5;
+  border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere;
+  list-style: decimal; }
+.lil-gui .sp-steps li { margin: 0 0 6px; padding-left: 1px; }
+.lil-gui .sp-steps li:last-child { margin-bottom: 0; }
+.lil-gui .sp-steps li::marker { color: #7f9db4; font-weight: 700; }
+.lil-gui .sp-steps b { color: #f0f7fc; font-weight: 700; }
+/* lil-gui normally dims disabled string fields to 50% and colours their text dark green. In Slopesmith
+   those remaining fields are information, not unavailable controls, so keep them fully legible and give
+   them a quiet blue info treatment. Selected-item detail cards opt out below. */
+.lil-gui .lil-controller.lil-string.lil-disabled:not(.sp-detail) { opacity: 1; }
+.lil-gui .lil-controller.lil-string.lil-disabled:not(.sp-detail) input {
+  color: #d7e8f5; background: #172b39; padding-left: 8px;
+  box-shadow: inset 3px 0 #5d8db5, inset 0 0 0 1px #315066;
+}
+/* Selected-item facts use a slate readout card, distinct from the blue guidance / status prompts.
+   Named metrics retain a compact caption column; plain detail rows consume the card's full width. */
+.lil-gui .lil-controller.sp-detail { opacity: 1; margin: 3px var(--padding); padding: 2px 6px;
+  background: #111d28; border: 1px solid #294055; border-left: 3px solid #5d8db5;
+  border-radius: 5px; box-sizing: border-box; }
+.lil-gui .lil-controller.sp-detail > .lil-name { color: #7894aa; font-size: 10px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; }
+.lil-gui .lil-controller.sp-detail > .lil-name:empty { display: none; }
+.lil-gui .lil-controller.sp-detail input { background: transparent; color: #d3e2ee; padding-left: 2px; }
+.lil-gui .lil-controller.sp-detail .sp-colour-swatch { flex: 0 0 16px; width: 16px; height: 16px;
+  margin-right: 6px; border: 1px solid #ffffff55; border-radius: 3px; box-shadow: 0 0 0 1px #0006 inset; }
+/* Errors are intentionally louder than readout cards: failed operations and invalid geometry should
+   be unmistakable as soon as they are encountered. */
+.lil-gui .sp-error-banner { margin: 5px var(--padding); padding: 8px 9px;
+  color: #ffe5e5; background: #531d24; border: 1px solid #ef4e5d; border-left-width: 5px;
+  border-radius: 5px; box-shadow: 0 0 0 1px #2b0d12 inset; box-sizing: border-box;
+  font-size: 11px; font-weight: 750; line-height: 1.35; letter-spacing: .015em; }
+/* Warnings identify important risks and configuration issues without implying that an operation failed. */
+.lil-gui .sp-warning-banner { margin: 5px var(--padding); padding: 8px 9px;
+  color: #fff0bd; background: #4a3810; border: 1px solid #d9a82e; border-left-width: 5px;
+  border-radius: 5px; box-shadow: 0 0 0 1px #281e08 inset; box-sizing: border-box;
+  font-size: 11px; font-weight: 750; line-height: 1.35; letter-spacing: .015em; }
+/* A sky is a panorama, so it previews as one: the horizon unrolled, at its true 5.33:1 band aspect.
+   Chequerboard behind it so a failed / missing image reads as absent rather than as a black sky. */
+.lil-gui .sp-sky-preview { margin: 5px var(--padding); border: 1px solid #294055; border-radius: 5px;
+  background: #0d151d; overflow: hidden; box-sizing: border-box; }
+.lil-gui .sp-sky-preview img { display: block; width: 100%; aspect-ratio: 2048 / 384;
+  object-fit: cover; image-rendering: auto; }
+.lil-gui .sp-sky-preview span { display: block; padding: 3px 6px; color: #7894aa; font-size: 10px;
+  font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.lil-gui .sp-sky-preview-empty { border-style: dashed; }
+/* A model's tile is its own label: an ordinary labelled row whose value is a swatch of the art, opening
+   the Texture Library picker on click. Sits in the name column like the fields above it; the ref itself
+   is hover-only, since the picture identifies the tile better than the string does. */
+.lil-gui .lil-controller.sp-tex-row { display: flex; align-items: center; }
+.lil-gui .sp-tex-swatch { flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border-radius: 4px;
+  border: 1px solid #ffffff33; background: #0d151d center/cover no-repeat;
+  box-shadow: 0 0 0 1px #0006 inset; cursor: pointer; }
+.lil-gui .sp-tex-swatch:hover { border-color: #6ee7a8; }
+.lil-gui .sp-tex-swatch-empty { border-style: dashed; border-color: #3d5166; background-color: #0d151d; }
+/* A read-only swatch is a picture, not a control: no pointer, no hover affordance. */
+.lil-gui .sp-tex-swatch-static { cursor: default; }
+.lil-gui .sp-tex-swatch-static:hover { border-color: #ffffff33; }
+/* A flipbook is a STRIP: its states read in playback order, each badged with its frame number, because
+   what tells two frames apart is their paint rather than their file name. Wraps so a long state list
+   grows downward inside the row instead of squeezing the swatches. */
+.lil-gui .lil-controller.sp-flip-row { align-items: flex-start; }
+.lil-gui .sp-flip-strip { display: flex; flex-wrap: wrap; gap: 4px; }
+.lil-gui .sp-flip-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.lil-gui .sp-flip-cell .sp-tex-swatch { width: 24px; height: 24px; }
+.lil-gui .sp-flip-badge { font-size: 9px; line-height: 1; color: #8fa6ba; letter-spacing: .04em; }
+/* Related binary actions (Crease / Smooth) share one compact row while remaining ordinary lil-gui
+   controllers. Keeping them as direct siblings preserves lil-gui's normal rebuild / destroy lifecycle. */
+.lil-gui .lil-controller.sp-action-pair { display: inline-flex; width: 50%; box-sizing: border-box;
+  vertical-align: top; }
+.lil-gui .lil-controller.sp-action-pair-left { padding-right: calc(var(--padding) / 2); }
+.lil-gui .lil-controller.sp-action-pair-right { padding-left: calc(var(--padding) / 2); }
+/* Edit's growing command set is split into task folders. Stronger headers and a quiet inset body make
+   Selection / Shape / Topology / Create scan as distinct groups; folders remain collapsible. */
+#dock-right .sp-edit-tools > .lil-children > .sp-edit-section { margin-top: 4px; }
+#dock-right .sp-edit-tools > .lil-children > .sp-edit-section > .lil-title {
+  height: 27px; line-height: 23px; padding-left: 8px; color: #b9cee0;
+  background: #142331; border-top: 1px solid #36516a; border-bottom: 1px solid #263d51;
+  font-size: 10px; font-weight: 750; letter-spacing: .075em; text-transform: uppercase;
+}
+#dock-right .sp-edit-tools > .lil-children > .sp-edit-section > .lil-children {
+  padding: 2px 2px 4px; background: #0e1923;
+}
+#dock-right .sp-edit-tools > .lil-children > .sp-edit-section.lil-closed > .lil-title { color: #8299ad; }
+.lil-gui .sp-label-swatch { display: inline-block; flex: 0 0 9px; width: 9px; height: 9px;
+  margin-right: 6px; border: 1px solid #ffffff55; border-radius: 50%; box-shadow: 0 0 0 1px #081018; }
+.lil-gui .lil-controller:has(.sp-label-swatch) .lil-name { display: flex; align-items: center; }
+#dock-right .sp-tool-section { margin-top: 4px; padding-bottom: 3px; background: #0e1923;
+  border-top: 1px solid #36516a; border-bottom: 1px solid #263d51; }
+#dock-right .sp-tool-section-title { height: 27px; line-height: 26px; padding: 0 8px;
+  color: #b9cee0; background: #142331; font-size: 10px; font-weight: 750;
+  letter-spacing: .075em; text-transform: uppercase; }
+#dock-right .sp-tool-section .sp-frame-pill { padding-top: 5px; padding-bottom: 5px; }
+/* Scene block = a compact category launcher above the paired Mountain / Reference detail gui. Like the
+   other tool panels it hugs its content; only a category taller than the dock shrinks + scrolls. */
+#dock-right .sp-scene-gui.lil-root { flex: 0 1 auto; min-height: 0; max-height: 100%; }
+/* the blank root title bar is just a slim break between the tree and the details (not a toggle) */
+#dock-right .sp-scene-gui.lil-root > .lil-title { pointer-events: none; height: 9px; min-height: 9px; padding: 0;
+  background: #0c141de8; border-top: 1px solid #2c3e50; }
+/* The outer authored/reference cards use live mountain names as labels. Nested study folders retain lil-gui's
+   caret and pointer handling, so Sound's initially-collapsed subsections can be opened normally. */
+#dock-right .sp-scene-gui .sp-scene-card > .lil-title { pointer-events: none; }
+#dock-right .sp-scene-gui .sp-scene-card > .lil-title::before { display: none; }
+/* Repeat the root's slim dark break before the lower Reference half of every comparison. */
+#dock-right .sp-scene-gui .sp-scene-reference::before { content: ''; display: block; height: 9px;
+  background: #0c141de8; border-top: 1px solid #2c3e50; box-sizing: border-box; }
+/* Effects context tabs switch the entire detail surface underneath, so they fill the row and read as tabs
+   rather than a compact segmented field. Test's mountain picker intentionally uses the button-group rules. */
+.sp-scene-tabs { display: flex; flex: 0 0 auto; align-items: stretch; width: 100%; padding: 6px 8px 0;
+  background: #0c141de8; border-top: 1px solid #223649; border-bottom: 1px solid #2b465c;
+  box-sizing: border-box; }
+.sp-scene-tabs .sp-seg { display: flex; flex: 1 1 auto; width: 100%; border: 0; border-radius: 0;
+  overflow: visible; box-sizing: border-box; }
+.sp-scene-tabs .sp-seg button { flex: 1 1 0; min-width: 0; padding: 7px 6px 6px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  color: #8fa7ba; background: transparent; border: 0; border-bottom: 2px solid transparent; }
+.sp-scene-tabs .sp-seg button:hover:not(:disabled) { color: #d7e6f2; background: #142331; }
+.sp-scene-tabs .sp-seg button.on { color: #eaf6ff; background: #142331; border-bottom-color: #63a2d1; }
+/* Test target = an ordinary rounded segmented button group, inset like the other toolbox controls. */
+#dock-right .sp-play-target, #dock-right .sp-sky-preview-target, #dock-right .sp-sky-preview-layers {
+  display: flex; padding: 6px var(--padding); box-sizing: border-box;
+}
+#dock-right .sp-play-target .sp-seg, #dock-right .sp-sky-preview-target .sp-seg,
+#dock-right .sp-sky-preview-layers .sp-seg {
+  display: flex; width: 100%; box-sizing: border-box;
+}
+#dock-right .sp-play-target .sp-seg button, #dock-right .sp-sky-preview-target .sp-seg button,
+#dock-right .sp-sky-preview-layers .sp-seg button {
+  flex: 1 1 0; min-width: 0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+/* reference "level" dropdown: an ✕ clear button sits beside the combo (Scene ▸ Reference).
+   lil-gui forces `button { width:100% }`, so the ✕ rules below must out-specify that (id-scoped). */
+#dock-right .sp-scene-gui .lil-controller.ref-has-clear .lil-widget { gap: 5px; }
+#dock-right .sp-scene-gui .lil-controller.ref-has-clear .lil-display { flex: 1 1 auto; } /* combo fills the row */
+/* shrink the invisible overlay <select> so it doesn't sit on top of the ✕ (keeps it clickable) */
+#dock-right .sp-scene-gui .lil-controller.ref-has-clear select { width: calc(100% - 30px); }
+#dock-right .sp-scene-gui .lil-controller.ref-has-clear .ref-clear-btn {
+  flex: 0 0 auto; width: auto; padding: 0 8px; border: 1px solid #34506b; }
+#dock-right .sp-scene-gui .lil-controller.ref-has-clear .ref-clear-btn:hover { background: #25425c; color: #eaf6ff; }
+.sp-outliner { flex: 0 0 auto; overflow-y: auto; box-sizing: border-box;
+  background: #0c141de8; }
+/* the Scene Mode header matches the other modes' lil-gui panel title bar */
+.sp-out-hdr { display: flex; align-items: center; gap: 5px; width: 100%; text-align: left;
+  background: #111; border: 0; cursor: pointer; font-family: inherit;
+  color: #ebebeb; font-size: 11px; font-weight: 600; height: 25px; padding: 0 4px; }
+.sp-out-hdr:hover { color: #fff; }
+.sp-out-caret { font-size: 9px; opacity: 0.8; width: 9px; }
+#dock-right .lil-gui.lil-root > .lil-title.sp-mode-title { display: flex; align-items: center; gap: 5px; }
+.sp-mode-title-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 13px; height: 13px; }
+.sp-mode-title-icon svg { display: block; width: 100%; height: 100%; }
+.sp-out-row { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
+  background: transparent; border: 0; color: #cfe3f5; padding: 5px 8px; border-radius: 5px;
+  cursor: pointer; font-size: 12px; font-family: inherit; }
+.sp-out-row:hover { background: #1c3247; }
+.sp-out-row.on { background: #2d4f6b; color: #eaf6ff; }
+.sp-out-row.child { padding-left: 24px; font-size: 11.5px; color: #b6c6d6; }
+.sp-out-ico { width: 14px; text-align: center; opacity: 0.75; flex: 0 0 auto; }
+.sp-out-sub { margin-left: auto; color: #7f97ac; font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 48%; }
+.sp-scene-categories { padding: 4px; border-bottom: 1px solid #2b465c; }
+.sp-scene-categories .sp-out-row { border-radius: 3px; padding-top: 6px; padding-bottom: 6px; }
+.sp-scene-categories .sp-out-row > span:last-child { min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }

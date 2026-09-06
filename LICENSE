@@ -1,0 +1,73 @@
+OpenSlope
+Copyright 2026 swax
+
+This repository is not licensed as a whole. It holds several independently
+licensed projects, each in its own top-level folder with its own LICENSE and
+NOTICE file. Take the terms from the folder the code came from. Canonical copies
+of the Apache-2.0 and GPL-3.0-only terms are also kept under LICENSES/ so the
+standard grants are easy for people and release tooling to locate.
+
+--------------------------------------------------------------------------------
+THE PROJECTS
+
+  Snowknife/               GPL-3.0-only    LICENSE.txt · NOTICE
+      The extractor, bundle exporter and ISO packer, in Snowknife/, with its test
+      suite alongside in Snowknife.Tests/. Both are covered by the same terms. The
+      two nested entries below are carve-outs this row does not reach.
+
+  Snowknife/SSX-Library/  upstream        LICENSE.txt
+      A git submodule, originally by GlitcherOG. It sits inside Snowknife/ because
+      that is the only project that builds against it, but it keeps its upstream
+      terms; neither the row above nor anything else here relicenses it.
+
+  Snowknife/Snowknife/schemas/
+                          Apache-2.0      schemas/LICENSE
+      The JSON interchange contracts, carved out under a permissive licence so
+      that consumers outside the program can implement against them freely.
+      Apache-2.0 is one-way compatible with GPLv3; Snowknife/NOTICE sets out what
+      that means for a build of Snowknife itself.
+
+  Slopesmith/             Apache-2.0      LICENSE · NOTICE
+      The course-authoring editor and its API service. One scoped exception:
+      tools/retopology/quadwild-patches/ holds modifications to third-party
+      retopology programs and is conveyed under their upstream licences (GPL-3.0,
+      MIT and BSD-style); see that folder's own README and LICENSE files.
+
+  Unity/                   Apache-2.0      LICENSE · NOTICE
+      The Unity editor importer and the VRChat and Basis runtimes.
+
+  Trailmap/                Apache-2.0      LICENSE · NOTICE
+      The interoperability specification and its research tooling.
+
+Except for the canonical standard-license texts under LICENSES/, everything else
+tracked in this repository is Apache-2.0. That is a rule, not an inventory: any
+tracked path not inside one of the folders named above or LICENSES/ is covered by
+it, whether or not it existed when this file was written. Examples include the
+repository governance and build files, release history, tools/, Blender/, and
+ResearchData/. The rule governs if these examples ever become stale.
+
+--------------------------------------------------------------------------------
+WHAT NONE OF THESE LICENSE
+
+No retail game asset is included in this repository, and none is licensed by any
+grant above. Disc-backed tools operate only on a user-supplied disc image. What
+they produce from that image is derived from Electronic Arts' copyrighted work,
+is generated on the user's own machine, and is excluded from version control.
+The project grants no rights in retail-derived output. Users are responsible for
+determining whether making or using an image and creating or using such output is
+permitted under applicable law and contractual terms. Do not redistribute it
+without authorization.
+
+Current Slopesmith exports carry a machine-readable provenance classification.
+`snowknife unity --public` is the guarded distribution path: it refuses retail-
+derived and unclassified content and omits the disc-derived Shared asset pack.
+That technical guard is conservative and is not itself a license or legal opinion.
+
+SSX, SSX Tricky, SSX 3 and SSX On Tour are trademarks of Electronic Arts Inc.
+This project is not endorsed by or affiliated with EA or its licensors, and is
+not sponsored by them. Rights in the music and voice performances on a retail
+disc are held by their publishers, labels and performers and are licensed to
+Electronic Arts; no grant in this repository extends to them.
+
+Each project's NOTICE carries the full scope, trademark and third-party
+statements for its own material.

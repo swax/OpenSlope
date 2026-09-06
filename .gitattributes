@@ -1,0 +1,28 @@
+* text=auto
+.gitattributes text eol=lf
+*.cs text eol=crlf
+*.csproj text eol=crlf
+*.sln text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+# Extensionless deployment entry points are shell scripts too.
+Slopesmith/deploy/deploy-slopesmith text eol=lf
+Slopesmith/deploy/slopesmith-update-runner text eol=lf
+# Git runs hooks through sh, which rejects a CRLF shebang line.
+.githooks/* text eol=lf
+*.py text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.css text eol=crlf
+*.shader text eol=crlf
+# Patch context reproduces upstream source verbatim; whitespace changes can alter what the patch applies to.
+*.patch -whitespace
+*.png binary
+*.jpg binary
+*.ico binary
+*.glb binary
+*.blend binary

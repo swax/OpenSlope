@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "billboards-v1.schema.json",
+  "title": "OpenSlope billboard screens",
+  "description": "The flat, video-ready screen rectangles a course's billboards carry: detected from an extracted map's placed prop geometry, or authored in Slopesmith. Every quantity is in SSX mesh space - centimetres, Z up, X negated - the same frame the bundle manifest uses.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Schema", "Source", "Screens"],
+  "properties": {
+    "Schema": { "const": "openslope-billboards/v1" },
+    "Source": {
+      "description": "detected = measured from this map's prop geometry; authored = placed by hand. A detector run leaves an authored document alone.",
+      "enum": ["detected", "authored"]
+    },
+    "Screens": { "type": "array", "items": { "$ref": "#/$defs/screen" } }
+  },
+  "$defs": {
+    "vec3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number" } },
+    "screen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "Center", "Normal", "Up", "Width", "Height"],
+      "properties": {
+        "Name": {
+          "description": "Unique within the document; a consumer may use it as an object name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "Family": {
+          "description": "What the screen sits on - a billboard model family for a detected screen, an author's grouping otherwise. Consumers group by it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Normal": {
+          "description": "Unit normal pointing OUT of the screen, toward the viewer.",
+          "$ref": "#/$defs/vec3"
+        },
+        "Up": {
+          "description": "Unit up direction of the image; perpendicular to Normal.",
+          "$ref": "#/$defs/vec3"
+        },
+        "Width": { "type": "number", "exclusiveMinimum": 0 },
+        "Height": { "type": "number", "exclusiveMinimum": 0 },
+        "Instance": {
+          "description": "The Instances.json row this screen was found on, when it has one.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "Page": {
+          "description": "The texture page the covered face draws, when the screen was measured from one.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

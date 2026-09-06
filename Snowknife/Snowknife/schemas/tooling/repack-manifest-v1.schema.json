@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repack-manifest-v1.schema.json",
+  "title": "Snowknife multi-course repack manifest",
+  "description": "Input to snowknife repack-many. Relative paths resolve from the manifest's directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["InputIso", "OutputIso", "Levels"],
+  "properties": {
+    "InputIso": { "type": "string", "minLength": 1 },
+    "OutputIso": { "type": "string", "minLength": 1 },
+    "Levels": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/level" }
+    },
+    "Noclip": { "type": "boolean" },
+    "TextureType2": {
+      "type": "boolean",
+      "description": "Encode custom terrain and prop pages as retail-shaped 8-bit indexed type 2 instead of 32-bit type 5."
+    },
+    "SoundRate": {
+      "type": "integer",
+      "minimum": 4000,
+      "maximum": 48000,
+      "description": "Encode every custom prop sound at this rate instead of the target bank's own. An override rather than a ceiling: clips are converted up as well as down. Omit it — the engine plays a slot at the bank's rate and ignores the sound's own tag, so the bank's rate is the only one that sounds right. Name a lower one only to buy bank bytes, accepting that the clips play sharp."
+    },
+    "SkyColors": { "type": "boolean" }
+  },
+  "$defs": {
+    "level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Slot", "LevelData", "Export"],
+      "properties": {
+        "Slot": { "type": "string", "minLength": 1 },
+        "LevelData": { "type": "string", "minLength": 1 },
+        "Export": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

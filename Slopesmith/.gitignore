@@ -1,0 +1,24 @@
+node_modules/
+dist/
+dist-server/
+.env
+
+# Local-first user data. These folders belong to the mapper, not the app source.
+workspace/
+.slopesmith/
+
+# Map data, authored and extracted alike. The default Maps folder lives inside workspace/, but
+# File ▸ Settings can point it anywhere, so the obvious in-tree spellings are named here too.
+# Anything extracted from a disc is derived from the owner's own copy of the game: theirs to use,
+# not theirs to redistribute, and never something a commit should carry. (The repo root's Maps/*
+# rule is root-anchored and does not reach in here, so this spelling has to live in this file.)
+Maps/
+
+# Exported demo bundles. Multi-megabyte .slopesmith.zip snapshots of a map at one revision — a build
+# artifact of whatever Maps/ held at export time, kept on disk for local playback but not versioned.
+demos/
+
+# Everything else Slopesmith generates is ignored repo-wide by the root .gitignore, which is where
+# the explanations for those rules now live: disc images (discs/, *.iso), scratch output (temp/),
+# Python bytecode (__pycache__/, *.py[cod]), and the recipe build output
+# (Slopesmith/tools/prop-recipes/build/, Slopesmith/tools/texture-recipes/build/).

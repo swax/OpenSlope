@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly STATE_ROOT='/var/lib/slopesmith-update'
+readonly INBOX="$STATE_ROOT/inbox"
+readonly REQUEST="$INBOX/request"
+readonly PROCESSING="$STATE_ROOT/processing"
+readonly VERSION_CHECK="$INBOX/version-check"
+readonly VERSION_PROCESSING="$STATE_ROOT/version-check.processing"
+readonly LATEST="$STATE_ROOT/latest.json"
+readonly REPOSITORY="$STATE_ROOT/repository"
+readonly STATUS="$STATE_ROOT/status.json"
+readonly LOGS="$STATE_ROOT/logs"
+readonly DEPLOY='/usr/local/sbin/deploy-slopesmith'
+readonly NODE_BIN='/opt/node24/bin'
+readonly UPDATE_CONFIG='/etc/slopesmith-update.env'
+
+if [[ $(id -u) -ne 0 ]]; then
+  echo 'slopesmith-update-runner must run as root' >&2
+  exit 77
+fi
+
+# This is the updater's trust anchor: only root may read or choose the repository whose code root will
+# eventually activate. The web service can request a check or commit, but cannot read or replace this file.
+if [[ ! -f "$UPDATE_CONFIG" || -L "$UPDATE_CONFIG" || $(stat -c '%U' "$UPDATE_CONFIG") != 'root' ]]; then
+  echo "$UPDATE_CONFIG must be a root-owned regular file" >&2
+  exit 65
+fi
+config_mode=$(stat -c '%a' "$UPDATE_CONFIG")
+if (( (8#$config_mode & 022) != 0 )); then
+  echo "$UPDATE_CONFIG must not be writable by its group or by other users" >&2
+  exit 65
+fi
+# shellcheck disable=SC1091 -- fixed, root-owned machine configuration validated immediately above.
+source "$UPDATE_CONFIG"
+readonly REPO_URL="${SLOPESMITH_UPDATE_REPOSITORY:-https://github.com/swax/OpenSlope.git}"
+# Must match the build account in deploy-slopesmith: its home supplies the Git credentials for ls-remote.
+readonly BUILD_USER="${SLOPESMITH_BUILD_USER:-slopesmith-build}"
+readonly BUILD_HOME="${SLOPESMITH_BUILD_HOME:-/home/$BUILD_USER}"
+if [[ -z "$REPO_URL" || "$REPO_URL" == -* || "$REPO_URL" == *$'\n'* || "$REPO_URL" == *$'\r'*
+      || "$REPO_URL" =~ ^https?://[^/]*@ ]]; then
+  echo 'SLOPESMITH_UPDATE_REPOSITORY is invalid' >&2
+  exit 65
+fi
+
+# The application may create entries inside inbox, but none of the directories or executable code this root
+# process trusts may be replaceable by it.
+[[ -d "$STATE_ROOT" && ! -L "$STATE_ROOT" && $(stat -c '%U:%G' "$STATE_ROOT") == 'root:root' ]]
+[[ -d "$INBOX" && ! -L "$INBOX" && $(stat -c '%U:%G' "$INBOX") == 'root:slopesmith' ]]
+[[ -x "$DEPLOY" && ! -L "$DEPLOY" && $(stat -c '%U:%G' "$DEPLOY") == 'root:root' ]]
+
+# Publish the chosen source independently of credentials. The service exposes it only on the admin update
+# route, allowing Settings to identify a private fork without making the whole root-owned config readable.
+repository_temp=$(mktemp "$STATE_ROOT/.repository.XXXXXXXXXX")
+printf '%s\n' "$REPO_URL" > "$repository_temp"
+chown root:slopesmith "$repository_temp"
+chmod 0640 "$repository_temp"
+mv -Tf -- "$repository_temp" "$REPOSITORY"
+
+exec 9>/run/lock/slopesmith-update-runner.lock
+if ! flock -n 9; then
+  echo 'another Slopesmith update request is already running' >&2
+  exit 75
+fi
+
+write_latest() {
+  local revision="$1" checked_at="$2" temp
+  temp=$(mktemp "$STATE_ROOT/.latest.XXXXXXXXXX")
+  printf '{"hash":"%s","checkedAt":"%s"}\n' "$revision" "$checked_at" > "$temp"
+  chown root:slopesmith "$temp"
+  chmod 0640 "$temp"
+  mv -Tf -- "$temp" "$LATEST"
+}
+
+# Git credentials stay in the build account's protected home. The service can request only the repository
+# fixed in the root-owned configuration and receives only its public commit hash through a root-owned record.
+check_result=0
+if [[ -e "$VERSION_CHECK" ]]; then
+  if [[ ! -f "$VERSION_CHECK" || -L "$VERSION_CHECK" || $(stat -c '%U' "$VERSION_CHECK") != 'slopesmith' ]]; then
+    rm -f -- "$VERSION_CHECK"
+    echo 'discarded an invalid Slopesmith version-check request' >&2
+    check_result=65
+  else
+    mapfile -t check_lines < "$VERSION_CHECK"
+    if [[ ${#check_lines[@]} -ne 1 || ${check_lines[0]} != 'check' ]]; then
+      rm -f -- "$VERSION_CHECK"
+      echo 'discarded an invalid Slopesmith version-check request' >&2
+      check_result=65
+    else
+      mv -Tf -- "$VERSION_CHECK" "$VERSION_PROCESSING"
+      set +e
+      latest_output=$(runuser -u "$BUILD_USER" -- env \
+        HOME="$BUILD_HOME" \
+        PATH="$NODE_BIN:/usr/local/bin:/usr/bin:/bin" \
+        GIT_TERMINAL_PROMPT=0 \
+        git ls-remote -- "$REPO_URL" refs/heads/main 2>&1)
+      check_result=$?
+      set -e
+      rm -f -- "$VERSION_PROCESSING"
+      if [[ $check_result -eq 0 ]]; then
+        latest_revision=${latest_output%%[[:space:]]*}
+        if [[ $latest_revision =~ ^[0-9a-f]{40}$ ]]; then
+          write_latest "$latest_revision" "$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')"
+        else
+          echo 'the configured repository main branch returned no revision' >&2
+          check_result=65
+        fi
+      else
+        echo 'could not resolve the configured repository main branch' >&2
+      fi
+    fi
+  fi
+fi
+
+[[ -f "$REQUEST" && ! -L "$REQUEST" ]] || exit "$check_result"
+if [[ $(stat -c '%U' "$REQUEST") != 'slopesmith' ]]; then
+  rm -f -- "$REQUEST"
+  echo 'discarded a Slopesmith update request not owned by the service account' >&2
+  exit 65
+fi
+mapfile -t request_lines < "$REQUEST"
+if [[ ${#request_lines[@]} -ne 1 || ! ${request_lines[0]} =~ ^[0-9a-f]{40}$ ]]; then
+  rm -f -- "$REQUEST"
+  echo 'discarded an invalid Slopesmith update request' >&2
+  exit 65
+fi
+readonly REVISION="${request_lines[0]}"
+mv -Tf -- "$REQUEST" "$PROCESSING"
+
+started_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+write_status() {
+  local state="$1" finished_at="${2:-}" exit_code="${3:-}" temp
+  temp=$(mktemp "$STATE_ROOT/.status.XXXXXXXXXX")
+  if [[ -n "$finished_at" ]]; then
+    printf '{"state":"%s","revision":"%s","startedAt":"%s","finishedAt":"%s","exitCode":%s}\n' \
+      "$state" "$REVISION" "$started_at" "$finished_at" "$exit_code" > "$temp"
+  else
+    printf '{"state":"%s","revision":"%s","startedAt":"%s"}\n' \
+      "$state" "$REVISION" "$started_at" > "$temp"
+  fi
+  chown root:slopesmith "$temp"
+  chmod 0640 "$temp"
+  mv -Tf -- "$temp" "$STATUS"
+}
+
+write_status installing
+finalized=0
+finish_on_exit() {
+  local result=$?
+  if [[ $finalized -eq 0 ]]; then
+    write_status failed "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$result" || true
+    rm -f -- "$PROCESSING"
+  fi
+}
+trap finish_on_exit EXIT
+
+install -d -o root -g slopesmith -m 0750 "$LOGS"
+readonly LOG="$LOGS/$(date -u +'%Y%m%dT%H%M%SZ')-$REVISION.log"
+
+# A cached release can reach activation almost immediately. Give Node time to flush the administrator's 202
+# response before the deploy helper gracefully stops it; new builds spend far longer than this in their gates.
+sleep 2
+
+set +e
+"$DEPLOY" "$REVISION" > "$LOG" 2>&1
+result=$?
+set -e
+chown root:slopesmith "$LOG"
+chmod 0640 "$LOG"
+cat "$LOG"
+finished_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+rm -f -- "$PROCESSING"
+
+if [[ $result -eq 0 ]]; then
+  write_status succeeded "$finished_at" 0
+else
+  write_status failed "$finished_at" "$result"
+fi
+finalized=1
+exit "$result"

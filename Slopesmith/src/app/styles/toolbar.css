@@ -1,0 +1,132 @@
+/* ---- top-bar controls ---- */
+.sp-spacer { flex: 1 1 auto; }
+.sp-label { color: #9fb3c8; font-weight: 600; font-size: 13px; padding: 0 2px; }
+/* The app name leading the bar, brighter than the section labels beside it. The mark is the inverse cut
+   of the icon: white artwork with its interiors open against the dark bar. */
+.sp-brand { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px;
+  color: #dce9f7; font-weight: 600; font-size: 13px; }
+.sp-brand img { display: block; height: 22px; width: auto; }
+.sp-brand > span { white-space: nowrap; }
+.sp-group { display: inline-flex; align-items: center; gap: 4px; }
+.sp-btn { background: #1c2b3a; color: #cfe3f5; border: 1px solid #34506b; border-radius: 5px;
+  padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.sp-btn:hover { background: #25425c; }
+.sp-btn:disabled, .sp-btn.disabled { opacity: 0.4; cursor: default; background: #1c2b3a; }
+.sp-btn.on { background: #2d4f6b; border-color: #6ee7a8; color: #eaf6ff; }
+.sp-inline-action-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 12px; height: 12px; }
+.sp-inline-action-icon svg { display: block; width: 100%; height: 100%; }
+.lil-gui .lil-controller.sp-icon-action button > .lil-name { display: flex; align-items: center; justify-content: center; gap: 5px; }
+/* Idle Props mode is a simple launcher: one full-width action per row. Selection details hide it. */
+.sp-prop-launchers { padding: 8px 2px 2px; }
+.sp-prop-launcher-stack { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.sp-prop-launcher { display: flex; width: 100%; align-items: center; justify-content: flex-start; gap: 7px; }
+/* borderless gizmo control (projection toggle): label + glyph sitting straight on the viewport */
+.sp-gizmo-btn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0;
+  padding: 2px 3px; color: #cfe3f5; font: inherit; font-size: 12px; cursor: pointer; opacity: 0.85;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.55); }
+.sp-gizmo-btn:hover { opacity: 1; color: #eaf6ff; }
+.sp-gizmo-btn svg { display: block; width: 16px; height: 16px; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.55)); }
+.sp-gizmo-lbl { font-size: 11px; letter-spacing: 0.02em; }
+/* Ortho-only Grid toggle under the projection control: grey while off, white while on. */
+.sp-gizmo-btn.sp-gizmo-toggle { color: #778594; opacity: 0.72; }
+.sp-gizmo-btn.sp-gizmo-toggle.on { color: #fff; opacity: 1; }
+.sp-gizmo-step { position: relative; display: flex; align-items: stretch; justify-content: center; }
+.sp-gizmo-step > .sp-gizmo-toggle { min-width: 100px; justify-content: flex-end; }
+.sp-gizmo-step > .sp-gizmo-drop { padding-left: 0; padding-right: 1px; opacity: 0.72; }
+.sp-gizmo-step > .sp-gizmo-drop svg { width: 11px; height: 11px; }
+.sp-gizmo-step-menu { position: absolute; z-index: 60; top: calc(100% + 3px); right: 0; display: none;
+  min-width: 140px; padding: 4px; background: #0e1a26; border: 1px solid #34506b; border-radius: 6px;
+  box-shadow: 0 5px 18px #0009; }
+.sp-gizmo-step-menu.open { display: grid; }
+.sp-gizmo-step-section + .sp-gizmo-step-section { margin-top: 4px; padding-top: 4px; border-top: 1px solid #24394c; }
+.sp-gizmo-step-section > span { display: block; padding: 1px 4px 3px; color: #71879a;
+  font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.sp-gizmo-step-choices { display: grid; grid-template-columns: repeat(4, minmax(28px, 1fr)); gap: 2px; }
+.sp-gizmo-step-menu button { border: 0; border-radius: 4px; padding: 5px 4px; text-align: center;
+  background: transparent; color: #aebfd0; font: inherit; font-size: 11px; cursor: pointer; }
+.sp-gizmo-step-menu button:hover, .sp-gizmo-step-menu button.on { background: #2d4f6b; color: #fff; }
+.sp-btn.accent { background: #1f6f43; border-color: #2e9e60; color: #eafff2; font-weight: 600; }
+.sp-btn.accent:hover { background: #268a52; }
+.sp-observe-controls { position: absolute; z-index: 21; top: calc(var(--bar-h) + 10px);
+  left: max(12px, env(safe-area-inset-left)); flex: 0 0 auto; flex-wrap: wrap; max-width: calc(100% - 24px); }
+.sp-observe-controls .sp-btn { padding: 5px 8px; font-weight: 700; }
+.sp-share-watchers { display: inline-flex; align-items: center; gap: 5px; min-height: 27px; box-sizing: border-box;
+  padding: 4px 8px; color: #d8effc; background: #153149e8; border: 1px solid #39739a; border-radius: 5px;
+  font-size: 11px; font-weight: 700; box-shadow: 0 2px 8px #0007; }
+.sp-share-watchers svg { width: 15px; height: 15px; }
+.sp-observe-controls .sp-observe-pause { color: #251b00; background: #e2b83f; border-color: #ffd767; }
+.sp-observe-controls .sp-observe-pause:hover { background: #f0ca59; }
+.sp-observe-controls .sp-observe-continue { color: #071b0e; background: #55c77e; border-color: #7ae49f; }
+.sp-observe-controls .sp-observe-continue:hover { background: #6bd590; }
+.sp-observe-controls .sp-observe-stop { color: #fff1ef; background: #9e3838; border-color: #d5615c; }
+.sp-observe-controls .sp-observe-stop:hover { background: #bc4845; }
+.sp-seg { display: inline-flex; align-items: stretch; border: 1px solid #34506b; border-radius: 5px; overflow: hidden; }
+.sp-seg button { display: inline-flex; align-items: center; justify-content: center; background: #15202c;
+  color: #aebfd0; border: 0; border-left: 1px solid #2c3e50; padding: 5px 11px;
+  font-size: 12px; line-height: 1.2; cursor: pointer; }
+.sp-seg button:first-child { border-left: 0; }
+.sp-seg button.on { background: #2d4f6b; color: #eaf6ff; }
+.sp-seg button.disabled { opacity: 0.4; cursor: not-allowed; }
+.sp-seg button.sp-seg-icon { display: inline-flex; align-items: center; padding: 5px 10px; }
+.sp-seg button.sp-seg-icon svg { display: block; width: 16px; height: 16px; }
+/* Passive autosave state beside Undo. One stable disk: motion means work is moving, amber means the
+   connection is catching up, and red is reserved for a save that needs attention. */
+.sp-save-status { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  padding: 5px 3px; color: #7891a5; box-sizing: border-box; }
+.sp-save-status svg { display: block; width: 16px; height: 16px; }
+.sp-save-status[data-state="saved"] { color: #78b99a; }
+.sp-save-status[data-state="following"] { color: #758797; }
+.sp-save-status[data-state="saving"] { color: #f1c66f; }
+.sp-save-status[data-state="reconnecting"] { color: #e0a064; }
+.sp-save-status[data-state="error"] { color: #ff6b75; }
+.sp-save-status[data-state="error"] svg { filter: drop-shadow(0 0 3px #d84e5aaa); }
+.sp-save-status[data-state="saving"] svg,
+.sp-save-status[data-state="reconnecting"] svg { animation: sp-save-pulse .9s ease-in-out infinite; }
+@keyframes sp-save-pulse {
+  0%, 100% { opacity: .48; transform: scale(.92); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-save-status[data-state="saving"] svg,
+  .sp-save-status[data-state="reconnecting"] svg { animation: none; opacity: 1; }
+}
+/* Sculpt operation picker: related operations read as labelled connected toggle families. */
+#dock-right .sp-sculpt-ops { display: flex; flex-direction: column; gap: 4px;
+  margin: 7px var(--padding); }
+#dock-right .sp-sculpt-ops-title { color: #88a1b5; font-size: 10px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; }
+#dock-right .sp-sculpt-op-family { display: grid; grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center; gap: 6px; }
+#dock-right .sp-sculpt-op-family > span { color: #8198aa; font-size: 10px; }
+#dock-right .sp-sculpt-op-family .sp-seg { display: flex; width: 100%; box-sizing: border-box; }
+#dock-right .sp-sculpt-op-family .sp-seg button { flex: 1 1 0; min-width: 0; padding: 6px 3px;
+  font-size: 11px; }
+/* Dropdown-sized sculpt choices become scan-friendly icon rows with the explanation in an instant tooltip. */
+#dock-right .sp-sculpt-choice { display: grid; grid-template-columns: var(--name-width) minmax(0, 1fr);
+  align-items: center; gap: 0; min-height: var(--widget-height); margin: var(--spacing) 0;
+  padding: 0 var(--padding); box-sizing: border-box; }
+#dock-right .sp-sculpt-choice > span { color: #a8b8c6; font-size: var(--font-size);
+  line-height: var(--widget-height); padding-right: var(--spacing); }
+#dock-right .sp-sculpt-choice .sp-seg { display: flex; width: 100%; box-sizing: border-box; }
+#dock-right .sp-sculpt-choice .sp-seg button { flex: 1 1 0; min-width: 0; padding: 5px 4px; }
+#dock-right .sp-sculpt-ops button:focus-visible,
+#dock-right .sp-sculpt-choice button:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 1px; }
+/* the Edit-tools "Move in Surface / World" gizmo-framing pill: a labelled row inside the right dock */
+.sp-frame-pill { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-bottom: 1px solid #223649; background: #0c141de8; box-sizing: border-box; }
+.sp-frame-pill .sp-label { flex: 0 0 auto; font-size: 11px; }
+.sp-frame-pill .sp-seg { flex: 1 1 auto; }
+.sp-frame-pill .sp-seg button { flex: 1 1 0; text-align: center; }
+/* Upper-right navigation gizmo cluster (built by the viewport): sits just left of the toolbox on roomy
+   desktops. A narrow desktop seats it in the same corner behind the panel; collapsing the panel reveals it. */
+.sp-navgizmo { position: fixed; z-index: 19; top: calc(var(--bar-h) + 8px); right: calc(var(--side-w) + 12px); }
+/* ViewHelper requires a 128px canvas internally. Scale its presentation inside a correctly sized frame so
+   mobile can shrink the gizmo without clipping its renderer or throwing off axis-nub hit testing. */
+.sp-navgizmo-canvas { flex: 0 0 auto; width: var(--nav-gizmo-size); height: var(--nav-gizmo-size); }
+.sp-navgizmo-canvas canvas { display: block; transform: scale(var(--nav-gizmo-scale)); transform-origin: top left; }
+/* The chase camera owns the view during a ride. Its render loop already skips ViewHelper; hide the DOM
+   cluster too so the last axis frame and its projection/grid buttons cannot linger over Play. */
+body.os-riding .sp-navgizmo { display: none !important; }
+@media (min-width: 761px) and (max-width: 1050px) and (min-height: 501px) {
+  .sp-navgizmo { right: 12px; }
+}

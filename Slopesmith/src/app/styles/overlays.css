@@ -1,0 +1,73 @@
+#log {
+  position: fixed; left: 10px; top: calc(var(--bar-h) + 8px);
+  max-width: 40em; max-height: 56vh; overflow: auto; display: none; z-index: 18;
+  color: #d7e3f0; background: #0c141de8; border: 1px solid #2c3e50; border-radius: 6px;
+  padding: 10px 12px; font: 11px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap;
+}
+#log-text { margin: 0; font: inherit; white-space: inherit; }
+/* sticky so it stays reachable while a long bake log scrolls */
+#log-close {
+  position: sticky; top: 0; float: right; margin: -4px -6px 0 10px; padding: 0 5px;
+  background: none; border: none; color: #7e97ad; font-size: 16px; line-height: 1.2; cursor: pointer;
+}
+#log-close:hover { color: #eaf6ff; }
+/* Full-screen boot / mountain-load status. It starts visible in HTML so even module parsing and document
+   migration have an honest first state; main.ts takes ownership as soon as the app is initialized. */
+#load-status {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px;
+  box-sizing: border-box; visibility: hidden; opacity: 0; pointer-events: none;
+  color: #dceaf5; background: rgba(7, 14, 21, 0.74); backdrop-filter: blur(3px);
+  transition: opacity .16s ease, visibility 0s linear .16s;
+}
+#load-status.show {
+  visibility: visible; opacity: 1; pointer-events: auto;
+  transition: opacity .12s ease, visibility 0s;
+}
+.sp-load-card {
+  width: min(430px, calc(100vw - 40px)); padding: 20px 22px 18px; box-sizing: border-box;
+  background: #0c1721f2; border: 1px solid #36536b; border-radius: 10px;
+  box-shadow: 0 16px 48px #0009;
+}
+#load-title { color: #f0f7fc; font-size: 17px; font-weight: 700; letter-spacing: .01em; }
+#load-label { margin-top: 7px; color: #bcd2e3; font-size: 13px; }
+#load-progress {
+  height: 8px; margin-top: 14px; overflow: hidden; background: #172b3b;
+  border: 1px solid #29475e; border-radius: 999px;
+}
+#load-progress-fill {
+  width: 3%; height: 100%; background: linear-gradient(90deg, #3a89c9, #71c5ed);
+  border-radius: inherit; box-shadow: 0 0 12px #5bb9e888; transition: width .14s ease-out;
+}
+#load-detail { min-height: 1.35em; margin-top: 9px; color: #7898b0; font: 11px/1.35 ui-monospace, Consolas, monospace; }
+#load-status.error .sp-load-card { border-color: #a95555; }
+#load-status.error #load-progress-fill { background: #bd5c5c; box-shadow: none; }
+/* lower-left overlay: the cage / surface colour keys, then the controls list to their right. */
+#lowerleft {
+  position: fixed; left: 10px; bottom: 8px; z-index: 10; pointer-events: none;
+  display: flex; align-items: flex-end; gap: 10px;
+}
+/* lower-right: paint/Palette help, mirror of the controls sheet, kept clear of the right Tools dock */
+#lowerright {
+  position: fixed; right: calc(var(--side-w) + 10px); bottom: 8px; z-index: 10; pointer-events: none;
+  display: none; align-items: flex-end;
+}
+#lowerright.on { display: flex; }
+.ll-panel { background: rgba(20,26,32,0.82); color: #cfe0ee; border-radius: 6px; padding: 7px 10px;
+  font: 12px/1.5 system-ui, sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,0.4); pointer-events: none; }
+.ll-title { font-weight: 600; margin-bottom: 3px; opacity: 0.75; }
+/* a group caption inside a long key (Surface types), quieter than the panel title above it */
+.ll-group { font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; opacity: 0.5; margin-bottom: 1px; }
+.ll-row { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ll-row b { color: #eaf6ff; font-weight: 600; }
+.ll-swatch { flex: none; border-radius: 1px; }
+.ll-sep { height: 1px; background: rgba(255,255,255,0.09); margin: 4px 0; }
+#toast {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(18px);
+  background: #14283a; color: #eaf6ff; border: 1px solid #34506b; border-radius: 8px;
+  padding: 9px 16px; font-size: 13px; z-index: 30; opacity: 0; pointer-events: none;
+  max-width: 90vw; transition: opacity 0.2s, transform 0.2s;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.ok { border-color: #2e9e60; }
+#toast.warn { border-color: #c9a227; }
+#toast.err { border-color: #b5564f; }

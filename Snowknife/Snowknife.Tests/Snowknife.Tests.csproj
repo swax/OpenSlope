@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Snowknife.Tests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Same zero-warning gate the CLI holds itself to. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Snowknife itself refuses to build outside Debug (see its RequireDebugConfiguration target),
+         so the suite that references it is Debug-only too. -->
+    <Configurations>Debug</Configurations>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="10.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Snowknife\Snowknife.csproj" />
+    <!-- Named explicitly, and with the same properties Snowknife passes it: the codec round-trip tests decode
+         with SSX-Library's own PsAdpcmCodec / EAAudioHandler, and matching the properties keeps MSBuild from
+         building the submodule a second time with its warning backlog uncovered. -->
+    <ProjectReference Include="..\SSX-Library\SSX-Library\SSX-Library.csproj"
+                      AdditionalProperties="WarningLevel=0;RunAnalyzers=false" />
+  </ItemGroup>
+
+</Project>

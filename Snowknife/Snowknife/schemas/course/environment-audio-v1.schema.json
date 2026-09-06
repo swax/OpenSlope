@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "environment-audio-v1.schema.json",
+  "title": "OpenSlope map-local environment audio",
+  "description": "An explicit environment bed used as off-board fallback when a map has no intro music.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Schema", "Bed"],
+  "properties": {
+    "Schema": { "const": "openslope-environment-audio/v1" },
+    "Bed": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/bed" }
+      ]
+    }
+  },
+  "$defs": {
+    "bed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Bank", "Slot", "Clip", "Volume"],
+      "properties": {
+        "Bank": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "Slot": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "Clip": { "type": "string", "pattern": "^Audio/SFX/[^/]+/[0-9]{3}\\.wav$" },
+        "Volume": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+# Derived from your own disc — never committed. These are the artifacts that must
+# stay out of a published clone: extraction output, disc images, and the saved
+# executable bytes a patch replaced.
+
+# The `snowknife import` / `gltf` intermediate (raw OBJ/JSON/PNG/WAV + gltf/), plus
+# Overrides/ — the hand-authored prop remodel packages `snowknife overrides` installs.
+Maps/*
+
+# Executable bytes a snowknife patch replaced, saved beside the ISO they came from
+# so --revert can restore it. Specific to one image, and never redistributable.
+*.snowknife-restore.json
+
+*.iso
+
+# Build output
+bin/
+obj/
+
+# IDE
+.vs/
+*.user
+
+# Python scratch
+__pycache__/
+*.py[cod]

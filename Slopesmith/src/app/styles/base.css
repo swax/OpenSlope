@@ -1,0 +1,15 @@
+:root { --tool-panel-w: 300px; --side-w: var(--tool-panel-w); --bar-content-h: 46px;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --bar-h: calc(var(--bar-content-h) + var(--safe-area-top));
+  --nav-gizmo-size: 128px; --nav-gizmo-scale: 1; }
+/* `touch-action` here is what actually pins the scale: the viewport meta above has not stopped a pinch on
+   iOS since iOS 10. `pan-x pan-y` still lets the toolbox scroll (touch-action intersects down the ancestor
+   chain, so descendants can only restrict further, never re-enable the pinch). `text-size-adjust` stops
+   Android Chrome's font boosting, another way the chrome suddenly reads huge. */
+html, body { margin: 0; height: 100%; overflow: hidden; background: #16202c;
+  font-family: system-ui, sans-serif;
+  touch-action: pan-x pan-y; overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* the canvas runs its own camera gestures; three's OrbitControls sets this inline too, but the ride's touch
+   overlay lives in here as well and none of it should ever scroll or zoom the page */
+#viewport { position: absolute; inset: 0; touch-action: none; }

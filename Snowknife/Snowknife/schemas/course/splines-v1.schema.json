@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "splines-v1.schema.json",
+  "title": "OpenSlope course splines",
+  "description": "Cubic Bezier spline records exported by Snowknife and accepted by the course-authoring and repack pipelines.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Splines"],
+  "properties": {
+    "Splines": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/spline" }
+    }
+  },
+  "$defs": {
+    "point3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Points"],
+      "properties": {
+        "Points": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/point3" }
+        }
+      }
+    },
+    "spline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["SplineName", "U0", "U1", "SplineStyle", "Segments"],
+      "properties": {
+        "SplineName": { "type": "string" },
+        "U0": { "type": "integer" },
+        "U1": { "type": "integer" },
+        "SplineStyle": { "type": "integer" },
+        "Segments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/segment" }
+        }
+      }
+    }
+  }
+}

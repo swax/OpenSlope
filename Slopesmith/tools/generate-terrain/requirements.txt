@@ -1,0 +1,5 @@
+numpy==2.5.1
+Pillow==12.3.0
+pyproj==3.7.2
+tifffile==2026.8.23
+imagecodecs==2026.8.16

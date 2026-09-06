@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "policy": "Every tracked binary is declared here, from anywhere in the tree including the research zones. Trailmap/tools/specs/repo_hygiene.py fails when a tracked binary is missing an entry and when an entry names a file that is no longer tracked, so this list cannot silently drift out of date. It also fails on any tracked file whose type it does not recognise, so a format nobody thought to list cannot slip past by being invisible to both halves of the check. A line says what the file is, how it was made, and whether anything in it came from somewhere else.",
+  "notes": [
+    "No file listed here contains SSX Tricky content. None carries retail asset identifiers, extraction-tool fingerprints, EXIF, or GPS data.",
+    "The 19 prop GLBs each rebuild from a checked-in recipe under Slopesmith/tools/prop-recipes/; the recipe is the source of truth and the GLB is committed only so a fresh clone does not need Blender.",
+    "The four generated characters work the same way, from checked-in TypeScript under Slopesmith/tools/character-models/: a bone table, a table of solids and a short palette. Their checks regenerate each model and assert the tracked GLB is byte-identical, so none can drift from the source that produced it. The two emissive masks each carried by Alpine Exo and Servo Scout are written by code as functions of (u, v) rather than being authored or sourced images, and are PNG-encoded in-repo without a compressor so the bytes are the same on every platform.",
+    "The brand mark was designed and drawn by the project author. Its master source and generated derivatives are original project artwork."
+  ],
+
+  "files": {
+    "Slopesmith/media/slopesmith-authoring.png": "2187x1522 screenshot of an authored course open in the Slopesmith editor. Captured from the running editor. Original.",
+    "Slopesmith/media/slopesmith-riding.png": "2189x1520 screenshot of test-riding in the Slopesmith editor. Captured from the running editor. Original.",
+    "Slopesmith/media/slopesmith_anvil_icon_source.png": "1408x1408 master brand mark, designed and drawn by the project author and used as the input every other icon is traced from. Original.",
+    "Slopesmith/public/favicon.ico": "16/32/48 px favicon with PNG entries. Traced from the icon master by Slopesmith/tools/generate-icons. Generated.",
+    "Slopesmith/public/apple-touch-icon.png": "180x180 iOS home-screen tile. Traced from the icon master by Slopesmith/tools/generate-icons. Generated.",
+    "Slopesmith/public/icon-192.png": "192x192 web-manifest icon. Traced from the icon master by Slopesmith/tools/generate-icons. Generated.",
+    "Slopesmith/public/icon-512.png": "512x512 web-manifest icon. Traced from the icon master by Slopesmith/tools/generate-icons. Generated.",
+    "Slopesmith/public/icon-maskable-512.png": "512x512 maskable icon, art inset to 80% for safe-area cropping. Traced from the icon master. Generated.",
+    "Slopesmith/public/og-image.png": "1200x630 social preview card with wordmark. Traced from the icon master. Generated.",
+
+    "Slopesmith/public/characters/stick-figure-rigged.glb": "4816-tri full-body tracking diagnostic on 49 bones, including articulated fingers. Eleven flat-colour materials, no textures. Built by Slopesmith/tools/character-models/stick-figure.ts. Original, reproducible.",
+    "Slopesmith/public/characters/blocky-rider-rigged.glb": "240-tri blocky rider on 21 bones, the default character for new sessions. Twenty boxes, six flat-colour materials, no textures. Built by Slopesmith/tools/character-models/blocky-rider.ts. Original, reproducible.",
+    "Slopesmith/public/characters/alpine-exo-rigged.glb": "4392-tri armoured rider on 49 bones, with articulated fingers. Eight flat-colour materials and two greyscale emissive masks embedded as PNG. Built by Slopesmith/tools/character-models/alpine-exo.ts. Original, reproducible.",
+    "Slopesmith/public/characters/servo-scout-rigged.glb": "4432-tri treaded utility robot on 37 bones, with three articulated digits per hand. Eight flat-colour materials and two greyscale emissive masks embedded as PNG. Built by Slopesmith/tools/character-models/servo-scout.ts. Original, reproducible.",
+
+    "Slopesmith/tools/prop-recipes/assets/wrapped_lollipop_red_source.png": "256x256 candy-wrapper face used by the lollipop recipe. Generated from a photograph taken by the author. Original.",
+
+    "Slopesmith/tools/prop-recipes/props/Aspen.glb": "228-tri aspen with a 256x256 atlas. Built by trees/aspen.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/Birch.glb": "238-tri birch with a 256x256 atlas. Built by trees/birch.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/BlackSun.glb": "4976-tri ride-through nightclub with four generated atlas pages, two material scroll axes, cutout glass and four spin groups. Created with Anthropic Claude Opus 5 and built by buildings/black_sun.py plus its four black_sun_*_atlas.py generators. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/BushyPine.glb": "286-tri pine on the shared conifer atlas. Built by trees/bushy_pine.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/CookieSandwich.glb": "172-tri cookie prop with a 128x128 atlas. Built by misc/cookie_sandwich.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/FrostedPine.glb": "272-tri pine on the shared conifer atlas. Built by trees/frosted_pine.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/Larch.glb": "280-tri larch with a 256x256 atlas. Built by trees/larch.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/MediumFir.glb": "294-tri fir on the shared conifer atlas. Built by trees/medium_fir.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/PatrolHut.glb": "323-tri ski-patrol hut with a 256x256 plank atlas. Built by buildings/patrol_hut.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/RideButton.glb": "64-tri lift marker carrying flipbook animation extras. Built by misc/ride_button.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/Snag.glb": "125-tri dead standing tree with a 128x128 atlas. Built by trees/snag.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/SnowGun.glb": "190-tri snow gun carrying spin and emitter extras. Built by misc/snow_gun.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/SnowcapPirateShip.glb": "1116-tri pendulum fairground ride. Built by misc/snowcap_pirate_ship.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/SnowcapScrambler.glb": "866-tri carnival ride. Built by misc/snowcap_scrambler.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/SnowcapScreamer.glb": "580-tri coaster train. Built by misc/snowcap_screamer.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/Snowmobile.glb": "286-tri snowmobile with a 256x256 atlas. Built by misc/snowmobile.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/TallPine.glb": "376-tri pine on the shared conifer atlas. Built by trees/tall_pine.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/TallSpruce.glb": "338-tri spruce on the shared conifer atlas. Built by trees/tall_spruce.py. Original, reproducible.",
+    "Slopesmith/tools/prop-recipes/props/WrappedLollipopRed.glb": "98-tri wrapped lollipop. Built by misc/wrapped_lollipop_red.py. Original, reproducible."
+  }
+}

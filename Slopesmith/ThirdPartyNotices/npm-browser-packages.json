@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "generatedBy": "npm run notices:inventory",
+  "packages": [
+    {
+      "path": "node_modules/lil-gui",
+      "name": "lil-gui",
+      "version": "0.21.0"
+    },
+    {
+      "path": "node_modules/livekit-client",
+      "name": "livekit-client",
+      "version": "2.22.2"
+    },
+    {
+      "path": "node_modules/three",
+      "name": "three",
+      "version": "0.185.1"
+    },
+    {
+      "path": "node_modules/three-mesh-bvh",
+      "name": "three-mesh-bvh",
+      "version": "0.9.14"
+    }
+  ]
+}

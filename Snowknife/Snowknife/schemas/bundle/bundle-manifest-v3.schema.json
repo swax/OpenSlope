@@ -1,0 +1,902 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bundle-manifest-v3.schema.json",
+  "title": "Snowknife bundle manifest v3",
+  "description": "Engine-neutral sidecar for the glTF bundle produced by snowknife gltf.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["BundleVersion", "Level", "Space", "Recenter", "Meshes"],
+  "properties": {
+    "BundleVersion": { "const": 3 },
+    "Level": { "type": "string", "minLength": 1 },
+    "Provenance": { "$ref": "#/$defs/provenance" },
+    "Space": { "$ref": "#/$defs/space" },
+    "Recenter": { "$ref": "#/$defs/recenter" },
+    "Meshes": { "type": "array", "items": { "$ref": "#/$defs/meshRef" } },
+    "Lightmap": { "$ref": "#/$defs/lightmap" },
+    "Textures": { "type": "array", "items": { "$ref": "#/$defs/texture" } },
+    "Materials": { "type": "array", "items": { "$ref": "#/$defs/material" } },
+    "Collision": { "$ref": "#/$defs/collision" },
+    "Props": { "$ref": "#/$defs/props" },
+    "Paths": { "$ref": "#/$defs/paths" },
+    "Particles": { "$ref": "#/$defs/particles" },
+    "Fireworks": { "$ref": "#/$defs/fireworks" },
+    "Emitters": { "$ref": "#/$defs/emitters" },
+    "AmbientEmitters": { "$ref": "#/$defs/ambientEmitters" },
+    "LightGlows": { "$ref": "#/$defs/lightGlows" },
+    "BoostPads": { "$ref": "#/$defs/boostPads" },
+    "ResetZones": { "$ref": "#/$defs/resetZones" },
+    "BoostVolumes": { "$ref": "#/$defs/boostVolumes" },
+    "SplineMovers": { "$ref": "#/$defs/splineMovers" },
+    "Teleports": { "$ref": "#/$defs/teleports" },
+    "HudMessages": { "$ref": "#/$defs/hudMessages" },
+    "RailGates": { "$ref": "#/$defs/railGates" },
+    "Audio": { "$ref": "#/$defs/audio" },
+    "Probes": { "$ref": "#/$defs/probes" },
+    "Sun": { "$ref": "#/$defs/sun" },
+    "Gems": { "$ref": "#/$defs/gems" },
+    "Billboards": { "$ref": "#/$defs/billboards" },
+    "Race": { "$ref": "#/$defs/race" }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Source", "PublicDistribution", "RetailDerived", "UserSupplied", "Reasons"],
+      "properties": {
+        "Source": { "type": "string", "minLength": 1 },
+        "PublicDistribution": {
+          "type": "string",
+          "enum": ["allowed", "rights-review-required", "blocked-retail-derived", "blocked-unknown"]
+        },
+        "RetailDerived": { "type": "boolean" },
+        "UserSupplied": { "type": "boolean" },
+        "Reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "vec2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "vec3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "vec4": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "type": "number" }
+    },
+    "curveSegment": {
+      "description": "Cubic coefficients a,b,c,d followed by the t0,t1 interval.",
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "type": "number" }
+    },
+    "space": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Scale", "RootEuler", "Up", "Handed", "Units"],
+      "properties": {
+        "Scale": { "type": "number", "exclusiveMinimum": 0 },
+        "RootEuler": { "$ref": "#/$defs/vec3" },
+        "Up": { "type": "string", "enum": ["X", "Y", "Z"] },
+        "Handed": { "type": "string", "enum": ["left", "right"] },
+        "Units": { "type": "string", "minLength": 1 }
+      }
+    },
+    "recenter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ToOrigin", "AxisMask"],
+      "properties": {
+        "ToOrigin": { "type": "boolean" },
+        "AxisMask": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "meshRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["File", "Kind"],
+      "properties": {
+        "File": { "type": "string", "minLength": 1 },
+        "Kind": { "type": "string", "minLength": 1 }
+      }
+    },
+    "lightmap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Atlas", "Size", "MapsFound", "UvMode"],
+      "properties": {
+        "Atlas": { "type": "string", "minLength": 1 },
+        "MultiplyAtlas": { "type": "string", "minLength": 1 },
+        "Size": { "type": "integer", "minimum": 1 },
+        "MapsFound": { "type": "integer", "minimum": 0 },
+        "UvMode": { "type": "integer" }
+      }
+    },
+    "texture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["File", "Alpha"],
+      "properties": {
+        "File": { "type": "string", "minLength": 1 },
+        "Alpha": { "$ref": "#/$defs/alphaMode" },
+        "Sheet": { "const": true }
+      }
+    },
+    "alphaMode": {
+      "type": "string",
+      "enum": ["opaque", "cutout", "blend", "glow"]
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "dependentRequired": {
+        "Scroll": ["ScrollCycle"],
+        "ScrollCycle": ["Scroll"]
+      },
+      "required": ["Name", "Alpha", "FlipFps"],
+      "properties": {
+        "Name": { "type": "string", "minLength": 1 },
+        "Texture": { "type": "string", "minLength": 1 },
+        "Alpha": { "$ref": "#/$defs/alphaMode" },
+        "Flipbook": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "FlipFps": { "type": "number", "minimum": 0 },
+        "Crowd": { "const": true },
+        "Dwell": { "$ref": "#/$defs/vec2" },
+        "Scroll": { "$ref": "#/$defs/vec2" },
+        "ScrollCycle": { "$ref": "#/$defs/vec4" }
+      }
+    },
+    "collision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Buckets", "ComputedBounds", "Bodies", "Foliage"],
+      "properties": {
+        "Buckets": { "type": "array", "items": { "$ref": "#/$defs/collisionBucket" } },
+        "ComputedBounds": { "type": "array", "items": { "$ref": "#/$defs/box" } },
+        "Bodies": { "type": "array", "items": { "$ref": "#/$defs/body" } },
+        "Foliage": { "type": "array", "items": { "$ref": "#/$defs/box" } },
+        "ContactSounds": { "type": "array", "items": { "$ref": "#/$defs/box" } }
+      }
+    },
+    "collisionBucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Node", "PlayerBounce", "PlayerBounceAmmount", "InstanceCount", "CollisonSound"],
+      "properties": {
+        "Node": { "type": "string", "minLength": 1 },
+        "ModeMask": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "PlayerBounce": { "type": "boolean" },
+        "PlayerBounceAmmount": { "type": "number" },
+        "InstanceCount": { "type": "integer", "minimum": 0 },
+        "CollisonSound": { "type": "integer" },
+        "SurfaceType": { "type": "integer" },
+        "SoundClip": { "type": "string", "minLength": 1 },
+        "BreakCluster": { "type": "string", "minLength": 1 },
+        "ResetOnContact": { "type": "boolean" }
+      }
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "Center", "Size", "CollisonSound"],
+      "properties": {
+        "Name": { "type": "string" },
+        "ModeMask": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Rotation": { "$ref": "#/$defs/vec4" },
+        "LocalCenter": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "PlayerBounce": { "type": "boolean" },
+        "PlayerBounceAmmount": { "type": "number" },
+        "SurfaceType": { "type": "integer" },
+        "CollisonSound": { "type": "integer" },
+        "SoundClip": { "type": "string", "minLength": 1 }
+      }
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "InstanceIndex", "PhysicsIndex", "Center", "Rotation", "CollisonSound", "Boxes"],
+      "properties": {
+        "Name": { "type": "string" },
+        "ModeMask": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "InstanceIndex": { "type": "integer" },
+        "PhysicsIndex": { "type": "integer" },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Rotation": { "$ref": "#/$defs/vec4" },
+        "CollisonSound": { "type": "integer" },
+        "SoundClip": { "type": "string", "minLength": 1 },
+        "Boxes": { "type": "array", "items": { "$ref": "#/$defs/bodyBox" } },
+        "Capsules": { "type": "array", "items": { "$ref": "#/$defs/bodyCapsule" } }
+      }
+    },
+    "bodyBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Center", "Size"],
+      "properties": {
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "bodyCapsule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["A", "B", "Radius"],
+      "properties": {
+        "A": { "$ref": "#/$defs/vec3" },
+        "B": { "$ref": "#/$defs/vec3" },
+        "Radius": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "props": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Diverted"],
+      "properties": {
+        "Diverted": { "type": "array", "items": { "$ref": "#/$defs/divertedProp" } },
+        "Animated": { "type": "array", "items": { "$ref": "#/$defs/animatedProp" } },
+        "Locators": { "type": "array", "items": { "$ref": "#/$defs/locator" } }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Key", "Center", "Rotation"],
+      "properties": {
+        "Key": { "type": "string", "minLength": 1 },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Rotation": { "$ref": "#/$defs/vec4" }
+      }
+    },
+    "divertedProp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Index", "Kind", "Node", "Model", "Center", "DynamicMass", "Bounce",
+        "CollisonSound", "Ambient", "Key1", "Key2", "Key3",
+        "Direction1", "Direction2", "Direction3", "Light"
+      ],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "ModeMask": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "Kind": { "type": "string", "minLength": 1 },
+        "Node": { "type": "string", "minLength": 1 },
+        "Model": { "type": "string", "minLength": 1 },
+        "Role": { "type": "string", "minLength": 1 },
+        "ClusterKey": { "type": "string", "minLength": 1 },
+        "SpillCluster": { "type": "string", "minLength": 1 },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Rotation": { "$ref": "#/$defs/vec4" },
+        "DynamicMass": { "type": "number", "minimum": 0 },
+        "Bounce": { "type": "number" },
+        "CollisonSound": { "type": "integer" },
+        "SoundClip": { "type": "string", "minLength": 1 },
+        "Ambient": { "$ref": "#/$defs/vec3" },
+        "Key1": { "$ref": "#/$defs/vec3" },
+        "Key2": { "$ref": "#/$defs/vec3" },
+        "Key3": { "$ref": "#/$defs/vec3" },
+        "Direction1": { "$ref": "#/$defs/vec3" },
+        "Direction2": { "$ref": "#/$defs/vec3" },
+        "Direction3": { "$ref": "#/$defs/vec3" },
+        "Light": { "$ref": "#/$defs/vec3" },
+        "Throw": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": { "type": "number" }
+        },
+        "BurstColor": { "$ref": "#/$defs/vec3" },
+        "BreakDelay": { "type": "number", "minimum": 0 },
+        "BreakSound": { "type": "integer", "minimum": -1 },
+        "CrackStrength": { "type": "number", "minimum": 0 },
+        "CrackLifetime": { "type": "number" },
+        "CrackSound": { "type": "integer", "minimum": -1 },
+        "Layers": { "type": "array", "items": { "$ref": "#/$defs/emitterLayer" } },
+        "Triggers": { "type": "array", "items": { "$ref": "#/$defs/animationTrigger" } },
+        "PulseFrames": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
+        "PulseHolds": { "type": "array", "minItems": 1, "items": { "type": "number", "minimum": 0 } }
+      }
+    },
+    "animatedProp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Index", "Name", "Model", "Visible", "Center", "Rotation", "SurfaceType",
+        "CollisonSound", "PlayerCollision", "Bounce", "ClipLength", "LoopMode", "Rate",
+        "Reverse", "Triggered", "DeltaGated", "SelfPulse", "PokeSeconds",
+        "Ambient", "Key1", "Key2", "Key3", "Direction1", "Direction2", "Direction3", "Segments"
+      ],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Model": { "type": "string" },
+        "Visible": { "type": "boolean" },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Rotation": { "$ref": "#/$defs/vec4" },
+        "SurfaceType": { "type": "integer" },
+        "CollisonSound": { "type": "integer" },
+        "SoundClip": { "type": "string", "minLength": 1 },
+        "PlayerCollision": { "type": "boolean" },
+        "Bounce": { "type": "number" },
+        "ClipLength": { "type": "number", "minimum": 0 },
+        "LoopMode": { "type": "integer" },
+        "Rate": { "type": "number" },
+        "Reverse": { "type": "boolean" },
+        "Triggered": { "type": "boolean" },
+        "BreakOwned": { "type": "boolean" },
+        "Combo": { "type": "boolean" },
+        "ComboStart": { "type": "number", "minimum": 0 },
+        "ComboEnd": { "type": "number", "minimum": 0 },
+        "ComboRate": { "type": "number" },
+        "ComboEndMode": { "type": "integer", "minimum": -1, "maximum": 1 },
+        "PhaseOffset": { "type": "number", "minimum": 0 },
+        "DeltaGated": { "type": "boolean" },
+        "SelfPulse": { "type": "boolean" },
+        "PokeSeconds": { "type": "number" },
+        "Triggers": { "type": "array", "items": { "$ref": "#/$defs/animationTrigger" } },
+        "Ambient": { "$ref": "#/$defs/vec3" },
+        "Key1": { "$ref": "#/$defs/vec3" },
+        "Key2": { "$ref": "#/$defs/vec3" },
+        "Key3": { "$ref": "#/$defs/vec3" },
+        "Direction1": { "$ref": "#/$defs/vec3" },
+        "Direction2": { "$ref": "#/$defs/vec3" },
+        "Direction3": { "$ref": "#/$defs/vec3" },
+        "Segments": { "type": "array", "items": { "$ref": "#/$defs/animationSegment" } }
+      }
+    },
+    "animationTrigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Center", "Size", "Rotation"],
+      "properties": {
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "Rotation": { "$ref": "#/$defs/vec4" },
+        "CollisonSound": { "type": "integer", "minimum": -1 },
+        "SoundClip": { "type": "string" }
+      }
+    },
+    "animationSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Parent", "RestPos", "RestEuler", "RestRotation"],
+      "properties": {
+        "Node": { "type": "string", "minLength": 1 },
+        "Parent": { "type": "integer" },
+        "RestPos": { "$ref": "#/$defs/vec3" },
+        "RestEuler": { "$ref": "#/$defs/vec3" },
+        "RestRotation": { "$ref": "#/$defs/vec4" },
+        "RestScale": { "$ref": "#/$defs/vec3" },
+        "Curves": { "type": "array", "items": { "$ref": "#/$defs/animationCurve" } }
+      }
+    },
+    "animationCurve": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Target", "Segs"],
+      "properties": {
+        "Target": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "Segs": { "type": "array", "items": { "$ref": "#/$defs/curveSegment" } }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "Rails": { "$ref": "#/$defs/polylineSet" },
+        "Course": { "$ref": "#/$defs/polylineSet" }
+      }
+    },
+    "polylineSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Points", "Start", "Count", "RaceLineCount", "Gated", "Showoff"],
+      "properties": {
+        "Points": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
+        "Start": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "Count": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "Style": { "type": "array", "items": { "type": "integer" } },
+        "Cubic": { "$ref": "#/$defs/cubic" },
+        "LineDtf": { "type": "array", "items": { "type": "number" } },
+        "RaceLineCount": { "type": "integer", "minimum": 0 },
+        "Checkpoints": { "type": "array", "items": { "$ref": "#/$defs/courseCheckpoint" } },
+        "FinishArch": { "$ref": "#/$defs/box" },
+        "Gated": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "Showoff": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "courseCheckpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Position", "Dtf", "BonusSeconds", "Group"],
+      "properties": {
+        "Position": { "$ref": "#/$defs/vec3" },
+        "Dtf": { "type": "number" },
+        "BonusSeconds": { "type": "integer", "minimum": 1 },
+        "Group": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cubic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["SamplesPerSegment", "ControlPoints", "SegStart", "SegCount"],
+      "properties": {
+        "SamplesPerSegment": { "type": "integer", "minimum": 1 },
+        "ControlPoints": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
+        "SegStart": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "SegCount": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "particles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Effects"],
+      "properties": {
+        "Effects": { "type": "array", "items": { "$ref": "#/$defs/particleEffect" } }
+      }
+    },
+    "particleEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "Sprite", "Puffs"],
+      "properties": {
+        "Name": { "type": "string" },
+        "Sprite": { "type": "string", "minLength": 1 },
+        "Puffs": { "type": "array", "items": { "$ref": "#/$defs/puff" } }
+      }
+    },
+    "puff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Center", "Radius"],
+      "properties": {
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Radius": { "type": "number", "minimum": 0 }
+      }
+    },
+    "fireworks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Launchers", "Triggers"],
+      "properties": {
+        "Launchers": { "type": "array", "items": { "$ref": "#/$defs/launcher" } },
+        "Triggers": { "type": "array", "items": { "$ref": "#/$defs/trigger" } }
+      }
+    },
+    "launcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Muzzle", "Barrel", "Layers", "Sound"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Muzzle": { "$ref": "#/$defs/vec3" },
+        "Barrel": { "$ref": "#/$defs/vec3" },
+        "Layers": { "type": "array", "items": { "$ref": "#/$defs/emitterLayer" } },
+        "Sound": { "type": "integer" }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Slot", "Center", "Size", "Launchers"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Slot": { "type": "integer" },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "Launchers": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "emitterLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ParticleCount", "TrailCopies", "EmissionWindow", "TimeScale", "SizeCenter",
+        "ParticleLifeCenter", "SizeSpan", "ParticleLifeSpan", "TrailSpacing", "Origin",
+        "SpawnAxisA", "SpawnAxisB", "VelocityBase", "VelocityAxisA", "VelocityAxisB",
+        "VelocityAxisC", "Gravity", "ColorStops", "SpriteIndex", "BlendMode"
+      ],
+      "properties": {
+        "ParticleCount": { "type": "integer", "minimum": 0 },
+        "TrailCopies": { "type": "integer", "minimum": 0 },
+        "EmissionWindow": { "type": "number" },
+        "TimeScale": { "type": "number" },
+        "SizeCenter": { "type": "number" },
+        "ParticleLifeCenter": { "type": "number" },
+        "SizeSpan": { "type": "number" },
+        "ParticleLifeSpan": { "type": "number" },
+        "TrailSpacing": { "type": "number" },
+        "Origin": { "$ref": "#/$defs/vec3" },
+        "SpawnAxisA": { "$ref": "#/$defs/vec3" },
+        "SpawnAxisB": { "$ref": "#/$defs/vec3" },
+        "VelocityBase": { "$ref": "#/$defs/vec3" },
+        "VelocityAxisA": { "$ref": "#/$defs/vec3" },
+        "VelocityAxisB": { "$ref": "#/$defs/vec3" },
+        "VelocityAxisC": { "$ref": "#/$defs/vec3" },
+        "Gravity": { "$ref": "#/$defs/vec3" },
+        "ColorStops": {
+          "type": "array",
+          "description": "Four semantic [R,G,B,A] colour stops; native SSF A,R,G,B order is normalized during extraction.",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/vec4" }
+        },
+        "SpriteIndex": { "type": "integer" },
+        "BlendMode": { "type": "integer" }
+      }
+    },
+    "emitters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Emitters"],
+      "properties": {
+        "Emitters": { "type": "array", "items": { "$ref": "#/$defs/emitter" } }
+      }
+    },
+    "emitter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Muzzle", "Barrel", "Radius", "GlowRes", "Layers"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Muzzle": { "$ref": "#/$defs/vec3" },
+        "Barrel": { "$ref": "#/$defs/vec3" },
+        "Radius": { "type": "number", "minimum": 0 },
+        "GlowRes": { "type": "integer", "minimum": 0 },
+        "Layers": { "type": "array", "items": { "$ref": "#/$defs/emitterLayer" } },
+        "Tint": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "ambientEmitters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Emitters"],
+      "properties": {
+        "Emitters": { "type": "array", "items": { "$ref": "#/$defs/ambientEmitter" } }
+      }
+    },
+    "ambientEmitter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Index", "Name", "Muzzle", "Barrel", "TriggerCenter", "TriggerSize",
+        "Repeatable", "MinInterval", "Layers"
+      ],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Muzzle": { "$ref": "#/$defs/vec3" },
+        "Barrel": { "$ref": "#/$defs/vec3" },
+        "TriggerCenter": { "$ref": "#/$defs/vec3" },
+        "TriggerSize": { "$ref": "#/$defs/vec3" },
+        "Repeatable": { "type": "boolean" },
+        "MinInterval": { "type": "number", "minimum": 0 },
+        "ContactDriven": { "type": "boolean" },
+        "RollerTargets": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "Layers": { "type": "array", "items": { "$ref": "#/$defs/emitterLayer" } }
+      }
+    },
+    "lightGlows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Glows"],
+      "properties": {
+        "Glows": { "type": "array", "items": { "$ref": "#/$defs/lightGlow" } }
+      }
+    },
+    "lightGlow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "Pos", "Hue", "Intensity", "SpriteRes"],
+      "properties": {
+        "Name": { "type": "string" },
+        "Pos": { "$ref": "#/$defs/vec3" },
+        "Hue": { "$ref": "#/$defs/vec3" },
+        "Intensity": { "type": "number" },
+        "SpriteRes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "boostPads": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Pads"],
+      "properties": {
+        "Pads": { "type": "array", "items": { "$ref": "#/$defs/boostPad" } }
+      }
+    },
+    "boostPad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Slot", "Trick", "Value", "Center", "Size", "Layers"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "ModeMask": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "Name": { "type": "string" },
+        "Slot": { "type": "integer" },
+        "Trick": { "type": "boolean" },
+        "Value": { "type": "number" },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "Layers": { "type": "array", "items": { "$ref": "#/$defs/emitterLayer" } }
+      }
+    },
+    "resetZones": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Zones"],
+      "properties": {
+        "Zones": { "type": "array", "items": { "$ref": "#/$defs/resetZone" } }
+      }
+    },
+    "resetZone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Center", "Size"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Rotation": { "$ref": "#/$defs/vec4" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "ContactOnly": { "type": "boolean" }
+      }
+    },
+    "boostVolumes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Volumes"],
+      "properties": {
+        "Volumes": { "type": "array", "items": { "$ref": "#/$defs/boostVolume" } }
+      }
+    },
+    "boostVolume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Kind", "Center", "Size", "Dir", "Amount", "Rate"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Kind": { "enum": ["directional", "vertical-lift", "lap-gated", "tube-end"] },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "Dir": { "$ref": "#/$defs/vec3" },
+        "Amount": { "type": "number" },
+        "Rate": { "type": "number" },
+        "Mode": { "type": "integer", "minimum": 0 },
+        "Seconds": { "type": "number", "minimum": 0 },
+        "TargetZ": { "type": "number" },
+        "SnapTolerance": { "type": "number" },
+        "Axis": { "$ref": "#/$defs/vec3" },
+        "StageFloorOffset": { "type": "number" },
+        "Stages": { "type": "array", "items": { "$ref": "#/$defs/boostStage" } }
+      }
+    },
+    "boostStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Dir", "Speed"],
+      "properties": {
+        "Dir": { "$ref": "#/$defs/vec3" },
+        "Speed": { "type": "number" }
+      }
+    },
+    "splineMovers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Movers"],
+      "properties": {
+        "Movers": { "type": "array", "items": { "$ref": "#/$defs/splineMover" } }
+      }
+    },
+    "splineMover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Index", "Name", "Speed", "Count", "Tint", "Path", "Rotation",
+        "YawOffset", "OrientMode", "EndMode", "Cable", "CableColor"
+      ],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Speed": { "type": "number" },
+        "Count": { "type": "integer", "minimum": 0 },
+        "Tint": { "$ref": "#/$defs/vec3" },
+        "Path": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
+        "Rotation": { "$ref": "#/$defs/vec4" },
+        "YawOffset": { "type": "number" },
+        "OrientMode": { "type": "integer" },
+        "EndMode": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "Cable": { "type": "boolean" },
+        "CableColor": { "$ref": "#/$defs/vec4" }
+      }
+    },
+    "teleports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Teleports"],
+      "properties": {
+        "Teleports": { "type": "array", "items": { "$ref": "#/$defs/teleport" } }
+      }
+    },
+    "teleport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Slot", "Center", "Size", "Target", "TargetName", "Dest", "Sound"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Slot": { "type": "integer" },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "Target": { "type": "integer" },
+        "TargetName": { "type": "string" },
+        "Dest": { "$ref": "#/$defs/vec3" },
+        "Sound": { "type": "integer" }
+      }
+    },
+    "hudMessages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Messages"],
+      "properties": {
+        "Messages": { "type": "array", "items": { "$ref": "#/$defs/hudMessage" } }
+      }
+    },
+    "hudMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Slot", "Text", "Color", "Duration", "Delay", "Center", "Size"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Slot": { "type": "integer" },
+        "Text": { "type": "string", "minLength": 1 },
+        "Color": { "$ref": "#/$defs/vec3" },
+        "Duration": { "type": "number", "exclusiveMinimum": 0 },
+        "Delay": { "type": "number", "minimum": 0 },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "railGates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Gates"],
+      "properties": {
+        "Gates": { "type": "array", "items": { "$ref": "#/$defs/railGate" } }
+      }
+    },
+    "railGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Index", "Name", "Center", "Size", "Rails"],
+      "properties": {
+        "Index": { "type": "integer", "minimum": 0 },
+        "Name": { "type": "string" },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Size": { "$ref": "#/$defs/vec3" },
+        "Rails": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["CrowdCentroids"],
+      "properties": {
+        "CrowdCentroids": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
+        "PlacedLoops": { "type": "array", "items": { "$ref": "#/$defs/placedLoop" } },
+        "CourseBank": { "type": "string", "description": "Course BANK (BANKS.INF group 2) folder name under Audio/SFX; impact and trigger slots resolve against it." }
+      }
+    },
+    "placedLoop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "Center", "Radius", "Sound"],
+      "properties": {
+        "Name": { "type": "string" },
+        "Kind": { "enum": ["native-crowd", "native-environment", "authored-ambient"] },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Radius": { "type": "number", "minimum": 0 },
+        "Sound": { "type": "integer" },
+        "Curve": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "SoundClip": { "type": "string", "minLength": 1 },
+        "HitGated": { "type": "boolean", "description": "Interactive ambient class (retail events 16/28/57): silent until the rider first hits the owning prop, then audible forever. The trigger is the impact itself, not an audible impact sound - retail hydrants carry the silent collision sentinel and still spray." },
+        "Owner": { "type": "string", "minLength": 1, "description": "Owning instance name, for engine-side hit pairing." }
+      }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["MinSpacing", "Positions"],
+      "properties": {
+        "MinSpacing": { "type": "number", "minimum": 0 },
+        "Positions": { "type": "array", "items": { "$ref": "#/$defs/vec3" } }
+      }
+    },
+    "sun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Direction", "Colour", "Ambient"],
+      "properties": {
+        "Direction": { "$ref": "#/$defs/vec3" },
+        "Colour": { "$ref": "#/$defs/vec3" },
+        "Ambient": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "gems": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Gems"],
+      "properties": {
+        "Gems": { "type": "array", "items": { "$ref": "#/$defs/gem" } },
+        "TierNodes": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[0-9]+$" },
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "billboards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Screens"],
+      "properties": {
+        "Screens": { "type": "array", "items": { "$ref": "#/$defs/billboardScreen" } }
+      }
+    },
+    "billboardScreen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "Center", "Normal", "Up", "Width", "Height"],
+      "properties": {
+        "Name": { "type": "string", "minLength": 1 },
+        "Family": { "type": "string", "minLength": 1 },
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Normal": { "$ref": "#/$defs/vec3" },
+        "Up": { "$ref": "#/$defs/vec3" },
+        "Width": { "type": "number", "exclusiveMinimum": 0 },
+        "Height": { "type": "number", "exclusiveMinimum": 0 },
+        "Instance": { "type": "integer", "minimum": 0 },
+        "Page": { "type": "string", "minLength": 1 }
+      }
+    },
+    "gem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Center", "Value"],
+      "properties": {
+        "Center": { "$ref": "#/$defs/vec3" },
+        "Value": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "race": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Laps"],
+      "properties": {
+        "Laps": { "type": "integer", "minimum": 1 },
+        "ShowoffSeconds": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

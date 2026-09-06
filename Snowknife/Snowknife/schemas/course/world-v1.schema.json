@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "world-v1.schema.json",
+  "title": "OpenSlope course world configuration",
+  "description": "A course's world-level settings: values that belong to the whole mountain rather than to any piece of its geometry. Retail courses carry these in the executable rather than in their level files, so an import reads them from the disc and writes them here; an authored mountain writes its own. Angles, sizes and distances are in the game's own units and frame, as everywhere else in a map folder.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Schema"],
+  "properties": {
+    "Schema": { "const": "openslope-world/v1" },
+    "Course": {
+      "type": "string",
+      "description": "The course slot these values were read from. Provenance only; absent on an authored mountain."
+    },
+    "Glare": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The sun and the beams it fans across the view when you look toward it. Absent means the course was never asked about a sun; present with Enabled false means it was asked and has none. Nine of the thirteen shipped courses carry plausible values with the flag clear, so the flag is the only thing that decides whether beams are drawn.",
+      "required": ["Enabled", "CoreColour", "FanIntensity", "RimColour", "SpriteIntensity", "AzimuthDegrees", "ElevationDegrees", "DistanceUnits", "SizeUnits"],
+      "properties": {
+        "Enabled": { "type": "boolean" },
+        "CoreColour": {
+          "type": "array",
+          "description": "Colour applied uniformly to the screen-space triangle fan.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        },
+        "FanIntensity": {
+          "type": "number",
+          "description": "Per-course multiplier for the complete triangle fan. See [Trailmap: 400-celestial-params].",
+          "minimum": 0
+        },
+        "RimColour": {
+          "type": "array",
+          "description": "Colour of the single soft corona sprite.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        },
+        "SpriteIntensity": {
+          "type": "number",
+          "description": "Per-course multiplier for the soft corona sprite. See [Trailmap: 400-celestial-params].",
+          "minimum": 0
+        },
+        "AzimuthDegrees": {
+          "type": "number",
+          "description": "Azimuth of the sun, in the game's own frame."
+        },
+        "ElevationDegrees": {
+          "type": "number",
+          "description": "Elevation above the horizontal. Every shipped glare sits within 13 degrees of it - a low sun you ride toward.",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "DistanceUnits": {
+          "type": "number",
+          "description": "How far along that direction the sun is placed, measured from the viewer. Short by design (a few hundred metres); a consumer must keep it inside its own far plane.",
+          "minimum": 0
+        },
+        "SizeUnits": {
+          "type": "number",
+          "description": "World radius / half-extent of the soft corona sprite. NOT the reach of the beams, which run to the edge of the view on every course.",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- iPhone Safari has no element-fullscreen API; Add to Home Screen is how a web game goes full screen
+         there. These make the home-screen launch chrome-less, edge to edge (safe areas via viewport-fit). -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Slopesmith</title>
+    <meta name="description" content="Carve the mountain, then carve the mountain — author and test-ride an SSX-style snowboard course in your browser, then take it to Unity or PS2 with OpenSlope." />
+    <meta name="theme-color" content="#0c141d" />
+    <meta name="apple-mobile-web-app-title" content="Slopesmith" />
+    <!-- The SVG favicon carries its own prefers-color-scheme rule, so the mark inverts to stay legible on a
+         dark tab strip. The .ico is the fallback for browsers that will not take an SVG, and answers the
+         automatic /favicon.ico request. Home-screen icons are opaque tiles: iOS masks the corners itself and
+         paints transparency black. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/slopesmith_icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Slopesmith — OpenSlope" />
+    <meta property="og:description" content="Author and test-ride an SSX-style snowboard course in your browser, then take it to Unity or PS2." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/src/app/styles/base.css" />
+    <link rel="stylesheet" href="/src/app/styles/dock.css" />
+    <link rel="stylesheet" href="/src/app/styles/toolbar.css" />
+    <link rel="stylesheet" href="/src/app/styles/menus.css" />
+    <link rel="stylesheet" href="/src/app/styles/modals.css" />
+    <link rel="stylesheet" href="/src/app/styles/effects.css" />
+    <link rel="stylesheet" href="/src/app/styles/overlays.css" />
+    <link rel="stylesheet" href="/src/app/styles/responsive.css" />
+  </head>
+  <body>
+    <div id="viewport"></div>
+    <div id="load-status" class="show" role="status" aria-live="polite" aria-busy="true">
+      <div class="sp-load-card">
+        <div id="load-title">Loading Slopesmith</div>
+        <div id="load-label">Restoring your mountain…</div>
+        <div id="load-progress" role="progressbar" aria-label="Mountain loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="load-progress-fill"></div>
+        </div>
+        <div id="load-detail">Preparing the editor</div>
+      </div>
+    </div>
+    <div id="dock-top"></div>
+    <div id="dock-right"></div>
+    <!-- Remote voice tracks live outside the rebuilt Users/tool dock. Moving a playing media element out of
+         the document can silence it even though LiveKit's room and active-speaker events remain connected. -->
+    <div id="voice-audio" aria-hidden="true"></div>
+    <div id="log"><button id="log-close" aria-label="Dismiss" title="Dismiss">×</button><pre id="log-text"></pre></div>
+    <div id="toast"></div>
+    <div id="lowerleft">
+      <!-- the viewport prepends its cage / surface colour-key panels here (left of the controls) -->
+      <div id="cmdsheet" class="ll-panel"></div>
+      <!-- the terrain Paint controls, shown next to the View legend while painting -->
+      <div id="paintctl" class="ll-panel"></div>
+    </div>
+    <div id="lowerright">
+      <div id="toolhelp" class="ll-panel"></div>
+    </div>
+    <script>
+      // Pin the page scale on iOS. Safari has ignored `user-scalable=no` since iOS 10, so a pinch anywhere off the
+      // canvas still zooms the document — and there is no way back, because the canvas takes `touch-action: none`
+      // for its own camera gestures and never hands the browser a pinch to undo it. These three are WebKit's
+      // page-zoom gestures specifically; refusing them leaves ordinary touch events untouched, so the orbit/dolly
+      // pinch inside the viewport still works exactly as before.
+      //
+      // The guard matters: refusing the gesture is also refusing the ONLY way out of a zoom, whatever caused it
+      // (iOS still auto-zooms a focused field whose computed font-size is under 16px). So once the page is zoomed,
+      // the pinch is let through again — it is then the escape hatch, not the hazard.
+      for (const t of ['gesturestart', 'gesturechange', 'gestureend'])
+        document.addEventListener(t, e => {
+          if ((window.visualViewport?.scale ?? 1) <= 1.01) e.preventDefault();
+        }, { passive: false });
+    </script>
+    <!-- boot.ts, not main.ts: it asks the server who this browser is and then loads either the editor or a
+         login page (docs/038). Importing main.ts IS booting the editor, so the question has to be asked by
+         something else, first. -->
+    <script type="module" src="/src/app/boot.ts"></script>
+  </body>
+</html>

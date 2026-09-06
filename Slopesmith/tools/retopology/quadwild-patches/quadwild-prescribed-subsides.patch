@@ -1,0 +1,691 @@
+# Prescribed-subside support for QuadWild-BiMDF (042, Route A): pinned subdivision counts
+# (input_rem_p0.fixed sidecar), prescribed boundary placement via per-subside split fractions
+# honored in computeQuadrangulation's chart-UV mapping, and prescribed rims pinned through the
+# post-solve smoothing.
+# Apply from the quadwild-bimdf checkout root:
+#   git apply --directory=. quadwild-prescribed-subsides.patch   (main tree hunks)
+#   git -C libs/satsuma apply quadwild-prescribed-subsides-satsuma.patch
+
+diff --git a/components/quad_from_patches/load_save.cpp b/components/quad_from_patches/load_save.cpp
+index 41bea55..b32f41e 100644
+--- a/components/quad_from_patches/load_save.cpp
++++ b/components/quad_from_patches/load_save.cpp
+@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ #include "load_save.h"
+ #include <iostream>
+ #include <fstream>
++#include <sstream>
+ #include <algorithm>
+ #include "assert.h"
+ 
+@@ -160,3 +161,73 @@ std::vector<size_t> loadFeatureCorners(const std::string &filename)
+ 
+     return featureCorners;
+ }
++
++std::vector<FixedSubside> loadFixedSubsides(const std::string& filename)
++{
++    std::vector<FixedSubside> fixedSubsides;
++
++    std::ifstream input;
++    input.open(filename.c_str());
++    if (!input.is_open())
++    {
++        //Optional file: absent means no prescribed subdivisions
++        return fixedSubsides;
++    }
++
++    size_t numFixed = 0;
++    std::string line;
++    if (!std::getline(input, line) || !(std::istringstream(line) >> numFixed))
++    {
++        std::cout<<"ERROR LOADING FIXED SUBSIDES FILE"<<std::endl;
++        exit(0);
++    }
++    fixedSubsides.reserve(numFixed);
++    while (fixedSubsides.size() < numFixed && std::getline(input, line))
++    {
++        if (line.find_first_not_of(" \t\r") == std::string::npos)
++            continue;
++        std::istringstream record(line);
++        FixedSubside fixed;
++        if (!(record >> fixed.v0 >> fixed.v1 >> fixed.vMid >> fixed.count))
++        {
++            std::cout<<"ERROR LOADING FIXED SUBSIDES FILE"<<std::endl;
++            exit(0);
++        }
++        if (fixed.count < 1)
++        {
++            std::cout<<"ERROR: FIXED SUBSIDE COUNT MUST BE >= 1"<<std::endl;
++            exit(0);
++        }
++        //Optional per-subside split fractions: exactly count-1, strictly increasing in (0, 1)
++        double fraction;
++        while (record >> fraction)
++            fixed.fractions.push_back(fraction);
++        if (!fixed.fractions.empty())
++        {
++            if (fixed.fractions.size() != static_cast<size_t>(fixed.count) - 1)
++            {
++                std::cout<<"ERROR: FIXED SUBSIDE HAS "<<fixed.fractions.size()
++                        <<" FRACTIONS FOR COUNT "<<fixed.count<<std::endl;
++                exit(0);
++            }
++            for (size_t k = 0; k < fixed.fractions.size(); k++)
++            {
++                const double previous = k == 0 ? 0.0 : fixed.fractions[k - 1];
++                if (fixed.fractions[k] <= previous || fixed.fractions[k] >= 1.0)
++                {
++                    std::cout<<"ERROR: FIXED SUBSIDE FRACTIONS MUST BE STRICTLY INCREASING IN (0, 1)"<<std::endl;
++                    exit(0);
++                }
++            }
++        }
++        fixedSubsides.push_back(fixed);
++    }
++    if (fixedSubsides.size() != numFixed)
++    {
++        std::cout<<"ERROR LOADING FIXED SUBSIDES FILE"<<std::endl;
++        exit(0);
++    }
++    input.close();
++
++    return fixedSubsides;
++}
+diff --git a/components/quad_from_patches/load_save.h b/components/quad_from_patches/load_save.h
+index eeea3ea..3c066fc 100644
+--- a/components/quad_from_patches/load_save.h
++++ b/components/quad_from_patches/load_save.h
+@@ -32,5 +32,20 @@ std::vector<std::vector<size_t>> loadPatches(const std::string& filename);
+ std::vector<std::vector<size_t>> loadCorners(const std::string& filename);
+ std::vector<std::pair<size_t,size_t>> LoadFeatures(const std::string &filename);
+ std::vector<size_t> loadFeatureCorners(const std::string& filename);
++/// Prescribed subside subdivision: v0/v1 are the subside's endpoint mesh vertex ids and vMid is
++/// any interior polyline vertex id (-1 for a single-edge subside). fractions optionally carries
++/// count-1 strictly increasing arc-length split positions in (0, 1) measured from v0, placing the
++/// generated boundary vertices instead of the default uniform-in-arc spacing.
++struct FixedSubside
++{
++    long long v0 = -1;
++    long long v1 = -1;
++    long long vMid = -1;
++    int count = 0;
++    std::vector<double> fractions;
++};
++/// Optional prescribed subside subdivisions; one line per record, "v0 v1 vMid count [f1 ... fn]".
++/// Returns empty if the file does not exist.
++std::vector<FixedSubside> loadFixedSubsides(const std::string& filename);
+ 
+ #endif // LOAD_SAVE_H
+diff --git a/components/quad_from_patches/main.cpp b/components/quad_from_patches/main.cpp
+index 24e6ce4..6012ea4 100644
+--- a/components/quad_from_patches/main.cpp
++++ b/components/quad_from_patches/main.cpp
+@@ -27,6 +27,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ #include <vcg/complex/algorithms/polygonal_algorithms.h>
+ #include <vcg/complex/algorithms/update/topology.h>
+ #include <vcg/complex/algorithms/update/bounding.h>
++#include <map>
++#include <set>
+ #include <stdio.h>
+ //#include <QFileInfo>
+ //#include <QDir>
+@@ -93,6 +95,7 @@ int actual_main(int argc, char *argv[])
+     std::vector<std::vector<size_t>> trimeshCorners;
+     std::vector<std::pair<size_t,size_t> > trimeshFeatures;
+     std::vector<size_t> trimeshFeaturesC;
++    std::vector<FixedSubside> trimeshFixedSubsides;
+ 
+     PolyMesh quadmesh;
+     std::vector<std::vector<size_t>> quadmeshPartitions;
+@@ -195,6 +198,14 @@ int actual_main(int argc, char *argv[])
+     std::cout<<"Loaded "<<featureCFilename.size()<<" corner features"<<std::endl;
+     loadFeatureCorners(featureCFilename);
+ 
++    //PRESCRIBED SUBSIDE SUBDIVISIONS (optional)
++    std::string fixedFilename = meshFilename;
++    fixedFilename.erase(fixedFilename.find_last_of("."));
++    fixedFilename.append(".fixed");
++    trimeshFixedSubsides = loadFixedSubsides(fixedFilename);
++    if (!trimeshFixedSubsides.empty())
++        std::cout<<"Loaded "<<trimeshFixedSubsides.size()<<" prescribed subsides"<<std::endl;
++
+     OrientIfNeeded(trimesh,trimeshPartitions,trimeshCorners,trimeshFeatures,trimeshFeaturesC);
+ 
+     sw_load.stop();
+@@ -204,7 +215,7 @@ int actual_main(int argc, char *argv[])
+     double EdgeSize=avgEdge(trimesh)*scaleFactor;
+     std::cout<<"Edge Size "<<EdgeSize<<std::endl;
+     const std::vector<double> edgeFactor(trimeshPartitions.size(), EdgeSize);
+-    auto qfp_result = qfp::quadrangulationFromPatches(trimesh, trimeshPartitions, trimeshCorners, edgeFactor, parameters, fixedChartClusters, quadmesh, quadmeshPartitions, quadmeshCorners, ilpResult);
++    auto qfp_result = qfp::quadrangulationFromPatches(trimesh, trimeshPartitions, trimeshCorners, edgeFactor, parameters, fixedChartClusters, trimeshFixedSubsides, quadmesh, quadmeshPartitions, quadmeshCorners, ilpResult);
+ 
+ 
+ 
+@@ -238,6 +249,71 @@ int actual_main(int argc, char *argv[])
+ #define SMOOTH_OUTPUT
+ #ifdef SMOOTH_OUTPUT
+ 
++    //PIN PRESCRIBED RIMS THROUGH SMOOTHING
++    //The smoother slides boundary vertices along their feature curves, which would undo the
++    //sidecar's prescribed boundary placement. Every quadmesh boundary loop hosting a prescribed
++    //subside (seeded by the records' endpoint positions) is restored after the smooth.
++    std::vector<std::pair<size_t, PolyMesh::CoordType>> pinnedRimVertices;
++    if (!trimeshFixedSubsides.empty())
++    {
++        std::map<std::pair<size_t, size_t>, int> quadEdgeUse;
++        for (size_t fId = 0; fId < quadmesh.face.size(); fId++)
++        {
++            const int corners = quadmesh.face[fId].VN();
++            for (int k = 0; k < corners; k++)
++            {
++                const size_t a = vcg::tri::Index(quadmesh, quadmesh.face[fId].V(k));
++                const size_t b = vcg::tri::Index(quadmesh, quadmesh.face[fId].V((k + 1) % corners));
++                quadEdgeUse[{std::min(a, b), std::max(a, b)}]++;
++            }
++        }
++        std::map<size_t, std::vector<size_t>> boundaryAdjacency;
++        for (const auto& edge : quadEdgeUse)
++        {
++            if (edge.second != 1)
++                continue;
++            boundaryAdjacency[edge.first.first].push_back(edge.first.second);
++            boundaryAdjacency[edge.first.second].push_back(edge.first.first);
++        }
++        std::vector<PolyMesh::CoordType> seeds;
++        for (const auto& fixedSubside : trimeshFixedSubsides)
++        {
++            for (const long long vId : {fixedSubside.v0, fixedSubside.v1})
++            {
++                const auto& p = trimesh.vert[vId].P();
++                seeds.push_back(PolyMesh::CoordType(p.X(), p.Y(), p.Z()));
++            }
++        }
++        const double seedEpsilon = 0.1;
++        std::set<size_t> visited;
++        for (const auto& entry : boundaryAdjacency)
++        {
++            if (visited.count(entry.first))
++                continue;
++            std::vector<size_t> loop;
++            std::vector<size_t> stack{entry.first};
++            visited.insert(entry.first);
++            while (!stack.empty())
++            {
++                const size_t at = stack.back();
++                stack.pop_back();
++                loop.push_back(at);
++                for (const size_t next : boundaryAdjacency[at])
++                    if (visited.insert(next).second)
++                        stack.push_back(next);
++            }
++            bool prescribed = false;
++            for (size_t lId = 0; lId < loop.size() && !prescribed; lId++)
++                for (size_t sId = 0; sId < seeds.size() && !prescribed; sId++)
++                    prescribed = (quadmesh.vert[loop[lId]].P() - seeds[sId]).Norm() < seedEpsilon;
++            if (prescribed)
++                for (const size_t vId : loop)
++                    pinnedRimVertices.push_back({vId, quadmesh.vert[vId].P()});
++        }
++        if (!pinnedRimVertices.empty())
++            std::cout<<"pinning "<<pinnedRimVertices.size()<<" prescribed rim vertices through smoothing"<<std::endl;
++    }
++
+     sw_smooth.resume();
+     //SMOOTH
+     std::vector<size_t> QuadPart(quadmesh.face.size(),0);
+@@ -265,6 +341,10 @@ int actual_main(int argc, char *argv[])
+     else
+         MultiCostraintSmooth(quadmesh,trimesh,trimeshFeatures,trimeshFeaturesC,TriPart,QuadCornersVect,QuadPart,0.5,EdgeSize,30,1);
+ 
++    //Prescribed rims keep their solved boundary placement
++    for (const auto& pinned : pinnedRimVertices)
++        quadmesh.vert[pinned.first].P() = pinned.second;
++
+     sw_smooth.stop();
+     sw_save.resume();
+     //SAVE OUTPUT
+diff --git a/components/quad_from_patches/quad_from_patches.cpp b/components/quad_from_patches/quad_from_patches.cpp
+index 85262eb..5b00a5e 100644
+--- a/components/quad_from_patches/quad_from_patches.cpp
++++ b/components/quad_from_patches/quad_from_patches.cpp
+@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ #include "quad_from_patches.h"
+ #include <quadretopology/quadretopology.h>
+ #include <quadretopology/qr_eval_quantization.h>
++#include <algorithm>
+ #include <random>
+ 
+ #ifdef SAVE_MESHES_FOR_DEBUG
+@@ -45,6 +46,7 @@ quadrangulationFromPatches(
+     const std::vector<double>& chartEdgeLength,
+     const QuadRetopology::Parameters& parameters,
+     const int fixedChartClusters,
++    const std::vector<FixedSubside>& fixedSubsides,
+     PolyMesh& quadmesh,
+     std::vector<std::vector<size_t>>& quadmeshPartitions,
+     std::vector<std::vector<size_t>>& quadmeshCorners,
+@@ -78,9 +80,57 @@ quadrangulationFromPatches(
+     ilpResult.clear();
+     ilpResult.resize(chartData.subsides.size(), ILP_FIND_SUBDIVISION);
+ 
++    //Apply prescribed subside subdivisions, matched by endpoint (and interior) mesh vertex ids
++    std::vector<std::vector<double>> prescribedFractions(chartData.subsides.size());
++    for (const auto& fixed : fixedSubsides) {
++        int matched = -1;
++        bool matchedReversed = false;
++        for (size_t subsideId = 0; subsideId < chartData.subsides.size() && matched < 0; subsideId++) {
++            const std::vector<size_t>& vertices = chartData.subsides[subsideId].vertices;
++            if (vertices.size() < 2)
++                continue;
++            const long long front = static_cast<long long>(vertices.front());
++            const long long back = static_cast<long long>(vertices.back());
++            if (!((front == fixed.v0 && back == fixed.v1) || (front == fixed.v1 && back == fixed.v0)))
++                continue;
++            if (fixed.vMid < 0) {
++                if (vertices.size() != 2)
++                    continue;
++            } else if (std::find(vertices.begin() + 1, vertices.end() - 1,
++                                 static_cast<size_t>(fixed.vMid)) == vertices.end() - 1) {
++                continue;
++            }
++            matched = static_cast<int>(subsideId);
++            matchedReversed = front == fixed.v1 && back != fixed.v1;
++        }
++        if (matched < 0) {
++            throw std::runtime_error("prescribed subside (" + std::to_string(fixed.v0) + ", "
++                    + std::to_string(fixed.v1) + ", mid " + std::to_string(fixed.vMid)
++                    + ") matches no chart subside");
++        }
++        if (ilpResult[matched] >= 0 && ilpResult[matched] != fixed.count) {
++            throw std::runtime_error("conflicting prescriptions for subside " + std::to_string(matched));
++        }
++        ilpResult[matched] = fixed.count;
++        if (!fixed.fractions.empty()) {
++            //Orient the record's v0-based fractions to the chart subside's own vertex order
++            std::vector<double> fractions = fixed.fractions;
++            if (matchedReversed) {
++                std::reverse(fractions.begin(), fractions.end());
++                for (double& fraction : fractions)
++                    fraction = 1.0 - fraction;
++            }
++            prescribedFractions[matched] = std::move(fractions);
++        }
++    }
++
+ 
+     bool solvedCluster = false;
+     if (fixedChartClusters > 0 && fixedChartClusters < static_cast<int>(chartData.charts.size())) {
++        if (!fixedSubsides.empty()) {
++            //The per-cluster solve resets subsides to ILP_FIND_SUBDIVISION and would drop prescriptions
++            throw std::runtime_error("prescribed subsides are not supported with chart clustering");
++        }
+         std::vector<int> chartCluster(chartData.charts.size(), -1);
+         bool clusterDone;
+         int lastClusterId = 0;
+@@ -328,6 +378,7 @@ quadrangulationFromPatches(
+               chartData,
+               fixedPositionSubsides,
+               ilpResult,
++              prescribedFractions,
+               parameters,
+               quadmesh,
+               quadmeshLabel,
+diff --git a/components/quad_from_patches/quad_from_patches.h b/components/quad_from_patches/quad_from_patches.h
+index f5e4e32..d1b5793 100644
+--- a/components/quad_from_patches/quad_from_patches.h
++++ b/components/quad_from_patches/quad_from_patches.h
+@@ -29,6 +29,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ #include <quadretopology/quadretopology.h>
+ #include <quadretopology/qr_eval_quantization.h>
+ 
++#include "load_save.h"
++
+ namespace qfp {
+ 
+ struct QuadrangulationResult {
+@@ -48,6 +50,9 @@ quadrangulationFromPatches(
+     const std::vector<double>& chartEdgeLength,
+     const QuadRetopology::Parameters& parameters,
+     const int fixedChartClusters,
++    /// prescribed subside subdivisions keyed by mesh vertex ids, optionally carrying
++    /// arc-length split fractions for boundary placement; may be empty
++    const std::vector<FixedSubside>& fixedSubsides,
+     PolyMesh& quadmesh,
+     std::vector<std::vector<size_t>>& quadmeshPartitions,
+     std::vector<std::vector<size_t>>& quadmeshCorners,
+diff --git a/libs/quadretopology/quadretopology/includes/qr_mapping.cpp b/libs/quadretopology/quadretopology/includes/qr_mapping.cpp
+index 8c25a25..fe8853d 100644
+--- a/libs/quadretopology/quadretopology/includes/qr_mapping.cpp
++++ b/libs/quadretopology/quadretopology/includes/qr_mapping.cpp
+@@ -25,6 +25,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ 
+ #include "qr_mapping.h"
+ 
++#include <map>
++
+ #include <igl/lscm.h>
+ 
+ #include <igl/AABB.h>
+@@ -61,6 +63,7 @@ void computeQuadrangulation(
+         const std::vector<std::vector<std::vector<size_t>>>& chartSideVertices,
+         const std::vector<std::vector<double>>& chartSideLength,
+         const std::vector<std::vector<size_t>>& chartSideSubdivision,
++        const std::vector<std::vector<std::vector<double>>>& chartSideFractions,
+         const std::vector<std::vector<size_t>>& patchSides,
+         Eigen::MatrixXd& uvMapV,
+         Eigen::MatrixXi& uvMapF,
+@@ -162,6 +165,39 @@ void computeQuadrangulation(
+     }
+ #endif
+ 
++    //Prescribed boundary placement: the chart border is pinned in UV by arc-length ratio along
++    //each subside's straight segment, so the UV point for arc fraction f is exactly the segment
++    //point at parameter f. Overriding a boundary patch vertex's UV query to a prescribed fraction
++    //therefore lands it exactly at that arc-length position on the chart's border polyline,
++    //replacing the template's uniform-in-arc spacing.
++    std::map<size_t, Eigen::RowVector2d> boundaryUVOverride;
++    for (size_t i = 0; i < chartSideVertices.size(); i++) {
++        size_t patchStart = 0;
++
++        for (size_t j = 0; j < chartSideVertices[i].size(); j++) {
++            const size_t subdivision = chartSideSubdivision[i][j];
++            static const std::vector<double> noFractions;
++            const std::vector<double>& fractions =
++                    i < chartSideFractions.size() && j < chartSideFractions[i].size()
++                    ? chartSideFractions[i][j] : noFractions;
++            if (!fractions.empty()) {
++                assert(fractions.size() + 1 == subdivision);
++
++                const size_t& patchFirstId = patchSides[i][patchStart];
++                const size_t& patchLastId = patchSides[i][patchStart + subdivision];
++                const Eigen::RowVector2d patchFirstCoord = patchV.row(patchFirstId).head<2>();
++                const Eigen::RowVector2d vector = patchV.row(patchLastId).head<2>() - patchFirstCoord;
++
++                for (size_t k = 1; k < subdivision; k++) {
++                    boundaryUVOverride[patchSides[i][patchStart + k]] =
++                            patchFirstCoord + vector * fractions[k - 1];
++                }
++            }
++
++            patchStart += subdivision;
++        }
++    }
++
+     //AABB tree for point location
+     igl::AABB<Eigen::MatrixXd, 2> tree;
+     tree.init(uvMapV, uvMapF);
+@@ -174,6 +210,12 @@ void computeQuadrangulation(
+         Q2D(0,0) = Q.x();
+         Q2D(0,1) = Q.y();
+ 
++        const auto overrideIt = boundaryUVOverride.find(static_cast<size_t>(i));
++        if (overrideIt != boundaryUVOverride.end()) {
++            Q2D(0,0) = overrideIt->second.x();
++            Q2D(0,1) = overrideIt->second.y();
++        }
++
+         int triIndex;
+         if (uvMapF.rows() == 1) {
+             triIndex = 0;
+diff --git a/libs/quadretopology/quadretopology/includes/qr_mapping.h b/libs/quadretopology/quadretopology/includes/qr_mapping.h
+index 6707b31..705b017 100644
+--- a/libs/quadretopology/quadretopology/includes/qr_mapping.h
++++ b/libs/quadretopology/quadretopology/includes/qr_mapping.h
+@@ -41,6 +41,10 @@ void computeQuadrangulation(
+         const std::vector<std::vector<std::vector<size_t>>>& chartSideVertices,
+         const std::vector<std::vector<double>>& chartSideLength,
+         const std::vector<std::vector<size_t>>& chartSideSubdivision,
++        /// per side and subside, either empty (uniform-in-arc boundary placement) or
++        /// subdivision-1 strictly increasing arc-length fractions in (0, 1), oriented
++        /// with chartSideVertices, pinning the generated boundary vertices of the subside
++        const std::vector<std::vector<std::vector<double>>>& chartSideFractions,
+         const std::vector<std::vector<size_t>>& patchSides,
+         Eigen::MatrixXd& uvMapV,
+         Eigen::MatrixXi& uvMapF,
+diff --git a/libs/quadretopology/quadretopology/qr_flow.cpp b/libs/quadretopology/quadretopology/qr_flow.cpp
+index b857251..5c4c42a 100644
+--- a/libs/quadretopology/quadretopology/qr_flow.cpp
++++ b/libs/quadretopology/quadretopology/qr_flow.cpp
+@@ -120,6 +120,8 @@ static FlowProblem make_bimdf(
+         const SingularityPairInfo &spi,
+         /// empty or per-chart satisfaction
+         const std::vector<bool> &satisfied_regularity,
++        /// empty or per-subside fixed subdivision counts (-1 = free)
++        const std::vector<int> &fixed_subsides,
+         /// empty or per-pair satisfaction
+         //const std::vector<bool> &satisfied_alignment
+         const FlowProblem *previous_problem = nullptr,
+@@ -176,7 +178,8 @@ static FlowProblem make_bimdf(
+             Node v, bool v_head,
+             double target, double weight,
+             ObjectiveKind obj = ObjectiveKind::QuadraticDeviation,
+-            int lower=1
++            int lower=1,
++            int upper=-1 // -1 = unbounded
+             ) -> Edge
+     {
+         assert (u != lemon::INVALID);
+@@ -194,7 +197,7 @@ static FlowProblem make_bimdf(
+                            .u_head = u_head, .v_head = v_head,
+                            .cost_function = cf,
+                            .lower = lower, // subsides must be quantized to >= 1
+-                           .upper = BiMDF::inf()});
++                           .upper = upper < 0 ? BiMDF::inf() : upper});
+     };
+     // TODO PERF:  g.reserveNode(..); g.reserveEdge(..);
+ 
+@@ -473,6 +476,11 @@ static FlowProblem make_bimdf(
+         auto const& left_pair = chart_side_node_pairs[left_chart_id][left_side_idx];
+         auto const& left_single = chart_side_nodes.at(left_chart_id).at(left_side_idx);
+ 
++        // a prescribed subside is pinned with lower == upper on every edge that carries it
++        const int fix = fixed_subsides.empty() ? -1 : fixed_subsides[subside_id];
++        const int sub_lower = fix >= 0 ? fix : 1;
++        const int sub_upper = fix >= 0 ? fix : -1;
++
+ 
+         double left_iso_weight = isometry_weight / left_n_subsides;
+         double right_iso_weight = isometry_weight / right_n_subsides;
+@@ -488,7 +496,8 @@ static FlowProblem make_bimdf(
+                 edges[1] = add_subside_edge(left_pair[1], true, boundary, true, .5 * target, paired_subside_weight);
+ #endif
+             } else {
+-                edges[0] = add_subside_edge(left_single, true, boundary, true, left_target, left_iso_weight);
++                edges[0] = add_subside_edge(left_single, true, boundary, true, left_target, left_iso_weight,
++                                            ObjectiveKind::QuadraticDeviation, sub_lower, sub_upper);
+                 bnd_target += left_target;
+                 problem.unpaired_edges.push_back(edges[0]);
+             }
+@@ -502,6 +511,10 @@ static FlowProblem make_bimdf(
+ 
+ 
+             if (left_paired && right_paired) {
++                if (fix >= 0) {
++                    throw std::runtime_error("fixed subside count on a singularity-paired side is not supported"
++                                             " (disable alignSingularities)");
++                }
+ #if 1  // check for oriented surface
+                 const auto &left_side = left_chart.chartSides[left_side_idx];
+                 const auto &right_side = right_chart.chartSides[right_side_idx];
+@@ -596,8 +609,10 @@ static FlowProblem make_bimdf(
+ 
+             } else if (!left_paired && !right_paired) {
+                 Node inter = bimdf.add_node(); // only used to model sum of quadratic functions
+-                edges[0] = add_subside_edge(left_single, true, inter, true, left_target, left_iso_weight);
+-                auto other_edge = add_subside_edge(inter, false, right_single, true, right_target, right_iso_weight);
++                edges[0] = add_subside_edge(left_single, true, inter, true, left_target, left_iso_weight,
++                                            ObjectiveKind::QuadraticDeviation, sub_lower, sub_upper);
++                auto other_edge = add_subside_edge(inter, false, right_single, true, right_target, right_iso_weight,
++                                                   ObjectiveKind::QuadraticDeviation, sub_lower, sub_upper);
+                 problem.unpaired_edges.push_back(edges[0]);
+                 problem.unpaired_edges.push_back(other_edge);
+             } else if (!left_paired && right_paired) {
+@@ -714,10 +729,24 @@ FlowResult findSubdivisionsFlow(
+     std::vector<FlowStats> stats;
+ 
+     assert(out_results.size() == chart_data.subsides.size());
++    // entries >= 0 are prescribed subdivision counts, honored as lower == upper bounds
++    std::vector<int> fixed_subsides(chart_data.subsides.size(), -1);
++    size_t n_fixed = 0;
+     for (size_t subside_id = 0; subside_id < out_results.size(); ++subside_id)
+     {
+         auto val = out_results[subside_id];
+-        assert (val == ILP_FIND_SUBDIVISION); // we don't handle anything else yet
++        if (val >= 0) {
++            fixed_subsides[subside_id] = val;
++            ++n_fixed;
++        } else if (val != ILP_FIND_SUBDIVISION) {
++            throw std::runtime_error("findSubdivisionsFlow: subsides must be free or fixed (>= 0),"
++                                     " got " + std::to_string(val));
++        }
++    }
++    if (n_fixed == 0) {
++        fixed_subsides.clear();
++    } else {
++        std::cout << "honoring " << n_fixed << " fixed subside counts" << std::endl;
+     }
+ 
+     std::vector<bool> satisfied_regularity;
+@@ -763,6 +792,11 @@ FlowResult findSubdivisionsFlow(
+             if (val < 1) {
+                 std::cout << "ERROR: subside " << i << " quantized to " << val << std::endl;
+             }
++            if (!fixed_subsides.empty() && fixed_subsides[i] >= 0 && val != fixed_subsides[i]) {
++                throw std::runtime_error("fixed subside " + std::to_string(i)
++                        + " quantized to " + std::to_string(val)
++                        + " instead of the prescribed " + std::to_string(fixed_subsides[i]));
++            }
+             out_results[i] = val;
+         }
+         auto count_uses = [&](const auto &edge_vec) -> size_t {
+@@ -925,7 +959,8 @@ FlowResult findSubdivisionsFlow(
+             chart_edge_length,
+             parameters,
+             spi,
+-            satisfied_regularity);
++            satisfied_regularity,
++            fixed_subsides);
+     sw_setup.stop();
+ 
+     solve_and_apply(problem);
+@@ -946,6 +981,7 @@ FlowResult findSubdivisionsFlow(
+                 parameters,
+                 spi,
+                 satisfied_regularity,
++                fixed_subsides,
+                 &problem,
+                 bimdf_results.back().solution.get());
+ 
+diff --git a/libs/quadretopology/quadretopology/quadretopology.h b/libs/quadretopology/quadretopology/quadretopology.h
+index cd762e1..94c7661 100644
+--- a/libs/quadretopology/quadretopology/quadretopology.h
++++ b/libs/quadretopology/quadretopology/quadretopology.h
+@@ -102,6 +102,7 @@ void quadrangulate(
+         const ChartData& chartData,
+         const std::vector<size_t> fixedPositionSubsides,
+         const std::vector<int>& ilpResult,
++        const std::vector<std::vector<double>>& prescribedFractions,
+         const Parameters& parameters,
+         PolyMeshType& quadrangulation,
+         std::vector<int>& quadrangulationFaceLabel,
+@@ -113,6 +114,10 @@ void quadrangulate(
+         const ChartData& chartData,
+         const std::vector<size_t> fixedPositionSubsides,
+         const std::vector<int>& ilpResult,
++        /// per-subside arc-length split fractions for generated boundary vertices (each entry
++        /// empty for uniform-in-arc placement, else ilpResult[subside]-1 strictly increasing
++        /// values in (0, 1) measured from the subside's own first vertex); may be empty entirely
++        const std::vector<std::vector<double>>& prescribedFractions,
+         const int chartSmoothingIterations,
+         const int quadrangulationFixedSmoothingIterations,
+         const int quadrangulationNonFixedSmoothingIterations,
+diff --git a/libs/quadretopology/quadretopology/quadretopology_impl.h b/libs/quadretopology/quadretopology/quadretopology_impl.h
+index 6ad74d4..b00eb46 100644
+--- a/libs/quadretopology/quadretopology/quadretopology_impl.h
++++ b/libs/quadretopology/quadretopology/quadretopology_impl.h
+@@ -420,6 +420,7 @@ void quadrangulate(
+         const ChartData& chartData,
+         const std::vector<size_t> fixedPositionSubsides,
+         const std::vector<int>& ilpResult,
++        const std::vector<std::vector<double>>& prescribedFractions,
+         const Parameters& parameters,
+         PolyMeshType& quadrangulation,
+         std::vector<int>& quadrangulationFaceLabel,
+@@ -431,6 +432,7 @@ void quadrangulate(
+             chartData,
+             fixedPositionSubsides,
+             ilpResult,
++            prescribedFractions,
+             parameters.chartSmoothingIterations,
+             parameters.quadrangulationFixedSmoothingIterations,
+             parameters.quadrangulationNonFixedSmoothingIterations,
+@@ -447,6 +449,7 @@ void quadrangulate(
+         const ChartData& chartData,
+         const std::vector<size_t> fixedPositionSubsides,
+         const std::vector<int>& ilpResult,
++        const std::vector<std::vector<double>>& prescribedFractions,
+         const int chartSmoothingIterations,
+         const int quadrangulationFixedSmoothingIterations,
+         const int quadrangulationNonFixedSmoothingIterations,
+@@ -627,6 +630,7 @@ void quadrangulate(
+         std::vector<std::vector<double>> chartSideLength(chartSides.size());
+         std::vector<std::vector<std::vector<size_t>>> chartSideVertices(chartSides.size());
+         std::vector<std::vector<size_t>> chartSideSubdivision(chartSides.size());
++        std::vector<std::vector<std::vector<double>>> chartSideFractions(chartSides.size());
+ 
+         for (size_t i = 0; i < chartSides.size(); i++) {
+             const ChartSide& chartSide = chartSides[i];
+@@ -634,6 +638,7 @@ void quadrangulate(
+             chartSideLength[i].resize(chartSide.subsides.size());
+             chartSideVertices[i].resize(chartSide.subsides.size());
+             chartSideSubdivision[i].resize(chartSide.subsides.size());
++            chartSideFractions[i].resize(chartSide.subsides.size());
+ 
+             size_t targetSideSubdivision = 0;
+             for (size_t j = 0; j < chartSide.subsides.size(); j++) {
+@@ -651,6 +656,22 @@ void quadrangulate(
+                 chartSideVertices[i][j] = subSide.vertices;
+                 chartSideSubdivision[i][j] = ilpResult[subSideId];
+ 
++                if (subSideId < prescribedFractions.size() && !prescribedFractions[subSideId].empty()) {
++                    std::vector<double> fractions = prescribedFractions[subSideId];
++                    if (fractions.size() + 1 != static_cast<size_t>(ilpResult[subSideId])) {
++                        throw std::runtime_error("prescribed subside " + std::to_string(subSideId) + " has "
++                                + std::to_string(fractions.size()) + " split fractions for a subdivision of "
++                                + std::to_string(ilpResult[subSideId]));
++                    }
++                    //Fractions follow the subside's own vertex order; orient them to the side's
++                    if (chartSide.reversedSubside[j]) {
++                        std::reverse(fractions.begin(), fractions.end());
++                        for (double& fraction : fractions)
++                            fraction = 1.0 - fraction;
++                    }
++                    chartSideFractions[i][j] = std::move(fractions);
++                }
++
+                 if (chartSide.reversedSubside[j]) {
+                     std::reverse(chartSideVertices[i][j].begin(), chartSideVertices[i][j].end());
+                 }
+@@ -691,7 +712,7 @@ void quadrangulate(
+         Eigen::MatrixXi uvMapF;
+         Eigen::MatrixXd quadrangulationV;
+         Eigen::MatrixXi quadrangulationF;
+-        QuadRetopology::internal::computeQuadrangulation(chartV, chartF, patchV, patchF, chartSideVertices, chartSideLength, chartSideSubdivision, patchSides, uvMapV, uvMapF, quadrangulationV, quadrangulationF);
++        QuadRetopology::internal::computeQuadrangulation(chartV, chartF, patchV, patchF, chartSideVertices, chartSideLength, chartSideSubdivision, chartSideFractions, patchSides, uvMapV, uvMapF, quadrangulationV, quadrangulationF);
+ 
+ #ifdef QUADRETOPOLOGY_DEBUG_SAVE_MESHES
+         Eigen::MatrixXd uvMesh(uvMapV.rows(), 3);
+diff --git a/quadwild/functions.cpp b/quadwild/functions.cpp
+index 20331fb..be8b09a 100644
+--- a/quadwild/functions.cpp
++++ b/quadwild/functions.cpp
+@@ -169,7 +169,7 @@ inline void quadrangulate(
+     std::cout<<"Edge size: "<<edgeSize<<std::endl;
+     const std::vector<double> edgeFactor(trimeshPartitions.size(), edgeSize);
+ 
+-    qfp::quadrangulationFromPatches(trimeshToQuadrangulate, trimeshPartitions, trimeshCorners, edgeFactor, qParameters, fixedChartClusters, quadmesh, quadmeshPartitions, quadmeshCorners, ilpResult);
++    qfp::quadrangulationFromPatches(trimeshToQuadrangulate, trimeshPartitions, trimeshCorners, edgeFactor, qParameters, fixedChartClusters, {}, quadmesh, quadmeshPartitions, quadmeshCorners, ilpResult);
+ 
+     //SAVE OUTPUT
+     std::string outputFilename = baseFilename;

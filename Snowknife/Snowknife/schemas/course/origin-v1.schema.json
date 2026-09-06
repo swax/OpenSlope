@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "origin-v1.schema.json",
+  "title": "OpenSlope map origin",
+  "description": "Where a map folder came from, and whether it carries retail bytes. Two separate questions: Origin says who wrote the folder, RetailData says what is inside it. An authored mountain that places a borrowed tree is 'slopesmith' with RetailData set, which is why one boolean would not do. Both producers write this file - `snowknife import` for an extracted course, Slopesmith's export for an authored mountain - and a consumer that finds no Origin.json at all reads the folder as retail rather than as clean.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Schema", "Origin", "RetailData", "Reasons"],
+  "properties": {
+    "Schema": { "const": "openslope-origin/v1" },
+    "Origin": {
+      "enum": ["retail", "slopesmith"],
+      "description": "Who wrote the folder: an extract of a course off a disc, or an authored mountain composed by Slopesmith."
+    },
+    "Course": {
+      "type": "string",
+      "description": "The course slot an extract was read from. Absent on an authored mountain."
+    },
+    "RetailData": {
+      "type": "boolean",
+      "description": "Whether the folder contains or references bytes that came off a retail disc. Always true for an extract; true for an authored mountain that borrows art, sound, an effect graph, a sky, or a collision shape."
+    },
+    "Reasons": {
+      "type": "array",
+      "description": "Why, in the same vocabulary the Slopesmith export manifest's provenance uses ('retail-texture', 'retail-prop-art', 'retail-sky', ...). An extract carries the single reason 'retail-extract'. Only the retail half travels here - a user-supplied asset is a rights question with a different answer, not a reason to need a copy of the game.",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "allOf": [
+    {
+      "description": "The invariant both directions: retail data is stated with at least one reason, and reasons are listed only when there is retail data.",
+      "if": { "properties": { "RetailData": { "const": true } }, "required": ["RetailData"] },
+      "then": { "properties": { "Reasons": { "minItems": 1 } } },
+      "else": { "properties": { "Reasons": { "maxItems": 0 } } }
+    },
+    {
+      "description": "An extract names the slot it came from; an authored mountain has no slot to name.",
+      "if": { "properties": { "Origin": { "const": "slopesmith" } }, "required": ["Origin"] },
+      "then": { "not": { "required": ["Course"] } }
+    }
+  ]
+}

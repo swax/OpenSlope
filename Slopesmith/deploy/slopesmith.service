@@ -1,0 +1,48 @@
+# repo-hygiene: allow[config-listing] -- project-authored systemd service unit, not retail configuration
+[Unit]
+Description=Slopesmith API and collaboration service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=slopesmith
+Group=slopesmith
+WorkingDirectory=/opt/slopesmith/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/slopesmith.env
+ExecStart=/opt/node24/bin/node --preserve-symlinks-main --enable-source-maps /opt/slopesmith/current/dist-server/main.js serve --accounts --behind-proxy
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+UMask=0027
+LimitNOFILE=65536
+
+# The immutable release is read-only; only separately mounted state and explicit feature drop-ins are writable.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/srv/slopesmith
+
+[Install]
+WantedBy=multi-user.target

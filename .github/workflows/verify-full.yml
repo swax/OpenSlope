@@ -1,0 +1,113 @@
+name: Full Windows verification
+
+on:
+  schedule:
+    # One complete compatibility and coverage pass per day instead of one per push.
+    - cron: '17 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full:
+    name: Full Windows compatibility and coverage
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the toolkit and format-library submodule
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Set up .NET 10.0.110
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.110
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: Slopesmith/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: Trailmap/tools/requirements.txt
+
+      - name: Install Trailmap tool dependencies
+        run: python -m pip install --requirement Trailmap/tools/requirements.txt
+
+      - name: Repository hygiene gate
+        run: python tools/hygiene.py
+
+      - name: Run the fast Snowknife suite with coverage
+        timeout-minutes: 5
+        run: npm run verify:snowknife
+
+      - name: Install Slopesmith dependencies
+        timeout-minutes: 5
+        run: npm ci --prefix Slopesmith
+
+      # Snowknife's test project references the CLI project, so the preceding test step leaves the Debug
+      # executable that Slopesmith's integration tests and smoke test consume. No second dotnet build is needed.
+      - name: Type-check Slopesmith
+        timeout-minutes: 5
+        run: npm --prefix Slopesmith run typecheck
+
+      - name: Lint Slopesmith
+        timeout-minutes: 5
+        run: npm --prefix Slopesmith run lint
+
+      - name: Run deterministic Slopesmith tests with coverage
+        timeout-minutes: 15
+        run: npm --prefix Slopesmith run coverage
+
+      - name: Build Slopesmith
+        timeout-minutes: 8
+        run: npm --prefix Slopesmith run build
+
+      - name: Run the authored-map export smoke test
+        timeout-minutes: 8
+        run: npm --prefix Slopesmith run smoke
+
+      - name: Check autotest Python syntax
+        timeout-minutes: 2
+        run: python -m compileall -q Trailmap/tools/autotest
+
+      - name: Write the complete known-debt report
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force TestResults | Out-Null
+          python Trailmap/tools/specs/repo_hygiene.py report | Out-File -Encoding utf8 TestResults/repo-hygiene.txt
+
+      - name: Add Slopesmith coverage to the job summary
+        if: always()
+        run: npm --prefix Slopesmith run coverage:summary:ci
+
+      - name: Upload full test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: full-test-results
+          path: TestResults
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Slopesmith coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: slopesmith-coverage
+          path: Slopesmith/coverage
+          if-no-files-found: ignore
+          retention-days: 7

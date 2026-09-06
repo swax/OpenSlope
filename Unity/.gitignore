@@ -1,0 +1,15 @@
+# Local authoring fixtures and generated demo output.
+Alpha/
+docs/authoring/demo/
+
+# Staged map data (Maps/<MAP> + Maps/Shared), staged by `snowknife unity` into a project's Assets/.
+# Derived from your own copy of the game and never redistributed — see NOTICE.
+Maps/
+
+# IDE
+.vs/
+*.user
+
+# Python scratch
+__pycache__/
+*.py[cod]

@@ -1,0 +1,39 @@
+# Keeps the pinned toolchain from going stale silently: the workflows pin actions by commit SHA, and
+# Slopesmith, Snowknife and the Trailmap tools each lock their dependencies. Monthly and grouped, so a
+# month's updates arrive as one pull request per ecosystem and cost one CI run each.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /Slopesmith
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      slopesmith:
+        patterns: ["*"]
+
+  - package-ecosystem: nuget
+    directories:
+      - /Snowknife/Snowknife
+      - /Snowknife/Snowknife.Tests
+    schedule:
+      interval: monthly
+    groups:
+      snowknife:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /Trailmap/tools
+    schedule:
+      interval: monthly
+    groups:
+      trailmap-tools:
+        patterns: ["*"]
