@@ -1,0 +1,10 @@
+# repo-hygiene: allow[config-listing] -- project-authored systemd service unit, not retail configuration
+[Unit]
+Description=Install a queued Slopesmith revision
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/slopesmith-update-runner
+TimeoutStartSec=45min

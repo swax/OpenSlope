@@ -1,0 +1,129 @@
+Unity
+Copyright 2026 swax
+
+This product includes software and documentation for importing and running
+SSX-format levels in Unity, developed as an independent, unofficial work.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+these files except in compliance with the License. You may obtain a copy of the
+License in the LICENSE file distributed with this work, or at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+--------------------------------------------------------------------------------
+SCOPE OF THE LICENSE GRANT
+
+The Apache-2.0 grant above covers only the material authored under Unity/:
+the Unity editor importer under Importer/, the VRChat/Udon runtime under
+VRC/, the Basis realization under Basis/, the shaders, the tools under
+tools/, and the accompanying prose in README.md and docs/.
+
+It does NOT extend to, and this repository does not redistribute:
+
+  * SSX Tricky, SSX 3, SSX On Tour, their executables, disc contents, level
+    data, textures, audio, or any other retail game asset.
+  * Any trademark of Electronic Arts Inc.
+
+The importer consumes a staged level folder produced by Snowknife from a game
+disc image the user dumped from their own copy of the game. That staged data is derived from retail game
+content, is generated locally, and is excluded from version control (see
+.gitignore). Neither this license nor this repository grants any right in that
+material. Users are responsible for determining whether their use is permitted
+by applicable law and contractual terms; do not redistribute it without authorization.
+
+The same applies downstream. A world built with this importer from retail
+assets carries those assets inside it. Keep such builds private. Publishing one
+— to VRChat or anywhere else — redistributes Electronic Arts' copyrighted work
+and is outside what this project licenses or condones.
+
+--------------------------------------------------------------------------------
+RETAIL-DERIVED FACTS
+
+A bounded class of retail-derived facts is carried in the source itself:
+format and asset identifiers, enumeration names, and measured functional
+constants — notably the per-surface response table generated into
+VRC/Riding/Board/RideableBoard.Contract.Generated.cs and
+Basis/Riding/BasisBoard.Contract.Generated.cs (Trailmap/specs/data/ride-v1.json is
+the authoritative copy). These are the functional interface the ride
+interoperates through, retained because a course cannot be ridden correctly
+without them. They are unaccompanied by any retail code, asset, or executable,
+and they are the only retail-derived content carried; everything else is
+generated locally from your own copy of the game and stays out of version
+control.
+
+--------------------------------------------------------------------------------
+TRADEMARKS
+
+SSX, SSX Tricky, SSX 3, and SSX On Tour are trademarks of Electronic Arts Inc.
+This project is not affiliated with, sponsored by, or endorsed by Electronic
+Arts. Unity is a trademark of Unity Technologies. VRChat and Udon are
+trademarks of VRChat Inc. All other trademarks are the property of their
+respective owners.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+
+The flight-feel and multiplayer smoothing implementations cite and adapt
+patterns from:
+
+    SaccFlightAndVehicles — Copyright (c) 2021 Sacchan-VRC
+    Licensed under the MIT License.
+    https://github.com/Sacchan-VRC/SaccFlightAndVehicles
+
+The complete copyright and permission notice is reproduced in
+ThirdPartyNotices/SaccFlightAndVehicles-LICENSE.txt. No SaccFlight font, model,
+prefab, or other asset is included.
+
+One file adapts Basis rather than only building against it:
+
+    Basis — Copyright (c) 2024 MR LUKE B DOOLAN
+    Licensed under the MIT License.
+    https://github.com/BasisVR/Basis
+
+BasisWorldToggle.cs is a world-space toggle plate modelled on Basis's own example
+interactable button (com.basis.examples, BasisInteractableButton): it follows that
+button's hover/interact state machine and its single-input-wrapper handling, and
+differs in being latching rather than momentary. The complete copyright and
+permission notice is reproduced in ThirdPartyNotices/Basis-LICENSE.txt. Basis's
+own LICENSE also points at the Steam Audio terms for a component this repository
+neither uses nor redistributes.
+
+This repository consumes, but does not include or redistribute, the following.
+Each is obtained by you, under its own license, when you build a project:
+
+    Unity Editor, built-in render pipeline      Unity Technologies
+      and Universal Render Pipeline (Basis)
+    VRChat SDK3 (Worlds) and UdonSharp          VRChat Inc.
+      including the AVPro Video components         RenderHeads Ltd., as
+      the video billboards drive                   redistributed in the SDK
+    Newtonsoft.Json for Unity                   MIT License
+      (com.unity.nuget.newtonsoft-json)
+    Basis                                       MIT License
+      https://github.com/BasisVR/Basis
+
+The shaders in this repository include Unity's own CG include files
+(UnityCG.cginc and friends) at compile time from your Unity installation. No
+Unity or VRChat source is vendored here, and no Basis source is copied — but
+BasisWorldToggle.cs is adapted from a Basis example as described above, and is
+covered by the MIT notice reproduced beside it.
+
+--------------------------------------------------------------------------------
+RELATED PROJECTS
+
+The staged level data this importer reads is produced by a separate program,
+which sits beside this one in the OpenSlope repository under its own licence:
+
+    Snowknife — the extractor and bundle exporter.
+    Licensed GPL-3.0-only, except its schemas/ directory, which is Apache-2.0
+    precisely so that consumers such as this importer can implement against the
+    interchange contracts freely. ../Snowknife
+
+The documentation here cites original-game behavior using location-independent
+tags of the form [Trailmap: NNN-topic]. Those resolve into a separate
+specification, also carrying its own licence:
+
+    Trailmap — an independent, unofficial interoperability specification.
+    Licensed Apache-2.0. ../Trailmap
+
+Behavioral descriptions in this repository state what the game does. They are
+not derived from, and do not reproduce, Electronic Arts' source code.

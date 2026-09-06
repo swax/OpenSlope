@@ -1,0 +1,174 @@
+Snowknife
+Copyright (C) 2026 swax
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License, version 3 only, as published by
+the Free Software Foundation. You should have received a copy of the license in
+the LICENSE.txt file distributed with this work; if not, see:
+
+    https://www.gnu.org/licenses/gpl-3.0.html
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+--------------------------------------------------------------------------------
+SCOPE OF THE LICENSE GRANT
+
+The GPL-3.0-only grant above covers the material authored under Snowknife/: the
+C# extractor and its services and the bundle exporters in Snowknife/, the patch
+definitions under Snowknife/Patches/, the test suite in Snowknife.Tests/, and the
+prose in README.md, REPACK.md and docs/. Sibling projects in the OpenSlope
+repository carry their own licences and are not covered by it.
+
+One scoped exception: the JSON interchange contracts and documentation under
+Snowknife/schemas/ are licensed under the Apache License 2.0 instead, so that
+consumers outside this program can implement against them freely. See
+Snowknife/schemas/LICENSE and its README.md. Apache-2.0 is one-way compatible
+with GPLv3: a build of
+Snowknife that embeds those schemas is conveyed as a whole under GPL-3.0-only.
+
+The grant does NOT extend to, and this repository does not redistribute:
+
+  * SSX Tricky — or any other SSX title this program can read, such as SSX on
+    Tour — including its executables, disc contents, level data, textures,
+    audio, or any other retail game asset.
+  * Any trademark of Electronic Arts Inc.
+
+Files derived from retail game data are generated locally by the user from a
+user-supplied disc image and are excluded from version control.
+
+Retail audio carries third-party rights. This program decodes the disc's music
+streams and its announcer, rider and narrator speech. Rights in those recordings
+are held by parties other than Electronic Arts -- the compositions and sound
+recordings by their publishers and labels, the performances by the performers --
+and are licensed to Electronic Arts rather than owned by it. A permission from
+Electronic Arts would not extend to them.
+
+Decoded audio is generated locally from the user's own copy of the game. It is
+not redistributable, including as an attachment to an issue, a discussion, or an
+example bundle. Nothing in this repository grants any right to it.
+
+--------------------------------------------------------------------------------
+RETAIL-DERIVED FACTS
+
+A bounded class of retail-derived facts is carried in the source itself:
+format and asset identifiers, enumeration names, the executable's audio
+bank-name catalog (whose authoritative copy is
+../Trailmap/specs/data/external-sound-banks-v1.json), and the per-course race
+timing constants -- lap counts and showoff clock lengths read from the
+executable's own tables -- in Bundle/RaceBundle.cs. These are the functional
+interface the extractor interoperates through, retained because interoperating
+requires them. Beyond that interface, individual measured engine constants and
+per-asset measurements appear in the source and tests where a behaviour had to
+be matched -- a selector remap table, the event ids an engine routine compares
+against, a course bank's slot sizes, a staging-formation centroid -- each cited
+to the Trailmap chapter that establishes it. No retail asset, disc image, or
+executable accompanies any of this, and everything else is generated locally
+from a user-supplied disc image and stays out of version control.
+
+One further class is worth naming exactly, because it concerns instruction
+shape rather than names. Services/SoundIndexService.cs finds the collision-sound
+dispatcher and resolver in *your* boot executable by matching the shape of a
+compiler-emitted jump table. It describes each instruction by its opcode,
+function and shift fields and by which register fields must agree with one
+another; every operand that carries data -- the table address, the case count,
+the branch targets -- is read from your file rather than compared against a
+constant, the one fixed assumption being the register pair (s0, s1) the
+resolver stores its two results through, and the source carries no encoded
+instruction at all. It is used as a search key, the way a file format is found
+by its magic number, and it is not a reproduction of the routine it locates.
+
+--------------------------------------------------------------------------------
+TRADEMARKS
+
+SSX and SSX Tricky are trademarks of Electronic Arts Inc. This project is not
+affiliated with, sponsored by, or endorsed by Electronic Arts. All other
+trademarks are the property of their respective owners.
+
+--------------------------------------------------------------------------------
+EXECUTABLE PATCHES
+
+The patch definitions in Patches/ modify a game executable inside a user-supplied
+disc image. They do not reproduce the retail bytes they replace: each region
+names only a SHA-256 digest of the bytes it expects to
+find, so applying a patch verifies before it writes, and reverting replays the
+originals saved from the user's own image at apply time.
+
+A trampoline hook has to re-execute whatever instruction its branch displaced,
+and that instruction is the game's. Rather than carry it, a region names a
+"graft": where in the user's own executable to copy those bytes from at apply
+time. The six regions that need one cover 36 bytes across four regions in
+noclip and 8 across two in sky-color; until apply fills them they read as MIPS
+`break`. So no patch
+definition in this directory contains a retail instruction, and neither do the
+tools that author them under Trailmap/tools/patches/: all three recognise a build
+and verify its hook sites by digest rather than carrying the words at those sites.
+
+The research probes outside that path -- Trailmap/tools/instrumentation/ and
+its PINE hooks -- follow the same rule: each site they attach to is named by the
+SHA-256 of the words it holds, the words themselves are read from the running
+emulator and checked against that digest at install, and a site that is already
+detoured is restored from the operator's own extracted executable. They patch a
+running emulator's memory rather than a disc, and what they write -- capture
+data, telemetry, and the recovery record an uninstall replays -- stays on your
+own machine; nothing they contain reaches a disc image.
+
+That digest is there to verify, not to conceal, and it should not be read as
+one. A hash is a one-way commitment to its input. Most regions are a single
+instruction or flag word, and for an input that small the space of possible
+originals is easy to search, so such a digest does in practice identify the
+word it stands for; this is a property of hashing any tiny input rather than of
+this file format. The noclip hook body instead overwrites a span of dead code
+in the executable, and its regions digest that span whole (the largest is 432
+bytes) so that apply and revert can verify it; those digests are not
+practically invertible. No patch file carries the bytes of any region it
+replaces.
+
+The sky-color patch installs a 13-entry, 3-bytes-per-entry RGB table that its
+hook indexes at load time. On first application Snowknife reconstructs those
+entries from constant stores in the supported executable's own WorldConf
+initializer and verifies the result against a digest. The public definition
+carries the extraction recipe and digest, not the 39 retail channel values;
+setting one course's sky still leaves the other twelve visually unchanged.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+
+This program links, but does not redistribute, the community format library it
+wraps. It is consumed as a git submodule under its own license:
+
+    SSX-Library — GlitcherOG, Erickson400, jaime0907
+    Licensed GPL-3.0. https://github.com/GlitcherOG/SSX-Library
+    Built from the fork at https://github.com/swax/SSX-Library
+
+The fork vendors SharpTriStrip under separate BSD-3-Clause terms. Its source
+notice and full license are retained at
+SSX-Library/SSX-Library/SharpTriStrip/LICENSE.txt and the library project copies
+that notice beside binary output as licenses/SharpTriStrip-LICENSE.txt:
+
+    SharpTriStrip — Copyright (c) 2021, MaxHwoy
+    Original NvTriStrip Library Algorithm — Copyright (c) NVidia
+    Licensed BSD-3-Clause. https://github.com/MaxHwoy/SharpTriStrip
+
+Build-time NuGet dependencies, retrieved from nuget.org and not redistributed
+here:
+
+    DiscUtils.Iso9660 — MIT License
+    JsonSchema.Net    — MIT License
+    Newtonsoft.Json   — MIT License
+
+The SSX-Library submodule brings its own build-time packages, likewise from
+nuget.org and not redistributed here: BCnEncoder.Net, SharpGLTF, SharpZipLib
+and System.IO.Hashing (MIT), and SixLabors.ImageSharp with SixLabors.Fonts and
+ImageSharp.Drawing under the Six Labors Split License, which extends its
+Apache-2.0 terms to open-source consumers such as this program. A
+redistributor who does not qualify for that branch needs a licence from Six
+Labors.
+
+The audio decoders shipped in this program are pure C# and were validated
+against vgmstream (https://vgmstream.org, ISC License) as a correctness oracle
+only. vgmstream is neither a build nor a runtime dependency of Snowknife, and no
+vgmstream code is included in this repository. Where the SSX-Library submodule
+ports vgmstream code, that port carries vgmstream's copyright and permission
+notice in its own source file.

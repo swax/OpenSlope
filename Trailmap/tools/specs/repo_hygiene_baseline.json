@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "policy": "Known debt only; new findings and stale entries fail check.",
+  "findings": {}
+}

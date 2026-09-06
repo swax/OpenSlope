@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prop-override-v1.schema.json",
+  "title": "Snowknife prop override package",
+  "description": "An override.json document used to replace a named model's meshes, collision, and texture pages.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["match", "meshes"],
+  "properties": {
+    "name": { "type": "string" },
+    "match": { "type": "string", "minLength": 1 },
+    "meshes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "collision": { "type": "string", "minLength": 1 },
+    "textures": { "$ref": "#/$defs/pathBySlot" },
+    "alpha": { "$ref": "#/$defs/alphaBySlot" },
+    "privatePages": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": { "$ref": "#/$defs/privatePage" }
+    },
+    "alphaPages": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/alphaMode" }
+    },
+    "levels": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "alphaMode": {
+      "type": "string",
+      "enum": ["opaque", "cutout", "blend", "glow"]
+    },
+    "pathBySlot": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "alphaBySlot": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": { "$ref": "#/$defs/alphaMode" }
+    },
+    "privatePage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["texture", "page"],
+      "properties": {
+        "texture": { "type": "string", "minLength": 1 },
+        "page": { "type": "string", "minLength": 1 },
+        "alpha": { "$ref": "#/$defs/alphaMode" }
+      }
+    }
+  }
+}

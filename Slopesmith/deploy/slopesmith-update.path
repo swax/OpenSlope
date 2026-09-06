@@ -1,0 +1,11 @@
+# repo-hygiene: allow[config-listing] -- project-authored systemd path unit, not retail configuration
+[Unit]
+Description=Watch for a Slopesmith update request
+
+[Path]
+PathExists=/var/lib/slopesmith-update/inbox/request
+PathExists=/var/lib/slopesmith-update/inbox/version-check
+Unit=slopesmith-update.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sound-index-v1.schema.json",
+  "title": "OpenSlope map-local sound index",
+  "description": "Sound bank names and collision-event routes recovered locally from one disc by Snowknife.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Schema", "Level", "SourceExecutable", "Banks", "CollisionEvents"],
+  "properties": {
+    "Schema": { "const": "openslope-sound-index/v1" },
+    "Level": { "type": "string", "minLength": 1 },
+    "SourceExecutable": { "type": "string", "minLength": 1 },
+    "Banks": {
+      "type": "object",
+      "required": ["2"],
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "CollisionEvents": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Group", "Slot", "Bank", "Clip"],
+      "properties": {
+        "Group": { "type": "integer", "minimum": 0 },
+        "Slot": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "Bank": { "type": "string", "minLength": 1 },
+        "Clip": {
+          "type": "string",
+          "pattern": "^Audio/SFX/[^/]+/[0-9]{3}\\.wav$"
+        }
+      }
+    }
+  }
+}

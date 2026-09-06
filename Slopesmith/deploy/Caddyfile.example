@@ -1,0 +1,27 @@
+slopesmith.example.com {
+	# The API owns authentication, private-cache policy, compression and WebSocket upgrades.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		X-Frame-Options "SAMEORIGIN"
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5180
+	}
+
+	handle {
+		# Vite fingerprints /assets files, and built-in character URLs carry their GLB SHA-256 as ?v=.... The
+		# HTML shell and other stable paths must revalidate so a deployment is visible immediately.
+		@immutable path /assets/* /characters/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		@notImmutable not path /assets/* /characters/*
+		header @notImmutable Cache-Control "no-cache"
+
+		root * /opt/slopesmith/current/dist
+		try_files {path} /index.html
+		encode zstd gzip
+		file_server
+	}
+}

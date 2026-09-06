@@ -1,0 +1,35 @@
+/* dropdown menu buttons */
+.sp-menu-btn::after { content: '▾'; margin-left: 6px; opacity: 0.6; font-size: 10px; }
+/* Collapse glyph: rendered by every menu that carries one, shown only where its word is dropped. */
+.sp-menu-btn-icon { display: none; }
+.sp-menu-btn-icon svg { display: block; width: 16px; height: 16px; }
+.sp-history-menu { min-width: 27px; padding-inline: 7px; }
+.sp-history-menu::after { margin-left: 0; }
+/* Narrow bar: File collapses to its hamburger, alongside the wordmark dropping to the bare mark in the
+   mobile block below — the dock has icon rows to seat before either word earns its width. */
+@media (max-width: 760px), (max-height: 500px) {
+  .sp-app-menu { display: inline-flex; align-items: center; padding-inline: 7px; }
+  .sp-app-menu .sp-menu-btn-label { display: none; }
+  .sp-app-menu .sp-menu-btn-icon { display: block; }
+  .sp-app-menu::after { margin-left: 4px; }
+}
+.sp-menu-pop {
+  position: fixed; z-index: 50; min-width: 200px; max-width: 320px; max-height: 72vh; overflow: auto;
+  background: #0e1a26; border: 1px solid #34506b; border-radius: 8px; padding: 4px; box-shadow: 0 8px 30px #000a;
+}
+.sp-menu-item { display: block; width: 100%; text-align: left; background: transparent; border: 0;
+  color: #d7e3f0; padding: 7px 10px; border-radius: 5px; cursor: pointer; }
+.sp-menu-item:hover:not(:disabled) { background: #1c3247; }
+.sp-menu-item:disabled { opacity: 0.4; cursor: default; }
+.sp-menu-label { font-size: 13px; font-weight: 500; }
+.sp-menu-pop.has-details { width: min(430px, calc(100vw - 12px)); max-width: 430px; box-sizing: border-box; }
+.sp-menu-item.has-details { white-space: normal; overflow: visible; }
+.sp-menu-detail { margin-top: 3px; color: #8fa8bb; font-size: 11px; line-height: 1.35;
+  white-space: normal; }
+.sp-menu-item:hover:not(:disabled) .sp-menu-detail { color: #b6cad9; }
+.sp-menu-item:disabled.has-details { opacity: .62; }
+/* Ordinary menus stay compact. Choices that need explanation opt into a wrapped label-and-detail row. */
+.sp-menu-item:not(.has-details) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-menu-group { padding: 7px 10px 3px; font-size: 10px; font-weight: 750; letter-spacing: .075em;
+  text-transform: uppercase; color: #7f97ad; }
+.sp-menu-group:not(:first-child) { margin-top: 3px; border-top: 1px solid #21374b; padding-top: 7px; }

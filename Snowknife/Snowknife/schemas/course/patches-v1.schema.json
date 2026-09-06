@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "patches-v1.schema.json",
+  "title": "OpenSlope terrain patches",
+  "description": "Bicubic Bezier terrain patches exported by Snowknife and accepted by the course-authoring and repack pipelines.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["Patches"],
+  "properties": {
+    "Patches": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/patch" }
+    }
+  },
+  "$defs": {
+    "numberPair": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "point3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "PatchName",
+        "LightMapPoint",
+        "UVPoints",
+        "Points",
+        "SurfaceType",
+        "TrickOnlyPatch",
+        "TexturePath",
+        "LightmapID"
+      ],
+      "properties": {
+        "PatchName": { "type": "string" },
+        "LightMapPoint": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number" }
+        },
+        "UVPoints": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/numberPair" }
+        },
+        "Points": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/point3" }
+        },
+        "SurfaceType": { "type": "integer" },
+        "TrickOnlyPatch": { "type": "boolean" },
+        "TexturePath": { "type": "string" },
+        "LightmapID": { "type": "integer" }
+      }
+    }
+  }
+}

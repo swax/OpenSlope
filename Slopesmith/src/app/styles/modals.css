@@ -1,0 +1,186 @@
+/* centered modal dialog (New mountain…) — hosts a lil-gui for styled param inputs */
+.sp-modal-back { position: fixed; inset: 0; background: #0009; z-index: 60;
+  display: flex; align-items: center; justify-content: center; }
+.sp-modal { width: 330px; max-width: 92vw; }
+.sp-modal .lil-gui.lil-root { width: 100%; }
+.sp-modal.sp-export-modal { width: 430px; }
+.sp-modal-actions { display: flex; justify-content: flex-end; gap: 7px; padding-top: 8px; }
+.sp-modal-actions .sp-btn { min-width: 82px; padding: 7px 14px; }
+/* Reference music study: a deterministic score-like view of the native PathFinder graph. */
+.sp-music-graph-back { padding: 3vh 3vw; box-sizing: border-box; }
+.sp-music-graph-modal { display: flex; flex-direction: column; width: min(1320px, 94vw); height: min(840px, 92vh);
+  overflow: hidden; color: #d7e4ee; background: #09131c; border: 1px solid #385875; border-radius: 9px;
+  box-shadow: 0 18px 70px #000d; font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; }
+.sp-music-graph-head { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 14px; background: linear-gradient(120deg, #132638, #0d1b28); border-bottom: 1px solid #29465d; }
+.sp-music-graph-head h2 { margin: 0; color: #eef7ff; font-size: 16px; font-weight: 650; }
+.sp-music-graph-head p { margin: 2px 0 0; color: #86a1b7; font-size: 11px; }
+.sp-music-graph-close { min-width: 30px; height: 30px; padding: 2px 8px; font-size: 14px; }
+.sp-music-graph-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 39px; padding: 5px 9px 5px 14px; color: #7993a8; background: #0b1823; border-bottom: 1px solid #20394c; }
+.sp-music-graph-toolbar > div { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.sp-music-graph-toolbar .sp-btn { min-width: 31px; height: 27px; padding: 3px 8px; }
+.sp-music-zoom { display: inline-block; min-width: 39px; color: #a9bfd0; text-align: center;
+  font: 10px/1 ui-monospace, Consolas, monospace; }
+.sp-music-graph-loading { display: grid; flex: 1; place-items: center; color: #87a9c2; }
+.sp-music-graph-loading.error { color: #efaaa6; }
+.sp-music-graph-body { display: grid; grid-template-columns: 275px minmax(0, 1fr); flex: 1; min-height: 0; }
+.sp-music-graph-side { overflow: auto; padding: 11px; background: #0d1b27; border-right: 1px solid #294357; }
+.sp-music-graph-side h3 { margin: 14px 0 6px; color: #a9c2d5; font-size: 10px; font-weight: 750;
+  letter-spacing: .08em; text-transform: uppercase; }
+.sp-music-graph-explainer { margin: 0 0 9px; color: #8ca5b8; }
+.sp-music-graph-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 8px; color: #8098aa; font-size: 10px; }
+.sp-music-graph-legend span { display: flex; align-items: center; gap: 5px; }
+.sp-music-graph-legend i { width: 9px; height: 9px; border: 2px solid currentColor; border-radius: 50%; box-sizing: border-box; }
+.sp-music-graph-legend .kind-audio { color: #51bad2; background: #255e6d; }
+.sp-music-graph-legend .kind-marker { color: #dca94d; background: #695426; }
+.sp-music-graph-legend .kind-loop { color: #aa79d2; background: #52386c; }
+.sp-music-graph-legend .kind-event { color: #eb706d; background: transparent; }
+.sp-music-event-list { display: grid; gap: 4px; }
+.sp-music-event-list > button { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: start; gap: 7px;
+  width: 100%; padding: 6px; color: #bdd0df; background: #101f2b; border: 1px solid #274255; border-radius: 4px;
+  text-align: left; cursor: pointer; }
+.sp-music-event-list > button:hover { color: #fff; background: #19334a; border-color: #4c7898; }
+.sp-music-event-list > button > span { display: grid; place-items: center; height: 21px; color: #ffd2ce;
+  background: #673533; border-radius: 4px; font: 700 10px/1 ui-monospace, Consolas, monospace; }
+.sp-music-event-list b, .sp-music-event-list small { display: block; }
+.sp-music-event-list b { font-size: 10.5px; font-weight: 600; }
+.sp-music-event-list small { margin-top: 1px; color: #738ea2; font: 9.5px/1.35 ui-monospace, Consolas, monospace; }
+.sp-music-node-inspector { overflow: hidden; background: #0a151e; border: 1px solid #243c4e; border-radius: 5px; }
+.sp-music-node-inspector > div:not(.links) { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px;
+  padding: 5px 7px; border-bottom: 1px solid #1e3343; }
+.sp-music-node-inspector span { color: #6f899d; font-size: 9.5px; text-transform: uppercase; }
+.sp-music-node-inspector b { overflow-wrap: anywhere; color: #c8d9e6; font: 10px/1.35 ui-monospace, Consolas, monospace; }
+.sp-music-node-inspector .links { display: grid; gap: 3px; padding: 6px; color: #6f899d; font-size: 10px; }
+.sp-music-node-inspector .links button { padding: 4px 6px; color: #95bad5; background: #112536;
+  border: 0; border-radius: 3px; text-align: left; font: 10px/1.2 ui-monospace, Consolas, monospace; cursor: pointer; }
+.sp-music-node-inspector .links button:hover { color: #e9f6ff; background: #214563; }
+.sp-music-audition { padding: 7px; background: #10202d; border-bottom: 1px solid #284255; }
+.sp-music-audition .path-level { display: grid; grid-template-columns: 54px minmax(0, 1fr) 25px;
+  align-items: center; gap: 5px; margin-bottom: 6px; color: #7690a4; font-size: 9px; text-transform: uppercase; }
+.sp-music-audition .path-level input { width: 100%; min-width: 0; accent-color: #56b8cf; cursor: ew-resize; }
+.sp-music-audition .path-level output { color: #b9d3e5; text-align: right;
+  font: 10px/1 ui-monospace, Consolas, monospace; }
+.sp-music-audition .actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.sp-music-audition .sp-btn { min-width: 0; height: 26px; padding: 3px 7px; font-size: 10px; }
+.sp-music-audition .sp-btn:disabled { opacity: .38; cursor: default; }
+.sp-music-audition .status { display: block; margin-top: 5px; color: #7f9aaf;
+  font: 9.5px/1.4 ui-monospace, Consolas, monospace; }
+.sp-music-graph-view { position: relative; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain;
+  background-color: #071019; background-image: linear-gradient(#10213080 1px, transparent 1px),
+    linear-gradient(90deg, #10213080 1px, transparent 1px), radial-gradient(circle at 50% 0, #17324770, transparent 55%);
+  background-size: 24px 24px, 24px 24px, 100% 100%; }
+.sp-music-graph-svg { display: block; max-width: none; max-height: none; overflow: visible; }
+.sp-music-graph-svg .music-lanes line { stroke: #2a4759; stroke-width: 1; stroke-dasharray: 4 8; }
+.sp-music-graph-svg .music-lanes text { fill: #527086; font: 10px ui-monospace, Consolas, monospace; }
+.sp-music-graph-svg marker path { fill: #4d7b91; }
+.sp-music-graph-svg .music-edges path { fill: none; stroke-width: 1; opacity: .64; }
+.sp-music-graph-svg .music-edges .unconditional { stroke: #4d7b91; }
+.sp-music-graph-svg .music-edges .conditional { stroke: #907643; stroke-dasharray: 4 3; }
+.sp-music-graph-svg .music-node { cursor: pointer; outline: none; }
+.sp-music-graph-svg .music-node circle { stroke-width: 1.5; transition: stroke-width .1s, filter .1s; }
+.sp-music-graph-svg .music-node.kind-audio circle { fill: #205a69; stroke: #56bed4; }
+.sp-music-graph-svg .music-node.kind-marker circle { fill: #675124; stroke: #dfad4f; }
+.sp-music-graph-svg .music-node.kind-loop circle { fill: #513469; stroke: #ac7dd3; }
+.sp-music-graph-svg .music-node.event-target circle { stroke: #ed716d; stroke-width: 2.5; }
+.sp-music-graph-svg .music-node.entry circle { filter: drop-shadow(0 0 4px #62d38d); stroke: #76e09c; }
+.sp-music-graph-svg .music-node:hover circle, .sp-music-graph-svg .music-node:focus circle,
+.sp-music-graph-svg .music-node.selected circle { stroke: #fff; stroke-width: 3; filter: drop-shadow(0 0 5px #8cd8ff); }
+.sp-music-graph-svg .music-node.audition-path circle { filter: drop-shadow(0 0 4px #d7a956); }
+.sp-music-graph-svg .music-node.playing circle { fill: #edfaff; stroke: #72e8b0; stroke-width: 3.5;
+  animation: sp-music-playing .7s ease-in-out infinite alternate; }
+.sp-music-graph-svg .music-node text { fill: #718da0; text-anchor: middle; pointer-events: none;
+  font: 7px ui-monospace, Consolas, monospace; }
+.sp-music-graph-svg .music-event-tag rect { fill: #6f3332; stroke: #e1716c; stroke-width: 1; }
+.sp-music-graph-svg .music-event-tag text { fill: #ffe1de; text-anchor: middle; font: 700 8px ui-monospace, Consolas, monospace; }
+@keyframes sp-music-playing { from { filter: drop-shadow(0 0 2px #72e8b0); }
+  to { filter: drop-shadow(0 0 8px #72e8b0); } }
+/* Mountain stats: every map folder in the library priced side by side, with the shipped courses' band pinned
+   under each column. Wide by nature — the table scrolls inside the dialog and the name column stays put. */
+.sp-stats-back { padding: 3vh 3vw; box-sizing: border-box; }
+.sp-stats-modal { display: flex; flex-direction: column; width: min(1500px, 96vw); height: min(880px, 94vh);
+  overflow: hidden; color: #d7e4ee; background: #09131c; border: 1px solid #385875; border-radius: 9px;
+  box-shadow: 0 18px 70px #000d; font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; }
+.sp-stats-head { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 14px; background: linear-gradient(120deg, #132638, #0d1b28); border-bottom: 1px solid #29465d; }
+.sp-stats-head h2 { margin: 0; color: #eef7ff; font-size: 16px; font-weight: 650; }
+.sp-stats-head p { margin: 2px 0 0; color: #86a1b7; font-size: 11px; }
+.sp-stats-close { min-width: 30px; height: 30px; padding: 2px 8px; font-size: 14px; }
+.sp-stats-toolbar { display: flex; align-items: center; gap: 12px; min-height: 39px; padding: 5px 14px;
+  color: #7993a8; background: #0b1823; border-bottom: 1px solid #20394c; }
+.sp-stats-search { width: 190px; padding: 5px 8px; color: #dbe9f5; background: #0a1622;
+  border: 1px solid #2b485f; border-radius: 4px; font: 11px ui-sans-serif, system-ui, sans-serif; }
+.sp-stats-search:focus { outline: none; border-color: #4c7898; }
+.sp-stats-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+.sp-stats-unpin-all, .sp-stats-remeasure { height: 25px; padding: 3px 9px; font-size: 10.5px; }
+/* Disabled while it runs, which is most of the time somebody is looking at it — so it has to read as "working",
+   not as "unavailable". Hence the label change rather than a spinner, and a dim that stops short of grey-out. */
+.sp-stats-remeasure:disabled { opacity: 0.6; cursor: progress; }
+.sp-stats-hint { margin-left: auto; color: #5f7789; font-size: 10.5px; }
+.sp-stats-body { flex: 1; min-height: 0; overflow: auto; }
+.sp-stats-status { padding: 22px 16px; color: #87a9c2; text-align: center; }
+.sp-stats-status.error { color: #efaaa6; }
+.sp-stats-foot { padding: 8px 14px; color: #6f899d; background: #0b1823; border-top: 1px solid #20394c;
+  font-size: 10.5px; }
+.sp-stats-foot.stale { color: #f0c674; background: #241d10; border-top-color: #5d4a22; }
+.sp-stats-table { width: 100%; border-collapse: separate; border-spacing: 0;
+  font: 11.5px/1.35 ui-monospace, Consolas, monospace; }
+.sp-stats-table th, .sp-stats-table td { padding: 4px 10px; white-space: nowrap; }
+.sp-stats-table td.number, .sp-stats-table th.number { text-align: right; }
+.sp-stats-table thead th { position: sticky; background: #102232; color: #a9c2d5; font-weight: 650;
+  border-bottom: 1px solid #27455c; }
+.sp-stats-table thead tr.groups th { top: 0; z-index: 3; padding-top: 7px; color: #6d8ba3; font-size: 9.5px;
+  letter-spacing: .09em; text-transform: uppercase; text-align: left; background: #0d1b28; }
+.sp-stats-table thead tr.groups th + th { border-left: 1px solid #21394c; }
+.sp-stats-table thead tr:last-child th { top: 26px; z-index: 3; }
+.sp-stats-table th.sortable { cursor: pointer; user-select: none; }
+.sp-stats-table th.sortable:hover { color: #eaf5ff; background: #17334a; }
+.sp-stats-table th.sorted { color: #eaf5ff; }
+.sp-stats-table th i { margin-left: 3px; font-style: normal; }
+/* The name column stays put while fourteen cost columns scroll past it. */
+.sp-stats-table th.name { position: sticky; left: 0; z-index: 2; text-align: left;
+  background: #0d1b28; border-right: 1px solid #21394c; }
+.sp-stats-table thead th.name { z-index: 4; }
+.sp-stats-table tbody th.name { color: #c8d9e6; font-weight: 500; }
+.sp-stats-table tbody th.name i { margin-left: 5px; color: #dca94d; font-style: normal; }
+.sp-stats-table tbody td { color: #9db4c6; border-bottom: 1px solid #14242f; }
+.sp-stats-table tbody tr:hover td { background: #12222f; }
+.sp-stats-table tbody tr:hover th.name { background: #16293a; }
+.sp-stats-table tbody tr.retail th.name, .sp-stats-table tbody tr.retail td { color: #d9e8f5; }
+.sp-stats-table tbody tr.retail th.name { background: #12242f; }
+.sp-stats-table tbody tr.loaded th.name, .sp-stats-table tbody tr.loaded td { color: #eaf7ff; background: #1b3a52; }
+/* Bands floated above the library — your own export, then pins — each closed off by a rule so the block is
+   legible as a chosen set rather than as whatever happened to sort first. */
+.sp-stats-table tbody tr.pinned th.name { box-shadow: inset 2px 0 0 #dca94d; }
+.sp-stats-table tbody tr.own th.name { box-shadow: inset 2px 0 0 #6fd39a; }
+.sp-stats-table tbody tr.own th.name, .sp-stats-table tbody tr.own td { color: #e8fbf0; background: #12291f; }
+.sp-stats-table tbody tr.own:hover th.name, .sp-stats-table tbody tr.own:hover td { background: #17372a; }
+.sp-stats-table tbody tr.band-edge th.name, .sp-stats-table tbody tr.band-edge td { border-bottom: 1px solid #4a6b83; }
+.sp-stats-table tbody th.name i.own-tag { color: #6fd39a; font-size: 9.5px; font-style: normal; }
+.sp-stats-pin { width: 15px; margin-right: 6px; padding: 0; color: #3f5568; background: none; border: 0;
+  font: 10px/1 ui-monospace, Consolas, monospace; cursor: pointer; }
+.sp-stats-pin:hover { color: #eaf5ff; }
+.sp-stats-pin.on { color: #dca94d; }
+.sp-stats-pin:focus-visible { outline: 1px solid #4c7898; outline-offset: 1px; }
+.sp-stats-pin:disabled { color: #6fd39a; cursor: default; }
+/* The head and band rows have no pin, so their labels are inset to line up with the pinned names below. */
+.sp-stats-table thead th.name, .sp-stats-table tfoot th.name { padding-left: 31px; }
+.sp-stats-table tfoot th, .sp-stats-table tfoot td { position: sticky; bottom: 0; z-index: 2;
+  color: #8fc0a8; background: #0e2119; border-top: 1px solid #2a5340; }
+.sp-stats-table tfoot th.name { z-index: 3; color: #8fc0a8; background: #0e2119; }
+/* export preflight summary (docs/011): what the map folder ships, under the export settings */
+.sp-preflight { background: #101a24; border: 1px solid #24384b; border-radius: 6px;
+  margin: 7px 0 0; padding: 9px 11px; font: 11.5px/1.45 ui-sans-serif, system-ui, sans-serif;
+  color: #cfe0ef; max-height: 48vh; overflow: auto; }
+.sp-preflight .pf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: #eaf2f9; margin-bottom: 5px; }
+.sp-preflight .pf-status { color: #79bca4; font-size: 10px; font-weight: 600; }
+.sp-preflight .pf-line { white-space: normal; }
+.sp-preflight .pf-dim { color: #8aa0b4; }
+.sp-preflight .pf-warn { color: #f0c674; }
+.sp-preflight .pf-more { margin-top: 7px; padding-top: 5px; border-top: 1px solid #24384b; }
+.sp-preflight .pf-more > summary { color: #8fa7ba; cursor: pointer; user-select: none; }
+.sp-preflight .pf-more-body { padding-top: 5px; }
+.sp-preflight .pf-detail { margin-top: 5px; padding-top: 5px; border-top: 1px solid #24384b;
+  color: #8aa0b4; font: 10.5px/1.5 ui-monospace, Consolas, monospace; }
+.sp-gui-notitle > .lil-title { display: none; }
