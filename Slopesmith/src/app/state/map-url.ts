@@ -47,10 +47,13 @@ export function mapNameInUrl(): string {
  * swapping the document out from under an author mid-edit. The query and hash ride along untouched, so
  * `?agent=1`, `?verifyRebuild=1` and a `#invite=` link all survive a map switch.
  */
-export function showMapInUrl(name: string): void {
+export function showMapInUrl(name: string, projectId?: string): void {
   const wanted = name.trim();
   const path = addressable(wanted) ? `/${wanted}` : '/';
-  if (location.pathname === path) return;
-  try { history.replaceState(history.state, '', `${path}${location.search}${location.hash}`); }
+  const search = new URLSearchParams(location.search);
+  if (projectId && search.has('project')) search.set('project', projectId);
+  const query = search.size ? `?${search}` : '';
+  if (location.pathname === path && location.search === query) return;
+  try { history.replaceState(history.state, '', `${path}${query}${location.hash}`); }
   catch { /* a browser that refuses history is no reason to fail a load */ }
 }

@@ -241,9 +241,10 @@ export function createProjectSync(deps: {
    * Failing that, a new device adopts the only existing project, asks when there are several, and creates from
    * browser recovery only when this server genuinely has no projects yet.
    */
-  async function initialize(recoveryDocument: EditDoc, wanted = ''): Promise<EditDoc> {
+  async function initialize(recoveryDocument: EditDoc, wanted = '', wantedId = ''): Promise<EditDoc> {
     state('loading', wanted ? `Opening ${wanted}` : 'Opening local mountain');
     try {
+      if (wantedId) return await open(wantedId);
       if (wanted) {
         const named = (await list()).find(entry => entry.name.toLowerCase() === wanted.toLowerCase());
         if (named) return await open(named.id);

@@ -1,4 +1,5 @@
 import GUI from 'lil-gui';
+import { createSceneCamera, type SceneCameraDeps } from './scene-camera';
 import type { CourseKnot, CoursePath, V3 } from '../../../core/doc/types';
 import type { EditDoc } from '../../../core/doc/doc-edit';
 import { seatRunOnTerrain } from '../../../core/doc/course';
@@ -45,6 +46,7 @@ export type { SceneSel } from './scene-navigation';
  */
 
 export type ScenePanelDeps = {
+  camera: SceneCameraDeps;
   getDoc: () => EditDoc;
   getSelected: () => number | null;      // the selected knot on the run
   setSelected: (i: number | null) => void;
@@ -99,6 +101,9 @@ export function createScenePanel(deps: ScenePanelDeps) {
   sceneHost.appendChild(sceneGui.domElement);
   // The landing category is only the reference picker. Every study category is an adjacent comparison:
   // Authored mountain first, reference second (with a selected-knot subpanel inside the authored Course side).
+  const cameraFolder = sceneGui.addFolder('Camera');
+  cameraFolder.domElement.classList.add('sp-scene-card');
+  const cameraPanel = createSceneCamera(cameraFolder.$children, deps.camera);
   const refFolder = sceneGui.addFolder('Reference');         // landing view: read-only comparison picker
   const sunFolder = sceneGui.addFolder(mountainName());      // Lighting: authored sun
   const lightFolder = sceneGui.addFolder(referenceHeader());// Lighting: recovered reference study
@@ -124,6 +129,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     { value: 'godrays', label: 'God Rays', icon: '✺', title: () => `${mountainName()} god-ray settings followed by ${referenceName()}’s extracted settings.` },
     { value: 'sound', label: 'Sound', icon: '♫', title: () => `${mountainName()} race music followed by shared rider audio and the ${referenceName()} music graph.` },
     { value: 'skybox', label: 'Skybox', icon: '▣', title: () => `${mountainName()} skybox followed by the ${referenceName()} skybox.` },
+    { value: 'camera', label: 'Camera', icon: '◉', title: 'Inspect and set the camera, restore your opening view, or save a screenshot.' },
     { value: 'course', label: 'Course', icon: '⌁', title: () => `${mountainName()} run controls followed by the recovered ${referenceName()} course.` },
   ];
 
@@ -166,6 +172,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
   /** Fold the launcher + details away from the SCENE header, leaving just it. */
   function applySceneCollapse() {
     sceneGui.domElement.style.display = sceneCollapsed ? 'none' : '';
+    cameraPanel.setActive(isSceneActive() && sceneSel === 'camera' && !sceneCollapsed);
     const list = outliner.querySelector<HTMLElement>('.sp-scene-categories');
     if (list) list.style.display = sceneCollapsed ? 'none' : '';
     const caret = outliner.querySelector<HTMLElement>('.sp-out-caret');
@@ -177,6 +184,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     for (const folder of [lightFolder, refGodRayFolder, refSoundFolder, refSkyFolder, refCourseFolder])
       folder.title(referenceHeader());
     const visible = sceneFolderVisibility(sceneSel, getSelected() !== null || getSelectedKnots().length > 0);
+    cameraFolder.show(visible.camera);
     refFolder.show(visible.info);
     sunFolder.show(visible.lighting);
     lightFolder.show(visible.lighting);
@@ -224,6 +232,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
   function setSceneVisible(visible: boolean) {
     if (!visible && leavesSceneSound(sceneSel, null)) stopAudition();
     sceneHost.style.display = visible ? 'flex' : 'none';
+    cameraPanel.setActive(visible && sceneSel === 'camera' && !sceneCollapsed);
   }
 
   /** Escape from a focused category returns to the default Reference launcher/detail. */
@@ -697,6 +706,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     refSoundFolder, refSkyFolder, refCourseFolder,
     getSceneSel: () => sceneSel,
     setSceneSel: (s: SceneSel) => {
+      cameraPanel.setActive(false);
       if (leavesSceneSound(sceneSel, s)) stopAudition();
       sceneSel = s;
     }, // host resets state, then rebuilds the panel itself

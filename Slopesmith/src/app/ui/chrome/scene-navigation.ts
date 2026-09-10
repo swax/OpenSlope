@@ -1,5 +1,5 @@
 /** The Scene toolbox's focused comparison categories. `info` is the Reference landing view. */
-export type SceneSel = 'info' | 'lighting' | 'godrays' | 'sound' | 'skybox' | 'course';
+export type SceneSel = 'info' | 'lighting' | 'godrays' | 'sound' | 'skybox' | 'course' | 'camera';
 
 export type SceneBoundsVisibility = {
   mountain: boolean;
@@ -14,6 +14,7 @@ export type SceneFolderVisibility = {
   skybox: boolean;
   course: boolean;
   selection: boolean;
+  camera: boolean;
 };
 
 /** One category owns exactly one Mountain / Reference folder pair; Course may add a selected-knot card. */
@@ -25,6 +26,7 @@ export function sceneFolderVisibility(selected: SceneSel, hasCourseSelection: bo
     sound: selected === 'sound',
     skybox: selected === 'skybox',
     course: selected === 'course',
+    camera: selected === 'camera',
     selection: selected === 'course' && hasCourseSelection,
   };
 }

@@ -64,6 +64,7 @@ function externalSave(name: string): void {
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
   const url = String(input);
+  if (url === '/api/projects/missing-link/activate') return Response.json({ error: 'Missing map' }, { status: 404 });
   if (url === '/api/projects/current') return new Response(null, { status: 204 });
   if (url === '/api/projects' && (!init?.method || init.method === 'GET')) {
     return Response.json({ projects: listedProjects ?? (active ? [active.project] : []) });
@@ -183,6 +184,15 @@ try {
   const awaitingChoice = await tablet.initialize(tabletRecovery);
   check(awaitingChoice.name === tabletRecovery.name && tablet.current() === null && tablet.needsProjectChoice(),
     'a fresh device facing several projects waits for an explicit choice and creates none of them');
+  const linked = createProjectSync({ getDoc: () => tabletRecovery });
+  const linkedDoc = await linked.initialize(tabletRecovery, 'Old name before rename', active!.project.id);
+  check(linkedDoc.name === active!.document.name && linked.current()?.id === active!.project.id
+    && !linked.needsProjectChoice() && projects === projectCount,
+    'a stable project id opens that mountain even with an obsolete name and several maps to choose from');
+  const brokenLink = createProjectSync({ getDoc: () => tabletRecovery });
+  const brokenDoc = await brokenLink.initialize(tabletRecovery, '', 'missing-link');
+  check(brokenDoc === tabletRecovery && brokenLink.current() === null && projects === projectCount,
+    'a missing linked id never activates another map or creates one from recovery');
   listedProjects = null;
 
   doc.name = 'Autosaved Mountain';

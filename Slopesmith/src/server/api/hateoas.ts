@@ -26,6 +26,8 @@ import { holds, type Role } from '../accounts/policy';
  */
 
 export interface ApiLink {
+  execution?: 'browser';
+  schema?: string;
   rel: string;
   href: string;
   title?: string;
@@ -55,6 +57,8 @@ export interface ApiAction {
 }
 
 export interface ApiLinkTemplate {
+  execution?: 'browser';
+  schema?: string;
   rel: string;
   /** href with `{variable}` placeholders the client substitutes, RFC 6570 level 1. */
   hrefTemplate: string;

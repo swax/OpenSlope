@@ -194,3 +194,51 @@
 .sp-scene-categories .sp-out-row { border-radius: 3px; padding-top: 6px; padding-bottom: 6px; }
 .sp-scene-categories .sp-out-row > span:last-child { min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
+
+/* Camera uses compact XYZ rows so its complete view controls fit beside the scene. */
+.sp-camera { padding: 6px 8px 8px; color: #cfe3f5; font: 11px/1.4 system-ui, sans-serif; }
+.sp-camera .sp-camera-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sp-camera-row > span { flex: 0 0 94px; }
+.sp-camera select, .sp-camera input { box-sizing: border-box; min-width: 0; width: 100%;
+  border: 1px solid #34506b; border-radius: 3px; background: #102333; color: #eaf6ff;
+  font: inherit; height: 26px; padding: 3px 5px; }
+.sp-camera input:focus, .sp-camera select:focus { outline: 1px solid #88c7ed; outline-offset: 1px; }
+.sp-camera fieldset { display: flex; gap: 6px; border: 0; padding: 0; margin: 8px 0; min-width: 0; }
+.sp-camera legend { padding: 0; margin-bottom: 4px; font-weight: 600; }
+.sp-camera fieldset label { display: flex; flex: 1 1 0; min-width: 0; align-items: center; gap: 4px; color: #90abc0; }
+.sp-camera input::-webkit-inner-spin-button { appearance: none; }
+.sp-camera .sp-camera-actions { display: flex; gap: 5px; margin: 8px 0 5px; }
+.sp-camera .sp-camera-actions button { flex: 1 1 0; width: auto; white-space: nowrap; }
+.sp-camera button { min-height: 27px; color: #dcecf7; background: #1b3448;
+  border: 1px solid #3b5870; border-radius: 3px; font: inherit; cursor: pointer; padding: 4px 6px; }
+.sp-camera button:hover { background: #294d67; }
+.sp-camera button:focus-visible { outline: 2px solid #88c7ed; outline-offset: 1px; }
+.sp-camera button[type="submit"] { color: #effaff; background: #315d7c; }
+.sp-camera button:disabled { opacity: 0.6; cursor: wait; }
+.sp-camera .sp-camera-save { width: 100%; }
+.sp-camera p { margin: 5px 0; line-height: 1.4; }
+.sp-camera .sp-camera-hint { color: #91aabc; font-size: 10px; }
+.sp-camera .sp-camera-live { white-space: pre-line; overflow-wrap: anywhere; }
+.sp-camera .sp-camera-status { color: #acd7f1; }
+.sp-camera .sp-camera-error { color: #ffaaaa; }
+
+/* Fixed-output captures preserve their aspect ratio in a smaller browser window. */
+#viewport.sp-capture-sized { inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(100vw, calc(100vh * var(--capture-aspect)));
+  height: min(100vh, calc(100vw / var(--capture-aspect))); }
+.sp-camera .sp-camera-save { margin-bottom: 5px; }
+.sp-camera input[hidden] { display: none; }
+#capture-status, #capture-controls { display: none; }
+.sp-view-link #capture-status { display: block; position: fixed; left: 12px; bottom: 5px; z-index: 120;
+  max-width: min(700px, 80vw); border-radius: 4px; padding: 4px 8px; background: #102331ed;
+  color: #b9dcf2; font: 11px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; pointer-events: none; }
+.sp-view-link #capture-status[data-state="error"] { color: #ffb6b6; }
+body.sp-capture-clean > :not(#viewport):not(#capture-status):not(#capture-controls):not(#load-status) { display: none !important; }
+.sp-capture-clean #viewport > :not(canvas) { display: none !important; }
+.sp-capture-clean #capture-status { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+.sp-capture-clean #capture-controls { display: flex; position: fixed; left: 12px; top: 12px; z-index: 150;
+  gap: 6px; opacity: 0; }
+.sp-capture-clean #capture-controls:hover, .sp-capture-clean #capture-controls:focus-within { opacity: 1; }
+#capture-controls button { color: #eaf6ff; background: #1b3448; border: 1px solid #4a6a83;
+  border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+#capture-controls button:disabled { opacity: 0.5; cursor: wait; }

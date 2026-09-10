@@ -72,5 +72,5 @@ export function createRebuilder(deps: {
       try { deps.render(); } catch (e) { deps.onError(e); }
     });
   }
-  return { scheduleRebuild, scheduleSettle };
+  return { scheduleRebuild, scheduleSettle, isPending: () => queued || settleTimer !== null };
 }

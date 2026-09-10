@@ -447,6 +447,9 @@ export function createCameraController(stage: Stage, grid: {
       ortho: stage.isOrtho,
       zoom: stage.isOrtho && stage.orthoCam ? stage.orthoCam.zoom : 1,
       orthoHalfH: stage.orthoHalfH,
+      fov: stage.perspCam.fov,
+      near: stage.camera.near,
+      up: [stage.camera.up.x, stage.camera.up.y, stage.camera.up.z],
     };
   }
 

@@ -1,8 +1,8 @@
 // Universal SSX level scorecard. Measures any Maps/<NAME> folder against GARI's terrain
 // vocabulary, computing GARI live as the reference column so the tool is self-validating
-// (scoring GARI vs GARI yields ~zero deltas). The metrics are the "generator rules" of
-// docs/design/01-terrain-vocabulary.md made executable: profile rhythm, surface mix, quilt
-// continuity. This is the feedback signal for authoring a new mountain.
+// (scoring GARI vs GARI yields ~zero deltas). Measures profile rhythm, surface mix and quilt
+// continuity; see docs/authoring/064-terrain-vocabulary.md for design terms and interpretation.
+// This reference comparison is one feedback signal for authoring a new mountain.
 //
 //   tsx Slopesmith/tools/mountain-study/score.ts            # GARI vs GARI (sanity: all deltas ~0)
 //   tsx Slopesmith/tools/mountain-study/score.ts ELYSIUM    # does the vocabulary generalize to another original level?

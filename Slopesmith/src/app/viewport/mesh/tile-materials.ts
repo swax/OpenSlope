@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderLoadingManager } from '../render-assets';
 import { CUSTOM_TEX_LEVEL, parseTexRef, type TexRef } from '../../../core/paint/textures';
 import { textureRefUrl } from '../../net/asset-paths';
 import { SURFACE_POLY_OFFSET } from '../constants';
@@ -22,7 +23,7 @@ import {
  * A tile that finishes downloading fires `onLoaded` so the caller re-folds it into whatever it's drawing.
  */
 export function createTileMaterials(onLoaded: () => void) {
-  const texLoader = new THREE.TextureLoader();
+  const texLoader = new THREE.TextureLoader(renderLoadingManager);
   const texCache = new Map<string, THREE.Texture>();
   const alphaCache = new Map<string, TextureAlphaAnalysis>();
   const texPending = new Set<string>();

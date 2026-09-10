@@ -181,6 +181,8 @@ function collectDocumentAssets(document: EditDoc, wanted: WantedAssets): void {
 }
 
 async function copyIfPresent(source: string, destination: string, copied: string[], missing: string[]): Promise<void> {
+  // Project-owned uploads satisfy the dependency even when no legacy source exists.
+  if (await pathExists(destination)) return;
   if (!await pathExists(source)) { missing.push(source); return; }
   await ensureDir(dirname(destination));
   try {

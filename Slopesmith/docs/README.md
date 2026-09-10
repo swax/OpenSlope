@@ -7,9 +7,11 @@ defined only in [Trailmap](../../Trailmap/specs/README.md). A Slopesmith documen
 may explain which chapter its code implements, but owns only editor data flow,
 UI, project-authored behavior, deliberate divergences, and verification.
 
-Document numbers are stable identifiers across this directory and `ideas/`, not a completeness count.
-Gaps preserve proposal, retired, or reserved identifiers; other components may reuse the same numbers in
-their own documentation trees.
+Document numbers are stable identifiers shared by this directory, `authoring/`, and `ideas/`, not a
+completeness count. Gaps preserve proposal, retired, or reserved identifiers; other components may reuse
+the same numbers in their own documentation trees. Assign new guides the next unused three-digit number
+above the highest assigned number across these folders, and use it in both the filename and first heading.
+Keep existing numbers when moving a numbered document; `README.md` indexes remain unnumbered.
 
 ## Foundations
 
@@ -33,6 +35,15 @@ their own documentation trees.
 - [045 — Retopology Benchmark](045-retopology-benchmark.md)
 - [054 — Merqury City Trail Study](054-merqury-city-trail-study.md) — measured rules for running a trail between
   buildings, with a village before/after.
+
+## Course authoring
+
+Start with the [authoring index](authoring/README.md) for the editor prerequisites and downstream pipeline.
+
+- [064 — Terrain Vocabulary](authoring/064-terrain-vocabulary.md) — landforms, route choices and material boundaries.
+- [065 — Building a Course](authoring/065-course-building.md) — construct and review one terrain feature at a time.
+- [066 — A Scored Build Loop](authoring/066-scored-build-loop.md) — measure, inspect and ride each feature.
+- [067 — Original Particle Sprites](authoring/067-custom-particle-sprites.md) — custom fog and effect textures.
 
 ## Scene content
 
@@ -85,7 +96,6 @@ their own documentation trees.
 - [035 — Local Projects](035-local-projects.md)
 - [041 — Production Deployment](041-production-deployment.md)
 - [052 — HATEOAS API](052-hateoas-api.md) — the discoverable REST surface an AI agent authors a mountain through.
-- [Original-course authoring](authoring/README.md) — vocabulary and scored build workflows.
 - [`ideas/`](ideas/README.md) — staged proposals and superseded assessments that are not product contracts; its
   index says where each one stands.
 

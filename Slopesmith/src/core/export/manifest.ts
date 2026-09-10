@@ -117,7 +117,8 @@ export function classifyExportProvenance(
   // geometry path, or panorama is authored in Slopesmith.
   if (doc.rails?.length) retail.add('retail-rail-art');
   if (doc.gems?.length) retail.add('retail-gem-art');
-  if (doc.particleVolumes?.length) retail.add('retail-particle-art');
+  if (doc.particleVolumes?.some(volume => !volume.texture?.startsWith('Custom/'))) retail.add('retail-particle-art');
+  if (doc.particleVolumes?.some(volume => volume.texture?.startsWith('Custom/'))) supplied.add('user-texture');
   if (doc.skybox) {
     retail.add(doc.skybox.source.kind === 'level' ? 'retail-sky' : 'retail-sky-ring');
     if (doc.skybox.source.kind === 'custom') supplied.add('user-sky');
