@@ -1,4 +1,5 @@
 import { jsonResponse, type ApiHandler } from './common';
+import { BROWSER_VIEW_SCHEMA } from './browser-workflows';
 import { link, type HateoasEnvelope } from './hateoas';
 
 /**
@@ -50,6 +51,7 @@ const PLACED_POS = {
 };
 
 const SCHEMAS: Record<string, Record<string, unknown>> = {
+  BrowserView: BROWSER_VIEW_SCHEMA,
 
   Login: {
     type: 'object',
@@ -628,7 +630,9 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       + 'o/effect/<table>/<rowId>, the nodes a graph or function owns as '
       + 'o/effect-node/<table>/<rowId>/<nodeId>, and the document\'s own fields as o/effect/document. '
       + 'Study a shipped graph first: GET /api/effects?level=<LEVEL> returns a reference level\'s whole '
-      + 'effects document in this same shape.',
+      + 'effects document in this same shape. Original sprites: extensions.slopesmith.particleTextures maps '
+      + 'native names (for example part) to project-owned Custom/name.png refs. The browser isolates these '
+      + 'from reference-map sprites; folder exports stage the custom PNGs.',
     properties: {
       slots: { type: 'array' },
       graphs: { type: 'array' },
@@ -720,6 +724,7 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
 };
 
 const INDEX_HINTS: Record<string, string> = {
+  BrowserView: 'Browser view fragments: camera, labels, presentation and PNG output',
   Login: 'Sign a browser session in (programs use a bearer key instead)',
   CreateMap: 'Create a mountain, from the default starter or a whole document',
   SaveDocument: 'Replace a whole document optimistically (the only topology write)',

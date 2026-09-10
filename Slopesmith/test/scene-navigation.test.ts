@@ -7,7 +7,7 @@ import {
 } from '../src/app/ui/chrome/scene-navigation';
 import { check, failures } from './check';
 
-const categories: SceneSel[] = ['info', 'lighting', 'godrays', 'sound', 'skybox', 'course'];
+const categories: SceneSel[] = ['info', 'lighting', 'godrays', 'sound', 'skybox', 'course', 'camera'];
 for (const category of categories) {
   const visible = sceneFolderVisibility(category, false);
   const active = (Object.entries(visible) as Array<[keyof typeof visible, boolean]>)

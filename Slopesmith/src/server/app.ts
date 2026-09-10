@@ -170,6 +170,7 @@ const ROUTE_ACCESS: Record<string, Access> = {
   '/api/reference': at('viewer'),
   '/api/avatars': at('viewer'),
   '/api/guide': at('viewer'),
+  '/api/browser': at('viewer'),
   '/api/schemas': at('viewer'),
 
   // Signing in. The three paths that establish a session are the only ones that answer without one, and

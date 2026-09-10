@@ -123,6 +123,10 @@ export type ShadeMode = 'textured' | 'surface' | 'none';
 /** A serialisable snapshot of the camera framing — enough to restore the exact current view on reload
  *  (see serializeView / applyView). Captures the ACTIVE camera so it's correct in either projection. */
 export interface ViewState {
+  /** Optional for views stored before the camera inspector exposed the lens. */
+  fov?: number;
+  near?: number;
+  up?: [number, number, number];
   pos: [number, number, number];    // active camera world position
   target: [number, number, number]; // orbit / look target
   ortho: boolean;                   // orthographic vs perspective projection

@@ -1,3 +1,4 @@
+import { browserProjectLinks } from './browser-workflows';
 import type { ServerResponse } from 'node:http';
 import type { ApiRequest } from './request';
 import type { Identity } from '../accounts/guard';
@@ -250,7 +251,9 @@ function projectEnvelope(project: projects.ProjectManifest, identity: Identity |
       schema: '/api/schemas/ImportedPropRecord',
     },
   ];
-  return { _links: links, _actions: actions, _actionTemplates: templates };
+  const browser = browserProjectLinks(project.id, project.revision);
+  return { _links: [...links, ...browser._links!], _linkTemplates: browser._linkTemplates,
+    _actions: actions, _actionTemplates: templates };
 }
 
 /** What one label holds, in the ids a register names — the row `GET …/labels/{id}` answers with. */
@@ -1045,9 +1048,10 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         if (parts.length === 2) {
           jsonResponse(res, 200, {
             projectId: parts[0], revision, labels: (document.labels ?? []).map(row),
-            _links: [link('self', `${base}/labels`), link('project', base)],
+            _links: [link('self', `${base}/labels`), link('project', base), { rel: 'browser-workflows', href: '/api/browser' }],
             _linkTemplates: [{ rel: 'item', hrefTemplate: `${base}/labels/{labelId}`,
-              title: 'One label with the quad and prop ids it holds, ready to address as registers' }],
+              title: 'One label with the quad and prop ids it holds, ready to address as registers' },
+              ...browserProjectLinks(parts[0], revision)._linkTemplates!.filter(link => link.rel === 'frame-label')],
           });
           return;
         }
@@ -1064,6 +1068,8 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           quadIds: membership.get(label.id)?.quadIds ?? [], propIds: membership.get(label.id)?.propIds ?? [],
           _links: [
             link('self', `${base}/labels/${encodeURIComponent(label.id)}`),
+            { rel: 'browser-view', href: `/?project=${encodeURIComponent(parts[0])}#view=1&revision=${revision}&label=${encodeURIComponent(label.id)}&preset=clean`,
+              title: 'Frame this label in the browser', execution: 'browser' },
             link('collection', `${base}/labels`),
             link('project', base),
           ],

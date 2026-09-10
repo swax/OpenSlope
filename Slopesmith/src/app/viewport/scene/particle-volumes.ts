@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { textureRefUrl } from '../../net/asset-paths';
+import { renderLoadingManager } from '../render-assets';
 import type { ParticleVolume } from '../../../core/particles/volumes';
 import { particleRawFromEditor } from '../../../core/particles/volumes';
 import { RAW_TO_EDITOR } from '../constants';
@@ -36,13 +38,21 @@ export function createParticleVolumesLayer(stage: Stage) {
   stage.worldRoot.add(authoredVisuals, authoredBounds);
   stage.refRoot.add(referenceVisuals, referenceBounds);
 
-  const texture = new THREE.TextureLoader().load('/api/particle-texture?name=fog0.png', loaded => {
-    loaded.colorSpace = THREE.SRGBColorSpace;
-    loaded.needsUpdate = true;
-  });
+  const textures = new Map<string, THREE.Texture>();
+  function fogTexture(ref?: string) {
+    const url = ref ? textureRefUrl(ref) : '/api/particle-texture?name=fog0.png';
+    let texture = textures.get(url);
+    if (!texture) {
+      texture = new THREE.TextureLoader(renderLoadingManager).load(url, loaded => {
+        loaded.colorSpace = THREE.SRGBColorSpace; loaded.needsUpdate = true;
+      });
+      textures.set(url, texture);
+    }
+    return texture;
+  }
   const authoredDraws = new Map<string, VolumeDraw>();
   const referenceDraws = new Map<number, VolumeDraw>();
-  let authoredBatch: ParticleBatches | null = null;
+  let authoredBatches: ParticleBatches[] = [];
   let referenceBatch: ParticleBatches | null = null;
   let worldEffectsEnabled = false;
   let inspecting = false;
@@ -101,11 +111,11 @@ export function createParticleVolumesLayer(stage: Stage) {
   /** One static point-sprite draw replaces one Three Sprite draw per puff. Positions already include the native
    * volume transform; the parent group supplies only authored/reference chirality and comparison placement. */
   function buildBatch(group: THREE.Group, source: 'authored' | 'reference', puffs: readonly FogPuffDraw[],
-    previous: ParticleBatches | null): ParticleBatches | null {
+    previous: ParticleBatches | null, ref?: string): ParticleBatches | null {
     previous?.dispose();
     group.clear();
     if (!puffs.length) return null;
-    const batch = createParticleBatches(texture, 1, 1, puffs.length);
+    const batch = createParticleBatches(fogTexture(ref), 1, 1, puffs.length);
     const { position, color, alpha, size, sprite } = batch.buffers;
     for (let i = 0; i < puffs.length; i++) {
       const puff = puffs[i], k = i * 3;
@@ -128,12 +138,19 @@ export function createParticleVolumesLayer(stage: Stage) {
 
   function setAuthored(volumes: readonly ParticleVolume[]) {
     disposeBounds(authoredBounds, authoredDraws.values()); authoredDraws.clear();
-    const puffs: FogPuffDraw[] = [];
+    authoredBatches.forEach(batch => batch.dispose()); authoredBatches = []; authoredVisuals.clear();
+    const groups = new Map<string, FogPuffDraw[]>();
     volumes.forEach((volume, index) => {
+      const ref = volume.texture ?? '';
+      const puffs = groups.get(ref) ?? []; groups.set(ref, puffs);
       const draw = build(volume, 'authored', index, puffs);
       authoredDraws.set(volume.id, draw); authoredBounds.add(draw.hit);
     });
-    authoredBatch = buildBatch(authoredVisuals, 'authored', puffs, authoredBatch);
+    for (const [ref, puffs] of groups) {
+      const group = new THREE.Group(); authoredVisuals.add(group);
+      const batch = buildBatch(group, 'authored', puffs, null, ref || undefined);
+      if (batch) authoredBatches.push(batch);
+    }
     applyVisibility(); applySelection();
   }
 
@@ -152,7 +169,7 @@ export function createParticleVolumesLayer(stage: Stage) {
   function sync() {
     stage.renderer.getDrawingBufferSize(drawingBufferSize);
     const halfHeight = Math.max(1, drawingBufferSize.y * 0.5);
-    if (authoredBatch) authoredBatch.uniforms.halfViewportHeight.value = halfHeight;
+    for (const batch of authoredBatches) batch.uniforms.halfViewportHeight.value = halfHeight;
     if (referenceBatch) referenceBatch.uniforms.halfViewportHeight.value = halfHeight;
   }
 

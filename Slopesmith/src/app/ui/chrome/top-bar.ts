@@ -91,7 +91,7 @@ export function createTopBar(deps: TopBarDeps) {
   // controls, so the tips stay short.
   const modeSeg = segmented<Mode>(
     [
-      { value: 'info', label: 'Scene', icon: MODE_ICON.info, title: 'Scene [1] — load a reference world and inspect lighting, sound, skybox, and course.' },
+      { value: 'info', label: 'Scene', icon: MODE_ICON.info, title: 'Scene [1] — load a reference world and inspect lighting, sound, skybox, course, and camera.' },
       { value: 'edit', label: 'Edit', icon: MODE_ICON.edit, title: 'Edit [2] — drag knots and corners to shape the mountain; Shift-drag for height.' },
       { value: 'sculpt', label: 'Sculpt', icon: MODE_ICON.sculpt, title: 'Sculpt [3] — brush the terrain: raise, lower, smooth, flatten, grab, push.' },
       { value: 'paint', label: 'Paint', icon: MODE_ICON.paint, title: 'Paint [4] — paint terrain textures, each with its ride feel.' },

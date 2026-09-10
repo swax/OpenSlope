@@ -352,6 +352,23 @@ a pass goes wrong. Register edits from you appear live to anyone editing the sam
 theirs in your next read — last writer wins per register, so partition work rather than fighting over one
 object.
 
+## Browser views and screenshots
+
+Follow the root's \`browser-workflows\` link to \`GET /api/browser\`. Each project advertises a browser
+view and templates for an exact camera screenshot or framing a label. These links return HTML: open them
+in a WebGL browser, wait for \`#capture-status[data-state="ready"]\` in that tab, verify its project,
+revision and request attributes, then click **Save screenshot** to download a PNG. HTTP fetch cannot render
+a view. The schema at \`/api/schemas/BrowserView\` describes each fragment parameter and preset.
+
+Map identity uses \`?project=<id>\`; the fragment describes the camera in authored metres (Y up), display
+options and optional PNG dimensions. For example, \`#view=1&label=label%3A0000&preset=topology&size=1600,900\`
+frames that label's curved terrain and props. A revision in an API link checks the live revision; it never
+loads history. Request a fresh link after editing. In Scene → Camera, **Copy view link** records the current
+camera and display settings. \`ui=0\` hides the editor; Escape restores it. View links do not edit terrain.
+
+The browser workflow resource also documents development-build scene inspection, Test mode's ride controls,
+and browser export. Readiness waits for scene assets and completed frames; it does not freeze animation.
+
 ## Exporting
 
 \`GET /api/projects/{id}/download?assets=bytes\` returns the whole map as one self-contained JSON bundle
@@ -360,4 +377,10 @@ server. Snowknife/Unity/ISO export composes in the browser editor, not over this
 /api/preflight?project=<id>\` with \`{"doc": <document>}\` reports what an export of it would ship, and names
 the prop pages it could not resolve. Scope it with \`?project=\` like an upload — the map's own tile and
 model libraries are resolved inside it.
+Original particles: upload PNGs through texture-upload. Set particleVolumes[].texture to
+Custom/name.png for fog. For emitter sprite U49=0, set effects.extensions.slopesmith.particleTextures
+to {"part":"Custom/spark.png"}. Browser preview scopes these to the current project and keeps reference
+sprites separate. Folder export stages the images under Textures/Particles; its single fog0 slot
+requires the same sprite for every fog volume. PS2 particle-bank injection needs separate verification.
+
 `;

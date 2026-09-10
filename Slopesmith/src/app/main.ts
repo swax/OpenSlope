@@ -38,6 +38,8 @@ import { DockTab } from './ui/components/dock-tab';
 import { createDialogs } from './ui/chrome/dialogs';
 import { fetchJson } from './net/fetch-json';
 import { createScenePanel } from './ui/chrome/scene-panel';
+import { createBrowserViews } from './ui/browser-views';
+import { REF_LOAD_OFFSET_X } from './viewport/constants';
 import { installAccounts } from './ui/chrome/sign-in';
 import { createChatBox, plainChatText } from './ui/chrome/chat-box';
 import { createVoiceChat } from './ui/chrome/voice-chat';
@@ -247,6 +249,8 @@ if (new URLSearchParams(location.search).has('verifyRebuild')) viewport.verifyRe
 // can address a prop / rail / gem / light by uid, and exposes a READ-ONLY observation API. Dev + ?agent=1
 // only, and dynamically imported so it never enters a production bundle. Null in every ordinary session.
 let agentLayer: AgentLayer | null = null;
+let captureBuildSequence = 0;
+let captureBuildError: string | null = null;
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('agent')) {
   void import('./dev/agent-layer')
     .then(m => { agentLayer = m.installAgentLayer({ store, viewport, container }); })
@@ -743,6 +747,7 @@ function finishRenderDoc(edited = true) {
   if (edited) persistDocumentEdit();
   else persistDoc(); // keep the crash-recovery copy current without touching the revisioned project
   refreshMountainTitle();
+  captureBuildSequence++; captureBuildError = null;
   agentLayer?.onRendered(); // drives the agent layer's settled() + entity re-projection
 }
 
@@ -764,6 +769,7 @@ function renderDoc() {
  */
 function settleDoc() {
   viewport.settleMountain();
+  captureBuildSequence++; captureBuildError = null;
   agentLayer?.onRendered();
 }
 
@@ -812,14 +818,14 @@ async function renderDocProgressively(token: number) {
   loadStatus.update(token, { progress: 96, label: 'Finalizing editor state', detail: 'Preparing the restored session' });
   finishRenderDoc(false);
 }
-const { scheduleRebuild, scheduleSettle } = createRebuilder({
+const { scheduleRebuild, scheduleSettle, isPending: isRebuildPending } = createRebuilder({
   scheduleCommit: () => scheduleCommit(), // deferred: history is created below
   render: renderDoc,
   settle: settleDoc,
   // A render that threw may have left the quilt half-written, and the watcher has already taken the document
   // it was drawing as drawn. Forgetting that is what makes the next render a full rebuild rather than an
   // incremental one on top of a state nothing ever finished painting.
-  onError: e => { netWatcher.reset(); log(`build error: ${e}`); agentLayer?.onBuildError(e); },
+  onError: e => { captureBuildError = String(e); netWatcher.reset(); log(`build error: ${e}`); agentLayer?.onBuildError(e); },
 });
 
 function log(msg: string) {
@@ -981,6 +987,22 @@ const { sunFolder, godRayFolder, refGodRayFolder, skyPreviewFolder, skyFolder, r
   refSoundFolder, refSkyFolder, refCourseFolder,
   getSceneSel, setSceneSel, rebuildScene, rebuildOutliner, selectScene, backToInfo,
   applySceneSelection, refreshSelection, deleteKnot, setSceneVisible } = createScenePanel({
+  camera: {
+    getView: () => viewport.serializeView(),
+    applyView: view => viewport.applyView(view),
+    getName: () => activeDoc().name,
+    capture: () => viewport.captureScreenshot(),
+    viewLink: () => browserViews.currentLink(),
+    getSpaces: () => {
+      const own = viewport.cameraMountainCentre('authored');
+      const ref = viewport.cameraMountainCentre('reference');
+      return [
+        { id: 'world', label: 'World', origin: [0, 0, 0] as [number, number, number] },
+        ...(own ? [{ id: 'authored', label: `${activeDoc().name} centre`, origin: own }] : []),
+        ...(ref ? [{ id: 'reference', label: `Reference: ${viewport.refLevelName} centre`, origin: ref }] : []),
+      ];
+    },
+  },
   getDoc: activeDoc,
   getSelected: () => store.selected,
   setSelected: i => { store.selected = i; if (i !== null) store.selectedKnots = []; },
@@ -2086,7 +2108,7 @@ function pickEditedModelTexture() {
  * A rename hands over the name it just settled on, because the manifest does not carry it until that save lands.
  */
 function refreshMapUrl(name = projectSync.current()?.name ?? '') {
-  showMapInUrl(name);
+  showMapInUrl(name, projectSync.current()?.id);
 }
 
 /** Bind the scene + panels to the current `mdoc` (after New / Load / undo). */
@@ -2174,6 +2196,7 @@ async function loadMountain() {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    captureBuildError = message;
     log(`build error: ${message}`);
     agentLayer?.onBuildError(error);
     await loadStatus.fail(token, message);
@@ -2197,13 +2220,36 @@ installShortcuts({
   openChat: prefill => chat.open(prefill),
 });
 
+const browserViews = createBrowserViews({
+  viewport, getDoc: () => store.mdoc, getProject: () => projectSync.current(),
+  getMode: () => store.currentMode, getOptions: currentSharedViewOptions,
+  building: () => isRebuildPending() || viewport.mountainSettlePending || loadStatus.isBusy(),
+  buildError: () => captureBuildError, buildSequence: () => captureBuildSequence,
+  showCamera: () => { setMode('info'); selectScene('camera'); },
+  prepare: async view => {
+    if (projectSync.missingMapName() && !new URLSearchParams(location.search).has('project'))
+      throw new Error(`No mountain named ${projectSync.missingMapName()} on this server.`);
+    if (view.reference === 'none') reference.clearReference();
+    else {
+      if (reference.getRefLevel() !== view.reference) await reference.openReference(view.reference);
+      if (viewport.refLevelName !== view.reference) throw new Error(`Reference ${view.reference} could not be loaded.`);
+      viewport.setReferenceOffset(view.refOffset ?? [REF_LOAD_OFFSET_X, 0, 0]);
+    }
+    setMode(view.mode === 'scene' ? 'info' : view.mode === 'test' ? 'play' : view.mode);
+    selectScene('camera');
+    applyScreenOptions({ cursor: null, view: viewport.serializeSharedView(), options: view.options });
+    if (view.options.effects) await ensureReferenceEffects();
+    if (view.options.tricks) await trickTools.ensureTrickArt();
+  },
+});
+
 // Boot waits for the progressive terrain build before restoring dependent services and the saved camera. This
 // also prevents a stored reference mountain from competing with the authored mountain for the status surface.
 async function boot() {
   // Existing users arrive with their last localStorage mountain. If no disk project exists, initialize() makes
   // that exact recovery document the first project; otherwise the URL's map, and failing that the active disk
   // project, wins.
-  store.mdoc = migrateMountain(await projectSync.initialize(store.mdoc, mapNameInUrl()));
+  store.mdoc = migrateMountain(await projectSync.initialize(store.mdoc, mapNameInUrl(), new URLSearchParams(location.search).get('project') ?? ''));
   joinMap(); // presence and the register room follow the map this tab actually opened (docs/038)
   await loadMountain();
   // A link to a map this server does not have — renamed since, deleted, or somebody else's. Said out loud
@@ -2218,9 +2264,9 @@ async function boot() {
       : `No mountain named ${missing} on this server.`, 'warn', 8000);
   }
   if (projectSync.needsProjectChoice()) openProjectDialog(true);
-  void initReference();
+  const referenceReady = initReference({ restore: !browserViews.hasRequest() });
   initSunLight();
-  void initSky(); // fetches the sky catalogue, then hangs whatever sky the restored doc names
+  const skyReady = initSky(); // capture waits for the catalogue and its scene loads
   library.init();
   propLib.init();
   applyPropsVisible(); // seed placed-prop visibility from the restored global toggle (reference props follow on load)
@@ -2240,13 +2286,16 @@ async function boot() {
   updateCmdSheet(); // seed the lower-right command summary for the initial (edit) mode
   log('');
 
+  await Promise.all([referenceReady, skyReady]);
   // loadMountain() frames from scratch; only boot overrides that with the view the user left off at.
   const storedView = loadStored<ViewState>(VIEW_KEY);
   if (isValidView(storedView)) viewport.applyView(storedView);
   // The terrain now exists, so restored sun/reference lighting can safely target its live materials.
   requestAnimationFrame(() => { applySunLight(); applyReferenceLighting(); });
 }
-void boot();
+void boot().then(() => browserViews.booted(), error => {
+  captureBuildError = String(error); browserViews.booted();
+});
 // The account menu, for a member (docs/038). Who this browser is was settled before this module was fetched —
 // `boot.ts` only imports the editor for a browser the server accepts — so this reads that same answer and
 // costs no request. An accountless loopback workspace gets Settings in the same upper-right position.

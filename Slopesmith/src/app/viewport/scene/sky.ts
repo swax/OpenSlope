@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderLoadingManager } from '../render-assets';
 import type { Rgba } from '../../../core/paint/ground-textures';
 import { AUTHORING_SKY_GEOMETRY, skyBackdrop, type SkyMeshData, type SkyRing } from '../../../core/sky/ring';
 import { deriveTopColor } from '../../../core/sky/slice';
@@ -76,7 +77,7 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
   }
   stage.scene.add(group); // NOT worldRoot: core/sky/ring already emits three-world coords (the chirality flip is folded in)
 
-  const loader = new THREE.TextureLoader();
+  const loader = new THREE.TextureLoader(renderLoadingManager);
   let token = 0; // a later setSky must win, however slowly an earlier one's image decodes
   // Visibility is a request, not just the group's current state: a panorama may still be decoding when the
   // caller hides it (for example, when leaving Info). The load callback must honour that later request rather

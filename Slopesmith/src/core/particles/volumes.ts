@@ -41,6 +41,8 @@ export interface ParticleVolume {
    * authored-from-scratch cloud) => the first extracted copy in the library.
    */
   donor?: string;
+  /** Optional project-owned fog sprite (Custom/name.png), used by browser preview and folder export. */
+  texture?: string;
 }
 
 interface RawParticleInstance {
@@ -278,6 +280,7 @@ export function normalizeParticleVolumes(input: unknown): ParticleVolume[] {
         ? [integer(value.unknownInts[0]), integer(value.unknownInts[1]), integer(value.unknownInts[2]),
           integer(value.unknownInts[3]), integer(value.unknownInts[4])] : [0, 0, 0, 0, 0],
       ...(typeof value.donor === 'string' && value.donor ? { donor: value.donor } : {}),
+      ...(typeof value.texture === 'string' && value.texture ? { texture: value.texture } : {}),
     };
     if (out.some(volume => volume.id === candidate.id)) candidate.id = nextParticleVolumeId(out);
     if (out.some(volume => volume.name.toLowerCase() === candidate.name.toLowerCase()))

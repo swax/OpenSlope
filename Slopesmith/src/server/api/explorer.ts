@@ -286,7 +286,11 @@ function linkTemplateCard(template) {
   var inputs = templateInputs(template.hrefTemplate, card);
   var row = el('div', 'row');
   var open = el('button', 'primary', 'Open');
-  open.addEventListener('click', function () { navigate(fillTemplate(template.hrefTemplate, inputs)); });
+  open.textContent = template.execution === 'browser' ? 'Open in browser' : 'Open';
+  open.addEventListener('click', function () {
+    var href = fillTemplate(template.hrefTemplate, inputs);
+    if (template.execution === 'browser') window.open(href, '_blank', 'noopener'); else navigate(href);
+  });
   row.appendChild(open);
   card.appendChild(row);
   return card;
@@ -334,7 +338,9 @@ function render(reply, path) {
         chip.appendChild(el('span', 'rel', link.rel));
         chip.appendChild(el('span', 'href', link.href));
         if (link.title) chip.appendChild(el('span', 'title', link.title));
-        chip.addEventListener('click', function () { navigate(link.href); });
+        chip.addEventListener('click', function () {
+          if (link.execution === 'browser') window.open(link.href, '_blank', 'noopener'); else navigate(link.href);
+        });
         chips.appendChild(chip);
       });
       section.appendChild(chips);

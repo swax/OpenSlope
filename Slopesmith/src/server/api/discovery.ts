@@ -10,6 +10,7 @@ import { levelsWithProps } from '../routes/props';
 import { textureFiles } from '../routes/textures';
 import { jsonResponse, type ApiHandler } from './common';
 import { AUTHORING_GUIDE } from './guide';
+import { BROWSER_WORKFLOWS } from './browser-workflows';
 import { link, type ApiAction, type ApiLink, type HateoasEnvelope } from './hateoas';
 
 /**
@@ -69,6 +70,7 @@ function root(identity: Identity | undefined): Record<string, unknown> {
     link('guide', '/api/guide', 'How to author a mountain through this API — read this first'),
     link('explorer', '/api/explorer', 'Browse this API interactively (humans, in a browser)'),
     link('schemas', '/api/schemas', 'JSON Schemas the action bodies point at'),
+    link('browser-workflows', '/api/browser', 'Browser view links, screenshot readiness, inspection, rides and exports'),
     link('me', '/api/auth/session', 'The signed-in account behind this request'),
     link('version', '/api/version', 'What this server is running'),
   ];
@@ -206,6 +208,10 @@ function avatarsBranch(): Record<string, unknown> {
 }
 
 export const discoveryRoutes: Record<string, ApiHandler> = {
+  '/api/browser': (req, res) => {
+    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    jsonResponse(res, 200, BROWSER_WORKFLOWS);
+  },
   // The directory of extracted levels, and — one path down — any one of them: `/api/reference/GARI` is the
   // `item` template of the `levels` list, resolved. A name no folder answers to is a 404 back to the
   // directory, the same recourse the root's catch-all gives.

@@ -3,7 +3,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { MeshBVH } from 'three-mesh-bvh';
 import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type V3 } from '../../core/doc/types';
-import { meshAdjacency, meshCageEdges, meshFromDoc, docEdgeHandles, INTERIOR_CP, type MeshAdjacency, type EdgeHandle } from '../../core/mesh/topology';
+import { meshAdjacency, meshCageEdges, meshFromDoc, quadControlPoints, docEdgeHandles, INTERIOR_CP, type MeshAdjacency, type EdgeHandle } from '../../core/mesh/topology';
 import { meshEdgeSegments } from '../../core/mesh/selection';
 import { findTJunctions } from '../../core/mesh/t-junctions';
 import { findEdgeCrossings } from '../../core/mesh/edge-crossings';
@@ -1189,6 +1189,7 @@ export class Viewport {
       try {
         // One call covers the complete stereo submission in WebXR, so this query includes both eye renders.
         this.renderer.render(this.scene, this.camera);
+        this.renderFrame++;
       } finally {
         this.scene.matrixWorldAutoUpdate = matrixWorldAutoUpdate;
         if (profileGpu) this.gpuTimer.endFrame();
@@ -1557,6 +1558,69 @@ export class Viewport {
   applyView(v: ViewState) { this.cameraCtl.applyView(v); }
   /** Follow a live shared view without rebuilding the camera/navigation gizmo on every sample. */
   followView(v: SharedCameraView) { this.cameraCtl.followView(v); }
+
+  /** Terrain centre in editor coordinates, including a moved reference's placement offset. */
+  cameraMountainCentre(which: 'authored' | 'reference'): V3 | null {
+    const bounds = which === 'authored' ? this.ownBounds : this.refBounds;
+    if (!bounds || bounds.isEmpty()) return null;
+    const point = bounds.getCenter(new THREE.Vector3());
+    if (which === 'reference') point.add(this.refRoot.position);
+    return [point.x, point.y, point.z];
+  }
+
+  frameCamera(doc: EditDoc, label?: string, az = 45, el = 35) {
+    const matched = label === undefined ? [] : (doc.labels ?? []).filter(item => item.id === label || item.name === label);
+    if (label !== undefined && matched.length !== 1) throw new Error(matched.length ? `Label name is ambiguous: ${label}. Use its id.` : `No label named ${label}.`);
+    const labelId = matched[0]?.id;
+    const box = new THREE.Box3();
+    const { mesh, edgeHandle } = meshFromDoc(doc);
+    for (let q = 0; q < doc.quads.length; q++) {
+      if (labelId && !doc.quadLabels?.[q]?.includes(labelId)) continue;
+      for (const p of quadControlPoints(mesh, edgeHandle, q, doc.quadTwist?.[q]))
+        box.expandByPoint(new THREE.Vector3(...this.dataToWorld(p)));
+    }
+    for (const prop of doc.props ?? []) {
+      if (labelId && !prop.labels?.includes(labelId)) continue;
+      const sphere = prop.id ? this.props.propWorldSphere(prop.id) : null;
+      if (sphere) box.union(new THREE.Box3().setFromCenterAndSize(sphere.center, new THREE.Vector3().setScalar(2 * sphere.radius)));
+      else box.expandByPoint(new THREE.Vector3(...this.dataToWorld(prop.pos)));
+    }
+    if (box.isEmpty()) throw new Error(label ? `Label ${label} has no terrain or props to frame.` : 'The mountain has no terrain or props to frame.');
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const a = az * Math.PI / 180, e = el * Math.PI / 180;
+    const direction = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
+    this.cameraCtl.lookFrom(sphere.center.clone().addScaledVector(direction, Math.max(10, sphere.radius * 3)), sphere.center);
+    const aspect = this.container.clientWidth / Math.max(1, this.container.clientHeight);
+    this.cameraCtl.frameSphere(sphere.center, sphere.radius * (this.isOrtho ? Math.max(1, 1 / aspect) : 1));
+  }
+
+  renderFrame = 0;
+  captureSize: [number, number] | null = null;
+  private capturePixelRatio = 1;
+  setCaptureSize(size: [number, number] | null) {
+    if (!size && !this.captureSize) return;
+    if (size && !this.captureSize) this.capturePixelRatio = this.renderer.getPixelRatio();
+    this.captureSize = size;
+    this.container.classList.toggle('sp-capture-sized', !!size);
+    if (size) this.container.style.setProperty('--capture-aspect', String(size[0] / size[1]));
+    else this.renderer.setPixelRatio(this.capturePixelRatio || Math.min(window.devicePixelRatio, 2));
+    this.resize();
+  }
+
+  /** Capture the prepared view without waiting for a background tab's suspended animation or encoder callbacks. */
+  captureScreenshot(): Promise<Blob> {
+    if (this.renderer.xr.isPresenting) return Promise.reject(new Error('Leave VR to capture the desktop viewport.'));
+    try {
+      this.renderer.render(this.scene, this.camera);
+      this.renderFrame++;
+      // Encode before WebGL discards the back buffer. Capture dimensions are bounded by setCaptureSize.
+      const encoded = this.renderer.domElement.toDataURL('image/png').split(',')[1];
+      if (!encoded) throw new Error('The browser could not encode the screenshot.');
+      const binary = atob(encoded), bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return Promise.resolve(new Blob([bytes], { type: 'image/png' }));
+    } catch (error) { return Promise.reject(error); }
+  }
 
   /** Terrain solid: 'textured' = real tiles, 'surface' = SurfaceType tint, 'none' = no solid drawn. */
   get shadeMode(): ShadeMode { return this.shading; }
@@ -3502,7 +3566,12 @@ export class Viewport {
     const h = this.container.clientHeight || 1;
     // While a headset is presenting, the drawing buffer belongs to the device: `setSize` refuses it and warns,
     // and the panel collapsing behind the wearer would otherwise fire the observer repeatedly.
-    if (!this.renderer.xr.isPresenting) this.renderer.setSize(w, h);
+    if (!this.renderer.xr.isPresenting) {
+      if (this.captureSize) {
+        this.renderer.setDrawingBufferSize(this.captureSize[0], this.captureSize[1], 1);
+        this.renderer.domElement.style.width = '100%'; this.renderer.domElement.style.height = '100%';
+      } else this.renderer.setSize(w, h);
+    }
     // fat-line materials (the F overlay + selection outlines) rasterise in pixels, so they need the live
     // canvas resolution
     for (const grp of [...this.paint.fatLineGroups, ...this.selection.fatLineGroups])

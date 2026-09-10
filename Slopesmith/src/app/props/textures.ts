@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderLoadingManager } from '../viewport/render-assets';
 import {
   createUvScrollPlayback,
   createTextureFlipPlayback,
@@ -325,7 +326,7 @@ function setAnimatedMaterialFrame(animated: AnimatedPropMaterial, frame: number)
  * are NOT flipped.
  */
 export class PropTextureCache {
-  private loader = new THREE.TextureLoader();
+  private loader = new THREE.TextureLoader(renderLoadingManager);
   private textures = new Map<string, THREE.Texture>();
   private settled = new Map<string, Promise<void>>();
   private mats = new Map<string, THREE.MeshLambertMaterial>();

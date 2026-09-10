@@ -142,6 +142,12 @@ try {
   const schemas = await call('GET', '/api/schemas', { key });
   check(schemas.status === 200 && (schemas.body.schemas ?? []).some((held: any) => held.name === 'AssignRegisters'),
     'the schema index names the register write');
+  const browser = await call('GET', '/api/browser', { key });
+  check(links(home.body).get('browser-workflows')?.href === '/api/browser'
+    && browser.status === 200 && browser.body.execution === 'browser'
+    && browser.body.screenshot.status.states.includes('changed'), 'browser capture is discoverable with a tab-local readiness contract');
+  const viewSchema = await call('GET', '/api/schemas/BrowserView', { key });
+  check(viewSchema.status === 200 && viewSchema.body.properties.pos.type === 'string', 'browser view parameters have a discoverable schema');
   const assignSchema = await call('GET', '/api/schemas/AssignRegisters', { key });
   check(assignSchema.status === 200 && assignSchema.body?.properties?.changes?.type === 'array',
     'and each entry serves real JSON Schema');
@@ -330,6 +336,12 @@ try {
     'and one label hands over the ids themselves — the quad and prop ids a register names');
   check(links(one.body).get('collection')?.href === `/api/projects/${mine}/labels`,
     'with the way back to the index it came from');
+  const labelView = links(one.body).get('browser-view');
+  const labelUrl = new URL(labelView.href, 'http://localhost');
+  const fragment = new URLSearchParams(labelUrl.hash.slice(1));
+  check(labelView.execution === 'browser' && labelUrl.searchParams.get('project') === mine
+    && fragment.get('label') === 'label:0000' && fragment.get('revision') === String(one.body.revision),
+    'one label offers a concrete browser view bound to its project and observed revision');
   const noLabel = await call('GET', `/api/projects/${mine}/labels/label:9999`, { key });
   check(noLabel.status === 404 && links(noLabel.body).has('collection'),
     'a label this map never defined is a 404 pointing at the ones it did');
@@ -603,6 +615,7 @@ try {
     'and its neighbour seat is refused with the rest of the writes: it asks the same question, then moves things');
   check((await call('GET', `/api/projects/${mine}/labels`, { key })).status === 200,
     'and so does the label index, which is a read like every other read of a map');
+  check((await call('GET', '/api/browser', { key })).status === 200, 'viewers may discover browser capture workflows');
 
   await service.close();
   service = undefined;

@@ -42,7 +42,10 @@ export function saveStored(key: string, value: unknown): void {
  *  from feeding NaNs into the camera, which would blank the viewport). */
 export function isValidView(v: ViewState | null): v is ViewState {
   const vec3 = (a: unknown): a is number[] => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
-  return !!v && vec3(v.pos) && vec3(v.target) && Number.isFinite(v.zoom) && Number.isFinite(v.orthoHalfH);
+  return !!v && vec3(v.pos) && vec3(v.target) && Number.isFinite(v.zoom) && Number.isFinite(v.orthoHalfH)
+    && (v.fov === undefined || Number.isFinite(v.fov) && v.fov >= 1 && v.fov < 180)
+    && (v.near === undefined || Number.isFinite(v.near) && v.near > 0)
+    && (v.up === undefined || vec3(v.up) && Math.hypot(...v.up) > 1e-6);
 }
 
 export function createPersistence(deps: {

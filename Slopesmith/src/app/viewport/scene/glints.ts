@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderLoadingManager } from '../render-assets';
 import { GLINT_LAW, rigGlints, type Glint } from '../../../core/lighting/glints';
 import type { LightRig } from '../../../core/reference/lights';
 import { particleTextureUrl } from '../../net/asset-paths';
@@ -109,7 +110,7 @@ export function createGlintLayer(stage: Stage) {
    *  elements — halo ring (top-left), bright core (top-right), spiked twinkle star (bottom-left). It is the
    *  same shared sprite bank in every extracted level, so it loads once with no level preference. */
   const hasAtlas = { value: 0 };   // the uniform itself, so the load callback needs nothing else in scope
-  const atlas = new THREE.TextureLoader().load(particleTextureUrl('lens.png', ''),
+  const atlas = new THREE.TextureLoader(renderLoadingManager).load(particleTextureUrl('lens.png', ''),
     () => { hasAtlas.value = 1; },
     undefined,
     () => { /* no extracted bank on this install — the procedural blob below stands in */ });

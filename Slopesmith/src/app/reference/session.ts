@@ -364,7 +364,7 @@ export function createReference(deps: ReferenceDeps) {
     }
   }
 
-  async function initReference() {
+  async function initReference({ restore = true }: { restore?: boolean } = {}) {
     let opts: string[] = ['(dev server only)'];
     try {
       const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[] }>('/api/levels');
@@ -374,7 +374,7 @@ export function createReference(deps: ReferenceDeps) {
     } catch { /* static build / server down - leave the placeholder */ }
     // re-load the reference that was open last session (if its level is still available)
     const storedRef = loadStored<StoredRef>(REF_KEY);
-    const restoreRef = storedRef && opts.includes(storedRef.level) ? storedRef : null;
+    const restoreRef = restore && storedRef && opts.includes(storedRef.level) ? storedRef : null;
     refState.level = restoreRef ? restoreRef.level : opts[0]; // fresh session sits on the neutral "(none)" entry
     clearGui(refFolder);
     clearGui(refCourseFolder);

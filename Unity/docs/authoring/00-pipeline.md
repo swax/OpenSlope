@@ -6,8 +6,8 @@ project. The authored folder goes through the *same* `snowknife gltf` → import
 original level (Snowknife docs/001 and 034); the only extra is bootstrapping the OpenSlope framework when the
 target project is new.
 
-See also: [vocabulary/01 — terrain vocabulary](../../../Slopesmith/docs/authoring/vocabulary/01-terrain-vocabulary.md),
-[vocabulary/02 — scored build loop](../../../Slopesmith/docs/authoring/vocabulary/02-scored-build-loop.md) (how the authored data is produced + scored),
+See also: [064 — terrain vocabulary](../../../Slopesmith/docs/authoring/064-terrain-vocabulary.md),
+[066 — scored build loop](../../../Slopesmith/docs/authoring/066-scored-build-loop.md) (how the authored data is produced + scored),
 and [README](README.md) for the full authoring map.
 
 ## 0. What an authored folder contains
@@ -139,4 +139,4 @@ An authored `Patches.json` (Slopesmith `toRaw = [-100x, -100z, 100y]`, vertical 
 **not** in the same axis frame as an extracted original level (−Y-up, vertical at raw index 1). The
 bake's manifest `RootEuler [270,0,0]` reorients it at import, so the ride is correct either way — but
 any tool that reads the raw files directly (e.g. `Slopesmith/tools/mountain-study/score.ts`) must pick the convention per level
-(it keys on `PatchName` = `Cell_r*` for authored). Detail: [vocabulary/02 Finding D](../../../Slopesmith/docs/authoring/vocabulary/02-scored-build-loop.md).
+(it keys on `PatchName` = `Cell_r*` for authored). Detail: [066 — coordinate-frame checks](../../../Slopesmith/docs/authoring/066-scored-build-loop.md#compare-design-quantities-in-the-same-frame).

@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { textureRefUrl } from '../../net/asset-paths';
+import { authoredParticleTextures } from '../../../core/effects/particle-textures';
+import { renderLoadingManager } from '../render-assets';
 import type { PlacedProp } from '../../../core/doc/types';
 import type { EffectGraph, EffectNode, EffectsDocument } from '../../../core/effects/document';
 import {
@@ -542,14 +545,14 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   /** Boost nodes per reference instance, resolved once per data install — the scan walks every graph. */
   let boostArrowCache: { index: number; arrow: BoostArrow }[] | null = null;
 
-  const particleAtlasRows = Math.ceil(PARTICLE_SPRITE_NAMES.length / PARTICLE_ATLAS_COLUMNS);
+  const particleAtlasRows = Math.ceil(PARTICLE_SPRITE_NAMES.length * 2 / PARTICLE_ATLAS_COLUMNS);
   const particleAtlasCanvas = document.createElement('canvas');
   particleAtlasCanvas.width = PARTICLE_ATLAS_COLUMNS * PARTICLE_ATLAS_CELL;
   particleAtlasCanvas.height = particleAtlasRows * PARTICLE_ATLAS_CELL;
   const particleAtlasContext = particleAtlasCanvas.getContext('2d');
   // Every slot starts as a soft white point, so a slow/missing native image remains visible instead of making
   // the whole event disappear. Successfully loaded PARTICLE.SSH sprites replace their own cell in place.
-  if (particleAtlasContext) for (let index = 0; index < PARTICLE_SPRITE_NAMES.length; index++) {
+  if (particleAtlasContext) for (let index = 0; index < PARTICLE_SPRITE_NAMES.length * 2; index++) {
     const x = (index % PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
     const y = Math.floor(index / PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
     const gradient = particleAtlasContext.createRadialGradient(
@@ -567,13 +570,19 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   particleAtlas.generateMipmaps = false;
   particleAtlas.minFilter = THREE.LinearFilter;
   particleAtlas.magFilter = THREE.LinearFilter;
-  const requestedParticleSprites = new Set<number>();
-  function ensureParticleSprite(spriteIndex: number): number {
-    const index = Math.max(0, Math.min(PARTICLE_SPRITE_NAMES.length - 1, Math.trunc(spriteIndex)));
-    if (requestedParticleSprites.has(index) || !particleAtlasContext) return index;
-    requestedParticleSprites.add(index);
+  const requestedParticleSprites = new Map<number, string>();
+  function ensureParticleSprite(spriteIndex: number, authored = false): number {
+    const nativeIndex = Math.max(0, Math.min(PARTICLE_SPRITE_NAMES.length - 1, Math.trunc(spriteIndex)));
+    const name = PARTICLE_SPRITE_NAMES[nativeIndex];
+    const ref = authored ? authoredParticleTextures(authoredDocument)[name] : undefined;
+    const index = nativeIndex + (authored ? PARTICLE_SPRITE_NAMES.length : 0);
+    const level = data?.level ? `&level=${encodeURIComponent(data.level)}` : '';
+    const spriteUrl = new URL(ref ? textureRefUrl(ref) : `/api/particle-texture?name=${encodeURIComponent(name)}.png${level}`, location.href).href;
+    if (requestedParticleSprites.get(index) === spriteUrl || !particleAtlasContext) return index;
+    requestedParticleSprites.set(index, spriteUrl);
     const image = new Image();
     image.onload = () => {
+      if (requestedParticleSprites.get(index) !== spriteUrl) { renderLoadingManager.itemEnd(image.src); return; }
       const x = (index % PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
       const y = Math.floor(index / PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
       const scale = Math.min(PARTICLE_ATLAS_CELL / image.width, PARTICLE_ATLAS_CELL / image.height);
@@ -582,9 +591,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       particleAtlasContext.drawImage(image, x + (PARTICLE_ATLAS_CELL - width) * 0.5,
         y + (PARTICLE_ATLAS_CELL - height) * 0.5, width, height);
       particleAtlas.needsUpdate = true;
+      renderLoadingManager.itemEnd(image.src);
     };
-    const level = data?.level ? `&level=${encodeURIComponent(data.level)}` : '';
-    image.src = `/api/particle-texture?name=${encodeURIComponent(PARTICLE_SPRITE_NAMES[index])}.png${level}`;
+    renderLoadingManager.itemStart(spriteUrl);
+    image.onerror = () => { renderLoadingManager.itemError(spriteUrl); renderLoadingManager.itemEnd(spriteUrl); };
+    image.src = spriteUrl;
     return index;
   }
 
@@ -694,11 +705,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const quat = new THREE.Quaternion();
   const scale = new THREE.Vector3();
 
-  function preloadEmitterSprites(document: EffectsDocument | null | undefined) {
+  function preloadEmitterSprites(document: EffectsDocument | null | undefined, authored = false) {
     if (!document) return;
     for (const owner of [...document.graphs, ...document.functions]) for (const node of owner.nodes) {
       const law = timerEmitterPreviewLaw(node);
-      if (law) ensureParticleSprite(law.spriteIndex);
+      if (law) ensureParticleSprite(law.spriteIndex, authored);
     }
   }
 
@@ -1272,7 +1283,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     authoredProps = props;
     authoredDocument = document ?? null;
     preloadDocumentAudio(authoredDocument);
-    preloadEmitterSprites(authoredDocument);
+    preloadEmitterSprites(authoredDocument, true);
     clearAmbientRuntime();
     rebuildAuthoredPersistentEmitters();
     rebuildAuthoredCollisionSounds();
@@ -1915,7 +1926,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       });
       return;
     }
-    ensureParticleSprite(law.spriteIndex);
+    ensureParticleSprite(law.spriteIndex, !host.reference);
     const total = Math.min(EVENT_BURST_PARTICLE_CAP, law.count);
     // P6 receives all U0 particles in one record. Their starts are staggered by U2/U0 and U1 is the number of
     // closely spaced trail copies per particle, not a CPU spawn-batch size.
@@ -1940,7 +1951,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const origin = collisionEmitter ? collisionContact?.position.clone() ?? host.position()
       : muzzle?.position ?? host.position(node);
     const size = timerEmitterPreviewSizeRange(law, host.sizeScale, persistent);
-    const spriteIndex = ensureParticleSprite(law.spriteIndex);
+    const spriteIndex = ensureParticleSprite(law.spriteIndex, !host.reference);
     const nativeAim = muzzle ? host.vector(new THREE.Vector3(0, 0, 1)).normalize() : null;
     const correction = muzzle && nativeAim && nativeAim.lengthSq() > 0.5
       ? new THREE.Quaternion().setFromUnitVectors(nativeAim, muzzle.direction.clone().normalize()) : null;
@@ -1997,7 +2008,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       emitter.accumulator += emitter.law.rate * dt;
       const requested = Math.min(24, Math.floor(emitter.accumulator));
       if (!requested) continue;
-      ensureParticleSprite(emitter.law.spriteIndex);
+      ensureParticleSprite(emitter.law.spriteIndex, !emitter.host.reference);
       emitParticles(emitter.host, emitter.node, emitter.law, emitter.source, requested, true);
       // A full global budget drops this frame's excess instead of banking a giant burst for later.
       emitter.accumulator = Math.max(0, Math.min(1, emitter.accumulator - requested));

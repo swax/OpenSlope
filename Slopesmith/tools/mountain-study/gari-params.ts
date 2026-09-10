@@ -1,4 +1,4 @@
-// GARI build-spec parameters — fills the open items in docs/design/01-terrain-vocabulary.md:
+// GARI build-spec parameters — measurements related to docs/authoring/064-terrain-vocabulary.md:
 //  A. bank/curvature regression across ALL race lines (wall height vs turn radius)
 //  B. longitudinal roller spectrum along the spine (detrended profile, wavelengths/amplitudes)
 //  C. width-transition behaviour (taper rates, pinch events)

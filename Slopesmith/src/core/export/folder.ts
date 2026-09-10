@@ -1,4 +1,6 @@
 import type { EditDoc } from '../doc/doc-edit';
+import { authoredParticleTextures } from '../effects/particle-textures';
+import { parseTexRef } from '../paint/textures';
 import type { V3 } from '../doc/types';
 import { environmentDocument, normalizeEnvironmentBed } from '../audio/environment';
 import {
@@ -818,7 +820,17 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // Standalone fog volumes use the level-independent PARTICLE.SSH art. An ISO already owns that bank; Unity's
   // thin importer resolves the sprite from the staged level folder, so the export includes it. The volumes
   // name the extraction they were copied from, so the staged sprite is the one they were authored against.
-  if (doc.particleVolumes?.length) {
+  const particleRefs = authoredParticleTextures(doc.effects);
+  const fogRefs = new Set((doc.particleVolumes ?? []).map(volume => volume.texture ?? ''));
+  if (fogRefs.size > 1) throw new Error('Folder export has one fog0 slot; use the same fog sprite for all volumes.');
+  const fogRef = [...fogRefs][0];
+  if (fogRef) particleRefs.fog0 = fogRef;
+  for (const [name, ref] of Object.entries(particleRefs)) {
+    const { level, name: file } = parseTexRef(ref);
+    out.push({ path: `Textures/Particles/${name}.png`, bytes: await provider.referenceTexture(level, file) });
+    logLines.push(`custom particle sprite: ${ref} â†’ Textures/Particles/${name}.png`);
+  }
+  if (doc.particleVolumes?.length && !particleRefs.fog0) {
     try {
       out.push({ path: 'Textures/Particles/fog0.png',
         bytes: await provider.particleTexture('fog0.png', particleDonorLevel(doc.particleVolumes)) });
