@@ -25,7 +25,7 @@ import {
 import {
   XR_BOARD_CONTROL_NOTES, xrControllerDiagramLabels, xrHudActionAt, xrMiniControllerLayout,
 } from '../src/app/ride/xr/hud';
-import { maskXrLayersForThree, xrLayerKind } from '../src/app/ride/xr/config';
+import { xrLayerKind } from '../src/app/ride/xr/config';
 import {
   createWalker, downwardGroundQuery, PLAYER_AIR_RESISTANCE, PLAYER_JUMP_IMPULSE, PLAYER_RUN_SPEED, PLAYER_STRAFE_SPEED,
   SUPERMAN_CRUISE_SPEED_SCALE, SUPERMAN_MAX_HORIZONTAL_SPEED, type WalkGround,
@@ -484,20 +484,8 @@ assert.match(xrSessionSource, /walker\.step\(dt,[^]*?boost: controls\.boost/,
   assert.ok(Math.abs(pending.x - 0.0021) < 1e-9, 'the ready movement retains the complete accumulated distance');
 }
 
-// Three r170 chooses XRProjectionLayer from the PRESENCE of renderState.layers, not from the feature request.
-// The WebGL performance A/B shadows that inherited WebIDL accessor only while setSession runs, then restores it.
+// Layer reporting follows the actual runtime object, independently of the requested render path.
 {
-  const runtimeLayers = [{ runtime: true }];
-  const renderState = Object.create({ layers: runtimeLayers }) as { layers?: unknown };
-  const restore = maskXrLayersForThree(renderState);
-  assert.ok(restore, 'an ordinary extensible XRRenderState accepts the per-session Three branch override');
-  assert.equal(renderState.layers, undefined, 'Three sees no Layers API while it constructs XRWebGLLayer');
-  restore?.();
-  assert.equal(renderState.layers, runtimeLayers, 'the runtime Layers API is restored exactly after setup');
-  assert.ok(!Object.hasOwn(renderState, 'layers'), 'restoration removes the temporary own-property shadow');
-
-  assert.equal(maskXrLayersForThree(Object.freeze({ layers: [] })), null,
-    'an unforgeable runtime state declines safely instead of pretending the force worked');
   assert.equal(xrLayerKind({ framebufferWidth: 6000 }), 'webgl');
   assert.equal(xrLayerKind({ textureWidth: 6000 }), 'projection');
   assert.equal(xrLayerKind({}), 'none');

@@ -6,6 +6,7 @@ import type { V3 } from '../../core/doc/types';
 import { makeReticleTexture } from './gizmo/geometry';
 import { createGizmoArcs, type SurfaceRails } from './gizmo/arcs';
 import { pickTree, type TreeGeometry } from './mesh/surface-trees';
+import { createXrContext } from './xr-context';
 
 /** Which kind of node the single shared translate gizmo is currently seated on — every selection type
  *  (terrain corner / course knot / tangent handle / reference / placed prop / free light / rail node / gem)
@@ -27,6 +28,9 @@ export class Stage {
   /** Mutable attribute record captured by Three's WebXRManager. Changing its AA answer only while setSession
    *  builds an XR layer selects off vs XR antialiasing without changing the already-created desktop context. */
   private xrLayerAttributes: WebGLContextAttributes | null = null;
+  private readonly xrContext: ReturnType<typeof createXrContext>;
+  get xrContextPreparing(): boolean { return this.xrContext.preparing; }
+  prepareXrContext(): Promise<void> { return this.xrContext.prepare(); }
   readonly scene = new THREE.Scene();
   /** Active view camera (perspective by default, swapped to orthographic by the projection toggle). */
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
@@ -102,25 +106,21 @@ export class Stage {
   ) {
     // WebGL cannot change the default framebuffer's sample count after boot. Three's WebXRManager gets one
     // mutable copy of the resulting attributes so the same global preference can also configure the separately
-    // created XR layer. Both XRWebGLLayer and Three r170's projection target read this flag.
-    let renderer: THREE.WebGLRenderer | null = null;
+    // created XR layer. Both XRWebGLLayer and Three's projection target read this flag.
     const canvas = document.createElement('canvas');
-    const context = canvas.getContext('webgl2', { antialias, powerPreference: 'high-performance' });
-    const attributes = context?.getContextAttributes() ?? null;
-    if (context && attributes) {
-      try {
-        Object.defineProperty(context, 'getContextAttributes', {
-          configurable: true,
-          value: () => attributes,
-        });
-        renderer = new THREE.WebGLRenderer({ canvas, context, powerPreference: 'high-performance' });
-        this.xrLayerAttributes = attributes;
-      } catch {
-        // An unusual host object may refuse an own method. Rendering still works; the XR stats panel will show
-        // AA off if that browser cannot accept the per-session override.
-      }
+    // Select the XR adapter before any native XR session exists. On Chrome PCVR, switching adapters after
+    // requestSession can restore WebGL successfully while leaving that first session's headset output black.
+    const context = canvas.getContext('webgl2', {
+      antialias, powerPreference: 'high-performance', xrCompatible: true,
+    });
+    if (context) {
+      this.xrContext = createXrContext(context);
+      this.xrLayerAttributes = this.xrContext.layerAttributes;
+      this.renderer = new THREE.WebGLRenderer({ canvas, context, powerPreference: 'high-performance' });
+    } else {
+      this.renderer = new THREE.WebGLRenderer({ antialias, powerPreference: 'high-performance' });
+      this.xrContext = createXrContext(this.renderer.getContext());
     }
-    this.renderer = renderer ?? new THREE.WebGLRenderer({ antialias, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // cap: phones report 3-4x = needless fill cost
     container.appendChild(this.renderer.domElement);
 

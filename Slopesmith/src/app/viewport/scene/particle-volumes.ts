@@ -61,7 +61,6 @@ export function createParticleVolumesLayer(stage: Stage) {
 
   const raw = new THREE.Matrix4(), edit = new THREE.Matrix4();
   const pos = new THREE.Vector3(), q = new THREE.Quaternion(), scale = new THREE.Vector3();
-  const drawingBufferSize = new THREE.Vector2();
   const fogColor = new THREE.Color(FOG_PUFF_COMPOSITE.color);
 
   function volumeMatrix(volume: ParticleVolume): THREE.Matrix4 {
@@ -108,7 +107,7 @@ export function createParticleVolumesLayer(stage: Stage) {
     group.clear();
   }
 
-  /** One static point-sprite draw replaces one Three Sprite draw per puff. Positions already include the native
+  /** One instanced billboard draw replaces one Three Sprite draw per puff. Positions already include the native
    * volume transform; the parent group supplies only authored/reference chirality and comparison placement. */
   function buildBatch(group: THREE.Group, source: 'authored' | 'reference', puffs: readonly FogPuffDraw[],
     previous: ParticleBatches | null, ref?: string): ParticleBatches | null {
@@ -126,13 +125,18 @@ export function createParticleVolumesLayer(stage: Stage) {
       sprite[i] = 0;
     }
     batch.setDrawRanges(0, puffs.length);
-    batch.alphaPoints.name = `${source === 'reference' ? 'Reference' : 'Authored'} ambient particle batch`;
-    batch.alphaPoints.userData.particleVolumeVisualSource = source;
-    // The batch's aggregate sphere still rejects a wholly off-screen fog field. Individual off-screen points are
-    // cheap vertex work and preferable to restoring dozens of CPU-side draw objects merely for fine culling.
-    batch.alphaPoints.geometry.computeBoundingSphere();
-    batch.alphaPoints.frustumCulled = true;
-    group.add(batch.alphaPoints);
+    batch.alphaMesh.name = `${source === 'reference' ? 'Reference' : 'Authored'} ambient particle batch`;
+    batch.alphaMesh.userData.particleVolumeVisualSource = source;
+    // Bounds must cover instance centres and their view-facing corners, not the shared unit quad at the origin.
+    const bounds = new THREE.Box3(), corner = new THREE.Vector3();
+    for (const puff of puffs) {
+      const radius = puff.size / Math.SQRT2;
+      bounds.expandByPoint(corner.set(puff.x - radius, puff.y - radius, puff.z - radius));
+      bounds.expandByPoint(corner.set(puff.x + radius, puff.y + radius, puff.z + radius));
+    }
+    batch.alphaMesh.geometry.boundingSphere = bounds.getBoundingSphere(new THREE.Sphere());
+    batch.alphaMesh.frustumCulled = true;
+    group.add(batch.alphaMesh);
     return batch;
   }
 
@@ -163,14 +167,6 @@ export function createParticleVolumesLayer(stage: Stage) {
     });
     referenceBatch = buildBatch(referenceVisuals, 'reference', puffs, referenceBatch);
     applyVisibility(); applySelection();
-  }
-
-  /** Point size is derived in the vertex shader from the live eye-buffer height, matching a world-space Sprite. */
-  function sync() {
-    stage.renderer.getDrawingBufferSize(drawingBufferSize);
-    const halfHeight = Math.max(1, drawingBufferSize.y * 0.5);
-    for (const batch of authoredBatches) batch.uniforms.halfViewportHeight.value = halfHeight;
-    if (referenceBatch) referenceBatch.uniforms.halfViewportHeight.value = halfHeight;
   }
 
   function applyVisibility() {
@@ -212,7 +208,7 @@ export function createParticleVolumesLayer(stage: Stage) {
 
   return {
     authoredBounds, referenceBounds,
-    setAuthored, setReference, setInspecting, setWorldEffectsEnabled, sync,
+    setAuthored, setReference, setInspecting, setWorldEffectsEnabled,
     selectAuthored, selectReference, focus,
   };
 }

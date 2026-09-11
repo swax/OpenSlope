@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { textureRefUrl } from '../../net/asset-paths';
 import { authoredParticleTextures } from '../../../core/effects/particle-textures';
 import { renderLoadingManager } from '../render-assets';
+import { createParticleAtlasTexture } from './particle-atlas';
 import type { PlacedProp } from '../../../core/doc/types';
 import type { EffectGraph, EffectNode, EffectsDocument } from '../../../core/effects/document';
 import {
@@ -549,7 +550,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const particleAtlasCanvas = document.createElement('canvas');
   particleAtlasCanvas.width = PARTICLE_ATLAS_COLUMNS * PARTICLE_ATLAS_CELL;
   particleAtlasCanvas.height = particleAtlasRows * PARTICLE_ATLAS_CELL;
-  const particleAtlasContext = particleAtlasCanvas.getContext('2d');
+  const particleAtlasContext = particleAtlasCanvas.getContext('2d', { willReadFrequently: true });
   // Every slot starts as a soft white point, so a slow/missing native image remains visible instead of making
   // the whole event disappear. Successfully loaded PARTICLE.SSH sprites replace their own cell in place.
   if (particleAtlasContext) for (let index = 0; index < PARTICLE_SPRITE_NAMES.length * 2; index++) {
@@ -564,7 +565,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     particleAtlasContext.fillStyle = gradient;
     particleAtlasContext.fillRect(x, y, PARTICLE_ATLAS_CELL, PARTICLE_ATLAS_CELL);
   }
-  const particleAtlas = new THREE.CanvasTexture(particleAtlasCanvas);
+  const { texture: particleAtlas, update: updateParticleAtlas } = createParticleAtlasTexture(particleAtlasCanvas);
   particleAtlas.colorSpace = THREE.SRGBColorSpace;
   particleAtlas.flipY = false;
   particleAtlas.generateMipmaps = false;
@@ -590,7 +591,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       particleAtlasContext.clearRect(x, y, PARTICLE_ATLAS_CELL, PARTICLE_ATLAS_CELL);
       particleAtlasContext.drawImage(image, x + (PARTICLE_ATLAS_CELL - width) * 0.5,
         y + (PARTICLE_ATLAS_CELL - height) * 0.5, width, height);
-      particleAtlas.needsUpdate = true;
+      updateParticleAtlas(x, y, PARTICLE_ATLAS_CELL, PARTICLE_ATLAS_CELL);
       renderLoadingManager.itemEnd(image.src);
     };
     renderLoadingManager.itemStart(spriteUrl);
@@ -605,7 +606,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     position: positionBuffer, color: colorBuffer, alpha: alphaBuffer,
     size: sizeBuffer, sprite: spriteBuffer,
   } = particleBatches.buffers;
-  root.add(particleBatches.additivePoints, particleBatches.alphaPoints);
+  particleBatches.additiveMesh.name = 'SSF additive particles';
+  particleBatches.alphaMesh.name = 'SSF alpha particles';
+  root.add(particleBatches.additiveMesh, particleBatches.alphaMesh);
 
   let data: ReferenceEffectsData | null = null;
   let authoredDocument: EffectsDocument | null = null;
@@ -692,7 +695,6 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const edit = new THREE.Matrix4();
   const combined = new THREE.Matrix4();
   const vectorMatrix = new THREE.Matrix3();
-  const drawingBufferSize = new THREE.Vector2();
   const yAxis = new THREE.Vector3(0, 1, 0);
   // Shoved-body solver scratch: this runs per body per frame and must not feed the GC.
   const WORLD_UP_VEC = new THREE.Vector3(0, 1, 0);
@@ -2950,8 +2952,6 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function syncParticles() {
-    stage.renderer.getDrawingBufferSize(drawingBufferSize);
-    particleBatches.uniforms.halfViewportHeight.value = Math.max(1, drawingBufferSize.y * 0.5);
     // Two passes over the same list, because a draw range has to be contiguous: additive sprites first, then
     // the alpha-blended and darkening ones behind them.
     let cursor = 0;

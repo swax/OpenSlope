@@ -947,6 +947,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       oobFloorY: t.oobFloorY,
       label: t.reference ? deps.getRefLevel() || 'Reference' : deps.getMountainName() || 'Mountain',
       spawn: at, heading: facing, renderScale, antialias,
+      prepareContext: () => stage.prepareXrContext(),
       prepareAntialias: enabled => stage.prepareXrAntialias(enabled),
       layerMode, showStats, onStatsChanged, onEyeBufferMeasured,
       riderModel, riderStyle, gear: rideGear, snowboardStance, equipmentAppearance,

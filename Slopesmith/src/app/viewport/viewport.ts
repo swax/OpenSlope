@@ -1100,6 +1100,9 @@ export class Viewport {
     this.renderer.setAnimationLoop((time, frame) => {
       this.timer.update(time);
       const dt = this.timer.getDelta();
+      // makeXRCompatible can invalidate handles before Chrome delivers webglcontextlost. Keep simulation's
+      // clock current, but submit no rendering (including the navigation gizmo) during that transition.
+      if (this.stage.xrContextPreparing || this.renderer.getContext().isContextLost()) return;
       // The headset reads first: on foot it IS the frame's simulation, and riding it is the controller input and
       // the gaze the physics below is about to steer on.
       let phaseStarted = performance.now();
@@ -1116,7 +1119,6 @@ export class Viewport {
       if (this.cameraCtl.viewHelper.animating) this.cameraCtl.viewHelper.update(dt); // animate a snap-to-axis
       const eye = this.camera.getWorldPosition(this.eyeWorld); // world: a VR ride hangs the camera off its rig
       this.glints.sync(); // light glints carry no time term; only the pixel floor needs the live buffer size
-      this.particleVolumes.sync(); // static fog puffs share one point batch whose world size needs the same buffer
       // The weather rides the same eye the backdrop does, and only while a run is on: snow belongs to the
       // world being ridden, not to the editor view that shapes it. Two uniform writes; the field itself is
       // entirely in its vertex shader.
