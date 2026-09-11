@@ -126,6 +126,7 @@ export function createSnowfallLayer(stage: Stage) {
   geometry.setAttribute('flakeRnd', new THREE.InstancedBufferAttribute(flakes.rnd, 4));
 
   const material = new THREE.ShaderMaterial({
+    name: 'Ambient snowfall',
     uniforms: {
       eye: { value: new THREE.Vector3() },
       time: { value: 0 },

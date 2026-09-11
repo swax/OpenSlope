@@ -9,6 +9,9 @@
  */
 import * as THREE from 'three';
 import { createParticleBatches } from '../src/app/viewport/scene/particle-batches';
+import { createParticleAtlasTexture } from '../src/app/viewport/scene/particle-atlas';
+import { createXrContext } from '../src/app/viewport/xr-context';
+import { checkParticleBillboards } from './particle-billboard-webgl.fixture';
 import {
   emitterBlendKeepsColor, emitterBlendMode, type EmitterBlendMode,
 } from '../src/core/effects/emitter-preview';
@@ -17,6 +20,7 @@ interface ParticleBlendResult {
   ok: boolean;
   error?: string;
   renderer?: string;
+  legacyAtlasCleared?: boolean;
   backgroundPixel?: number[];
   additivePixel?: number[];
   darkenPixel?: number[];
@@ -32,13 +36,18 @@ const publish = (result: ParticleBlendResult) => {
 
 const SIZE = 64;
 
-interface Sprite { rgb: [number, number, number]; alpha: number; blend: EmitterBlendMode }
+interface Sprite { rgb: [number, number, number]; alpha: number; blend: EmitterBlendMode; sprite?: number }
 
 async function run(): Promise<void> {
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
   THREE.ColorManagement.enabled = false;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
+  const context = canvas.getContext('webgl2', {
+    antialias: false, preserveDrawingBuffer: true, xrCompatible: true,
+  })!;
+  const xrContext = createXrContext(context); // use the same context-attribute wrapper as Stage
+  const initiallyCompatible = context.getContextAttributes()?.xrCompatible === true;
+  const renderer = new THREE.WebGLRenderer({ canvas, context });
   renderer.setSize(SIZE, SIZE, false);
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   // Mid grey, so a darkening particle has something to darken and an additive one something to lift.
@@ -52,18 +61,22 @@ async function run(): Promise<void> {
     ].filter(Boolean).join('\n'));
   };
 
-  // A one-cell, fully opaque white sheet: the sprite contributes nothing of its own, so every pixel read below
+  // A fully opaque white sheet: the sprite contributes nothing of its own, so every pixel read below
   // is the blend of the particle's packed colour and alpha against the background.
-  const atlas = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
-  atlas.needsUpdate = true;
-  const batches = createParticleBatches(atlas, 1, 1, 8);
+  const atlasCanvas = document.createElement('canvas');
+  atlasCanvas.width = atlasCanvas.height = 16;
+  const atlasContext = atlasCanvas.getContext('2d', { willReadFrequently: true })!;
+  atlasContext.fillStyle = 'white';
+  atlasContext.fillRect(0, 0, 16, 16);
+  const { texture: atlas, update: updateAtlas } = createParticleAtlasTexture(atlasCanvas);
+  atlas.generateMipmaps = false;
+  atlas.minFilter = THREE.LinearFilter;
+  const batches = createParticleBatches(atlas, 2, 2, 8);
   const scene = new THREE.Scene();
-  scene.add(batches.additivePoints, batches.alphaPoints);
-  // Orthographic, so the vertex shader's world-space sizing gives a point of halfViewportHeight pixels and the
-  // centre sample is well inside it.
+  scene.add(batches.additiveMesh, batches.alphaMesh);
+  // A one-metre billboard covers half the orthographic viewport; the centre sample is well inside it.
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
   camera.position.z = 1;
-  batches.uniforms.halfViewportHeight.value = SIZE / 2;
 
   /** Pack sprites the way the viewport's per-frame packer does, then draw one frame. */
   function draw(sprites: Sprite[]): number[] {
@@ -78,7 +91,7 @@ async function run(): Promise<void> {
       color[k + 2] = keepColor ? item.rgb[2] : 0;
       alpha[cursor] = item.alpha;
       size[cursor] = 1;
-      spriteIndex[cursor] = 0;
+      spriteIndex[cursor] = item.sprite ?? 0;
       cursor++;
     };
     for (const item of sprites) if (item.blend === 'additive') write(item);
@@ -115,10 +128,79 @@ async function run(): Promise<void> {
     failures.push(`additive control ${darkenDrawnAdditivePixel.join('/')} was expected to be invisible`);
   if (emitterBlendMode(4) !== 'darken') failures.push('selector 4 no longer resolves to the darkening law');
 
+  // XR adapter negotiation can lose/restore this context after desktop has uploaded its atlas and buffers.
+  // Keep those SAME resources alive, as the app does, and check their first frame after restoration.
+  const loseContext = renderer.getContext().getExtension('WEBGL_lose_context');
+  if (!loseContext) throw new Error('WEBGL_lose_context is required for particle restoration coverage');
+  let compatibilityCalls = 0;
+  Object.defineProperty(context, 'makeXRCompatible', { configurable: true, value: async () => {
+    if (++compatibilityCalls !== 1) return;
+    canvas.addEventListener('webglcontextlost', () => {
+      if (!xrContext.preparing) throw new Error('viewport gate released before context loss');
+      setTimeout(() => loseContext.restoreContext(), 0);
+    }, { once: true });
+    loseContext.loseContext();
+    throw new DOMException('adapter transition lost the context', 'InvalidStateError');
+  } });
+  await xrContext.prepare();
+  Reflect.deleteProperty(context, 'makeXRCompatible');
+  if (compatibilityCalls !== (initiallyCompatible ? 0 : 2) || xrContext.preparing)
+    failures.push('XR compatibility did not preserve initial readiness or recover after restoration');
+  renderer.setClearColor(0x808080, 1);
+  const restoredPixel = draw([{ rgb: [1, 1, 1], alpha: 0.25, blend: 'additive' }]);
+  if (!restoredPixel.every((value, index) => near(value, additivePixel[index])))
+    failures.push(`restored particle ${restoredPixel.join('/')} differs from before context loss ${additivePixel.join('/')}`);
+  const compatibilityError = context.getError();
+  if (compatibilityError !== context.NO_ERROR) failures.push(`WebGL error after compatibility recovery: ${compatibilityError}`);
+
+  // Full GPU-process reset also loses accelerated Canvas2D contents, unlike WEBGL_lose_context above.
+  // An old CanvasTexture is the control: its white sprite becomes transparent, while retained atlas data stays.
+  const gpuTest = (globalThis as typeof globalThis & { chrome?: { gpuBenchmarking?: {
+    crashGpuProcess(): void; isAcceleratedCanvasImageSource(canvas: HTMLCanvasElement): boolean;
+  } } }).chrome?.gpuBenchmarking;
+  if (!gpuTest) throw new Error('GPU reset coverage requires --enable-gpu-benchmarking');
+  const legacyCanvas = document.createElement('canvas');
+  legacyCanvas.width = 1024; legacyCanvas.height = 1280;
+  const legacyContext = legacyCanvas.getContext('2d')!;
+  legacyContext.fillStyle = 'white'; legacyContext.fillRect(0, 0, 1024, 1280);
+  const accelerated = gpuTest.isAcceleratedCanvasImageSource(legacyCanvas);
+  const legacyTexture = new THREE.CanvasTexture(legacyCanvas);
+  const sampleSpark = () => draw([{ rgb: [1, 1, 1], alpha: 0.25, blend: 'additive' }]);
+  const atlasUniform = batches.additiveMesh.material.uniforms.particleAtlas;
+  atlasUniform.value = legacyTexture;
+  if (!near(sampleSpark()[0], 192)) failures.push('legacy canvas control was not visible before reset');
+  atlasUniform.value = atlas;
+  await new Promise<void>((resolve, reject) => {
+    let glRestored = false, canvasRestored = !accelerated;
+    const timer = setTimeout(() => reject(new Error('GPU-process reset did not restore contexts')), 10_000);
+    const complete = () => { if (glRestored && canvasRestored) { clearTimeout(timer); resolve(); } };
+    canvas.addEventListener('webglcontextrestored', () => { glRestored = true; complete(); }, { once: true });
+    if (accelerated) legacyCanvas.addEventListener('contextrestored', () => { canvasRestored = true; complete(); }, { once: true });
+    gpuTest.crashGpuProcess();
+  });
+  renderer.setClearColor(0x808080, 1);
+  if (!near(sampleSpark()[0], 192)) failures.push('retained firework atlas disappeared after GPU-process reset');
+  if (accelerated) {
+    atlasUniform.value = legacyTexture;
+    if (!near(sampleSpark()[0], 128)) failures.push('legacy CanvasTexture did not reproduce the blank-atlas failure');
+    atlasUniform.value = atlas;
+  }
+  const resetError = context.getError();
+  if (resetError !== context.NO_ERROR) failures.push(`WebGL error after GPU reset: ${resetError}`);
+  atlasContext.fillStyle = 'blue'; atlasContext.fillRect(8, 8, 8, 8); updateAtlas(8, 8, 8, 8);
+  const updated = draw([{ rgb: [1, 1, 1], alpha: 1, blend: 'alpha', sprite: 3 }]);
+  const unchanged = draw([{ rgb: [1, 1, 1], alpha: 1, blend: 'alpha', sprite: 2 }]);
+  if (!near(updated[0], 0) || !near(updated[2], 255) || !near(unchanged[0], 255))
+    failures.push('a late sprite load did not update only its atlas cell after restoration');
+  failures.push(...checkParticleBillboards(renderer));
+
   publish({
     ok: !failures.length,
+    legacyAtlasCleared: accelerated,
     error: failures.join('; ') || undefined,
-    renderer: renderer.getContext().getParameter(renderer.getContext().RENDERER) as string,
+    renderer: renderer.getContext().getExtension('WEBGL_debug_renderer_info')
+      ? renderer.getContext().getParameter(0x9246) as string
+      : renderer.getContext().getParameter(renderer.getContext().RENDERER) as string,
     backgroundPixel, additivePixel, darkenPixel, alphaPixel, darkenDrawnAdditivePixel,
     flareBlend: emitterBlendMode(4),
   });

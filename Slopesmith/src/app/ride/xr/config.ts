@@ -106,50 +106,46 @@ export function xrEyeBufferNote(sample: XrEyeBufferMeasurement | null, selectedS
 }
 
 /**
- * Prefer the runtime-owned XRWebGLLayer while measuring PCVR. Three r170 otherwise chooses an
- * XRProjectionLayer whenever the Layers API exists, even when the optional `layers` feature was not requested.
+ * Prefer the runtime-owned XRWebGLLayer while measuring PCVR. Three otherwise chooses an
+ * XRProjectionLayer whenever the binding exposes createProjectionLayer.
  */
 export const DEFAULT_XR_LAYER_MODE: XrLayerMode = 'webgl';
 
 /**
- * Three r170 decides which XR render path to create with exactly this test:
+ * Three r185 decides which XR render path to create with this capability test:
  *
- *     session.renderState.layers === undefined
+ *     'createProjectionLayer' in XRWebGLBinding.prototype
  *
- * Modern runtimes expose `layers` even when the optional composition-layers feature was not requested, because
- * a single projection layer is part of the base facility. Shadow the inherited WebIDL accessor on this ONE
- * render-state object while `WebXRManager.setSession()` runs, then put the object back exactly as it was.
+ * Temporarily remove that method while WebXRManager.setSession() constructs the layer, then restore its exact
+ * descriptor in the caller's finally block. Assigning undefined does not work with the `in` test. The old
+ * renderState.layers shadow no longer affects Three's choice. This app starts only one immersive session at a
+ * time; the override must never outlive that setup, since the binding prototype is shared with other callers.
  *
- * The XRSession itself is never proxied or wrapped, so the native XRWebGLLayer constructor still receives the
- * real platform object and passes its WebIDL brand check. Null means this runtime made the property unforgeable;
- * the caller can continue safely and the requested -> effective diagnostic will expose the fallback.
+ * Native constructors and the XRSession remain intact. A runtime without the method already takes the WebGL
+ * path. Null means the capability could not be hidden; the effective-layer diagnostic exposes the fallback.
  */
-export function maskXrLayersForThree(renderState: object): (() => void) | null {
-  const prior = Object.getOwnPropertyDescriptor(renderState, 'layers');
+export function maskXrLayersForThree(
+  bindingPrototype: object | undefined = (globalThis as typeof globalThis & {
+    XRWebGLBinding?: { prototype: object };
+  }).XRWebGLBinding?.prototype,
+): (() => void) | null {
+  if (!bindingPrototype || !('createProjectionLayer' in bindingPrototype)) return () => {};
+  let owner: object | null = bindingPrototype;
+  while (owner && !Object.hasOwn(owner, 'createProjectionLayer')) owner = Object.getPrototypeOf(owner);
+  if (!owner) return null;
+  const prior = Object.getOwnPropertyDescriptor(owner, 'createProjectionLayer');
+  if (!prior?.configurable) return null;
   try {
-    Object.defineProperty(renderState, 'layers', {
-      configurable: true,
-      enumerable: prior?.enumerable ?? false,
-      value: undefined,
-    });
+    if (!Reflect.deleteProperty(owner, 'createProjectionLayer')) return null;
   } catch {
     return null;
   }
-  if ((renderState as { layers?: unknown }).layers !== undefined) {
-    restoreOwnProperty(renderState, 'layers', prior);
+  const restore = () => { Object.defineProperty(owner, 'createProjectionLayer', prior); };
+  if ('createProjectionLayer' in bindingPrototype) {
+    restore();
     return null;
   }
-  return () => restoreOwnProperty(renderState, 'layers', prior);
-}
-
-function restoreOwnProperty(target: object, key: string, prior: PropertyDescriptor | undefined) {
-  try {
-    if (prior) Object.defineProperty(target, key, prior);
-    else delete (target as Record<string, unknown>)[key];
-  } catch {
-    // Diagnostics retain whether the override was accepted. Restoration failure is harmless to the native
-    // session: this only removes an own JS shadow whose value was undefined; the runtime keeps its layer state.
-  }
+  return restore;
 }
 
 /** Structural rather than `instanceof`: browser-owned XR interfaces are not constructors in every runtime. */

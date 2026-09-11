@@ -173,9 +173,11 @@ export interface XrPlayDeps {
   renderScale: number;
   /** MSAA request for this session (four samples on Three's projection path; runtime-owned on WebGL layers). */
   antialias: boolean;
+  /** Complete adapter/context restoration before Three installs any session state. */
+  prepareContext(): Promise<void>;
   /** Temporarily changes the attribute record Three reads while constructing the XR layer. */
   prepareAntialias(enabled: boolean): { applied: boolean; restore: () => void };
-  /** Which Three r170 render path to request. The wrist panel reports the effective path independently. */
+  /** Which XR render path to request. The wrist panel reports the effective path independently. */
   layerMode: XrLayerMode;
   /** Initial state of the diagnostic readout and its console samples. The wrist menu can change it live. */
   showStats: boolean;
@@ -393,7 +395,10 @@ export function createXrPlay(deps: XrPlayDeps) {
         //
         optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'],
       });
-    } catch { return false; }
+    } catch (error) {
+      console.warn('[Slopesmith XR] Session request failed:', error);
+      return false;
+    }
     session = requested;
     controlsOpen = false;
     watchVisible = true;
@@ -431,24 +436,30 @@ export function createXrPlay(deps: XrPlayDeps) {
     // from the head instead would stand the walker a head's height inside the snow. A runtime that cannot serve
     // one is refused here rather than played wrong.
     xr.setReferenceSpaceType('local-floor');
-    // Three r170 ignores whether `layers` was requested: it selects XRProjectionLayer whenever the runtime's
-    // render-state object exposes a `layers` property. For the WebGL A/B, shadow just that branch signal while
-    // setSession runs. The real session still reaches XRWebGLLayer; see config.ts for the WebIDL-safe details.
-    const restoreLayers = deps.layerMode === 'webgl' ? maskXrLayersForThree(session.renderState) : null;
-    layerOverrideApplied = !!restoreLayers;
-    const antialias = deps.prepareAntialias(deps.antialias);
-    antialiasApplied = antialias.applied;
+    // Three selects its projection path from the binding's createProjectionLayer capability. Temporarily
+    // hide it for the WebGL comparison and restore it even if session setup fails (see config.ts).
+    layerOverrideApplied = false;
     try {
-      await xr.setSession(session);
-    } catch {
+      await deps.prepareContext();
+      if (session !== requested) throw new Error('XR session ended during context preparation');
+      const antialias = deps.prepareAntialias(deps.antialias);
+      antialiasApplied = antialias.applied;
+      const restoreLayers = deps.layerMode === 'webgl' ? maskXrLayersForThree() : null;
+      try {
+        await xr.setSession(session);
+      } finally {
+        // Restore browser capabilities before failure cleanup can await session.end() or notify listeners.
+        restoreLayers?.();
+        antialias.restore();
+      }
+      layerOverrideApplied = !!restoreLayers && xrLayerKind(xr.getBaseLayer()) === 'webgl';
+    } catch (error) {
+      console.error('[Slopesmith XR] Initialization failed:', error);
       session = null;
       requested.removeEventListener('end', onSessionEnd);
       await requested.end().catch(() => {});
       teardownScene();
       return false;
-    } finally {
-      restoreLayers?.();
-      antialias.restore();
     }
 
     void requestBestFrameRate(session);

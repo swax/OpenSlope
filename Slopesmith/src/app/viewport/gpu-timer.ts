@@ -33,13 +33,29 @@ const MAX_PENDING_QUERIES = 12;
  * both would serialize the CPU and GPU and change the frame this is intended to measure.
  */
 export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
-  const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as DisjointTimerQueryWebGl2 | null;
-  if (!ext) return unsupportedTimer();
+  const readExtension = () => gl.getExtension('EXT_disjoint_timer_query_webgl2') as DisjointTimerQueryWebGl2 | null;
+  let ext = readExtension();
 
   let active: WebGLQuery | null = null;
   const pending: WebGLQuery[] = [];
   let state: GpuTimerState = 'pending';
   let hasValidResult = false;
+
+  function onContextLost() {
+    // Queries and extensions from the old context are invalid; do not poll or delete them after restoration.
+    active = null;
+    pending.length = 0;
+    ext = null;
+    hasValidResult = false;
+    state = 'disjoint';
+  }
+  function onContextRestored() {
+    onContextLost();
+    ext = readExtension();
+    state = ext ? 'pending' : 'unsupported';
+  }
+  gl.canvas.addEventListener('webglcontextlost', onContextLost);
+  gl.canvas.addEventListener('webglcontextrestored', onContextRestored);
 
   function discardPending() {
     for (const query of pending) gl.deleteQuery(query);
@@ -74,6 +90,8 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
   }
 
   function beginFrame(): GpuTimerReading {
+    if (gl.isContextLost()) { onContextLost(); return { gpuMs: null, state: 'disjoint' }; }
+    if (!ext) return { gpuMs: null, state: 'unsupported' };
     const reading = poll();
     // A disjoint event invalidates the outstanding interval. Wait for the flag to clear before measuring again.
     if (reading.state === 'disjoint' || pending.length >= MAX_PENDING_QUERIES) return reading;
@@ -87,6 +105,7 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
   }
 
   function endFrame() {
+    if (gl.isContextLost()) { onContextLost(); return; }
     if (!active) return;
     gl.endQuery(ext!.TIME_ELAPSED_EXT);
     pending.push(active);
@@ -94,6 +113,7 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
   }
 
   function reset() {
+    if (gl.isContextLost()) { onContextLost(); return; }
     if (active) {
       gl.endQuery(ext!.TIME_ELAPSED_EXT);
       gl.deleteQuery(active);
@@ -104,10 +124,10 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
     state = 'pending';
   }
 
-  return { beginFrame, endFrame, reset, dispose: reset };
-}
-
-function unsupportedTimer(): GpuFrameTimer {
-  const reading: GpuTimerReading = { gpuMs: null, state: 'unsupported' };
-  return { beginFrame: () => reading, endFrame: () => {}, reset: () => {}, dispose: () => {} };
+  function dispose() {
+    reset();
+    gl.canvas.removeEventListener('webglcontextlost', onContextLost);
+    gl.canvas.removeEventListener('webglcontextrestored', onContextRestored);
+  }
+  return { beginFrame, endFrame, reset, dispose };
 }

@@ -139,7 +139,7 @@ export interface XrHudPerf {
   /** Requested and structurally observed render paths. A mismatch means Three could not be steered as asked. */
   layerRequested: XrLayerMode;
   layerKind: 'webgl' | 'projection' | 'none';
-  /** True when the temporary render-state shadow used to force Three r170's WebGL branch was accepted. */
+  /** True when the capability override succeeded and Three actually constructed a WebGL layer. */
   layerOverrideApplied: boolean;
   /** The layer's own compositor contract. True means it explicitly ignores app depth; null means unavailable. */
   depthIgnored: boolean | null;
