@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as RESPONSE from './ride-response.generated';
 import { bankedNormalResponse, DEFAULT_GROUND_RESPONSE, forwardResistance, headingLead, headingYaw,
   lateralResistance, type GroundResponseTuning } from './ride-response';
 import { INTERSECTED, MeshBVH, NOT_INTERSECTED } from 'three-mesh-bvh';
@@ -1485,12 +1486,12 @@ export function createRideModel(o: RideModelOpts) {
     const vn = st.vel.dot(n);
     const u = st.vel.dot(ride), w = st.vel.dot(side);
     const response = contactResponse(s.A, s.P, error, vn, st.sinkBog, st.sinkBudget);
-    const capped = Math.min(response, 2 * s.A / 100);
+    const capped = Math.min(response, RESPONSE.BANK_LOAD_CAP_MULTIPLIER * s.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE);
     const assist = o.lowGripAssist === true ? iceAssistFor(s.drag) : 0;
     const theta = iceCarveTilt(s.tilt, assist) * D2R * st.lean;
     // [Trailmap: 330-bank-force] Preserve the residual normal response; A also supplies world-down load.
     accel.copy(n).multiplyScalar(bankedNormalResponse(response, capped, theta))
-      .addScaledVector(side, capped * Math.tan(theta)).addScaledVector(DOWN, s.A / 100);
+      .addScaledVector(side, capped * Math.tan(theta)).addScaledVector(DOWN, s.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE);
     const tuning = responseTuning;
     const boost = boostActive() ? 1 : 0; // The port exposes a binary held/pad boost, not the original meter tiers.
     accel.addScaledVector(ride, forwardResistance(s, u, error, st.sinkBudget, st.charge, boost, tuning));
@@ -1592,10 +1593,12 @@ export function createRideModel(o: RideModelOpts) {
     const stickSteer = steerInput();
     const stickActive = stickInputActive(stickSteer);
     const steer = stickActive ? STEER_SIGN * stickSteer : headSteer;
-    const speedRef = responseTuning.mode === 2 ? 11.3827 : responseTuning.mode === 0 ? 11.3497 : 11.1901;
-    const leanTarget = clamp(steer, -0.9051856, 0.9051856) * Math.min(1, vmag / speedRef);
-    let leanRate = clamp(Math.abs(leanTarget - st.lean) * 7.017359, 0.1, 8.018349);
-    if (surf === 3 || surf === 4) leanRate *= 0.5999726; // powder steers into the lean slower
+    const speedRef = responseTuning.mode === 2 ? RESPONSE.LEAN_SPEED_MODE2_MPS
+      : responseTuning.mode === 0 ? RESPONSE.LEAN_SPEED_MODE0_MPS : RESPONSE.LEAN_SPEED_DEFAULT_MPS;
+    const leanTarget = clamp(steer, -RESPONSE.LEAN_INPUT_LIMIT, RESPONSE.LEAN_INPUT_LIMIT) * Math.min(1, vmag / speedRef);
+    let leanRate = clamp(Math.abs(leanTarget - st.lean) * RESPONSE.LEAN_SLEW_GAIN,
+      RESPONSE.LEAN_SLEW_MIN_PER_SECOND, RESPONSE.LEAN_SLEW_MAX_PER_SECOND);
+    if (surf === 3 || surf === 4) leanRate *= RESPONSE.LEAN_POWDER_SLEW_SCALE; // powder steers into the lean slower
     st.lean = moveTowards(st.lean, leanTarget, leanRate * dt);
     const tuning = responseTuning;
     const turnLean = headingLead(st.lean, st.charge, tuning.mode) * STEER_STRENGTH;
@@ -1603,9 +1606,9 @@ export function createRideModel(o: RideModelOpts) {
     const slipVel = refDir === velDir ? slipRef : angleAbout(velDir, fwdN, n);
     // The downhill contact direction is independent of the board's lateral force axis.
     const fallLine = n.clone().multiplyScalar(n.y).sub(WORLD_UP);
-    if (fallLine.lengthSq() > 1e-8) fallLine.normalize(); else fallLine.copy(fwdN);
+    if (fallLine.lengthSq() > RESPONSE.YAW_FLAT_CROSS_LENGTH_SQ) fallLine.normalize(); else fallLine.copy(fwdN);
     const projection = refDir === velDir
-      ? new THREE.Vector3().crossVectors(st.vel, fwdN).dot(n) / Math.max(vmag, 1e-6)
+      ? new THREE.Vector3().crossVectors(st.vel, fwdN).dot(n) / Math.max(vmag, RESPONSE.GUARDS_SPEED_MPS)
       : Math.sin(slipRef); // VR reference swap, explicitly outside the original controller.
     const rawYaw = headingYaw(st.lean, turnLean, projection, vmag,
       st.vel.dot(fwdN), st.vel.dot(fallLine), dt);

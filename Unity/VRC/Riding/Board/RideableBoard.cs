@@ -1882,12 +1882,12 @@ namespace OpenSlope.VrcPlugin
             float vn = Vector3.Dot(_vel, n), u = Vector3.Dot(_vel, ride), w = Vector3.Dot(_vel, side);
             float A = SurfA(surf);
             float response = ContactResponse(A, SurfP(surf), _error, vn, _sinkBog, _sinkBudget);
-            float capped = Mathf.Min(response, 2f * A / 100f);
+            float capped = Mathf.Min(response, RESPONSE_BANK_LOAD_CAP_MULTIPLIER * A / RESPONSE_UNITS_CENTIMETRES_PER_METRE);
             float assist = SurfIceAssist(surf);
             float theta = SurfCarveTilt(surf, assist) * Mathf.Deg2Rad * _lean;
             // [Trailmap: 330-bank-force] Residual normal response plus the banked force and world-down load.
             _tickAccel = n * RideBankedNormalResponse(response, capped, theta)
-                + side * (capped * Mathf.Tan(theta)) + Vector3.down * (A / 100f);
+                + side * (capped * Mathf.Tan(theta)) + Vector3.down * (A / RESPONSE_UNITS_CENTIMETRES_PER_METRE);
             float boost = BoostActive() ? 1f : 0f;
             _tickAccel += ride * RideForwardResistance(row, u, _error, _sinkBudget, _charge, boost);
             _tickAccel += side * RideLateralResistance(row, u, w, _lean, boost);
@@ -1981,17 +1981,20 @@ namespace OpenSlope.VrcPlugin
             // Builds/ebbs over ~0.15 s, ramps in with speed, and slews slower on powder.
             bool stickActive = StickActive();
             float steerIntent = stickActive ? StickSteer() : headSteer;
-            float speedRef = resistanceMode == 2 ? 11.3827f : resistanceMode == 0 ? 11.3497f : 11.1901f;
-            float leanTarget = Mathf.Clamp(steerIntent, -0.9051856f, 0.9051856f) * Mathf.Min(1f, vmag / speedRef);
-            float leanRate = Mathf.Clamp(Mathf.Abs(leanTarget - _lean) * 7.017359f, 0.1f, 8.018349f);
-            if (surf == 3 || surf == 4) leanRate *= 0.5999726f; // powder steers into the lean slower
+            float speedRef = resistanceMode == 2 ? RESPONSE_LEAN_SPEED_MODE2_MPS
+                : resistanceMode == 0 ? RESPONSE_LEAN_SPEED_MODE0_MPS : RESPONSE_LEAN_SPEED_DEFAULT_MPS;
+            float leanTarget = Mathf.Clamp(steerIntent, -RESPONSE_LEAN_INPUT_LIMIT, RESPONSE_LEAN_INPUT_LIMIT)
+                * Mathf.Min(1f, vmag / speedRef);
+            float leanRate = Mathf.Clamp(Mathf.Abs(leanTarget - _lean) * RESPONSE_LEAN_SLEW_GAIN,
+                RESPONSE_LEAN_SLEW_MIN_PER_SECOND, RESPONSE_LEAN_SLEW_MAX_PER_SECOND);
+            if (surf == 3 || surf == 4) leanRate *= RESPONSE_LEAN_POWDER_SLEW_SCALE; // powder steers into the lean slower
             _lean = Mathf.MoveTowards(_lean, leanTarget, leanRate * h);
             float turnLean = RideHeadingLead(_lean, _charge) * RIDE_STEER_STRENGTH;
             float slipRef = Mathf.Atan2(Vector3.Dot(Vector3.Cross(refDir, fwdN), n), Vector3.Dot(refDir, fwdN));
             float slipVel = Mathf.Atan2(Vector3.Dot(Vector3.Cross(velDir, fwdN), n), Vector3.Dot(velDir, fwdN));
             Vector3 fallLine = n * n.y - Vector3.up;
-            fallLine = fallLine.sqrMagnitude > 1e-8f ? fallLine.normalized : fwdN;
-            float projection = Vector3.Dot(Vector3.Cross(_vel, fwdN), n) / Mathf.Max(vmag, 1e-6f);
+            fallLine = fallLine.sqrMagnitude > RESPONSE_YAW_FLAT_CROSS_LENGTH_SQ ? fallLine.normalized : fwdN;
+            float projection = Vector3.Dot(Vector3.Cross(_vel, fwdN), n) / Mathf.Max(vmag, RESPONSE_GUARDS_SPEED_MPS);
             if (headOn) projection = Mathf.Sin(slipRef); // VR reference adaptation.
             float rawYaw = RideHeadingYaw(_lean, turnLean, projection, vmag,
                 Vector3.Dot(_vel, fwdN), Vector3.Dot(_vel, fallLine), h);

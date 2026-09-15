@@ -5,6 +5,15 @@ Both Unity ride layers consume [Trailmap 330](../../../Trailmap/specs/330-carvin
 and scalar response methods. The C# methods share `ride_response.cs.txt`; changes to
 that template must be regenerated for both layers.
 
+Named response constants come from the `response` section of
+[ride-v1.json](../../../Trailmap/specs/data/ride-v1.json), alongside the surface
+table. Each group states its spec reference and units, and distinguishes recovered
+coefficients from project defaults, numerical guards and unit conversions. The
+generator places these constants directly in each board's response partial for
+Udon compatibility. Resistance, heading, lean and contact call sites use them;
+the refactor preserves the previous numbers, arithmetic order and serialized
+Inspector field names. Existing Inspector values still override field defaults.
+
 The VRChat board applies forward and lateral resistance in the opening contact frame,
 preserves the banked normal residual, integrates acceleration, then updates heading.
 The Basis board now runs fixed simulation ticks and shares the response and heading

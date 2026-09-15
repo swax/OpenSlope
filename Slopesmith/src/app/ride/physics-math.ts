@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as RESPONSE from './ride-response.generated';
 import { RIDE_SURFACE_ROWS, type RideContractSurfaceRow } from './ride-contract.generated';
 import { clamp01 } from '../../core/math/scalar';
 
@@ -61,11 +62,13 @@ export function groundRestDepth(s: SurfaceRow, normalY = 1): number {
  * and its residual normal term; groundTick composes them [Trailmap: 330-bank-force].
  */
 export function contactResponse(A: number, P: number, error: number, vn: number, bog: number, budget: number): number {
-  const accel = A / 100;                                       // engine units/s² → m/s²
-  if (error > 0) return -(A / 30) * error - (vn > 0 ? P * vn : 0); // above: soft pull, damped only if separating
+  const accel = A / RESPONSE.UNITS_CENTIMETRES_PER_METRE;
+  // Above: soft pull, damped only if separating.
+  if (error > 0) return -(A / RESPONSE.CONTACT_ABOVE_LENGTH_CM) * error - (vn > 0 ? P * vn : 0);
   if (error > -bog) return -accel * (error / bog) - P * vn;     // bog zone: 0 → A across the soft give
-  const span = Math.max(budget - bog, 1e-4);                   // guard the slewed fields' degenerate start
-  return accel * (1 - 2 * (Math.max(error, -budget) + bog) / span) - P * vn; // deep: A at −bog, 3A at −budget
+  // Guard the slewed fields' degenerate start; the deep zone rises from A at −bog to 3A at −budget.
+  const span = Math.max(budget - bog, RESPONSE.GUARDS_CONTACT_SPAN_METRES);
+  return accel * (1 - RESPONSE.CONTACT_DEEP_GAIN * (Math.max(error, -budget) + bog) / span) - P * vn;
 }
 
 // ---- small vector helpers ----
