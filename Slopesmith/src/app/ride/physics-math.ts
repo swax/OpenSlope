@@ -15,7 +15,7 @@ import { clamp01 } from '../../core/math/scalar';
  *
  * `A` is the surface's **contact-response and grounded-load scale**, in engine units/s². `P` is the contact
  * damping. `bog` is the width of the soft give; because A drives both sides on level ground, its equilibrium is
- * `bog · cos(slope)`. `budget` is the depth past which the capped pushout intervenes;
+ * `bog · cos(slope)` at zero lean. `budget` is the depth past which the capped pushout intervenes;
  * `thresh` is the
  * clearance at which the grounded state ends and the rider is airborne. `lift` raises the *drawn* deck back;
  * `drag` is the carve drag that eats lateral slip; `target`/`mult` are the cruise drive's speed target and
@@ -27,8 +27,8 @@ import { clamp01 } from '../../core/math/scalar';
  * folding families together (7 and 11 onto ice, 8 and 16 onto snow, 13 and 14 onto wall) reads plausibly and is
  * wrong in every case: type 7 has a 13.8 cm give on an A≈980 dead contact, nothing like ice's 5 mm; type 8's give
  * is 14.4 cm, not snow's 5 mm; and type 14 carries the fastest speed target in the game, ahead of ice. The generic
- * A≈980 / P=30 / 14.58 m/s row is shared by the surfaces never meant to be ridden (6 bounce, 10 wall, 15, 16 sand,
- * 17 no-collision) plus the table's spare 20th record — and its `A` of 980 units/s² means a 9.8 m/s² response at
+ * A≈980 / P=30 / 14.58 m/s row is shared by 6 bounce, 10 wall, 16 sand, 17 no-collision and the spare 20th
+ * record; type 15 differs in forward resistance. Its `A` of 980 units/s² means a 9.8 m/s² response at
  * the bog floor, independently of the grounded pull.
  */
 export type SurfaceRow = RideContractSurfaceRow;
@@ -38,7 +38,7 @@ export function surfaceFor(t: number): SurfaceRow {
   return (t >= 0 && t < SURFACE_ROWS.length) ? SURFACE_ROWS[t] : SURFACE_ROWS[15];
 }
 
-/** Equilibrium penetration inside the response row's linear bog zone. */
+/** Zero-lean equilibrium penetration inside the response row's linear bog zone. */
 export function groundRestDepth(s: SurfaceRow, normalY = 1): number {
   return s.bog * clamp01(normalY);
 }
@@ -55,11 +55,10 @@ export function groundRestDepth(s: SurfaceRow, normalY = 1): number {
  * a 30 cm scale instead of a 5 mm one). Its damping is **one-sided**: `−P·vn` applies only while separating.
  *
  * The same row A supplies the grounded world-down load, so the bog-zone equilibrium is
- * `error = −bog · cos(slope)`. The `budget` is not the sink; it is where the capped pushout starts to intervene.
+ * `error = −bog · cos(slope)` at zero lean. The budget is where the capped pushout starts to intervene.
  *
  * The response cap is deliberately not applied here. It bounds the term applied on the banked carve frame,
- * while the contact-normal sum retains the full response. This ride has no bank term, so the cap has nothing
- * to bound [Trailmap: 310-fields, 320-spring, 330].
+ * and its residual normal term; groundTick composes them [Trailmap: 330-bank-force].
  */
 export function contactResponse(A: number, P: number, error: number, vn: number, bog: number, budget: number): number {
   const accel = A / 100;                                       // engine units/s² → m/s²

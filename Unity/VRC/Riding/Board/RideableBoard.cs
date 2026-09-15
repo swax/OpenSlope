@@ -287,7 +287,7 @@ namespace OpenSlope.VrcPlugin
                  "(snow inverts that, 28/72). You are then travelling ~21 deg off your line, reading zero slip, with " +
                  "nothing left to correct it. Survivable on a stick, which holds counter-lean for free; not survivable on " +
                  "head-steer, where a neck has ~60 deg of range and no detent. OFF = exact retail ice everywhere.")]
-        public bool lowGripAssist = true;
+        public bool lowGripAssist = false;
         [Tooltip("Assist authority ramps in as a surface's own carve drag falls BELOW this, so the ride table selects " +
                  "where the aid applies instead of a hardcoded row: ice (0.0025) -> 0.98, ice crunch (0) -> 1.00, speed " +
                  "(0.03) -> 0.80, off-track metal (0.1) -> 0.33, and every ordinary surface - snow 1.2017, off-track " +
@@ -1236,11 +1236,7 @@ namespace OpenSlope.VrcPlugin
         private const float RIDER_DRIVE = RIDE_RIDER_DRIVE;
         private const float BOOST_ACCEL = RIDE_BOOST_ACCEL;
         private const float BOOST_LEAN_WINDOW = RIDE_BOOST_LEAN_WINDOW;
-        // [Trailmap: 330-carving] the grounded yaw cap is a flat 6 deg/tick = 360 deg/s. CARVE_BITE converts the
-        // surface's carve drag into a lateral decay rate - the spec gives each surface's drag but no formula from
-        // drag to lateral acceleration; 4.47 lands standard snow's drag (1.20) on the bite this ride had.
-        private const float GROUND_TURN_RATE = RIDE_GROUND_TURN_RATE;
-        private const float CARVE_BITE = RIDE_CARVE_BITE;
+        // [Trailmap: 330-carving] The generated response helper owns the per-tick yaw cap and resistance laws.
         // [Trailmap: 340-jump-air-landing] the charged launch: the 6.309 m/s floor (a bare tap is already a real pop),
         // the mid-stat rider curve, the speed-factor saturation, and the flat fallback tangent lean an ordinary
         // flat-to-gentle launch takes.
@@ -1775,8 +1771,11 @@ namespace OpenSlope.VrcPlugin
             // collide-and-slides off solid props/walls - but NOT while riding a steep face (onWall): there the contact
             // model owns the wall, and letting the obstacle sweep ALSO treat it as a blocker would fight the wall-ride.
             bool onWall = wallRide && onGround && _contactN.y < wallNormalMax;
-            Vector3 newPos = (collideWithProps && !onWall) ? ResolveObstacles(pos, _vel * h) : pos + _vel * h;
+            Vector3 displacement = _vel * h;
             _vel += _tickAccel * h;
+            // Finish impacts after acceleration so cruise cannot immediately cancel their outward response.
+            Vector3 newPos = (collideWithProps && !onWall) ? ResolveObstacles(pos, displacement) : pos + displacement;
+            if (onGround && !_grinding) GroundSteering(h, vr);
             return newPos;
         }
 
@@ -1872,77 +1871,68 @@ namespace OpenSlope.VrcPlugin
             else _contactN = Vector3.Slerp(_contactN, rawN, h / (normalSmoothing + h)).normalized;
         }
 
-        // The grounded tick's forces: the three-zone contact response + active surface A/100 load into
-        // _tickAccel, the capped pushout, then steering / carve / cruise / boost. Tick integrates afterwards.
+        // Accumulate contact, resistance, cruise and boost, then apply bounded pushout.
+        // Tick integrates position/velocity before GroundSteering changes the physical heading.
         Vector3 GroundTick(Vector3 pos, float h, bool vr)
         {
             Vector3 n = _contactN;
-            int surf = _pSurf;
-            float vn = Vector3.Dot(_vel, n); // the tick's opening normal speed; the response and the pushout both read it
-
-            // The contact response plus the active surface's A/100 grounded load. The Gari keyboard trace resolves
-            // the former 4.73 m/s^2 Snowdream inference: neutral ice settles at the row's 13.5093 m/s^2 response,
-            // while full-key carves raise that response as the contact follows the curved path [Trailmap: 320].
-            // Nothing clamps its into-surface component on an ordinary tick, and that is the load-bearing line in
-            // this file: that pull is the only force holding the deck against convex ground. Remove it and outward
-            // normal speed accumulates every tick on any convex surface with nothing to take it away, until the deck
-            // floats off perfectly smooth terrain (a faceted collision mesh hides this - its noise keeps resetting
-            // the accumulation). The crest of a roll then falls out as R = v^2/(g*n), with no code testing for it.
-            //
-            // The response rides a BANKED contact frame, not the plain normal ([Trailmap: 310-surface-response]
-            // carve tilt; [Trailmap: 320-ground-contact]): theta = tilt_deg * lean, and the scalar - clamped at 2A -
-            // is applied along n*cos(theta) + lateral*sin(theta) after a /cos(theta), so the normal component stays
-            // the response and the lateral component is response*tan(theta). Leaning tilts the whole normal force
-            // into the turn, and THAT is the carve force - g*tan(theta) of lateral drive at rest depth, ~17 m/s^2 at
-            // full lean on snow, 11.6 on ice, 3.4 on rock. It is entirely independent of carve_drag: ice turns with
-            // real authority and DRIFTS doing it (~22 deg of slip in a full carve, measured), because its 0.0025
-            // drag never damps the lateral slip the tilt builds. Drop this term and ice degrades to a straight-line
-            // slide under a freely spinning heading - a drag-only carve has nothing else to bend the velocity with.
+            int surf = _pSurf, row = SurfRow(surf);
+            Vector3 ride = Vector3.ProjectOnPlane(_fwd, n).normalized;
+            Vector3 side = Vector3.Cross(n, ride);
+            float vn = Vector3.Dot(_vel, n), u = Vector3.Dot(_vel, ride), w = Vector3.Dot(_vel, side);
             float A = SurfA(surf);
-            float response = Mathf.Min(ContactResponse(A, SurfP(surf), _error, vn, _sinkBog, _sinkBudget), 2f * A / 100f);
-            // Low-grip assist (RideableBoard.Surface.cs) - zero on every ordinary surface, so the three terms it
-            // gates (the carve tilt here, the self-centring yaw and the slip recovery below) drop out entirely there.
+            float response = ContactResponse(A, SurfP(surf), _error, vn, _sinkBog, _sinkBudget);
+            float capped = Mathf.Min(response, 2f * A / 100f);
             float assist = SurfIceAssist(surf);
             float theta = SurfCarveTilt(surf, assist) * Mathf.Deg2Rad * _lean;
-            Vector3 lat = Vector3.Cross(n, _fwd);
-            // Independently constrained load components: Gari's neutral ice response requires A/100 normal load;
-            // Snowdream's matched descent requires only 4.73 m/s^2 effective contact-plane pull. This decomposition
-            // preserves both without an ice-only force; the remaining retail tangent helper is still open.
-            _tickAccel = n * response + Vector3.down * RIDE_GROUND_TANGENTIAL_PULL
-                       + n * ((RIDE_GROUND_TANGENTIAL_PULL - A / 100f) * n.y);
-            if (Mathf.Abs(theta) > 1e-4f && lat.sqrMagnitude > 1e-6f)
-                _tickAccel += lat.normalized * (response * Mathf.Tan(theta));
-
-            // The capped, one-sided PUSHOUT - the backstop, not the spring [Trailmap: 320-ground-contact]. It fires
-            // only once penetration passes the surface's budget, and then it does three things at once: shoves the
-            // deck back out along the normal (by the overshoot, at most 10 cm a tick), bleeds that much out of the
-            // stored error, and ZEROES the normal velocity (vel -= vn*n - the scalar is the normal speed, not the
-            // excess). The acceleration clamp lives inside this same branch, and ONLY inside it: with the deck already
-            // deeper than its budget, any residual into-surface acceleration is removed before integration. Clamping
-            // that unconditionally deletes gravity from every ordinary tick - the exact failure this model replaces.
-            // The cap is a GROUND backstop. On a steep face (a wall-ride) it is removed: there the engine's real
-            // protection is the type-6/10 wall wipeout gate this port keeps off (wallCrashSpeed 0 - the goal is to
-            // STICK), and a fast hit on a wall curving into the path feeds penetration faster than 0.1 m/tick - the
-            // capped pushout loses that race and the deck tunnels out of the level. A wall ejects fully instead.
+            // [Trailmap: 330-bank-force] Residual normal response plus the banked force and world-down load.
+            _tickAccel = n * RideBankedNormalResponse(response, capped, theta)
+                + side * (capped * Mathf.Tan(theta)) + Vector3.down * (A / 100f);
+            float boost = BoostActive() ? 1f : 0f;
+            _tickAccel += ride * RideForwardResistance(row, u, _error, _sinkBudget, _charge, boost);
+            _tickAccel += side * RideLateralResistance(row, u, w, _lean, boost);
+            _slip = Mathf.Abs(w);
+            if (assist > 0f)
+            {
+                float want = -Mathf.Sqrt(u * u + w * w) * Mathf.Sin(RideHeadingLead(_lean, _charge));
+                float corrected = want + (w - want) / (1f + lowGripSlipRecover * assist * h);
+                _tickAccel += side * ((corrected - w) / h);
+            }
+            if (_throttle > 0f) _tickAccel += ride * (pushStrength * _throttle * Mathf.Clamp01(1f - u / pushCapSpeed));
+            else if (_throttle < 0f) _tickAccel += ride * ((Mathf.MoveTowards(u, 0f, -_throttle * brakeStrength * h) - u) / h);
+            float speedNow = _vel.magnitude;
+            float deficit = Mathf.Min(SurfTarget(surf) - speedNow, RIDE_CRUISE_DEFICIT_MAX);
+            if (deficit > 0f && speedNow > 0.5f)
+            {
+                float offDeg = Mathf.Acos(Mathf.Clamp(u / speedNow, -1f, 1f)) * Mathf.Rad2Deg;
+                float driveAlign = Mathf.Clamp01((60f - offDeg) / 30f);
+                _tickAccel += ride * (RIDER_DRIVE * driveAlign * SurfMult(surf) * deficit);
+            }
+            if (boost > 0f) _tickAccel += ride * (BOOST_ACCEL * Mathf.Clamp01(1f - Mathf.Abs(_lean) / BOOST_LEAN_WINDOW));
+            if (_throttle < 0f && u * (u + Vector3.Dot(_tickAccel, ride) * h) < 0f)
+                _tickAccel += ride * (-u / h - Vector3.Dot(_tickAccel, ride));
             float excess = _sinkBudget + _error;
-            if (excess < -RIDE_PUSHOUT_CAP && _contactN.y >= wallNormalMax) excess = -RIDE_PUSHOUT_CAP;
+            if (excess < -RIDE_PUSHOUT_CAP && n.y >= wallNormalMax) excess = -RIDE_PUSHOUT_CAP;
             if (excess < 0f)
             {
-                pos += n * (-excess);
+                pos -= n * excess;
                 _vel -= n * vn;
                 _error -= excess;
                 float into = Vector3.Dot(_tickAccel, n);
                 if (into < 0f) _tickAccel -= n * into;
             }
+            return pos;
+        }
 
-            // No generic grounded longitudinal drag: the retail paths use the shared speed cap, the positive-only
-            // surface cruise response, lateral carve drag, and explicit brake/boost terms. The generated contract keeps
-            // groundQuadraticDrag at zero so a port cannot quietly reintroduce the old terminal-speed limiter.
-
+        void GroundSteering(float h, bool vr)
+        {
+            Vector3 n = _contactN;
+            int surf = _pSurf;
+            float assist = SurfIceAssist(surf);
             // --- Steering: the SSX heading model (docs/vrchat/020) [Trailmap: 330-carving]. A stick "lean" yaws the heading around the
             // contact normal toward a REFERENCE direction, LEADING it by the lean angle; the carve below drags the
             // velocity to follow. The yaw is speed-GATED UP (quadratic) and capped at GROUND_TURN_RATE, surface-
-            // INDEPENDENT (turn_x is carve, not yaw). The self-centering slip term makes the cap a bounded carve angle.
+            // INDEPENDENT (forward resistance does not set yaw). The self-centering slip term makes the cap a bounded carve angle.
             float vmag = _vel.magnitude;
             Vector3 fwdN = Vector3.ProjectOnPlane(_fwd, n);
             fwdN = fwdN.sqrMagnitude > 1e-6f ? fwdN.normalized : _fwd;
@@ -1991,29 +1981,20 @@ namespace OpenSlope.VrcPlugin
             // Builds/ebbs over ~0.15 s, ramps in with speed, and slews slower on powder.
             bool stickActive = StickActive();
             float steerIntent = stickActive ? StickSteer() : headSteer;
-            float leanTarget = Mathf.Clamp(steerIntent, -1f, 1f) * 0.9051856f * Mathf.Min(1f, vmag / 11.19f);
+            float speedRef = resistanceMode == 2 ? 11.3827f : resistanceMode == 0 ? 11.3497f : 11.1901f;
+            float leanTarget = Mathf.Clamp(steerIntent, -0.9051856f, 0.9051856f) * Mathf.Min(1f, vmag / speedRef);
             float leanRate = Mathf.Clamp(Mathf.Abs(leanTarget - _lean) * 7.017359f, 0.1f, 8.018349f);
             if (surf == 3 || surf == 4) leanRate *= 0.5999726f; // powder steers into the lean slower
             _lean = Mathf.MoveTowards(_lean, leanTarget, leanRate * h);
-            float turnLean = _lean * 0.5239824f * (1f + 0.2f * (1f - _lean * _lean)) * RIDE_STEER_STRENGTH; // game curve (c7, 0.5*c0)
-            turnLean /= 1f + _charge * 0.01f; // a held charge stiffens the line slightly (the charge enters the yaw denominator) [Trailmap: 330-carving]
+            float turnLean = RideHeadingLead(_lean, _charge) * RIDE_STEER_STRENGTH;
             float slipRef = Mathf.Atan2(Vector3.Dot(Vector3.Cross(refDir, fwdN), n), Vector3.Dot(refDir, fwdN));
             float slipVel = Mathf.Atan2(Vector3.Dot(Vector3.Cross(velDir, fwdN), n), Vector3.Dot(velDir, fwdN));
-
-            // Speed gate (quadratic, saturates ~17 m/s) and the contact-alignment multiplier (~1 in normal riding,
-            // dips when crawling or sliding badly sideways) - both straight from the engine model [Trailmap: 330-carving].
-            float speedGate = Mathf.Min(1f, vmag * vmag * 0.0033383f);
-            float align = 40f * Mathf.Min(1f, vmag / 5.5556f) * (1f - Mathf.Abs(Mathf.Sin(slipVel)));
-            align = Mathf.Min(1f, Mathf.Max(0f, align) + 0.01004205f);
-            float postMult = Mathf.Max(Mathf.Abs(_lean), align);
-
-            // The engine closes a fraction speedGate * max(|lean|, align) of the heading error every 60 Hz tick, then
-            // clamps the result to the flat 6 deg/tick cap. On a fixed tick both are simply themselves.
-            // Nothing scales either: a gain on the closure would over-rotate, and a tighter cap caps the carve long
-            // before the game does (full stick on snow only reaches the cap from ~8 m/s up) [Trailmap: 330-carving].
-            float hClose = Mathf.Clamp01(speedGate * postMult);
-            float capFrame = GROUND_TURN_RATE * Mathf.Deg2Rad * h;             // 360 deg/s = 6 deg per tick
-            float rawYaw = Mathf.Clamp((turnLean - slipRef) * hClose, -capFrame, capFrame);
+            Vector3 fallLine = n * n.y - Vector3.up;
+            fallLine = fallLine.sqrMagnitude > 1e-8f ? fallLine.normalized : fwdN;
+            float projection = Vector3.Dot(Vector3.Cross(_vel, fwdN), n) / Mathf.Max(vmag, 1e-6f);
+            if (headOn) projection = Mathf.Sin(slipRef); // VR reference adaptation.
+            float rawYaw = RideHeadingYaw(_lean, turnLean, projection, vmag,
+                Vector3.Dot(_vel, fwdN), Vector3.Dot(_vel, fallLine), h);
             // Low-grip assist term 1: damp the yaw only while it is UN-COMMITTING - the commanded lead has fallen
             // inside the drift already being carried, and lies on the same side of it, so the closure is walking the
             // heading out onto that drift. Both guards matter: the magnitude test alone would also fire while the
@@ -2042,7 +2023,7 @@ namespace OpenSlope.VrcPlugin
             float seatTurnLean = stickActive ? turnLean : 0f;
             // Headset-tested grounded comfort carry: the seat/view receives a quarter of the already-clamped stick turn.
             // It is applied AFTER the clamp; applying it before still lets full-stick/high-speed turns hit 6 deg/tick.
-            float seatYaw = Mathf.Clamp(seatTurnLean * speedGate * postMult, -capFrame, capFrame)
+            float seatYaw = RideHeadingYaw(_lean, seatTurnLean, 0f, vmag, Vector3.Dot(_vel, fwdN), Vector3.Dot(_vel, fallLine), h)
                           * Mathf.Rad2Deg * VR_GROUND_STICK_VIEW_CARRY;
             _fwd = Quaternion.AngleAxis(yawDeg, n) * fwdN;
             if (vr) _seatFwd = Quaternion.AngleAxis(seatYaw, Vector3.up) * _seatFwd;
@@ -2050,64 +2031,6 @@ namespace OpenSlope.VrcPlugin
             if (_fwd.sqrMagnitude < 1e-6f) _fwd = Vector3.ProjectOnPlane(transform.forward, n);
             _fwd = _fwd.normalized;
 
-            // Split velocity in the contact frame into forward / lateral (sideways slip) / normal. Only the LATERAL
-            // slip is carved away; the NORMAL component (lift) is preserved, so the board leaves crests/ramps with the
-            // vertical speed it earned.
-            Vector3 side = Vector3.Cross(n, _fwd); // in-plane, perpendicular to heading
-            float vF = Vector3.Dot(_vel, _fwd);
-            float vS = Vector3.Dot(_vel, side);    // sideways slip - what the carve drag kills
-            float vN = Vector3.Dot(_vel, n);       // off/into-surface (lift) - carve must NOT touch this
-            _slip = vS < 0f ? -vS : vS;            // |sideways slide| -> the carve/skid sound layer
-            // The surface's own carve drag bites the edge, straight off the table rather than through a hand-fit 0..1
-            // grip remap: ice (0.0025) is two to three ORDERS below every other rideable surface - that ratio IS the
-            // ice skid, and a remapped grip flattens it away. The contract's CARVE_BITE and GRIP_SCALE convert the drag
-            // to an implicit lateral decay rate, so a stiff surface stays stable.
-            vS *= 1f / (1f + SurfDrag(surf) * CARVE_BITE * RIDE_GRIP_SCALE * h);
-            // Low-grip assist term 2: bleed the slip nobody asked for. In this frame vS = -vPlane*sin(slipVel), and on a
-            // near-frictionless surface the settled slip IS the heading's lead angle, so the COMMANDED lateral is
-            // -vPlane*sin(turnLean) - a held lean sits at its own equilibrium and is left alone, while a centred input
-            // (turnLean -> 0) has its residual drift pulled out. Implicit decay, like the drag line above, so it stays
-            // stable at any step. Needs no fitted curve and no new surface column: the identity measured 0.9734*turnLean
-            // with a 0.26 deg max residual across the whole lean range and every speed, and the 3% deficit is the lateral
-            // drag itself - which is why it is only this tight where the drag is ~0, exactly where the assist is nonzero.
-            if (assist > 0f)
-            {
-                float wantS = -Mathf.Sqrt(vF * vF + vS * vS) * Mathf.Sin(turnLean);
-                vS = wantS + (vS - wantS) / (1f + lowGripSlipRecover * assist * h);
-            }
-
-            // Push/skate: forward input adds an impulse that's strong when slow and fades by pushCapSpeed, so you can
-            // get rolling from rest. Pull back to brake.
-            if (_throttle > 0f) vF += pushStrength * _throttle * Mathf.Clamp01(1f - vF / pushCapSpeed) * h;
-            else if (_throttle < 0f) vF += _throttle * brakeStrength * h;
-
-            // Surface cruise drive [Trailmap: 360-speed-and-boost]: a positive-only deficit toward the surface's speed
-            // target, gated by how square the board is to its TRAVEL (full within 30 deg, fading to nothing at 60 -
-            // a sideways skid does not re-accelerate). The deficit is measured against the SPEED MAGNITUDE, not the
-            // forward component, and capped at 11.1 m/s. This IS the surface speed character (there is no
-            // g*sin(slope) cruise).
-            float speedNow = Mathf.Sqrt(vF * vF + vS * vS + vN * vN);
-            float deficit = Mathf.Min(SurfTarget(surf) - speedNow, RIDE_CRUISE_DEFICIT_MAX);
-            if (deficit > 0f && speedNow > 0.5f) // below ~0.5 m/s the travel direction is noise, so the gate can't be read
-            {
-                float offDeg = Mathf.Acos(Mathf.Clamp(vF / speedNow, -1f, 1f)) * Mathf.Rad2Deg;
-                float driveAlign = Mathf.Clamp01((60f - offDeg) / 30f);
-                if (driveAlign > 0f) vF += RIDER_DRIVE * driveAlign * SurfMult(surf) * deficit * h;
-            }
-
-            // Held boost (LEFT trigger) OR a course speed pad [Trailmap: 360-speed-and-boost]: a ground-only forward
-            // thrust that fires only while the board is ridden nearly FLAT - the lean window is narrow (0.08 against a
-            // lean clamp of 0.905), so edging while boosting throws the thrust away. It is NOT surface-scaled: the
-            // surface's character reaches boost only through the cruise target. The raised speed cap is what lets the
-            // earned speed carry into the air.
-            if (BoostActive())
-            {
-                float straight01 = Mathf.Clamp01(1f - Mathf.Abs(_lean) / BOOST_LEAN_WINDOW);
-                if (straight01 > 0f) vF += BOOST_ACCEL * straight01 * h;
-            }
-
-            _vel = _fwd * vF + side * vS + n * vN;
-            return pos;
         }
 
         // The air integrator [Trailmap: 340-jump-air-landing] - a separate integrator with no contact term at all,

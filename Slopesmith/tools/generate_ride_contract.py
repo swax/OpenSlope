@@ -88,7 +88,6 @@ def constants(data: dict) -> list[tuple[str, int | float | bool]]:
         ("STEER_STRENGTH", steering["leadStrength"]),
         ("GRIP_SCALE", steering["gripScale"]),
         ("BANK_MAX", steering["bankMaxDeg"]),
-        ("CARVE_BITE", steering["carveBite"]),
         ("CARVE_SLIDE_SCALE", steering["carveSlideScale"]),
         ("CARVE_SLIDE_SLEW", steering["carveSlideSlew"]),
         ("CARVE_SLIDE_SPEED_GATE", steering["carveSlideSpeedGate"]),
@@ -122,6 +121,7 @@ def generate_ts(data: dict) -> str:
         "export interface RideContractSurfaceRow {",
         "  type: number; name: string; A: number; P: number; bog: number; budget: number; thresh: number;",
         "  lift: number; drag: number; target: number; mult: number; tilt: number;",
+        "  resistanceA: number; resistanceB: number; resistanceC: number;",
         "}",
         "",
         "export const RIDE_SURFACE_ROWS: RideContractSurfaceRow[] = [",
@@ -132,7 +132,9 @@ def generate_ts(data: dict) -> str:
             f"type: {row['type']}, name: {json.dumps(row['name'])}, A: {number(row['A'])}, P: {number(row['P'])}, "
             f"bog: {number(row['bog'])}, budget: {number(row['budget'])}, thresh: {number(row['threshold'])}, "
             f"lift: {number(row['lift'])}, drag: {number(row['drag'])}, target: {number(row['target'])}, "
-            f"mult: {number(row['multiplier'])}, tilt: {number(row['tiltDeg'])} }},"
+            f"mult: {number(row['multiplier'])}, tilt: {number(row['tiltDeg'])}, "
+            f"resistanceA: {number(row['resistanceA'])}, resistanceB: {number(row['resistanceB'])}, "
+            f"resistanceC: {number(row['resistanceC'])} }},"
         )
     lines.extend([
         "];",
@@ -195,6 +197,9 @@ def generate_vrc_cs(data: dict) -> str:
         cs_array("_rideSurfTarget", rows, "target"),
         cs_array("_rideSurfMult", rows, "multiplier"),
         cs_array("_rideSurfTilt", rows, "tiltDeg"),
+        cs_array("_rideSurfResistanceA", rows, "resistanceA"),
+        cs_array("_rideSurfResistanceB", rows, "resistanceB"),
+        cs_array("_rideSurfResistanceC", rows, "resistanceC"),
         "}",
         "",
         "public partial class TerrainPatches",
@@ -242,6 +247,9 @@ def generate_basis_cs(data: dict) -> str:
         cs_array("_rideSurfTarget", rows, "target"),
         cs_array("_rideSurfMult", rows, "multiplier"),
         cs_array("_rideSurfTilt", rows, "tiltDeg"),
+        cs_array("_rideSurfResistanceA", rows, "resistanceA"),
+        cs_array("_rideSurfResistanceB", rows, "resistanceB"),
+        cs_array("_rideSurfResistanceC", rows, "resistanceC"),
     ])
     lines.extend(["    }", "}", ""])
     return "\n".join([*header, *lines])
@@ -289,6 +297,13 @@ def main() -> int:
             raise FileNotFoundError(f"required Unity implementation is missing: {UNITY_IMPLEMENTATION}")
         ok = emit(VRC_CS_TARGET, generate_vrc_cs(data), args.check) and ok
         ok = emit(BASIS_CS_TARGET, generate_basis_cs(data), args.check) and ok
+        template = Path(__file__).with_name("ride_response.cs.txt").read_text(encoding="utf-8")
+        for target, namespace, cls in [
+            (VRC_CS_TARGET.with_name("RideableBoard.Response.Generated.cs"), CS_NAMESPACE, "RideableBoard"),
+            (BASIS_CS_TARGET.with_name("BasisBoard.Response.Generated.cs"), "OpenSlope.BasisPlugin", "BasisBoard"),
+        ]:
+            content = template.replace("@NAMESPACE@", namespace).replace("@CLASS@", cls)
+            ok = emit(target, content, args.check) and ok
     return 0 if ok else 1
 
 

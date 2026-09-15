@@ -52,22 +52,9 @@ namespace OpenSlope.VrcPlugin
         float SurfMult(int t)   { return _rideSurfMult[SurfRow(t)]; }
         float SurfTilt(int t)   { return _rideSurfTilt[SurfRow(t)]; }
 
-        // ---- Low-grip steering assist (NOT retail; the fields live under that header on RideableBoard) ----
-        // Three terms that make ice steerable without flattening it, kept OFF the contract because the contract
-        // carries measured retail facts and this is a rider aid - same class as wallCrashSpeed 0 and rideSolidProps.
-        // The same three run in Slopesmith (`src/app/ride/physics-tuning.ts`, ICE_* / iceAssistFor / iceCarveTilt);
-        // the two ports each hold their own copy of the tuning, so a change here wants the same change there.
-        //
-        // What they answer: retail ice does not fail to recover a skid, it recovers it the WRONG WAY. Centre the
-        // input mid-carve and slip reaches zero in 0.75 s with 77% of the closure coming from the board yawing onto
-        // its own drift rather than the drift bending back under it (standard snow inverts that split, 28/72), which
-        // leaves the rider travelling ~21 deg off their line reading zero slip, with no force left to correct it.
-        // `Slopesmith/tools/ride-study/ice-slip-sweep.ts 5 drive recover` measures the split; with the three terms
-        // at their defaults ice reads 34/66, near snow's own 28/72, while the held carve is untouched (the lean
-        // sweep still settles on 31.7 deg/lean against the retail captures' 31.81).
-        //
-        // Authority is selected by the surface's own carve drag, so there is no `if (surf == 5)` here either: every
-        // ordinary rideable row returns exactly 0 and all three terms drop out of the arithmetic on those surfaces.
+        // Optional port assistance, disabled by default. Tuning predates the recovered response laws;
+        // it is not a set of original-game parameters. Keep Slopesmith's ICE_* tuning in sync.
+        // See docs/vrchat/040-carving-response.md for the remaining implementation differences.
         float SurfIceAssist(int t)
         {
             if (!lowGripAssist || lowGripDragRef <= 0f) return 0f;
@@ -77,14 +64,7 @@ namespace OpenSlope.VrcPlugin
         // The carve tilt 17 of the 20 rows share; the lift interpolates toward it and never past it.
         const float CARVE_TILT_BASE = 58.3f;
 
-        // Term 3: turn AUTHORITY. `theta = tilt*lean` banks the contact response into the turn and `response*tan(theta)`
-        // is the whole force bending the velocity, so this is what decides whether a line fits the course. It is the
-        // right knob because the two obvious ones are not: raising the carve DRAG is simply cancelled by term 2 (the
-        // drag rotates the velocity onto the heading and term 2 rotates it back), and the drift ANGLE cannot be dialled
-        // down directly because it is kinematic - equilibrium sits where the yaw closure matches the rate the velocity
-        // already turns, (turnLean - slip)*hClose = w/60, so ice's small w (48 deg/s at full lean against snow's 179)
-        // forces slip up against turnLean. Raising the tilt raises w; the drift angle barely moves because hClose stays
-        // high with ice's speed. Ice keeps its 28 deg drift LOOK and gains a tighter line.
+        // Increase the banked contact force by lifting tilt toward the common surface-table value.
         float SurfCarveTilt(int t, float assist)
         {
             float tilt = SurfTilt(t);
@@ -99,8 +79,8 @@ namespace OpenSlope.VrcPlugin
         // the bog and deep zones return an ACCELERATION ~ A/100 m/s^2 (13.0 at the bog floor on snow); only the
         // above-surface zone's A/30 is a stiffness (1/s^2). Its damping is ONE-SIDED there: -P*vn applies only while
         // separating. The same row A supplies the grounded normal load, so the bog-zone equilibrium is
-        // `-bog * cos(slope)`. The separately measured 4.73 m/s^2 term controls only the effective contact-plane
-        // pull. The budget is not the sink; it is where the capped pushout starts to intervene.
+        // `-bog * cos(slope)` before banking. GroundTick also preserves the banked residual [Trailmap: 330-bank-force].
+        // The budget is not the sink; it is where the capped pushout starts to intervene.
         float ContactResponse(float A, float P, float error, float vn, float bog, float budget)
         {
             float accel = A / 100f;                                              // engine units/s^2 -> m/s^2

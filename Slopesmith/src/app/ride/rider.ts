@@ -173,7 +173,7 @@ const GLANCE_LEAN_MAX = 0.45, GLANCE_CROUCH_MAX = 0.6;
 const RIDER_UPRIGHT_HIPS = 0.2, RIDER_UPRIGHT_CHEST = 0.65;
 const BALANCE_LEAD = 0.25, HIP_SHIFT = 0.12;
 // Anatomy's stop on the argument: a torso cannot fold further than this off the legs' own axis, however hard
-// this world's low grounded pull (4.73) lets the apparent direction swing on an ordinary carve.
+// contact acceleration can swing the apparent direction on an ordinary carve.
 const BALANCE_TILT_MAX = 45 * D2R;
 /**
  * Limb dimensions, in metres of *rider* — not of stick. A jacket, snow pants, a helmet and gloves are all worn

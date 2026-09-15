@@ -12,7 +12,7 @@ namespace OpenSlope.BasisPlugin
     {
         private const string RIDE_CONTRACT_SCHEMA = "ride-contract/v1";
         private const int RIDE_CONTRACT_VERSION = 1;
-        private const string RIDE_CONTRACT_PROFILE = "retail-gari-ice-2026-07-21";
+        private const string RIDE_CONTRACT_PROFILE = "pal-carving-response-2026-09-15";
 
         private float[] _rideSurfA = { 989.83f, 1300.85f, 1200.45f, 1151.31f, 999.14f, 1350.93f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 980.0f, 1350.86f, 980.0f };
         private float[] _rideSurfP = { 11.61f, 5.01f, 5.53f, 2.84f, 2.98f, 4.05f, 30.0f, 45.21f, 39.4f, 30.0f, 30.0f, 17.93f, 30.0f, 0.0f, 30.0f, 30.0f, 30.0f, 30.0f, 40.01f, 30.0f };
@@ -24,5 +24,8 @@ namespace OpenSlope.BasisPlugin
         private float[] _rideSurfTarget = { 0.0f, 14.4f, 12.69f, 11.25f, 10.03f, 17.79f, 14.58f, 11.33f, 12.01f, 5.44f, 14.58f, 7.31f, 15.11f, 16.92f, 18.15f, 14.58f, 14.58f, 14.58f, 16.68f, 14.58f };
         private float[] _rideSurfMult = { 0.0f, 2.0f, 1.81f, 3.09f, 2.02f, 3.0f, 2.2f, 2.39f, 2.01f, 1.68f, 2.2f, 1.47f, 2.21f, 1.43f, 2.2f, 2.2f, 2.2f, 2.2f, 3.0f, 2.2f };
         private float[] _rideSurfTilt = { 58.3f, 58.3f, 58.3f, 58.3f, 58.3f, 45.0f, 58.3f, 58.3f, 58.3f, 21.34f, 58.3f, 58.3f, 58.3f, 58.3f, 58.3f, 58.3f, 58.3f, 58.3f, 58.3f, 58.3f };
+        private float[] _rideSurfResistanceA = { 1.0f, 0.00203522993f, 0.00606137002f, 0.0499597304f, 0.14174813f, 0.0f, 0.00999999978f, 0.0291332491f, 0.00860677008f, 0.0545013696f, 0.00999999978f, 0.0109564196f, 0.00999999978f, 0.0397073403f, 0.00443645986f, 0.00217328011f, 0.00999999978f, 0.00999999978f, 0.0f, 0.00999999978f };
+        private float[] _rideSurfResistanceB = { 1.0f, 0.00195900002f, 0.0060999901f, 0.0050499998f, 0.0185748208f, 0.0f, 0.0f, 0.0115270698f, 0.0078489501f, 0.0050111101f, 0.0f, 0.00249097007f, 0.00257639005f, 0.148730233f, 0.00194999995f, 0.00223176996f, 0.0f, 0.0f, 0.0f, 0.0f };
+        private float[] _rideSurfResistanceC = { 1.0f, 0.00750940014f, 0.00883501954f, 0.0050751199f, 0.00794504024f, 0.00254112994f, 0.0250000004f, 0.0f, 0.00770932017f, 0.00522169983f, 0.0250000004f, 0.0250000004f, 0.0f, 0.044546131f, 0.00576084014f, 0.00768053019f, 0.0250000004f, 0.0250000004f, 0.00260000001f, 0.0250000004f };
     }
 }

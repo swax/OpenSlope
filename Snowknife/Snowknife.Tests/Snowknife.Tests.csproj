@@ -30,6 +30,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Unity\VRC\Riding\Board\RideableBoard.Response.Generated.cs" Link="RideResponse\Vrc.cs" />
+    <Compile Include="..\..\Unity\Basis\Riding\BasisBoard.Response.Generated.cs" Link="RideResponse\Basis.cs" />
     <ProjectReference Include="..\Snowknife\Snowknife.csproj" />
     <!-- Named explicitly, and with the same properties Snowknife passes it: the codec round-trip tests decode
          with SSX-Library's own PsAdpcmCodec / EAAudioHandler, and matching the properties keeps MSBuild from

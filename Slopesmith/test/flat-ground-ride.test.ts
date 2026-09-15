@@ -6,6 +6,8 @@
 // capture that spawned on a level shelf: 1196 frames, 17 m travelled, and the cruise drive gated off for every
 // one of the 1171 grounded ticks.
 import assert from 'node:assert/strict';
+import { forwardResistance } from '../src/app/ride/ride-response';
+import { RIDER_DRIVE } from '../src/app/ride/physics-tuning';
 import * as THREE from 'three';
 import { createRideModel, groundRestDepth, SURFACE_ROWS } from '../src/app/ride/physics';
 
@@ -114,11 +116,17 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
   model.st.pos.set(0, 4, -30);
   model.st.vel.set(0, 0, 12);
   model.st.grounded = false;
-  for (let i = 0; i < 240; i++) model.step(1 / 60);
+  let arrivingPlanar = 0, peakAfterLanding = 0, groundedTicks = 0;
+  for (let i = 0; i < 240; i++) {
+    if (!model.st.grounded) arrivingPlanar = planar(model);
+    model.step(1 / 60);
+    if (model.st.grounded && ++groundedTicks <= 30) peakAfterLanding = Math.max(peakAfterLanding, planar(model));
+  }
   assert.ok(model.st.grounded, 'the drop lands');
-  assert.ok(model.st.vel.length() >= 12,
-    `a square landing comes out carrying what it arrived with (got ${model.st.vel.length().toFixed(2)} m/s)`);
-  assert.ok(travel(model) > 11, 'and carries it FORWARD, along the heading it landed on');
+  assert.ok(peakAfterLanding > arrivingPlanar + 1,
+    `contact redirects impact into forward travel (${arrivingPlanar.toFixed(2)} -> ${peakAfterLanding.toFixed(2)} m/s)`);
+  assert.ok(travel(model) > 0 && planar(model) < peakAfterLanding,
+    'the rider carries forward travel, then the recovered resistance slows the unpowered coast');
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -129,8 +137,11 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
   const model = seated();
   for (let i = 0; i < 300; i++) model.step(1 / 60);
   assert.ok(travel(model) > 0, 'a standstill on level snow drives FORWARD, along the board heading');
-  assert.ok(Math.abs(model.st.vel.length() - SNOW.target) < 0.5,
-    `and settles at the surface's cruise target ${SNOW.target} m/s (got ${model.st.vel.length().toFixed(2)})`);
+  const speed = planar(model);
+  const balance = RIDER_DRIVE * SNOW.mult * (SNOW.target - speed)
+    + forwardResistance(SNOW, speed, model.st.error, model.st.sinkBudget, 0, 0);
+  assert.ok(speed < SNOW.target && Math.abs(balance) < 0.01,
+    `cruise and resistance settle in balance below the target (net ${balance.toFixed(4)} m/s²)`);
 }
 
 // Alignment is a heading delta in the contact plane, so a SIDEWAYS skid still gets nothing ([Trailmap: 360]).
@@ -157,8 +168,10 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
   for (let i = 0; i < 300; i++) model.step(1 / 60);
   assert.equal(model.st.lead, -1, 'and it stays switch — nothing rights the lead on its own');
   assert.ok(model.st.fwd.z > 0.9, 'the drawn nose still points the way it was left');
-  assert.ok(model.st.vel.z < -SNOW.target + 0.5,
-    `a switch rider drives up to the cruise target along their own travel (got ${model.st.vel.z.toFixed(2)} m/s)`);
+  const speed = -model.st.vel.z;
+  const balance = RIDER_DRIVE * SNOW.mult * (SNOW.target - speed)
+    + forwardResistance(SNOW, speed, model.st.error, model.st.sinkBudget, 0, 0);
+  assert.ok(speed > 0 && Math.abs(balance) < 0.01, 'switch travel reaches the same drive/resistance equilibrium');
 }
 
 // ---------------------------------------------------------------------------------------------------------
