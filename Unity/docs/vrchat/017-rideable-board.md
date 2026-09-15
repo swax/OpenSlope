@@ -97,8 +97,9 @@ head fields cover **accel/contact, turn/carve, and speed-response**. Two structu
 down-slope speed is **not plain `g·sinθ` + one drag term** but a tuned, state-dependent **speed target** with
 decay/clamp; and turn/carve is **speed- and contact-basis-scaled**. The direct grounded heading-yaw path is
 mapped too: stick X is smoothed into a lean field, then a radians-per-tick quaternion yaw is applied around the
-contact normal with a `6 deg/tick` cap. `turn_x` is part of the surface side-force/carve path, not the direct
-angular yaw scalar. ([Trailmap: 310-surface-response])
+contact normal with a `6 deg/tick` cap. The former `turn_x/y/z` labels describe
+forward-resistance coefficients; their output acts along the forward tangent.
+([Trailmap: 310-surface-response, 330-carving])
 
 What we *did* extract from our own data is the **boost economy** (real numbers, from the level's `Effects.json`):
 speed-boost magnitudes **3.0 / 5.0**, trick-boost (launch) **10.0 / 15.0**, score multipliers **2× / 3× /
@@ -113,10 +114,10 @@ expect to retune by ear.
 
 The terrain uses these `SurfaceType`s (patch counts from `Patches.json`). The table's **Authored ride
 character** column is a human-readable target; the **real numeric constants** live in
-[020 — Surface Physics](020-surface-physics.md), which supplies data-derived `MuFor` (friction ← `speed_gain`)
-and `CarveGripFor` (← `carve_drag`). The third column, `turn_x`, does **not** drive heading yaw — the engine's
-heading yaw is a separate, surface-independent capped formula (see step 4), and `turn_x` feeds the
-carve/side-force instead. The authored ride-character targets:
+[020 — Surface Physics](020-surface-physics.md). Cruise drive, forward resistance,
+lateral resistance and banked contact have separate consumers. Physical heading
+uses the capped yaw formula described in [040](040-carving-response.md).
+The authored ride-character targets:
 
 | Type | Legend name | Patches | Authored ride character |
 |---|---|---|---|
@@ -170,21 +171,16 @@ speed over a crest and leave the ground.
    air resumes only on contact (`error ≤ 0`). An airborne penetrating probe that is separating faster than
    0.25 m/s is a far-side crossing, not a touchdown. Bounce/wall rows 6/10 also release a grounded rider already
    separating from the face.
-3. **Response + grounded load** `[real]`+`[gold]` — the three-zone per-surface response pushes along the analytic
-   normal. Gari ice constrains that normal load to the active row's `A/100`; Snowdream independently constrains
-   the effective contact-plane pull to 4.73 m/s². A capped one-sided pushout intervenes
-   only past the surface budget. There is no generic grounded quadratic drag; speed is shaped by the shared cap,
-   positive-only cruise drive, lateral carve drag, braking and boost.
-4. **Carve vs. skid** `[real]`+`[tune]` — the heart of the feel, the **engine model** ([020](020-surface-physics.md)).
-   Stick X slews into a **lean** (the lean field's shape ramps in with speed, slower on powder); the lean drives a
-   **heading yaw** around the contact normal that *leads* a reference direction — your velocity, or in VR
-   head-steer your gaze — by the lean angle, **speed-gated up** (quadratic, ~half by 12 m/s) and **capped at
-   `6 deg/tick` = `360 deg/s`**. A self-centering slip term makes that fast cap settle into a bounded carve angle
-   instead of spinning out (let go of the stick and the heading homes back onto your travel). Heading yaw is
-   **surface-independent** — the per-surface `turn_x` is *not* the yaw scalar; it feeds the carve. Velocity is
-   then split **forward** / **lateral** and the lateral part decayed by the surface `carve_drag` grip: high
-   (powder) → **tight carve**, low (ice) → **wide drift**. The shared contract owns the 360°/s cap, lead-angle
-   strength, grip scale, and `carveBite` conversion.
+3. **Response + grounded load** `[real]` — surface `A/100` supplies world-down
+   acceleration. The three-zone contact response is banked with its normal residual
+   preserved. Forward and lateral resistance act in the opening contact frame.
+   A bounded pushout intervenes beyond the sink budget.
+4. **Carve vs. skid** `[real]`+`[tune]` — smoothed lean banks the contact force and
+   requests physical heading yaw after velocity integration. Heading uses the bounded
+   asin slip projection, mode curve, backward sign and downhill alignment reference.
+   The 6°/tick cap is a heading limit, not a prescribed travel turn rate. Scalar
+   response methods are generated for both Unity layers; neutral caller inputs and
+   remaining adaptations are listed in [040](040-carving-response.md).
 5. **Ollie** `[real]` — `InputUse` charges (hold) and launches (release) an up-impulse blended off the contact
    normal toward the up-slope tangent on steep ground. Crucially the launch is
    **decoupled from the live ground/air frame**: once an ollie is committed, it launches on its own charge
@@ -293,12 +289,11 @@ Obstacle bounce reads imported `PlayerBounceAmmount` metadata from `PropsCollisi
 
 Runtime constants and all 20 surface rows come from
 `Trailmap/specs/data/ride-v1.json`, generated into `RideableBoard.Contract.Generated.cs` and Slopesmith's
-matching TypeScript view. Existing serialized inspector values therefore cannot silently override grounded load,
-drag, contact transitions, steering shaping, pose response, or speed caps. Inspector fields remain for orthogonal
-platform behavior such as riderless coast, collision queries, tricks, and view comfort. The ground
-heading yaw is calibrated directly to the recovered number from [020](020-surface-physics.md) — full-stick
-standard snow reaches the `6 deg/tick` = **360 deg/s** cap by ~8 m/s — so the remaining feel tuning is the carve
-(`carveBite`) and lead angle recorded in the shared contract, not a Unity-only yaw-rate override.
+matching TypeScript view. Surface rows, contact transitions and speed caps use those
+generated values. The generated response methods expose normalized rider inputs in
+the inspector for controlled comparisons; their defaults are project choices, not
+a recovered retail character. Platform controls and view comfort remain configurable.
+See [040](040-carving-response.md) for verification and implementation limits.
 
 ## Firing trigger volumes while you ride (the rider probe)
 
@@ -429,11 +424,11 @@ with speed (fast → you climb higher before gravity reverses you).
 2. `ContactGap(pos) = dot(pos − _pPoint, _pNormal)` — distance to the surface **along its normal** — replaces the
    Y-height tests. Position remains a free integrated state; the surface threshold decides ground/air, and only
    penetration past the sink budget invokes the capped pushout/normal-velocity kill.
-3. The three-zone response acts along the analytic normal; surface `A/100` supplies the normal load and the
-   shared 4.73 m/s² Snowdream calibration supplies only the effective contact-plane pull. The
-   fresh accepted-contact redirect rotates 40% of normal velocity toward the tangent without changing speed; this
-   supplies the quiet contact/centripetal turn. A separating type-6/10 broad-band contact is rejected rather than
-   catching the rider on the far side.
+3. The three-zone response is banked with its normal residual preserved; surface
+   `A/100` supplies world-down load and the recovered resistance helpers shape travel.
+   The accepted-contact redirect still rotates 40% of normal velocity toward the
+   tangent without changing speed. This is a port contact safeguard; a separating
+   type-6/10 broad-band contact is rejected.
 4. While riding a steep face (`onWall`: `_contactN.y < wallNormalMax`) the collide-and-slide sweep is **skipped**,
    so the obstacle system can't fight the wall-ride; ridable ground (and props on it) still slide as usual. A
    wall you *slam into as a barrier* still blocks via collide-and-slide — it's a wall you *ride up a continuous

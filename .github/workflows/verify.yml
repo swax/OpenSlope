@@ -46,9 +46,10 @@ jobs:
             exit 0
           fi
 
-          # A repository's first push has an all-zero before SHA and the root commit has no parent.
-          # Treat every suite as affected instead of trying to diff against a nonexistent revision.
-          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+          # A first push has no base, and a history rewrite can leave the previous tip outside the
+          # fetched history even with fetch-depth: 0. Treat every suite as affected in either case.
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "Base commit is unavailable; running every suite."
             node tools/affected-suites.mjs --all | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi

@@ -100,30 +100,27 @@ applied to both position and velocity, and bled out of the stored error.
 Because it fires only past the budget and is proportional to the overshoot,
 it is a soft floor, not a rigid one. [[320-pushout]]()
 
-The grounded load is now constrained independently in the normal and tangent
-directions. A keyboard-only Gari Type-5 trace removes controller scaling from
-the experiment: neutral ice averages 13.77 m/s² of response while sitting at
-approximately the 5 mm bog floor, matching that row's `A/100 = 13.5093 m/s²`.
-The former 4.73 m/s² world-down port settled at only 1.75 mm and cannot produce
-that response or the measured banked side force. The active surface's `A/100`
-therefore supplies the port's normal load. [measured, inferred]
-[[320-equilibrium]]() [[320-gari-load]]()
+The force accumulator includes world-down acceleration equal to the active
+surface's `A/100` in m/s². A keyboard-only ice trace measured a neutral response
+near that value at the bog floor. Banking also changes the normal response via
+the residual term specified in `330-carving.md`; it does not preserve the
+unbanked response unchanged. [[320-equilibrium]]() [[320-gari-load]]()
 
-The matched Snowdream natural-lip approach still constrains the **effective
-tangential** pull. From course coordinate −640.04 m to −572.15 m the terrain
-drops 22.74 m while speed rises 14.32 → 20.49 m/s with no boost, giving
-`(v1²−v0²)/(2h) = 4.73 m/s²`. This cannot be the entire grounded world-down
-load because it contradicts Gari's directly observed contact response. It is
-the net down-course result after the still-unrecovered tangential terms.
-Ports currently preserve both measurements by projecting `A/100` into the
-normal channel and 4.73 m/s² into the contact plane. The retail decomposition
-remains open. [measured, inferred] [[320-ground-gold]]()
+A matched Snowdream approach gained speed from 14.32 to 20.49 m/s across a
+22.74 m drop, giving `(v1²-v0²)/(2h)=4.73 m/s²`. This is an **effective net
+energy gain**, not a second gravity constant to apply after adding forward
+resistance. The recovered force accumulator uses the surface load, banked
+contact response, forward resistance, lateral resistance and drive together.
+The historical split that applied 4.73 m/s² only along the contact plane was a
+port approximation made while the forward resistance was unresolved.
+[[320-ground-gold]]()
 
-> [[320-ground-gold]]() doc:../research/ground-contact-gold.md — matched
-> Snowdream telemetry and the same no-boost energy calculation used by the port.
-
-> [[320-gari-load]]() doc:../research/rider-telemetry.md — keyboard-only Gari
-> ice trace, recovered response values and path-curvature comparison.
+> [[320-ground-gold]]() doc:../research/ground-contact-gold.md;
+> doc:../research/carving-response.md; @0x0010a3f8 — historical energy
+> measurement and separately analyzed grounded load.
+> [[320-gari-load]]() doc:../research/rider-telemetry.md;
+> doc:../research/carving-response.md — neutral response observation and
+> separate analysis of the banked normal response.
 
 For patch-based ports, the contact point must also satisfy the probe itself.
 The tessellated triangle hit may seed the bicubic parameters, but evaluating
@@ -150,8 +147,7 @@ not a same-point tuning measurement. [measured]
 The active port profile is serialized in `specs/data/ride-v1.json`, and ports
 generate their own language views from it. Ports consume those values
 and must preserve the declared tick order. This machine-readable profile does not
-replace the prose evidence or promote inferred values to traced facts: the
-normal/tangential load split remains tagged `measured-inferred`. [port contract]
+replace the prose evidence or promote inferred values to traced facts: neutral rider response defaults and unresolved caller inputs remain implementation choices. [port contract]
 
 > [[320-spring]]() db:surface-accel-rate —
 > `SurfaceMaterial_AccelResponseHelper` @0x00109878: A = record+0x00,
@@ -160,17 +156,10 @@ normal/tangential load split remains tagged `measured-inferred`. [port contract]
 > (map:"Surface physics table").
 
 > [[320-spring-accel]]() db:surface-accel-rate;
-> db:ground-velocity-correction; map:"Surface physics table" —
-> `GroundMotion_SurfaceTunedBoardUpdateCandidate` @0x0010a0d8..0x0010a808:
-> `f21 = SurfaceMaterial_AccelResponseHelper(...)`; `θ = record+0x14° * lean`;
-> `sp+0x10 = +0x2a0 * cosθ`, `sp+0x20 = +0x330 * sinθ`,
-> `sp+0x30 = sp+0x10 + sp+0x20`; `f20 = min(f21, 2A) / cosθ`, then the caller
-> accumulates contact/tangent/lateral terms and integrates with
-> `dt = +0x12c/60`. Direct boarder motion stores in the scoped slice:
-> @0x0010a480 `+0x140` budget pushout, @0x0010a4b0 `+0x150` budget pushout,
-> @0x0010a554 `+0x140 += +0x150 * dt`, @0x0010a578 `+0x150 += accel_delta * dt`.
-> The two later `+0x150` stores @0x0010aae8 and @0x0010ab48 after yaw/contact
-> refresh are the grounded redirect ([[320-redirect]]).
+> db:ground-velocity-correction; map:"Surface physics table";
+> doc:../research/carving-response.md; @0x0010a0d8 — ground-response
+> analysis distinguishes force integration, budget correction and the
+> subsequent grounded redirect ([[320-redirect]]).
 
 > [[320-pushout]]() db:snow-sink; db:ground-velocity-correction —
 > @0x0010a428: `e = max(budget + error, −10)`; if `e < 0` then
@@ -291,17 +280,14 @@ An implementation that instead **clamps out gravity's** into-surface component
 removes the sole force holding the deck down: outward normal speed then
 accumulates on any convex ground with nothing to remove it, and the deck floats
 off perfectly smooth terrain — a failure a faceted collision mesh hides, because
-its noise keeps resetting the accumulation. The grounded gravity *term* itself
-is untraced, so its magnitude remains [open] as noted above.
+its noise keeps resetting the accumulation. The force assembly supplies the
+surface's `A/100` as world-down acceleration, as described in `330-carving.md`.
 [[320-gravity-holds]]()
 
-> [[320-gravity-holds]]() db:snow-sink — map:"soft contact spring": "full
-> gravity keeps pulling the deck down into the surface every tick; the spring
-> balances that at penetration ≈ budget"; the same topic's replication summary
-> @0x0010a428 prescribes "let full gravity pull the deck into the surface … do
-> NOT hard-snap to a fixed hover height". No grounded gravity term has been
-> located, so the constant stays [open] (`[[320-equilibrium]]`); the convex-hover
-> failure mode is [inferred] from that model, not traced.
+> [[320-gravity-holds]]() doc:../research/carving-response.md;
+> @0x0010a3f8..@0x0010a418 — world-down -A force assembly. This resolves the
+> former open grounded-load constant; the convex-hover failure mode remains
+> [inferred] from the free-contact model, not traced.
 
 > [[320-no-blanket]]() db:ground-velocity-correction;
 > db:contact-projection — the @0x0010a4b8 gate tests `dot < 0` (f21 is zeroed

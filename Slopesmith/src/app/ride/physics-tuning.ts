@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   RIDE_AIR_GRAVITY_FALLING, RIDE_AIR_GRAVITY_RISING, RIDE_AIR_HORIZONTAL_DRAG, RIDE_AIR_LEVEL_RATE,
   RIDE_AIR_TURN_RATE, RIDE_BANK_MAX, RIDE_BOOST_ACCEL, RIDE_BOOST_CAP_DECAY, RIDE_BOOST_LEAN_WINDOW,
-  RIDE_BOOST_MAX_SPEED, RIDE_CARVE_BITE, RIDE_CARVE_SLIDE_SCALE, RIDE_CARVE_SLIDE_SLEW,
+  RIDE_BOOST_MAX_SPEED, RIDE_CARVE_SLIDE_SCALE, RIDE_CARVE_SLIDE_SLEW,
   RIDE_CARVE_SLIDE_SPEED_GATE, RIDE_CONTACT_FIELD_SLEW, RIDE_CONTACT_REDIRECT,
   RIDE_CONTACT_SEPARATION_SPEED, RIDE_CRUISE_DEFICIT_MAX, RIDE_GRIP_SCALE, RIDE_GROUND_ORIENT_GAIN,
   RIDE_GROUND_ORIENT_RATE_CAP, RIDE_GROUND_TURN_RATE, RIDE_LAUNCH_WORLD_UP_SPEED,
@@ -21,14 +21,13 @@ import { clamp } from '../../core/math/scalar';
 
 /** [Trailmap: 340] two-stage air gravity (rising / falling). Ground contact uses the active surface's A/100. */
 export const GRAVITY = RIDE_AIR_GRAVITY_FALLING, GRAVITY_RISING = RIDE_AIR_GRAVITY_RISING;
+/** Historical net course-energy measurement; not applied by the current ground integrator. */
 export const GROUND_TANGENTIAL_PULL = RIDE_GROUND_TANGENTIAL_PULL;
 // [Trailmap: 360] the shared speed cap: default tier, top (boost) tier, and the ~2.08 m/s per second it eases
 // DOWN at. There is no meter here, so boost selects the top tier directly rather than the meter's 3 thresholds.
 export const MAX_SPEED = RIDE_MAX_SPEED, BOOST_MAX_SPEED = RIDE_BOOST_MAX_SPEED, BOOST_CAP_DECAY = RIDE_BOOST_CAP_DECAY;
-// [Trailmap: 340] air horizontal damping. Ground motion has no generic drag term: the engine bounds it with the
-// speed cap, surface cruise response, lateral carve drag, and explicit brake/boost paths. The Snowdream gold run
-// confirms that carried speed keeps building down ordinary snow where the former port-only quadratic drag
-// plateaued 3.2 m/s early and consequently held the rider onto convex lips for several extra ticks.
+// [Trailmap: 340] air horizontal damping. Ground motion uses the distinct forward and lateral
+// resistance laws in [Trailmap: 330], alongside cruise, brake, boost and the speed cap.
 export const AIR_H_DRAG = RIDE_AIR_HORIZONTAL_DRAG;
 // [Trailmap: 360] cruise drive: the rider-statistic factor (mid of the traced 0.738–1.015 band) and the cap on
 // the deficit it may chase.
@@ -49,9 +48,8 @@ export function riderDrive(stat: number): number {
 // [Trailmap: 330] the grounded yaw cap is a flat 6°/tick. [Trailmap: 340] air spin runs 271–670°/s by rider stat;
 // 270 is the low-stat end, and this ride only yaws (the engine rotates about a stick-selected axis, all axes alike).
 export const GROUND_TURN_RATE = RIDE_GROUND_TURN_RATE, AIR_TURN_RATE = RIDE_AIR_TURN_RATE; // deg/s
-// Shared steering shaping. CARVE_BITE has no traced retail formula [open]: 330 gives each surface's carve drag
-// but not how that drag becomes a lateral acceleration, so the gold profile records the validated conversion.
-export const STEER_STRENGTH = RIDE_STEER_STRENGTH, GRIP_SCALE = RIDE_GRIP_SCALE, CARVE_BITE = RIDE_CARVE_BITE;
+// [Trailmap: 330] Response helpers own surface resistance; no fitted lateral bite remains.
+export const STEER_STRENGTH = RIDE_STEER_STRENGTH, GRIP_SCALE = RIDE_GRIP_SCALE;
 export const BANK_MAX = RIDE_BANK_MAX;                  // [Trailmap: 330] roll = lean · 50°
 /**
  * VR head steering (docs/048) — `no spec constant`, and deliberately so: the engine has no headset, so the spec
@@ -281,87 +279,19 @@ export const PROP_BOUNCE_EJECT_FLOOR = 2 / 3.6;
 export const SHOVE_RESTITUTION = 1.3, RIDER_MASS_TERM = 0.01, MOVABLE_MIN_IMPACT = 0.75;
 /** Sign that makes D / stick-right turn right in this frame (verified in-browser). */
 export const STEER_SIGN = -1;
-/**
- * Low-grip steering assist — NOT retail. A port-level rider aid in the same class as `wallCrashSpeed = 0`:
- * the contract keeps carrying the measured retail table, and this sits on top of it.
- *
- * Retail ice is laterally frictionless (carve drag 0.0025 against standard snow's 1.2017), and the measured
- * consequence is not that a skid fails to recover — it is that the skid recovers the WRONG WAY. Centre the
- * input mid-carve on ice and the slip angle reaches zero in 0.75 s, but 77% of that closure is the board
- * YAWING ONTO ITS DRIFT rather than the drift bending back under the board; snow inverts the split, 28/72
- * (`tools/ride-study/ice-slip-sweep.ts 5 drive recover`). The rider is left travelling ~21° off their line,
- * reading zero slip, with nothing able to correct it: lean is centred so there is no tilt force, and slip is
- * zero so the carve drag has nothing to bite. Every number freezes and the line never comes back.
- *
- * That is survivable on a stick, which can hold full counter-lean indefinitely for free. It is not survivable
- * on VR head-steer, where a neck is a position control with ~60° of comfortable range, no detent, and no rest
- * state — which is exactly the report this came from.
- *
- * TWO terms, and neither works alone. Damping the self-centring yaw on its own leaves the rider sliding off
- * the course pointing the right way (worse: it looks correct and is not). Bleeding the uncommanded lateral
- * velocity on its own finds nothing to bleed, because the yaw has already driven it to zero inside 0.75 s.
- * Together the heading holds, the slip survives as an error signal, and the drift bends back under the board.
- *
- * At the tuning below, ice's release splits 36/64 instead of 77/23 — inverted, and near snow's natural 28/72
- * — while the held carve is untouched: the lean sweep still settles on 31.92°/lean against retail's 31.81,
- * every slip row unchanged to two decimals. Standard snow is byte-identical, by construction rather than by
- * measurement, since `iceAssistFor` returns exactly 0 there and both terms drop out.
- */
+/** Optional port assistance; disabled by default. These constants were tuned against an earlier
+ * controller and are not original-game response parameters. See docs/061-carving-response.md. */
 export const ICE_ASSIST_DRAG_REF = 0.15;
-/**
- * Authority ramps in as a surface's own carve drag falls below `ICE_ASSIST_DRAG_REF`, so the assist is
- * selected by the surface table rather than by a hardcoded row: ice (0.0025) → 0.98, ice crunch (0.0) → 1.00,
- * speed (0.03) → 0.80, off-track metal (0.1) → 0.33, and every ordinary rideable surface — standard snow
- * (1.2017), off-track (1.5091), powder (3.0013), the generic row (1.0) — → exactly 0, so both terms evaluate
- * to nothing there and those surfaces run the arithmetic they ran before. No `if (surf === 5)` anywhere.
- */
+/** Apply assistance only to surface rows whose lateral drag is below the reference. */
 export function iceAssistFor(carveDrag: number): number {
   return Math.min(1, Math.max(0, (ICE_ASSIST_DRAG_REF - carveDrag) / ICE_ASSIST_DRAG_REF));
 }
-/**
- * How much of the heading's yaw is withheld while it is UN-COMMITTING — the commanded lead has fallen inside
- * the slip already being carried, and on the same side of it, so the closure is walking the board out onto
- * its own drift. Entering a carve and reversing one both keep full retail authority.
- *
- * The condition is deliberately the yaw's direction rather than "is the input centred": lean slews to zero
- * over ~0.14 s while three quarters of the re-alignment is already done, so a lean-gated damp arrives after
- * the fact (measured 77/23 → 73/27, i.e. nothing). Applied AFTER the 6°/tick clamp, because the re-alignment
- * is cap-limited and scaling the pre-clamp closure fraction would not reach it.
- *
- * High because damping the heading is the cheap half: it adds no artificial grip, it only stops the board
- * reporting zero slip while the rider is still leaving the course. The recovery rate below is the half that
- * does add grip, so it carries as little of the work as it can.
- */
+/** Withhold this fraction of post-clamp yaw when the heading is unwinding its existing slip. */
 export const ICE_SELF_CENTER_DAMP = 0.97;
-/**
- * Rate (1/s) at which lateral velocity is pulled onto the lean's COMMANDED drift rather than onto zero. The
- * commanded value needs no fitted curve and no new surface column: on a near-frictionless surface the settled
- * slip angle IS the heading's own lead angle, `turnLean` — measured at 0.9734 × turnLean with a 0.26° max
- * residual across the whole lean range and every speed. (The 3% deficit is the lateral drag itself, which is
- * why the identity is only this tight where the drag is ~0 — standard snow reads 0.6976 with a 1.78°
- * residual. Fine: the assist is zero there.) So a held lean keeps its full retail drift and only the drift
- * nobody asked for is bled off.
- */
+/** Additional recovery toward the commanded lateral drift, in inverse seconds. */
 export const ICE_SLIP_RECOVER = 2.5;
-/**
- * Assist term 3: lift a low-grip surface's carve TILT toward the 58.3° that 17 of the 20 rows already carry.
- * `θ = tilt°·lean` banks the contact response into the turn, and `response·tanθ` is the entire force bending
- * the velocity — so this is turn AUTHORITY, the thing that decides whether a line fits inside the course.
- *
- * It is the right knob for "more grip on ice" because the two obvious ones are not. The carve drag cannot do
- * it: term 2 pulls the lateral velocity onto the commanded drift, so raising the drag is simply cancelled.
- * And the drift ANGLE cannot be dialled down directly — it is kinematic. Equilibrium is where the yaw closure
- * matches the rate the velocity is already rotating, `(turnLean − slip)·hClose = ω/60`, so a small ω forces
- * slip up against turnLean. Ice's ω is small (48°/s at full lean against snow's 179°/s), which is exactly why
- * its slip sits at 0.97 of turnLean where snow's sits at 0.70. Raising the tilt raises ω — the board turns
- * tighter — and the drift angle barely moves, because on ice `hClose` stays high with the speed. That is the
- * useful shape here: ice keeps its 28° drift LOOK and gets a line that fits the course.
- *
- * 0 is retail. 1 is snow parity. Scaled by the assist, so this reaches ice (45°) and nothing else: rock's
- * 21.34° is a high-drag row and reads assist 0, and every other low-drag row already sits at 58.3°.
- */
+/** Interpolate low-grip contact tilt toward the common table tilt. */
 export const ICE_TILT_LIFT = 0.5;
-/** The carve tilt 17 of the 20 surface rows share; `ICE_TILT_LIFT` interpolates toward it, never past it. */
 export const CARVE_TILT_BASE = 58.3;
 export function iceCarveTilt(tilt: number, assist: number): number {
   return tilt >= CARVE_TILT_BASE ? tilt : tilt + assist * ICE_TILT_LIFT * (CARVE_TILT_BASE - tilt);

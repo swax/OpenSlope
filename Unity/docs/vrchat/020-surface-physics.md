@@ -12,8 +12,8 @@ consumes that contract.
 `Trailmap/specs/data/ride-v1.json` is the shared machine-readable source for
 the measured constants. `Slopesmith/tools/generate_ride_contract.py` generates:
 
-- `Unity/VRC/Riding/Board/RideableBoard.Contract.Generated.cs` for the Udon
-  board; and
+- `Unity/VRC/Riding/Board/RideableBoard.Contract.Generated.cs` for the Udon board;
+- `Unity/Basis/Riding/BasisBoard.Contract.Generated.cs` for Basis; and
 - `Slopesmith/src/app/ride/ride-contract.generated.ts` for the browser ride.
 
 Do not copy surface rows or motion constants into this document or handwritten
@@ -33,7 +33,8 @@ definitions.
 | bog depth, sink budget, and ground threshold | contact-field slew, ground/air transition, and bounded correction |
 | visual lift | rendered deck offset |
 | speed target and response multiplier | grounded cruise drive |
-| carve drag and tilt | lateral slip decay and banked contact response |
+| forward resistance coefficients | signed forward acceleration |
+| carve drag and tilt | lateral resistance and banked contact response |
 
 The board integrates on its fixed tick in `RideableBoard.cs`. Probe results
 update the active surface row; short probe misses retain the previous row so
@@ -47,9 +48,9 @@ surface row through `RideableBoard.Rail.cs`.
 - The free-roam port treats reset terrain as a race/path rule and uses the
   generic response row for riding it. The original reset behavior remains
   defined by [Trailmap: 390-pickups-and-race].
-- `RIDE_CARVE_BITE` is a port calibration that converts the canonical carve
-  ratio into the Unity lateral-decay implementation. It is generated and
-  tested, but it is not a new SSX field.
+- Forward and lateral acceleration use the recovered scalar response laws, with
+  project-neutral rider inputs exposed for controlled tuning. The fitted lateral
+  bite conversion has been removed; see [040](040-carving-response.md).
 - On steep wall contacts the port removes the ground-only pushout cap to avoid
   tunneling because it does not reproduce the original type-6/type-10 wipeout
   backstop. Analytic seam recovery is documented in
@@ -60,7 +61,7 @@ must not be fed back into the Trailmap description of the original behavior.
 
 ## Verification
 
-Regenerate the views with `Slopesmith/tools/generate_ride_contract.py`, then
+Regenerate the views with `python Slopesmith/tools/generate_ride_contract.py --unity`, then
 run the Slopesmith ride-contract test and the Unity ride tests. Unity telemetry
 should additionally cover:
 

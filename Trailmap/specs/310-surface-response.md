@@ -4,8 +4,9 @@ Almost everything that makes one surface ride differently from another — how
 hard it pushes back, how deep the board sinks, how fast it lets you go, how it
 turns, what it sprays — is **data, not code**: a single per-surface-type
 **response table** that every grounded helper indexes by the rider's current
-surface type. There is no special-case "deep powder" or "ice" branch in the
-motion code; powder bogs and ice skates because their table rows say so.
+surface type. Powder depth and ice drift largely follow these rows; powder
+types 3 and 4 also have distinct lean-slew and depth-dependent resistance
+behavior (`330-carving.md`).
 [[310-table]]()
 
 The table is **runtime-authored by the engine binary**, not shipped in the
@@ -15,7 +16,8 @@ and one global table supplies the responses for all levels. The table holds
 **20 records**, indexed by surface type; the 19 types defined in level data
 (0–18, `110-terrain.md`) each get a record, leaving the table's last record
 unreferenced by any authored surface. Each record is a fixed block of
-scalar fields. [[310-authoring]]()
+scalar fields. The forward-resistance coefficients and lateral drag have separate
+acceleration formulas in `330-carving.md`. [[310-authoring]]()
 
 > [[310-table]]() db:surface-table; map:"Surface physics table" —
 > reached as `GlobalGameStatePtr(0x00338e58) → +0x730 → +0x24 +
@@ -39,7 +41,7 @@ behavior): [[310-fields]]()
 | sink budget | how deep the deck may float into the surface | `320-ground-contact.md` |
 | bog depth | near-surface drag-zone depth (deep-powder bog) | `320-ground-contact.md` |
 | visual lift | per-surface render lift of the drawn deck | `320-ground-contact.md` |
-| turn response (3 components) | carve/side-force tuning | `330-carving.md` |
+| forward resistance (3 coefficients) | signed forward-velocity resistance | `330-carving.md` |
 | carve drag | lateral drag while carving | `330-carving.md` |
 | speed target gain | per-surface cruise speed target | `360-speed-and-boost.md` |
 | speed response multiplier | scales the cruise re-acceleration | `360-speed-and-boost.md` |
@@ -51,11 +53,10 @@ behavior): [[310-fields]]()
 
 > [[310-fields]]() db:surface-table; map:"Surface physics table" (field
 > map: +0x00 stiffness A, +0x24 damping P, +0x20 sink budget, +0x1c bog,
-> +0x28 lift, +0x04/+0x08/+0x0c turn, +0x10 carve drag, +0x14 carve tilt in
-> DEGREES (58.3 everywhere but ice 45.0 and rock 21.34): the ground update
-> @0x0010a278 forms `record+0x14 · (π/180) · lean`, sincos's it @0x00251140, and
-> scales the contact normal by the cosine and the lateral axis by the sine into a
-> banked contact frame; +0x18 ground threshold, compared with contact
+> +0x28 lift, +0x04/+0x08/+0x0c forward resistance, +0x10 carve drag, +0x14 carve tilt in
+> DEGREES (58.3 everywhere but ice 45.0 and rock 21.34); banked contact
+> analysis @0x0010a278 is summarized in doc:../research/carving-response.md;
+> +0x18 ground threshold, compared with contact
 > clearance by the ground-to-air exit at @0x0010ab4c..@0x0010ab78,
 > +0x2c/+0x30 speed
 > gain/mult, +0x34..+0x44 spray rate/size/lifetime/sprite (traced,
@@ -107,8 +108,8 @@ The pattern to preserve: the **two powder types** carry an order of magnitude
 more sink and bog than every rideable hard surface — snow, ice, rock, ramp
 (the reset and wall rows are non-gameplay/wipeout-trigger surfaces, not
 comparable "hard riding" surfaces); the board genuinely buries and bogs,
-`320`; **ice** has near-zero turn response and near-zero carve drag
-(you cannot bite the edge) but the **highest speed target** among the surfaces
+`320`; **ice** has small forward-resistance coefficients and near-zero carve drag
+(lateral drift persists while the contact force still bends the path) but the **highest speed target** among the surfaces
 a course actually rides on; **rock** has a
 heavily damped, dead contact and the lowest speed target (riding off-track is
 slow); the **ramp** type is a fast, heavily damped, hold-your-line surface.
@@ -116,8 +117,8 @@ slow); the **ramp** type is a fast, heavily damped, hold-your-line surface.
 
 ## The rows the names do not describe
 
-Only nine rows are individually authored. **Six rows are byte-identical** — the
-generic record shared by types 6, 10, 15, 16, 17 and the spare 19: stiffness
+**Five motion records are identical** — the
+generic record shared by types 6, 10, 16, 17 and the spare 19: stiffness
 980, damping 30, a 20 cm sink over a 10 cm bog, and the 14.58 m/s target. Every
 surface a course never means to be ridden on falls back to that one row.
 [measured] [[310-generic]]()
@@ -133,7 +134,7 @@ onto the family its name suggests gets the wrong constants every time:
 - **type 8 "glidy"** sinks 23.5 cm, not standard snow's 2.5 cm, and is likewise
   heavily damped.
 - **type 11 "ice-crunch"** is the only row with **zero carve drag** — the one
-  surface on which an edge cannot bite at all — and it is not an ice row either.
+  surface with no lateral resistance from that helper — and it is not an ice row either.
 - **type 13 "off-track metal"** is the only row with **zero contact damping**.
   The soft contact spring's damping term vanishes there; the engine's capped
   pushout still settles it (`320-ground-contact.md`), but a reimplementation
@@ -148,12 +149,12 @@ onto the family its name suggests gets the wrong constants every time:
 > surface-accel-rate), quoted here ÷100 for m/s. Sink/bog/lift = record
 > +0x20/+0x1c/+0x28.
 
-> [[310-pattern]]() db:surface-table — turn components: ice
+> [[310-pattern]]() db:surface-table — forward-resistance coefficients: ice
 > (0, 0, 0.00254) and ramp (0, 0, 0.0026) vs snow (0.0020, 0.0020, 0.0075);
 > carve drag ice 0.0025 vs powder 3.0–3.5; db:snow-sink (powder sink/bog).
 
-> [[310-generic]]() db:surface-table — records 6/10/15/16/17/19 are
-> identical across every motion field (+0x00, +0x1c..+0x30); only their
+> [[310-generic]]() db:surface-table — records 6/10/16/17/19 are
+> identical across the motion fields; type 15 has different forward-resistance coefficients; only their
 > spray/trail tails and the level's own labelling distinguish them.
 
 > [[310-misleading]]() db:surface-table — record +0x24 (damping P) is

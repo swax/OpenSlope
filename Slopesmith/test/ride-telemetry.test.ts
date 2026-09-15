@@ -1,6 +1,7 @@
 // tier: fast
 
 import assert from 'node:assert/strict';
+import { forwardResistance } from '../src/app/ride/ride-response';
 import * as THREE from 'three';
 import { SURFACE_ROWS, createRideModel, groundRestDepth } from '../src/app/ride/physics';
 import { advanceBoardOrientation } from '../src/app/ride/pose';
@@ -184,15 +185,13 @@ carryModel.st.contactN.set(0, 1, 0);
 carryModel.st.boardUp.set(0, 1, 0);
 carryModel.st.grounded = true;
 carryModel.step(1 / 60);
-assert.ok(Math.abs(carryTicks.at(-1)!.closing.velocity[0] - 20) < 1e-6,
-  'aligned flat-ground longitudinal speed above cruise and below the cap must not decay through generic drag');
+const carryAcceleration = forwardResistance(SURFACE_ROWS[1], 20, -SURFACE_ROWS[1].bog, SURFACE_ROWS[1].budget, 0, 0);
+assert.ok(Math.abs(carryTicks.at(-1)!.closing.velocity[0] - (20 + carryAcceleration / 60)) < 1e-6,
+  'coasting applies the recovered forward resistance exactly once');
 
-// Gari's keyboard trace isolates the ice failure from controller scaling: a neutral Type-5 contact carries the
-// row's A/100 response (13.5093 m/s²), and the banked contact frame turns that load sideways at full lean. On a
-// flat deterministic fixture there is no terrain-curvature load to raise the response further, so this is the
-// lower baseline: A/100 * tan(45° * 0.9051856) = 11.63 m/s² and about 48.6°/s of travel yaw near 15.5 m/s.
-// The regressed 4.73 m/s² normal load produced only ~4.1 m/s² and ~17°/s here, exactly the "can't hold the ice"
-// behavior. Keep this shared contact-law assertion free of any ice-only acceleration or steering multiplier.
+// The banked residual lowers the normal projection for a given response. Flat ice must build a
+// larger scalar response to support the same load while carving. Keep the production path free
+// of optional assistance and compare its settled side force to that force-balance prediction.
 const iceTicks: RideTelemetryTick[] = [];
 const iceModel = createRideModel({
   spawn: new THREE.Vector3(0, 1, 0), heading: new THREE.Vector3(1, 0, 0), terrain: floorTerrain,
@@ -225,16 +224,19 @@ const iceLateralAccel = iceTicks.slice(60, 90).reduce((sum, tick) => {
   const side = new THREE.Vector3().crossVectors(n, f).normalize();
   return sum + Math.abs(side.dot(new THREE.Vector3().fromArray(tick.acceleration!)));
 }, 0) / 30;
-assert.ok(iceLateralAccel > 11.4 && iceLateralAccel < 11.9,
-  `full-key flat ice must bank the surface-A contact load sideways (got ${iceLateralAccel.toFixed(2)} m/s²)`);
-assert.ok(iceTravelYawRate > 46 && iceTravelYawRate < 51,
-  `full-key flat ice must bend travel at the retail-derived lower baseline (got ${iceTravelYawRate.toFixed(1)}°/s)`);
-assert.ok(Math.abs(iceTicks.at(-1)!.closing.error + SURFACE_ROWS[5].bog) < 1e-6,
-  'neutral ice contact must settle at its authored bog depth when surface A drives both normal load and response');
+const iceTheta = 45 * Math.PI / 180 * 0.9051856;
+const iceSupportResponse = (SURFACE_ROWS[5].A / 100) / (2 - 1 / Math.cos(iceTheta));
+const iceSidePrediction = iceSupportResponse * Math.tan(iceTheta);
+assert.ok(Math.abs(iceLateralAccel - iceSidePrediction) < 0.25,
+  `banked force balance predicts ${iceSidePrediction.toFixed(2)} m/s² (got ${iceLateralAccel.toFixed(2)})`);
+assert.ok(iceTravelYawRate > 60 && iceTravelYawRate < 95,
+  `the force bends travel at this fixture's speed (got ${iceTravelYawRate.toFixed(1)}°/s)`);
+assert.ok(iceTicks.at(-1)!.closing.error < -SURFACE_ROWS[5].bog,
+  'a banked contact penetrates beyond the neutral bog floor to build supporting response');
 
-// The grounded gravity magnitude was the remaining open scalar in spec 320. Snowdream supplies an energy
+// Snowdream supplies a historical net-energy
 // measurement independent of elapsed time: from course Z -640 to -572.15 the surface drops 22.74 m while retail
-// carries 14.32 -> 20.49 m/s. Reproduce that exact slope/drop without inventing longitudinal drag.
+// carries 14.32 -> 20.49 m/s. Compare the reconstructed load and resistance on this simplified slope.
 const goldDrop = 22.74;
 const goldRun = 67.85;
 const goldSlope = goldDrop / goldRun;
@@ -304,8 +306,11 @@ landingModel.step(1 / 60); // cross the floor while still running the air tick
 landingModel.step(1 / 60); // discover contact and enter ground
 const hardTouchdown = landingTicks.at(-1)!;
 assert.ok(hardTouchdown.events.some(event => event.type === 'touchdown'), 'the landing fixture must touch down');
-assert.ok(hardTouchdown.closing.speed / hardTouchdown.opening.speed > 0.95,
-  'a square touchdown must carry its speed into the first grounded response tick');
+const expectedLandingVelocity = new THREE.Vector3().fromArray(hardTouchdown.opening.velocity)
+  .addScaledVector(new THREE.Vector3().fromArray(hardTouchdown.acceleration!), 1 / 60);
+assert.ok(expectedLandingVelocity.distanceTo(new THREE.Vector3().fromArray(hardTouchdown.closing.velocity)) < 1e-6,
+  'touchdown integrates the full response once, without a separate blanket impact scrub');
+assert.ok(hardTouchdown.closing.velocity[1] < 0, 'normal impact is retained for the compliant contact to resolve');
 assert.equal(hardTouchdown.closing.error, 0,
   'a clean touchdown seeds contact error at the surface; penetration begins on following ground ticks');
 

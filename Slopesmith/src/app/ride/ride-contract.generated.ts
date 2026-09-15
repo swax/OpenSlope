@@ -8,7 +8,7 @@
 
 export const RIDE_CONTRACT_SCHEMA = "ride-contract/v1";
 export const RIDE_CONTRACT_VERSION = 1;
-export const RIDE_CONTRACT_PROFILE = "retail-gari-ice-2026-07-21";
+export const RIDE_CONTRACT_PROFILE = "pal-carving-response-2026-09-15";
 export const RIDE_SIMULATION_HZ = 60;
 export const RIDE_MAX_CATCHUP_TICKS = 6;
 export const RIDE_AIR_GRAVITY_FALLING = 19.0;
@@ -39,7 +39,6 @@ export const RIDE_AIR_TURN_RATE = 270.0;
 export const RIDE_STEER_STRENGTH = 1.0;
 export const RIDE_GRIP_SCALE = 1.0;
 export const RIDE_BANK_MAX = 50.0;
-export const RIDE_CARVE_BITE = 4.47;
 export const RIDE_CARVE_SLIDE_SCALE = 0.6;
 export const RIDE_CARVE_SLIDE_SLEW = 0.66666664;
 export const RIDE_CARVE_SLIDE_SPEED_GATE = 69.4444;
@@ -53,29 +52,30 @@ export const RIDE_LAUNCH_OUTWARD_SPEED = 0.25;
 export interface RideContractSurfaceRow {
   type: number; name: string; A: number; P: number; bog: number; budget: number; thresh: number;
   lift: number; drag: number; target: number; mult: number; tilt: number;
+  resistanceA: number; resistanceB: number; resistanceC: number;
 }
 
 export const RIDE_SURFACE_ROWS: RideContractSurfaceRow[] = [
-  { type: 0, name: "reset", A: 989.83, P: 11.61, bog: 1.0, budget: 1.1784, thresh: 0.0735, lift: 0.0133, drag: 1.0, target: 0.0, mult: 0.0, tilt: 58.3 },
-  { type: 1, name: "standard snow", A: 1300.85, P: 5.01, bog: 0.005, budget: 0.025, thresh: 0.0274, lift: 0.0174, drag: 1.2017, target: 14.4, mult: 2.0, tilt: 58.3 },
-  { type: 2, name: "standard off-track", A: 1200.45, P: 5.53, bog: 0.005, budget: 0.0309, thresh: 0.0285, lift: 0.01, drag: 1.5091, target: 12.69, mult: 1.81, tilt: 58.3 },
-  { type: 3, name: "powder snow", A: 1151.31, P: 2.84, bog: 0.1509, budget: 0.2978, thresh: 0.1504, lift: 0.0, drag: 3.0013, target: 11.25, mult: 3.09, tilt: 58.3 },
-  { type: 4, name: "slow powder snow", A: 999.14, P: 2.98, bog: 0.252, budget: 0.3563, thresh: 0.3003, lift: 0.0022, drag: 3.5026, target: 10.03, mult: 2.02, tilt: 58.3 },
-  { type: 5, name: "ice", A: 1350.93, P: 4.05, bog: 0.005, budget: 0.0225, thresh: 0.0278, lift: 0.0204, drag: 0.0025, target: 17.79, mult: 3.0, tilt: 45.0 },
-  { type: 6, name: "bounce", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3 },
-  { type: 7, name: "ice water", A: 980.0, P: 45.21, bog: 0.1382, budget: 0.3027, thresh: 0.2137, lift: 0.0969, drag: 0.1963, target: 11.33, mult: 2.39, tilt: 58.3 },
-  { type: 8, name: "glidy", A: 980.0, P: 39.4, bog: 0.1435, budget: 0.2352, thresh: 0.2, lift: 0.1, drag: 1.5799, target: 12.01, mult: 2.01, tilt: 58.3 },
-  { type: 9, name: "rock", A: 980.0, P: 30.0, bog: 0.005, budget: 0.0154, thresh: 0.0202, lift: 0.0202, drag: 0.8923, target: 5.44, mult: 1.68, tilt: 21.34 },
-  { type: 10, name: "wall", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3 },
-  { type: 11, name: "ice crunch", A: 980.0, P: 17.93, bog: 0.005, budget: 0.01, thresh: 0.007, lift: 0.0135, drag: 0.0, target: 7.31, mult: 1.47, tilt: 58.3 },
-  { type: 12, name: "no sound", A: 980.0, P: 30.0, bog: 0.005, budget: 0.0632, thresh: 0.0395, lift: 0.0202, drag: 0.8923, target: 15.11, mult: 2.21, tilt: 58.3 },
-  { type: 13, name: "off-track metal", A: 980.0, P: 0.0, bog: 0.005, budget: 0.0151, thresh: 0.0264, lift: 0.0385, drag: 0.1, target: 16.92, mult: 1.43, tilt: 58.3 },
-  { type: 14, name: "speed", A: 980.0, P: 30.0, bog: 0.005, budget: 0.0514, thresh: 0.0156, lift: 0.0218, drag: 0.03, target: 18.15, mult: 2.2, tilt: 58.3 },
-  { type: 15, name: "standard", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3 },
-  { type: 16, name: "sand", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3 },
-  { type: 17, name: "no collision", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3 },
-  { type: 18, name: "show-off ramp", A: 1350.86, P: 40.01, bog: 0.005, budget: 0.0505, thresh: 0.0258, lift: 0.0108, drag: 1.2091, target: 16.68, mult: 3.0, tilt: 58.3 },
-  { type: 19, name: "spare", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3 },
+  { type: 0, name: "reset", A: 989.83, P: 11.61, bog: 1.0, budget: 1.1784, thresh: 0.0735, lift: 0.0133, drag: 1.0, target: 0.0, mult: 0.0, tilt: 58.3, resistanceA: 1.0, resistanceB: 1.0, resistanceC: 1.0 },
+  { type: 1, name: "standard snow", A: 1300.85, P: 5.01, bog: 0.005, budget: 0.025, thresh: 0.0274, lift: 0.0174, drag: 1.2017, target: 14.4, mult: 2.0, tilt: 58.3, resistanceA: 0.00203522993, resistanceB: 0.00195900002, resistanceC: 0.00750940014 },
+  { type: 2, name: "standard off-track", A: 1200.45, P: 5.53, bog: 0.005, budget: 0.0309, thresh: 0.0285, lift: 0.01, drag: 1.5091, target: 12.69, mult: 1.81, tilt: 58.3, resistanceA: 0.00606137002, resistanceB: 0.0060999901, resistanceC: 0.00883501954 },
+  { type: 3, name: "powder snow", A: 1151.31, P: 2.84, bog: 0.1509, budget: 0.2978, thresh: 0.1504, lift: 0.0, drag: 3.0013, target: 11.25, mult: 3.09, tilt: 58.3, resistanceA: 0.0499597304, resistanceB: 0.0050499998, resistanceC: 0.0050751199 },
+  { type: 4, name: "slow powder snow", A: 999.14, P: 2.98, bog: 0.252, budget: 0.3563, thresh: 0.3003, lift: 0.0022, drag: 3.5026, target: 10.03, mult: 2.02, tilt: 58.3, resistanceA: 0.14174813, resistanceB: 0.0185748208, resistanceC: 0.00794504024 },
+  { type: 5, name: "ice", A: 1350.93, P: 4.05, bog: 0.005, budget: 0.0225, thresh: 0.0278, lift: 0.0204, drag: 0.0025, target: 17.79, mult: 3.0, tilt: 45.0, resistanceA: 0.0, resistanceB: 0.0, resistanceC: 0.00254112994 },
+  { type: 6, name: "bounce", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3, resistanceA: 0.00999999978, resistanceB: 0.0, resistanceC: 0.0250000004 },
+  { type: 7, name: "ice water", A: 980.0, P: 45.21, bog: 0.1382, budget: 0.3027, thresh: 0.2137, lift: 0.0969, drag: 0.1963, target: 11.33, mult: 2.39, tilt: 58.3, resistanceA: 0.0291332491, resistanceB: 0.0115270698, resistanceC: 0.0 },
+  { type: 8, name: "glidy", A: 980.0, P: 39.4, bog: 0.1435, budget: 0.2352, thresh: 0.2, lift: 0.1, drag: 1.5799, target: 12.01, mult: 2.01, tilt: 58.3, resistanceA: 0.00860677008, resistanceB: 0.0078489501, resistanceC: 0.00770932017 },
+  { type: 9, name: "rock", A: 980.0, P: 30.0, bog: 0.005, budget: 0.0154, thresh: 0.0202, lift: 0.0202, drag: 0.8923, target: 5.44, mult: 1.68, tilt: 21.34, resistanceA: 0.0545013696, resistanceB: 0.0050111101, resistanceC: 0.00522169983 },
+  { type: 10, name: "wall", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3, resistanceA: 0.00999999978, resistanceB: 0.0, resistanceC: 0.0250000004 },
+  { type: 11, name: "ice crunch", A: 980.0, P: 17.93, bog: 0.005, budget: 0.01, thresh: 0.007, lift: 0.0135, drag: 0.0, target: 7.31, mult: 1.47, tilt: 58.3, resistanceA: 0.0109564196, resistanceB: 0.00249097007, resistanceC: 0.0250000004 },
+  { type: 12, name: "no sound", A: 980.0, P: 30.0, bog: 0.005, budget: 0.0632, thresh: 0.0395, lift: 0.0202, drag: 0.8923, target: 15.11, mult: 2.21, tilt: 58.3, resistanceA: 0.00999999978, resistanceB: 0.00257639005, resistanceC: 0.0 },
+  { type: 13, name: "off-track metal", A: 980.0, P: 0.0, bog: 0.005, budget: 0.0151, thresh: 0.0264, lift: 0.0385, drag: 0.1, target: 16.92, mult: 1.43, tilt: 58.3, resistanceA: 0.0397073403, resistanceB: 0.148730233, resistanceC: 0.044546131 },
+  { type: 14, name: "speed", A: 980.0, P: 30.0, bog: 0.005, budget: 0.0514, thresh: 0.0156, lift: 0.0218, drag: 0.03, target: 18.15, mult: 2.2, tilt: 58.3, resistanceA: 0.00443645986, resistanceB: 0.00194999995, resistanceC: 0.00576084014 },
+  { type: 15, name: "standard", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3, resistanceA: 0.00217328011, resistanceB: 0.00223176996, resistanceC: 0.00768053019 },
+  { type: 16, name: "sand", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3, resistanceA: 0.00999999978, resistanceB: 0.0, resistanceC: 0.0250000004 },
+  { type: 17, name: "no collision", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3, resistanceA: 0.00999999978, resistanceB: 0.0, resistanceC: 0.0250000004 },
+  { type: 18, name: "show-off ramp", A: 1350.86, P: 40.01, bog: 0.005, budget: 0.0505, thresh: 0.0258, lift: 0.0108, drag: 1.2091, target: 16.68, mult: 3.0, tilt: 58.3, resistanceA: 0.0, resistanceB: 0.0, resistanceC: 0.00260000001 },
+  { type: 19, name: "spare", A: 980.0, P: 30.0, bog: 0.1, budget: 0.2, thresh: 0.2, lift: 0.1, drag: 1.0, target: 14.58, mult: 2.2, tilt: 58.3, resistanceA: 0.00999999978, resistanceB: 0.0, resistanceC: 0.0250000004 },
 ];
 
 export interface RideGoldTakeoff { speed: number; trajectoryPitchDeg: number; boardPitchDeg: number }

@@ -1,120 +1,228 @@
 # 330 — Carving
 
-Steering is built around one smoothed, speed-scaled **lean** signal driven by
-the turn input. Lean feeds four consumers: the **heading yaw** (a direct,
-capped rotation about the contact normal), the surface-tuned **carve/side
-force** (`310-surface-response.md` fields), the **visual bank and lateral
-pose slide**, and the carve **effects** (`380-carve-effects.md`). There is no
-single "turn rate" constant: the rate emerges from input shaping, two speed
-gates, and a hard per-tick cap. [[330-overview]]()
+Ground steering has separate **orientation** and **velocity** responses. A
+smoothed lean requests heading yaw and banks the contact force. Forward
+resistance and lateral resistance act on velocity in the contact frame; they
+do not directly set an angular turn rate. Visual bank and the pose slide are
+separate lean consumers. [[330-overview]]()
 
-> [[330-overview]]() map:"Ground steering heading rate"; db:turn-carve.
+> [[330-overview]]() doc:../research/carving-response.md; db:turn-carve —
+> response directions, corrected interpretation and validation scope.
 
 ## The lean signal
 
-The turn input (a signed stick axis, `002-conventions.md` timebase) is shaped
-into a lean target and slewed: [[330-lean]]()
+The signed turn input is clamped, speed-scaled, and slewed. The target clamp
+does not rescale every input value: a half-axis input remains 0.5 before the
+speed gate. Speeds here are in **m/s**, and the simulation runs at **60 Hz**:
+[[330-lean]]()
 
 ```text
-target = clamp(stick, ±0.9051856) · min(1, speed / speedRef)
-rate   = clamp(|target − lean| · 7.017359, 0.1, 8.018349)   (per second)
-on powder surface types: rate · 0.6
-lean slews toward target by rate / 60 each tick
+target = clamp(stick, -0.9051856, 0.9051856) * min(1, speed/speedRef)
+rate   = clamp(abs(target-lean)*7.017359, 0.1, 8.018349)
+on powder types 3 and 4: rate *= 0.599972606
+lean moves toward target by at most rate/60 per tick
 ```
 
-The speed reference is state-dependent in a narrow band
-(≈ 11.19–11.38 m/s), so lean — and with it every lean consumer — fades out
-linearly toward a standstill and is at full authority above roughly 11 m/s.
-The same shaping serves the airborne turn input (`340-jump-air-landing.md`);
-the powder rate penalty makes deep snow feel slower to edge. [[330-lean-vals]]()
+The speed reference depends on the riding-mode selector: 11.3827 m/s for
+mode 2, 11.3497 for mode 0, and 11.1901 otherwise. The same shaping serves
+airborne turning. [[330-lean-vals]]()
 
-> [[330-lean]]() db:air — `AirTurnLeanSlewFromInput` @0x00126950 writes
-> the boarder+0x214/+0x218/+0x21c slew triple, shared by ground and air
-> control; constants table in map:"Ground steering heading rate"; stick
-> decode `/31.0` in the ground control update @0x00102fc8.
-
-> [[330-lean-vals]]() map:"Ground steering heading rate" — speedRef
-> 1138.27 (state 2) / 1134.97 (state 0) / 1119.01 (default) engine-units/s;
-> powder multiplier 0.599972606 for surface types 3/4.
+> [[330-lean]]() db:air; @0x00126950; map:"Ground steering heading rate" —
+> lean slew triple; ground stick decode /31.0 @0x00102fc8.
+> [[330-lean-vals]]() map:"Ground steering heading rate" — mode +0x420;
+> speedRef 1138.27/1134.97/1119.01 engine-units/s, powder factor 0.599972606.
 
 ## Heading yaw
 
-Grounded heading turns by rotating the orientation about the **contact
-normal** by a per-tick angle: [[330-yaw]]()
+Yaw changes physical orientation about the **contact normal**. It does not
+rotate velocity. The heading calculation follows the ground acceleration and
+velocity integration, using the contact frame already built for that tick.
+Let `n` be the unit contact normal, `f` the unit forward contact tangent,
+`v` velocity, `s=length(v)`, and `dt=1/60`. Angles below are **radians**;
+velocities are **m/s**. [[330-yaw]]()
+
+The alignment reference `d` is the **downhill direction on the contact
+plane**, independent of the board's sideways axis. Construct it as
+`cross(n, normalize(cross(n, worldUp)))`; when that inner cross has length
+at most 0.0001, use the physical board-forward vector instead. This flat-ground
+fallback is not an arbitrary lateral axis. [[330-alignment-basis]]()
 
 ```text
-turnLean  = lean · c7 · (1 + 0.5·c0·(1 − lean²))      (state curve c0, c7)
-turnLean /= (1 + jumpCharge · 0.01)                    (charging stiffens steering)
-candidate = −slipAngle + turnLean                      (slip = asin of the lateral
-                                                        contact-basis projection)
-speedGate = min(1, speed² · 0.0000200298473 / 60)
-align     = min(1, max(0, 40 · min(1, speed/555.6) · (1 − |lateral|/speed)) + 0.01)
-yaw/tick  = clamp(candidate · speedGate · max(|lean|, align), ±0.104719758)
+slipProjection = dot(cross(v,f),n) / s
+slipAngle = asin(clamp(slipProjection, -0.99999, 0.99999))
+turnLean = lean*c7*(1 + 0.5*c0*(1-lean*lean)) / (1 + jumpCharge*0.01)
+candidate = turnLean - slipAngle
+if dot(v,f) < 0: candidate = -candidate
+
+speedGate = min(1, s*s*0.2002984729*dt)
+align = min(1, max(0, 40*min(1,s/5.55555542)*(0.5-abs(dot(v,d))/s))
+               + 0.01004204992)
+directionalLean = lean if candidate > 0 else -lean
+yawPerTick = clamp(candidate*speedGate*max(directionalLean,align),
+                   -0.1047197580, 0.1047197580)
 ```
 
-The cap is **6° per tick = 360°/s**. The speed gate is quadratic (half
-authority at ≈ 12.2 m/s); together with the lean shaping it means a
-standstill cannot yaw at all, and a full-stick carve on standard snow reaches
-the 360°/s cap from about 8 m/s upward. The slip-angle term self-centers the
-board toward its travel direction when the lateral slip is large.
+At zero speed the turn has no authority; an implementation must guard the
+direction divisions. Preserve the cross-product sign when mapping the source
+coordinates to another engine. The state curves are: [[330-yaw]]()
+
+| Riding mode | c0 | c7 |
+|---|---:|---:|
+| 2 | 0.2083389610 | 0.2622103095 |
+| 0 | 0.3001891971 | 0.3491855264 |
+| other | 0.4000000060 | 0.5239824057 |
+
+The cap is **6 degrees per ordinary tick**, equivalent to **360 degrees/s**.
+It limits heading correction, not sustained travel turning rate. The quadratic
+speed gate reaches half authority around 12.24 m/s and full authority around
+17.31 m/s. The original speed-gate coefficient for speeds in centimeters/s is
+0.0000200298473; the converted coefficient above already accounts for squared
+velocity units. The per-tick angle must not receive another `dt` multiplication.
 [[330-yaw-vals]]()
 
-> [[330-yaw]]() map:"Ground steering heading rate" — @0x0010a0d8 →
-> quaternion apply helper (half-angle path, radians); curve pairs
-> (0.2083,0.2622)/(0.3002,0.3492)/(0.4,0.5240) by state +0x420; slip asin
-> clamp ±0.99999; charge denominator +0x208·0.01.
+> [[330-yaw]]() doc:../research/carving-response.md; @0x0010a704 —
+> heading analysis; scalar resistance fixtures do not validate heading.
+> [[330-alignment-basis]]() doc:../research/carving-response.md;
+> @0x00128a20 — downhill reference and flat-ground fallback analysis.
+> [[330-yaw-vals]]() doc:../research/carving-response.md;
+> @0x0010a8a4; @0x0010a9d0 — measured heading gate and cap constants.
 
-> [[330-yaw-vals]]() map:"Ground steering heading rate" — clamp
-> ±0.104719758 rad/tick; gate half at 1223.8 u/s, 1.0 at 1730.8 u/s; worked
-> full-stick case caps from ≈ 798.9 u/s.
+## Heading, travel direction, and diagnostic slip
+
+For the original Z-up coordinates, a horizontal bearing with +X at zero and
++Y at 90 degrees is `atan2(direction.y,direction.x)*180/pi`, wrapped to
+0–360 degrees. Use the physical board-forward vector for heading and velocity
+for travel. Their wrapped difference is a useful horizontal slip measurement.
+For slope-local diagnostic slip, use
+`atan2(dot(v,lateral),dot(v,f))*180/pi`, with the lateral-axis sign stated.
+Neither diagnostic is automatically interchangeable with the bounded asin
+projection used by the controller above. Near rest, or when a horizontal
+projection vanishes, the corresponding bearing is undefined. [[330-slip]]()
+
+> [[330-slip]]() doc:../research/carving-response.md;
+> doc:../research/rider-telemetry.md — telemetry exposes physical board forward,
+> velocity and the contact basis; `tools/analysis/ice_slip_retail.py` measures
+> full-quadrant diagnostic slip. Audio's Slip getter @0x0021aba0 instead uses
+> an absolute velocity projection, not an angle in degrees.
 
 ## Carve force vs. skid
 
-The surface's three **turn response** components and its **carve drag**
-(`310-surface-response.md`) do not enter the yaw angle above; they tune the
-**side-force/carve acceleration** built in the contact frame — the force that
-makes an edged board actually change its velocity direction rather than just
-its facing. The turn-response helper consumes the three components together
-with rider tuning bytes; its output is added to the tick's acceleration along
-the contact-frame tangent, and the carve-drag response acts along the lateral
-axis. Ice and ramp are both authored with near-zero **turn response**, so both
-steer their *facing* normally but barely bend their *path* from turn
-response alone; ice additionally has near-zero **carve drag** — the ice
-skid — while ramp retains snow-like lateral drag (its carve drag is close
-to standard snow's). Powder's high carve drag, by contrast, eats lateral
-speed. [[330-carve-force]]()
+Three contributions must remain distinct: the **banked contact force**, the
+**forward resistance polynomial**, and **lateral resistance**. The surface
+table's former "turn response (3 components)" fields are the polynomial's
+coefficients. Their output acts along the forward tangent, opposing signed
+forward travel for ordinary nonnegative inputs; they are not a sideways
+acceleration or degrees-per-second tuning. [[330-carve-force]]()
 
-Neither response is written out as a formula. The algebra that turns the three
-turn-response components into a tangential acceleration, and the one that turns
-the carve-drag coefficient into a lateral one, are both untraced. What an
-implementation can rely on is the *relative* magnitude across surfaces
-(`310-surface-response.md`): carve drag spans three orders of magnitude from
-ice (0.0025) to slow powder (3.50), and preserving that ratio is what makes ice
-skid and powder bite. An implementation that remaps the column onto a bounded
-grip factor flattens exactly the ratio that carries the feel. [open]
+Ice's small forward coefficients and near-zero lateral resistance allow fast
+travel and sustained drift, while its banked contact response still supplies
+turning force. A ramp also has small forward coefficients but retains snow-like
+lateral resistance. Powder combines larger forward resistance, a depth factor,
+and stronger lateral resistance. Preserve the actual surface coefficients
+instead of remapping their large ratios onto a bounded grip factor.
+[[330-carve-force]]()
+
+> [[330-carve-force]]() doc:../research/carving-response.md;
+> @0x00109cb8; @0x00109ef8 — forward and lateral response functions;
+> direction analysis corrects the previous side-force interpretation.
+
+### Banked contact force
+
+Let `R` be the contact helper's scalar acceleration (`320-ground-contact.md`),
+and `A` the surface contact-response scale **converted to m/s²**. For unit
+lateral axis `l`, the force assembly is: [[330-bank-force]]()
+
+```text
+theta = surfaceTiltDegrees * pi/180 * lean
+C = min(R, 2*A)
+B = C/cos(theta)
+contactAcceleration = n*(R-B) + (n*cos(theta)+l*sin(theta))*B
+worldDownAcceleration = worldDown*A
+```
+
+Thus the lateral component is `C*tan(theta)`, while the normal component is
+`R+C-C/cos(theta)`. Simply retaining `R` along the normal omits the residual
+term. The tilt is a physical force-frame angle, distinct from visual deck bank.
+The world-down term is not the net energy gain measured across a course segment;
+forward resistance and other motion terms also contribute to that measurement.
+[[330-bank-force]]()
+
+> [[330-bank-force]]() doc:../research/carving-response.md;
+> @0x0010a278; @0x0010a3f8 — banked contact and grounded-load analysis;
+> these vector contributions are outside the scalar verifier's coverage.
+
+### Forward resistance
+
+Let `u=dot(v,f)` in **m/s**, `x=0.1*abs(u)`, and `(a,b,c)` be the three
+surface forward-resistance coefficients. Four normalized rider-tuning inputs
+are named by their consuming terms: `linearStat`, `quadraticStat`, `skidStat`,
+and `lateralStat`. These names describe their roles, not verified front-end
+attribute names. A riding-mode/edge multiplier is shared by the helpers:
+[[330-resistance]]()
+
+```text
+k = 1             if currentEdge == preferredEdge or ridingMode == 1
+    0.8499836326  otherwise, if ridingMode == 0
+    0.6998783350  otherwise
+
+rA = k*(0.7076424360 - 0.3019791245*linearStat)   if ridingMode == 2
+     k*(1.0649821758 - 0.3084552288*linearStat)   otherwise
+rC = k*(1.2848105431 - 0.2903534174*quadraticStat)
+rS = k*(0.6150994897 + 0.9181777835*skidStat)
+q = max(1, suppliedLoadRatio)
+depth = 0.5 - contactError/sinkBudget            on powder types 3 and 4
+        1                                      otherwise
+
+forwardAcceleration = -u*depth*(
+    q*a*rA + (1-jumpCharge)*0.1057286412
+    + (1+boostStrength*1.2153687477)*1.7513076067*skidControl^2*rS
+    + x*(q*b + x*q*c*rC))
+```
+
+`skidControl` is a separate signed control state; **do not substitute the
+diagnostic slip angle or sideways speed**. The helper algebra is established,
+but the runtime load-ratio multiplier, complete skid-control scheduling, and
+the mapping from front-end rider attributes remain open. Supplying neutral
+defaults for these is a documented implementation choice, not an exact retail
+rider configuration. The powder depth ratio assumes a positive sink budget.
 [[330-carve-formula]]()
 
-The residual mismatch between facing and travel is the **slip**; its
-magnitude (the lateral projection of velocity against the contact frame)
-drives the carve audio and effects gates (`380-carve-effects.md`,
-`420-audio-runtime.md`), and the self-centering term above feeds it back into
-the yaw. [[330-slip]]()
+> [[330-resistance]]() doc:../research/carving-response.md;
+> @0x00109cb8 — scalar numerical comparison across synthetic inputs;
+> rider attribute names and runtime input scheduling remain unverified.
+> [[330-carve-formula]]() doc:../research/carving-response.md — response
+> equation established; load-ratio and skid-control inputs remain open.
 
-> [[330-carve-force]]() db:turn-carve —
-> `SurfaceMaterial_TurnResponseHelper` @0x00109cb8 consumes record
-> +0x04/+0x08/+0x0c plus rider tuning bytes; result feeds the
-> carve/side-force path @0x0010a38c, not the yaw quaternion; carve drag
-> +0x10 applied along +0x330; surface types 6/10 special-cased @0x0010c2f0.
+### Lateral resistance
 
-> [[330-carve-formula]]() db:turn-carve — the interior of
-> `SurfaceMaterial_TurnResponseHelper` @0x00109cb8 and the lateral apply at
-> @0x0010a38c are not decomposed to an expression; only their inputs (record
-> +0x04..+0x10, rider bytes) and output axes (+0x320 tangent, +0x330 lateral)
-> are established. db:surface-table (the carve-drag column).
+Use signed lateral speed `w=dot(v,l)` and **absolute forward speed** `s=abs(u)`,
+both in m/s. The surface's `drag` and the same rider/edge multiplier `k` give:
+[[330-lateral]]()
 
-> [[330-slip]]() db:audio — the Slip getter @0x0021aba0 is the abs
-> projection of the contact tangent against velocity; lean getter
-> `|lean·127|` @0x0021ac08; db:surface-trail (wake gate uses lean·(1−slip)).
+```text
+speedGain = 0.2010370344 + s*0.08899726090
+              if s < 5.55555542
+            0.6954662800 + (s-5.55555542)*0.03612979490
+              else if s < 13.88888794
+            0.9965478778 - (s-13.88888794)*0.01044131714
+              otherwise
+leanGain  = max(1, abs(lean)*1.0001484156)
+riderGain = k*(0.0010000000475 + 1.1412174702*lateralStat)
+boostGain = 1/(1+3.4999945164*boostStrength)       if boostStrength > 0
+            1                                  otherwise
+lateralAcceleration = -w*drag*speedGain*leanGain*riderGain*boostGain
+```
+
+The lean multiplier remains one throughout the ordinary lean range. This is
+an acceleration integrated once by the ground tick; an implicit decay with a
+fixed fitted bite constant is a different model. Tests can compare these scalar
+helpers independently from contact and heading, then compare the integrated
+heading rate, travel rate, speed and slip on the same course segment.
+[[330-lateral]]()
+
+> [[330-lateral]]() doc:../research/carving-response.md;
+> @0x00109ef8 — scalar numerical comparison including speed boundaries,
+> lean range, stance and boost variation.
 
 ## Visual bank and the lateral carve slide
 
@@ -126,7 +234,7 @@ lift accompanies it (`320-ground-contact.md`). [[330-bank]]()
 Separately, the deck (and the ground probe with it) **slides sideways into
 the carve**: a pose offset slews toward
 `−60 · lean · min(1, speed·0.694444)` units (speed in engine-units/s, the
-same convention as every other formula in this chapter; rate 66.7/s),
+source-unit convention for this pose formula; rate 66.7/s),
 scaled by a rider-tuning byte, and is applied along the contact-frame
 lateral axis to both the render position and the contact probe base
 (`320-ground-contact.md`). At that scale the `min(1, …)` term saturates by

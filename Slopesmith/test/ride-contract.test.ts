@@ -26,7 +26,7 @@ import {
 
 assert.equal(RIDE_CONTRACT_SCHEMA, 'ride-contract/v1');
 assert.equal(RIDE_CONTRACT_VERSION, 1);
-assert.equal(RIDE_CONTRACT_PROFILE, 'retail-gari-ice-2026-07-21');
+assert.equal(RIDE_CONTRACT_PROFILE, 'pal-carving-response-2026-09-15');
 assert.equal(RIDE_SIMULATION_HZ, 60);
 assert.equal(RIDE_GROUND_QUADRATIC_DRAG, 0);
 assert.equal(RIDE_SURFACE_ROWS.length, 20);
@@ -56,8 +56,8 @@ const generatedUnity = readFileSync(resolve(repo, 'Unity/VRC/Riding/Board/Rideab
 const basisGenerated = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Contract.Generated.cs'), 'utf8');
 const basisSurfaces = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Surface.cs'), 'utf8');
 const basisRide = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Ride.cs'), 'utf8');
-assert.match(board, /Vector3\.down \* RIDE_GROUND_TANGENTIAL_PULL/);
-assert.match(board, /RIDE_GROUND_TANGENTIAL_PULL - A \/ 100f/);
+assert.match(board, /Vector3\.down \* \(A \/ 100f\)/);
+assert.match(board, /RideBankedNormalResponse\(response, capped, theta\)/);
 assert.match(board, /normalSpeed > RIDE_CONTACT_SEPARATION_SPEED/);
 assert.match(board, /RIDE_GROUND_ORIENT_GAIN \* upError \* upError \* upError/);
 assert.match(probe, /RIDE_PROBE_ABOVE/);
@@ -84,7 +84,10 @@ assert.match(railBoard, /float stickRailYaw = StickSteer\(\) \* RIDE_AIR_TURN_RA
 assert.match(railBoard, /_seatFwd = Quaternion\.AngleAxis\(stickRailYaw, Vector3\.up\) \* _seatFwd/);
 assert.match(railBoard, /else _fwd = HeadFollow\(_fwd, _boardUp, dt, RIDE_AIR_TURN_RATE\)/);
 assert.doesNotMatch(railBoard, /railTurnRate/);
-assert.match(board, /RIDE_GRIP_SCALE/);
+assert.match(board, /RideLateralResistance\(row, u, w, _lean, boost\)/);
+assert.match(board, /RideForwardResistance\(row, u, _error, _sinkBudget, _charge, boost\)/);
+assert.match(board, /_vel \+= _tickAccel \* h;[\s\S]*?if \(onGround && !_grinding\) GroundSteering/);
+assert.match(board, /public bool lowGripAssist = false/);
 // The lateral carve slide must reach BOTH consumers on the real board path: the probe base (the carve's
 // curvature sensor - without it ice carve force pins at the flat-ground equilibrium) and the drawn deck.
 assert.match(board, /-RIDE_CARVE_SLIDE_SCALE \* _lean \* slideGate/);
@@ -102,11 +105,11 @@ assert.match(patches, /RIDE_ANALYTIC_NEWTON_ITERATIONS/);
 assert.match(patches, /RRayResidual > RIDE_ANALYTIC_RAY_RESIDUAL_MAX/);
 assert.doesNotMatch(patches, /intersect the PROBE RAY[\s\S]{0,250}TANGENT PLANE/);
 assert.match(generatedUnity, /RIDE_CONTRACT_SCHEMA = "ride-contract\/v1"/);
-assert.match(generatedUnity, /RIDE_CONTRACT_PROFILE = "retail-gari-ice-2026-07-21"/);
+assert.match(generatedUnity, /RIDE_CONTRACT_PROFILE = "pal-carving-response-2026-09-15"/);
 // Basis consumes the same generated rows. Its handwritten file owns algorithms and scale knobs only; folded
 // surface-family if-chains and the older km/h conversion cannot quietly become a fourth tuning table again.
 assert.match(basisGenerated, /RIDE_CONTRACT_SCHEMA = "ride-contract\/v1"/);
-assert.match(basisGenerated, /RIDE_CONTRACT_PROFILE = "retail-gari-ice-2026-07-21"/);
+assert.match(basisGenerated, /RIDE_CONTRACT_PROFILE = "pal-carving-response-2026-09-15"/);
 assert.match(basisSurfaces, /return _rideSurfDrag\[SurfaceRow\(t\)\]/);
 assert.match(basisSurfaces, /return _rideSurfBudget\[SurfaceRow\(t\)\] \* sinkDepthScale/);
 assert.doesNotMatch(basisSurfaces, /KNOWN DIVERGENCE|if \(t == \d+\).*return \d/);

@@ -921,16 +921,16 @@ triangles on screen.
 Airborne, the port matches the shipped **two-stage gravity** ([Trailmap: 340]): weak while rising (≈ 8.5 m/s²)
 and strong while falling (≈ 19 m/s²) — the floaty, managed SSX arc (slow up, fast down).
 
-Ground load has two independently measured constraints ([Trailmap: 320]). In the keyboard Gari trace, neutral
-ice sits at the 5 mm bog floor with a 13.77 m/s² contact response, matching Type 5's `A/100 = 13.5093 m/s²`.
-In the matched Snowdream descent, the net contact-plane energy gain is only 4.73 m/s² per vertical metre.
-Slopesmith therefore projects the active surface's `A/100` into the normal load and the measured 4.73 into the
-contact plane. That preserves both gold traces while the retail tangential helper remains open; 4.73 is not a
-complete world-down gravity constant.
+Grounded load uses the active surface's `A/100` as world-down acceleration
+([Trailmap: 320, 330]). The banked contact response preserves its normal residual,
+and separate forward and lateral resistance shape the resulting travel. The earlier
+4.73 m/s² Snowdream value measured net course-energy gain; applying it as reduced
+gravity alongside the recovered resistance would count those losses twice.
 
-The deck settles at approximately `bog · cos(slope)`: 5 mm on flat snow and ice, 15.1 cm in powder and 25.2 cm
-in slow powder. The same normal load feeds the banked contact frame, which is why this correction also restores
-ice's turning authority without an ice-only assist.
+At zero lean the deck settles near `bog * cos(slope)`. Banking reduces the normal
+component of a given scalar contact response, so a held carve can settle deeper.
+See [061 — Carving response](061-carving-response.md) for the formulas, neutral
+caller inputs and remaining differences from the original controller.
 
 The **sink budget** is not the resting sink depth; it is the depth past which the capped pushout intervenes
 [Trailmap: 310-fields, 320-pushout].
@@ -983,18 +983,14 @@ carry are called out rather than filled in from a sibling implementation. The SS
   reached −73.5°/−64.9°. After the solve, 525 analytic probes measured 11 nm median, 9.1 µm p99 and 9.7 µm maximum
   off-ray error; the same two takeoffs moved to −34.0°/−33.6° with no barrier resolution. The solved reference
   ride now studies the original smooth contact surface instead.
-- **The carve** (the heart, [Trailmap: 330]) — steering is a smoothed **lean** signal that yaws the board's
-  *facing* about the contact normal, auto-centring onto the travel direction via a **slip** term and gated by
-  a quadratic speed gate. It does **not** rotate the velocity. What bends the *path* is the lean itself: the
-  contact response rides a frame **banked `tilt°·lean` off the normal** ([Trailmap: 310] carve tilt — 58.3° on
-  every row but ice's 45 and rock's 21.34), so leaning tilts the whole normal force into the turn —
-  `response·tanθ` of lateral drive, ≈17 m/s² at flat-ground equilibrium on snow and 11.63 m/s² on ice. On top of it the velocity's **lateral slip
-  is carved away** by the surface's own **carve drag**. The two are independent, and their split IS the
-  surface character: ice's 45° tilt turns with real authority while its 0.0025 drag never damps the slip —
-  a full-key ice carve **drifts ~27°** (measured) where snow's holds 4°. The engine closes a fraction of the heading
-  error each 60 Hz tick and clamps the result to **6°/tick = 360°/s**, so a standstill cannot turn and a
-  full-stick carve on snow only reaches the cap from ≈ 8 m/s up. The deck **banks** into the lean (lean × 50°),
-  visibly edging.
+- **The carve** ([Trailmap: 330]) — banked contact and lateral resistance bend the path.
+  The bank contributes `min(response,2*A)*tan(tilt*lean)` laterally and preserves
+  the corresponding normal residual. After velocity integration, lean requests a
+  physical heading correction using the original bounded asin slip projection,
+  mode curve, backward-travel sign and downhill alignment reference. The quadratic
+  speed gate reaches half authority near 12.24 m/s and full authority near 17.31 m/s.
+  Its 6°/tick cap limits heading correction, not sustained travel turning rate.
+  The visible deck bank consumes lean separately.
 - **Shaped speed** ([Trailmap: 360]) — there is no g·sinθ runaway: a per-surface **cruise drive**
   re-accelerates toward that surface's **speed target** (snow ≈ 14.4 m/s, ice ≈ 17.8, rock ≈ 5.4), gated by
   how square the board is to its travel — nothing beyond 60° off, so a sideways skid does not re-accelerate.
@@ -1006,12 +1002,10 @@ carry are called out rather than filled in from a sibling implementation. The SS
   the cruise drive is the only force along the contact plane, so refusing to drive under the floor would instead
   make low speed absorbing — a rider who dropped under it could never climb back over.
   A **decaying speed cap** bounds it: ≈ 27.9 m/s, rising to ≈ 33.5 while boosting or airborne, snapping up and
-  easing down at ≈ 2.08 m/s per second. Gravity's tangential pull still adds down a slope. There is **no generic
-  grounded drag**: aligned speed already above the cruise target carries unchanged on flat ground until the cap,
-  while the surface's separate carve drag removes only lateral slip. The two Snowdream iterations bracketed the
-  missing tangential result: the old port-only quadratic drag plateaued at 17.4 m/s, while removing it and using
-  the whole surface load down the slope overshot the same lip at 28.04 m/s. Projecting the 4.73 gold result only
-  into the contact plane reaches retail's 20.49 m/s without weakening the normal load or adding drag.
+  easing down at ≈ 2.08 m/s per second. Surface gravity accelerates travel downhill,
+  while the recovered forward-resistance polynomial opposes forward motion. The
+  cruise target is a drive reference, so flat-ground equilibrium falls below it
+  where positive drive balances resistance. Coasting above it still loses speed.
 - **Held boost** ([Trailmap: 360]) — a flat 23.5 m/s² forward thrust that fires **only while the board is ridden
   nearly flat**: the lean window is ±0.08 against a lean clamp of 0.905, so edging while boosting throws the
   thrust away. Boost is a hold-your-line tool, and it is not surface-scaled. The shipped Unity ride's deliberate
@@ -2084,8 +2078,9 @@ The rest guard what the two RE passes fixed, and each fails loudly against the c
 
 Named so a reader can tell a *simplification* from a *bug*, and so the next pass has a work list:
 
-- **Three-component turn response** ([Trailmap: 330]) — the traced banked contact response and carve drag both
-  bend the path here. The additional surface `turn_x/y/z` helper remains absent because its formula is open.
+- **Response caller state** ([Trailmap: 330]) — the forward and lateral helpers are
+  implemented, but complete load-ratio/skid-control scheduling and the mapping of
+  rider attributes remain open. The default normalized statistics are project choices.
 - **The response's above-surface zone still has no caller.** Pre-landing alignment is implemented (see the
   contact model above), but as a bounded ballistic march over `castSeg`/`probe`, not through the engine's route
   of re-running the ground response above the surface — that branch of the response remains unread.

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { bankedNormalResponse, DEFAULT_GROUND_RESPONSE, forwardResistance, headingLead, headingYaw,
+  lateralResistance, type GroundResponseTuning } from './ride-response';
 import { INTERSECTED, MeshBVH, NOT_INTERSECTED } from 'three-mesh-bvh';
 import { rideTree, type TreeGeometry } from '../viewport/mesh/surface-trees';
 import { RAIL_ENTRY_SCALE, RAIL_GRACE, railWindows, type GrindRails } from './grind';
@@ -14,11 +16,10 @@ import type { RideObstacleHit, RideObstacleObject, RideObstacleSource } from './
 import {
   AIR_BOOST_ACCEL, AIR_BOOST_CAP_BLEND, AIR_BOOST_TURN_RATE, AIR_H_DRAG, AIR_TRICK_BOOST_SPIN_MUL,
   AIR_TURN_RATE, BOARD_COLLISION_Y, BOARD_SENSOR_BELOW,
-  BOOST_ACCEL, BOOST_CAP_DECAY, BOOST_LEAN_WINDOW, BOOST_MAX_SPEED, BRAKE_STRENGTH, CARVE_BITE,
+  BOOST_ACCEL, BOOST_CAP_DECAY, BOOST_LEAN_WINDOW, BOOST_MAX_SPEED, BRAKE_STRENGTH,
   CARVE_SLIDE_SCALE, CARVE_SLIDE_SLEW, CARVE_SLIDE_SPEED_GATE, CHARGE_RATE, CONTACT_SEPARATION_SPEED,
   CONTACT_SLEW, CRUISE_DEFICIT_MAX, CRUISE_HEADING_FLOOR, D2R, FLIP_RECOVER_RATE, GRAVITY, GRAVITY_RISING,
-  GRIP_SCALE,
-  GROUND_REDIRECT, GROUND_TANGENTIAL_PULL, GROUND_TURN_RATE,
+  GROUND_REDIRECT,
   HEAD_LEAN_FULL_ANGLE, HEAD_LOOK_DEADZONE, HEAD_STICK_OVERRIDE,
   ICE_SELF_CENTER_DAMP, ICE_SLIP_RECOVER,
   iceAssistFor, iceCarveTilt,
@@ -61,17 +62,14 @@ import { clamp, clamp01 } from '../../core/math/scalar';
 export { clamp, clamp01 } from '../../core/math/scalar';
 
 /**
- * Test ride (docs/016) — a "get a feel for it" playtest inside the editor. The board physics are a faithful
- * port of the shipped SSX ground model, taken from the Unity board (`Basis/Riding/BasisBoard.Ride.cs`
- * + `.Surface.cs`, itself a verbatim port of the VRChat `RideableBoard`) and the functional spec
- * [Trailmap: 310-surface-response / 320-ground-contact / 330-carving / 360-speed-and-boost]. The relative
- * per-surface orderings and the carve math are the real values; the model is stepped in world metres.
+ * Test ride (docs/016), using the recovered response laws in
+ * [Trailmap: 310-surface-response / 320-ground-contact / 330-carving / 360-speed-and-boost].
+ * Scalar acceleration and yaw match the spec; neutral caller inputs, terrain/contact safeguards,
+ * VR steering and other port choices are documented in docs/061-carving-response.md.
  *
- * The heart of the feel (330): steering is a smoothed **lean** signal that yaws the board's *facing* about the
- * contact normal (auto-centring onto the travel direction via the slip term) — it does NOT rotate the velocity.
- * The velocity is then split in the contact frame and its **lateral slip is carved away** by the surface's
- * grip, so an edged board bends its path; ice keeps sliding. Down-slope speed is **shaped** (360): there is no
- * bare g·sinθ runaway — a per-surface **speed target** re-accelerates the board, bounded by a decaying speed cap.
+ * Banked contact and separate forward/lateral resistance change velocity in the opening contact
+ * frame. After integration, smoothed lean changes physical heading about the contact normal.
+ * Visual bank consumes lean separately. All runtime distances and velocities use metres.
  *
  * Under the deck the contact is a **free error**, not a snap ([Trailmap: 320]). The deck reference carries a
  * signed clearance along the contact normal; the measured grounded pull draws it in, the surface's three-zone
@@ -240,14 +238,10 @@ export interface RideModelOpts {
   /** This rider's cruise-drive factor — its speed statistic ([Trailmap: 360], `riderDrive`). Omitted = the
    *  mid-band `RIDER_DRIVE` the player rides at. */
   drive?: number;
-  /**
-   * Low-grip steering assist, on unless explicitly disabled (mirrors the Unity board's `lowGripAssist` field).
-   * `false` rides exact retail ice — no tilt lift, no yaw damping, no slip recovery — which is what a test
-   * pinning the shared CONTACT LAW has to do: the banked-frame assertion in `test/ride-telemetry.test.ts`
-   * measures `A/100 · tan(45°·lean)` to catch a regression in the contact response itself, and an ice-only
-   * multiplier folded into that number would let such a regression hide inside the assist.
-   */
+  /** Optional project aid; disabled by default so it does not mask the recovered surface response. */
   lowGripAssist?: boolean;
+  /** Neutral response defaults may be overridden for controlled comparisons; no retail character data. */
+  responseTuning?: Partial<GroundResponseTuning>;
   /** Fires at the end of every respawn (spawn included), after the state is re-seated on the spawn point. */
   onRespawn: () => void;
   /** Optional observer called once per completed fixed physics tick with an immutable, JSON-safe trace. */
@@ -263,6 +257,7 @@ export interface RideModelOpts {
  * `toWorld` serve the camera's terrain clearance through the same perf-accounted raycast path the probe uses.
  */
 export function createRideModel(o: RideModelOpts) {
+  const responseTuning = { ...DEFAULT_GROUND_RESPONSE, ...o.responseTuning };
   // Probe rays answer through a BVH — the accelerated closest-hit query PhysX serves the Unity board's
   // RaycastNonAlloc — instead of three's per-triangle scan (which is the whole frame on a six-figure-tri
   // mesh). Queried directly in the terrain's local space with an explicit DoubleSide (all the terrain
@@ -1364,6 +1359,7 @@ export function createRideModel(o: RideModelOpts) {
     }
     st.grounded = onGround;
     finishTick(h, accel, onGround);
+    if (onGround && !st.forcedAir) groundSteering(h, s);
   }
 
   /**
@@ -1410,6 +1406,9 @@ export function createRideModel(o: RideModelOpts) {
      */
     const previousPos = integrationPrevious.copy(st.pos);
     st.pos.addScaledVector(st.vel, h);
+    st.vel.addScaledVector(accel, h);
+    // Resolve impacts against the integrated velocity so this tick's drive cannot cancel a bounce
+    // or restore an inward component that collide-and-slide just removed.
     // Terrain needs the airborne barrier sweep only (upward faces belong to its ground probe). Props need it in
     // every motion state, but most ticks on a two-million-triangle reference are nowhere near one: one bounded
     // closest-point broad phase avoids constructing/raycasting all 13 body segments on those empty-space ticks.
@@ -1417,7 +1416,6 @@ export function createRideModel(o: RideModelOpts) {
     const includeObstacleBarrier = obstacleNearSweptBody(previousPos, previousPos.distanceTo(st.pos));
     if (includeObstacleBarrier || includeTerrainBarrier)
       resolveBarrierHit(previousPos, st.pos, includeTerrainBarrier, includeObstacleBarrier);
-    st.vel.addScaledVector(accel, h);
 
     dv.add(st.vel).sub(tickV0); // everything the tick did to the velocity, impulses and all
     dvTicks++;
@@ -1482,60 +1480,44 @@ export function createRideModel(o: RideModelOpts) {
   /** Fills `accel` with the tick's grounded acceleration and applies the pushout. `tick` integrates. */
   function groundTick(dt: number, s: SurfaceRow, error: number, accel: THREE.Vector3) {
     const n = st.contactN;
-    const surf = st.surf;
-    // The tick's opening RIDDEN direction: the nose while regular, the tail while switch. Everything below that
-    // means "forwards" is this vector, never `st.fwd` — see `rideForward`.
-    const ride = rideForward(st, new THREE.Vector3());
-    const vn = st.vel.dot(n); // the tick's opening normal speed; the response and the pushout both read it
-
-    /**
-     * The contact response, plus the active row's A/100 grounded load straight down. The Gari keyboard trace
-     * resolves the former 4.73 m/s² inference: neutral ice settles at the row's 13.5093 m/s² response, while a
-     * full carve drives it higher as the contact follows the curved path. Nothing clamps the into-surface
-     * component on an ordinary tick, and that is the
-     * load-bearing line in this file: that pull is the only force holding the deck against convex ground.
-     * Remove it and outward normal speed accumulates every tick on any convex surface with nothing to take it
-     * away, until the deck floats off perfectly smooth terrain. (A faceted collision mesh hides this — its
-     * noise keeps resetting the accumulation.) The crest of a roll then falls out as `R = v²/(g·n̂)`, with no
-     * code testing for it.
-     */
-    /**
-     * And the response rides a BANKED contact frame, not the plain normal ([Trailmap: 310] carve tilt;
-     * [Trailmap: 320]): `θ = tilt°·lean`, and the scalar — clamped at `2A` — is applied along
-     * `n·cosθ + side·sinθ` after a `/cosθ`, so the normal component stays the response and the lateral
-     * component is `response·tanθ`. Leaning tilts the whole normal force into the turn, and THAT is the carve
-     * force — `response·tanθ` of lateral drive, ≈17.1 m/s² at flat-ground equilibrium on snow, 11.6 on ice,
-     * 3.4 on rock.
-     * It is entirely independent of `drag`: ice turns with real authority and *drifts* doing it, because its
-     * 0.0025 carve drag never damps the lateral slip the tilt builds. Drop the tilt term and ice degrades to a
-     * straight-line slide under a freely spinning heading — a drag-only carve model has nothing else to bend
-     * the velocity with.
-     */
-    const response = Math.min(contactResponse(s.A, s.P, error, vn, st.sinkBog, st.sinkBudget), 2 * s.A / 100);
-    const assist = o.lowGripAssist === false ? 0 : iceAssistFor(s.drag);
+    const ride = projectOnPlane(rideForward(st, new THREE.Vector3()), n, new THREE.Vector3()).normalize();
+    const side = new THREE.Vector3().crossVectors(n, ride);
+    const vn = st.vel.dot(n);
+    const u = st.vel.dot(ride), w = st.vel.dot(side);
+    const response = contactResponse(s.A, s.P, error, vn, st.sinkBog, st.sinkBudget);
+    const capped = Math.min(response, 2 * s.A / 100);
+    const assist = o.lowGripAssist === true ? iceAssistFor(s.drag) : 0;
     const theta = iceCarveTilt(s.tilt, assist) * D2R * st.lean;
-    const lat = new THREE.Vector3().crossVectors(n, ride);
-    accel.copy(n).multiplyScalar(response);
-    if (Math.abs(theta) > 1e-4 && lat.lengthSq() > 1e-6) accel.addScaledVector(lat.normalize(), response * Math.tan(theta));
-    // The normal and tangential loads are independently constrained. Neutral retail ice sits at the A/100
-    // spring response, while Snowdream's matched descent gains only 4.73 m/s² per vertical metre. Decompose the
-    // port load so its normal projection follows A/100 and its contact-plane projection preserves that measured
-    // effective pull. This is a shared contact law, not an ice force; the unresolved retail tangent helper may
-    // be where the engine produces the same net split.
-    accel.addScaledVector(DOWN, GROUND_TANGENTIAL_PULL);
-    accel.addScaledVector(n, (GROUND_TANGENTIAL_PULL - s.A / 100) * n.y);
+    // [Trailmap: 330-bank-force] Preserve the residual normal response; A also supplies world-down load.
+    accel.copy(n).multiplyScalar(bankedNormalResponse(response, capped, theta))
+      .addScaledVector(side, capped * Math.tan(theta)).addScaledVector(DOWN, s.A / 100);
+    const tuning = responseTuning;
+    const boost = boostActive() ? 1 : 0; // The port exposes a binary held/pad boost, not the original meter tiers.
+    accel.addScaledVector(ride, forwardResistance(s, u, error, st.sinkBudget, st.charge, boost, tuning));
+    accel.addScaledVector(side, lateralResistance(s.drag, u, w, st.lean, boost, tuning));
+    st.slip = Math.abs(w);
 
-    /**
-     * The capped, one-sided pushout — the backstop, not the spring. It fires only once penetration passes the
-     * surface's budget, and then it does three things at once: shoves the deck back out along the normal (by
-     * the overshoot, at most 10 cm a tick), bleeds that much out of the stored error, and **zeroes the normal
-     * velocity** (`vel -= vn·n`, not `vel -= excess·n` — the scalar is the normal speed).
-     *
-     * The acceleration clamp lives inside this same branch, and only inside it: with the deck already deeper
-     * than its budget, any residual into-surface acceleration is removed before integration. Clamping that
-     * unconditionally — the pre-rework boards' mistake — deletes gravity from every ordinary tick.
-     */
-    // The cap is a GROUND backstop; a steep face (WALL_NY) ejects fully — see the PUSHOUT_CAP note above.
+    if (assist > 0) {
+      const want = -Math.hypot(u, w) * Math.sin(headingLead(st.lean, st.charge, tuning.mode));
+      const corrected = want + (w - want) / (1 + ICE_SLIP_RECOVER * assist * dt);
+      accel.addScaledVector(side, (corrected - w) / dt);
+    }
+    if (o.keys.brake) accel.addScaledVector(ride, (moveTowards(u, 0, BRAKE_STRENGTH * dt) - u) / dt);
+    const speedNow = st.vel.length();
+    const deficit = Math.min(s.target - speedNow, CRUISE_DEFICIT_MAX);
+    if (deficit > 0) {
+      const travelSpeed = Math.hypot(u, w);
+      const offDeg = travelSpeed > CRUISE_HEADING_FLOOR ? Math.acos(clamp(u / travelSpeed, -1, 1)) / D2R : 0;
+      const driveAlign = clamp01((60 - offDeg) / 30);
+      accel.addScaledVector(ride, (o.drive ?? RIDER_DRIVE) * driveAlign * s.mult * deficit);
+    }
+    if (boost) accel.addScaledVector(ride, BOOST_ACCEL * clamp01(1 - Math.abs(st.lean) / BOOST_LEAN_WINDOW));
+
+    // The explicit sum of braking and resistance must not drive a stopped board backward.
+    if (o.keys.brake && u * (u + accel.dot(ride) * dt) < 0)
+      accel.addScaledVector(ride, -u / dt - accel.dot(ride));
+
+    // [Trailmap: 320-pushout] Apply the acceleration clamp only beyond the penetration budget.
     const excess = n.y >= WALL_NY ? Math.max(st.sinkBudget + error, -PUSHOUT_CAP) : st.sinkBudget + error;
     if (excess < 0) {
       st.pos.addScaledVector(n, -excess);
@@ -1544,7 +1526,13 @@ export function createRideModel(o: RideModelOpts) {
       const into = accel.dot(n);
       if (into < 0) accel.addScaledVector(n, -into);
     }
+  }
 
+  /** [Trailmap: 330-yaw] Heading follows the integrated velocity; it never rotates that velocity itself. */
+  function groundSteering(dt: number, s: SurfaceRow) {
+    const n = st.contactN, surf = st.surf;
+    const ride = rideForward(st, new THREE.Vector3());
+    const assist = o.lowGripAssist === true ? iceAssistFor(s.drag) : 0;
     // Steering: a stick "lean" yaws the heading toward the VELOCITY (auto-centre), leading it by the lean angle.
     const vmag = st.vel.length();
     const fwdN = projectOnPlane(ride, n, new THREE.Vector3());
@@ -1604,34 +1592,23 @@ export function createRideModel(o: RideModelOpts) {
     const stickSteer = steerInput();
     const stickActive = stickInputActive(stickSteer);
     const steer = stickActive ? STEER_SIGN * stickSteer : headSteer;
-    const leanTarget = clamp(steer, -1, 1) * 0.9051856 * Math.min(1, vmag / 11.19);
+    const speedRef = responseTuning.mode === 2 ? 11.3827 : responseTuning.mode === 0 ? 11.3497 : 11.1901;
+    const leanTarget = clamp(steer, -0.9051856, 0.9051856) * Math.min(1, vmag / speedRef);
     let leanRate = clamp(Math.abs(leanTarget - st.lean) * 7.017359, 0.1, 8.018349);
     if (surf === 3 || surf === 4) leanRate *= 0.5999726; // powder steers into the lean slower
     st.lean = moveTowards(st.lean, leanTarget, leanRate * dt);
-    // turnLean = lean · c7 · (1 + 0.5·c0·(1 − lean²)) on the (c0, c7) = (0.4, 0.5240) cruise curve, then stiffened
-    // by a charged jump — holding the ollie makes the board hold its line.
-    let turnLean = st.lean * 0.5239824 * (1 + 0.2 * (1 - st.lean * st.lean)) * STEER_STRENGTH;
-    turnLean /= 1 + st.charge * 0.01;
-
-    // slip = signed angle from the REFERENCE direction to the facing, about the contact normal (self-centring).
-    // `slipVel` is the same angle measured from the travel — the board's actual DRIFT. They alias on every ride
-    // that hands in no gaze, and part company under head steer, where the closure is aimed at the gaze while the
-    // low-grip assist below still has to gate on the drift.
+    const tuning = responseTuning;
+    const turnLean = headingLead(st.lean, st.charge, tuning.mode) * STEER_STRENGTH;
     const slipRef = angleAbout(refDir, fwdN, n);
     const slipVel = refDir === velDir ? slipRef : angleAbout(velDir, fwdN, n);
-
-    const speedGate = Math.min(1, vmag * vmag * 0.0033383);
-    let align = 40 * Math.min(1, vmag / 5.5556) * (1 - Math.abs(Math.sin(slipVel)));
-    align = Math.min(1, Math.max(0, align) + 0.01004205);
-    const postMult = Math.max(Math.abs(st.lean), align);
-
-    // The engine closes a fraction `speedGate · max(|lean|, align)` of the heading error every 60 Hz tick, then
-    // clamps the result to 6°/tick. On a fixed 60 Hz tick both are simply themselves: `dt` inside a tick is
-    // always 1/60 s, so no exponential-closure rewrite is needed to keep the closure frame-rate invariant.
-    // Nothing scales either: a gain on top of the closure would over-rotate, and a tighter clamp caps the carve
-    // long before the game does (full stick on snow should only reach the cap from ≈8 m/s up).
-    const hClose = clamp01(speedGate * postMult);
-    const capFrame = GROUND_TURN_RATE * D2R * dt;
+    // The downhill contact direction is independent of the board's lateral force axis.
+    const fallLine = n.clone().multiplyScalar(n.y).sub(WORLD_UP);
+    if (fallLine.lengthSq() > 1e-8) fallLine.normalize(); else fallLine.copy(fwdN);
+    const projection = refDir === velDir
+      ? new THREE.Vector3().crossVectors(st.vel, fwdN).dot(n) / Math.max(vmag, 1e-6)
+      : Math.sin(slipRef); // VR reference swap, explicitly outside the original controller.
+    const rawYaw = headingYaw(st.lean, turnLean, projection, vmag,
+      st.vel.dot(fwdN), st.vel.dot(fallLine), dt);
     // Low-grip assist term 1 of 2 ([Trailmap: 330-carving] is untouched; see `iceAssistFor`). Damp the yaw
     // only while it is UN-COMMITTING — the commanded lead has fallen inside the slip the board is already
     // carrying, and on the same side of it, so the closure is walking the heading out onto its own drift.
@@ -1647,14 +1624,15 @@ export function createRideModel(o: RideModelOpts) {
     // diffable (`RideableBoard.cs`, same three terms).
     const unCommitting = turnLean * slipVel >= 0 && Math.abs(turnLean) < Math.abs(slipVel);
     const selfCentre = unCommitting ? 1 - assist * ICE_SELF_CENTER_DAMP : 1;
-    const yawRad = clamp((turnLean - slipRef) * hClose, -capFrame, capFrame) * selfCentre;
+    const yawRad = rawYaw * selfCentre;
     // VR seat carry (docs/016): the STICK's turn INTENT rotates the upright headset seat with the board, but only
     // by the headset-tested 25% on snow. The quarter is applied AFTER the retail clamp, matching Unity; putting it
     // before the clamp still lets a full-stick high-speed turn hit 6°/tick. Never carry the gaze's share, because
     // a seat that chased the gaze would read as a further gaze offset and spin the wearer.
     if (stickActive) {
       const carry = o.gaze ? XR_GROUND_STICK_VIEW_CARRY : 1;
-      st.seatYaw += clamp(turnLean * hClose, -capFrame, capFrame) * carry;
+      st.seatYaw += headingYaw(st.lean, turnLean, 0, vmag,
+        st.vel.dot(fwdN), st.vel.dot(fallLine), dt) * carry;
     }
     // The carve yaws the RIDDEN direction; the drawn nose is that direction stamped with the lead, so a switch
     // rider carves exactly as a regular one does and the deck stays pointing the way the air left it.
@@ -1664,60 +1642,6 @@ export function createRideModel(o: RideModelOpts) {
     rideDir.normalize();
     st.fwd.copy(rideDir).multiplyScalar(st.lead);
 
-    // Split velocity in the contact frame; carve away only the LATERAL slip (preserve forward + normal lift).
-    const side = new THREE.Vector3().crossVectors(n, rideDir);
-    let vF = st.vel.dot(rideDir);
-    let vS = st.vel.dot(side);
-    const vN = st.vel.dot(n);
-    st.slip = Math.abs(vS);
-    // The surface's own carve drag bites the edge, straight off the table rather than through a hand-fit 0..1
-    // grip: ice (0.0025) is two to three ORDERS below every other rideable surface — that ratio is the ice skid,
-    // and a remapped grip flattens it away. Implicit decay so a stiff surface stays stable at any frame rate.
-    vS *= 1 / (1 + s.drag * CARVE_BITE * GRIP_SCALE * dt);
-    // Low-grip assist term 2 of 2: bleed the slip nobody asked for. `vS = −v·sin(slipRef)` in this frame, and
-    // the settled slip is the heading's lead angle, so the COMMANDED lateral is −v·sin(turnLean) — a held lean
-    // sits at its own equilibrium and is left alone, while a centred input (turnLean → 0) has its residual
-    // drift pulled out. Implicit decay, like the drag line above, so it stays stable at any frame rate.
-    if (assist > 0) {
-      const wantS = -Math.hypot(vF, vS) * Math.sin(turnLean);
-      vS = wantS + (vS - wantS) / (1 + ICE_SLIP_RECOVER * assist * dt);
-    }
-
-    // Scrubs toward a standstill from either direction and stops there. An unclamped subtraction drives the
-    // forward component negative without limit, so holding the brake on flat ground ACCELERATES the rider
-    // backwards — and travelling backwards shuts the cruise drive's alignment gate below.
-    if (o.keys.brake) vF = moveTowards(vF, 0, BRAKE_STRENGTH * dt);
-
-    // Surface cruise drive ([Trailmap: 360]): a positive-only deficit toward the surface's speed target, gated by
-    // how square the board is to its TRAVEL (full within 30°, fading to nothing at 60° — a sideways skid does not
-    // re-accelerate). The deficit is measured against the speed magnitude, not the forward component, and capped.
-    const speedNow = Math.sqrt(vF * vF + vS * vS + vN * vN);
-    const deficit = Math.min(s.target - speedNow, CRUISE_DEFICIT_MAX);
-    if (deficit > 0) {
-      // The gate is a HEADING delta ([Trailmap: 360] reads two heading fields, +0x1b0 against +0x370), so it is
-      // measured in the contact plane. Taking the angle off the full 3D velocity instead lets the normal channel
-      // decide it: a deck settling out of a landing carries normal velocity and little else, which reads as 90°
-      // across its own travel and shuts the drive on the exact tick a rider needs it.
-      const travelSpeed = Math.hypot(vF, vS);
-      // A heading persists through a standstill; an instantaneous velocity direction does not. Under the floor
-      // the travel heading is unreadable, so the board's own heading stands in and the delta is zero — the drive
-      // pulls the rider up to the surface's target from rest, which is what makes flat ground rideable at all.
-      // Refusing to drive here instead makes low speed ABSORBING: nothing else acts along the contact plane at
-      // zero slope, so a rider who drops under the floor can never climb back over it.
-      const offDeg = travelSpeed > CRUISE_HEADING_FLOOR ? Math.acos(clamp(vF / travelSpeed, -1, 1)) / D2R : 0;
-      const driveAlign = clamp01((60 - offDeg) / 30);
-      if (driveAlign > 0) vF += (o.drive ?? RIDER_DRIVE) * driveAlign * s.mult * deficit * dt;
-    }
-
-    // Held boost ([Trailmap: 360]): a ground-only forward thrust that fires only while the board is ridden nearly
-    // FLAT — the lean window is narrow (0.08 against a lean clamp of 0.905), so edging while boosting throws the
-    // thrust away. It is not surface-scaled: the surface's character reaches boost only through the cruise target.
-    if (boostActive()) {
-      const straight01 = clamp01(1 - Math.abs(st.lean) / BOOST_LEAN_WINDOW);
-      if (straight01 > 0) vF += BOOST_ACCEL * straight01 * dt;
-    }
-
-    st.vel.copy(rideDir).multiplyScalar(vF).addScaledVector(side, vS).addScaledVector(n, vN);
   }
 
   /** Rebuild the landing-predictor field retail constructs on motion-state-1 entry. The vertical path follows

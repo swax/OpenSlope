@@ -69,21 +69,22 @@ the spec existed — `trace` warns on it; retire it by absorbing the knowledge
 `DIRTY` block) and re-pointing.
 
 **Where dirty detail lives.** Don't create a dirty note just to have
-something to cite — that's a transcription layer that drifts. Each fact has
-three homes, each with one job:
+something to cite — that's a transcription layer that drifts. Keep these
+roles separate:
 
 | Altitude | Home | Holds |
 |---|---|---|
 | Conclusion | chapter body | the clean behavioral claim |
 | Provenance summary | the claim's citation definition | key address, db topic, headline numbers, one-line evidence |
-| Derivation | `../research` + the db | traces, address tables, evidence, negative results, open leads |
+| Research summary | `../research` | source and method, findings, validation limits, negative results, open leads |
+| Detailed derivation | local db and ignored `<repo>/ResearchData/` | register-level reconstructions, detailed traces and original research records |
 
-The dirty docs are the *investigation working surface* — the lab notebook.
-When a chapter absorbs a subsystem, the corresponding dirty-note section gets
-**pruned**: its restated behavioral narrative comes out (the conclusion's home
-is now the spec), the derivation stays, and a `spec:` backref goes in. The
-dirty layer gets rawer and thinner as the spec grows, but is never retired —
-negative results and open leads have no spec home and must keep theirs.
+When a chapter absorbs a subsystem, link the research summary back with `spec:`
+tags and remove duplicated specification text. Preserve the source method,
+negative results, open leads and validation limits. Keep detailed implementation
+reconstructions locally, saving the original record before shortening a public
+note. A concise citation must still identify the evidence; removing an address
+alone does not turn a routine's control-flow narrative into a functional finding.
 Implementation/port guidance doesn't belong in the dirty layer at all; it
 goes to the owning component's docs (`Snowknife/docs`, `Slopesmith/docs`, or `Unity/docs`).
 
@@ -111,7 +112,7 @@ the chapter body. It goes in the claim's citation definition (its provenance
 home), and the body carries the clean behavioral claim plus the `[[id]]()`
 tag. Reword the prose; do not wrap the pointer in place.
 
-Longer derivations and open leads that have no clean phrasing and no single
+Short research context and open leads that have no clean phrasing and no single
 citation home go in a **standalone DIRTY block** — the `<!-- DIRTY` opener
 alone on its line, the body beneath it, then a `DIRTY -->` closer:
 
@@ -138,9 +139,11 @@ name supplied by the executable.
 The clean/dirty boundary is not a permission to reproduce expression. These
 rules apply to chapters, citation definitions, DIRTY blocks and `research/`:
 
-- Do not include bulk disassembly or a verbatim instruction sequence that
-  reproduces a routine. Keep compact address provenance and, when it is needed
-  to prove an interface fact, only the shortest instruction fragment.
+- Do not include bulk disassembly or reproduce a routine through its register
+  assignments and branch sequence, even in paraphrase. Keep compact address
+  provenance and, when needed to prove an interface fact, only the shortest
+  instruction fragment. Preserve detailed reconstructions in local research
+  records rather than expanding public citations into instruction narratives.
 - Paraphrase retail configuration and script passages. Retain field names,
   short identifiers and minimal value fragments only when they identify the
   interface; never copy a section or command sequence merely because it is
@@ -158,6 +161,13 @@ Density, length and a step-by-step account of independently discovered behavior
 do not by themselves make analytical prose suspect. Preserve original method,
 negative results, measurements and reasoning; review for copied expression and
 retail implementation structure, not for factual detail.
+
+Describe provenance and method as they occurred. Identify owner-supplied source
+provenance, distinguish executable analysis from gameplay observation, and state
+which claims a verifier actually covers. Neither a synthetic fixture nor a
+separately implemented evaluator establishes a clean-room origin. The automated
+checks enforce the document boundary; they do not establish source authorization
+or a legal exception.
 
 ## `tools/specs/spec_trace.py` keeps both directions honest
 

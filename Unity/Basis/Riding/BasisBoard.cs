@@ -37,7 +37,7 @@ namespace OpenSlope.BasisPlugin
     /// off) - so while riding the interact/trigger ollies instead of standing you up (OnInteractStart is suppressed
     /// mid-ride; jump owns the exit, exactly like the VRChat board).
     ///
-    /// The model + provenance live in the VRChat docs (docs/vrchat/017/020/021) - the math here is ported verbatim.
+    /// The model and remaining contact differences are documented in docs/vrchat/040-carving-response.md.
     /// SurfaceType buckets: 1/3/4/8/16 snow-ish, 5/7/11 ice, 9/2 rock, 10/13/14/18 wall/metal, 18 show-off ramp,
     /// 0 reset (out of bounds), 17 no-collision.
     /// </summary>
@@ -53,20 +53,12 @@ namespace OpenSlope.BasisPlugin
         public float gravity = 19f;
         public float gravityRising = 8.5f;
         public float maxSpeed = 33.5f;
-        public float speedDrag = 0.012f;
         public float airHorizontalDrag = 0.2f;
         [Tooltip("Cruise-target re-accel toward the per-surface speed (the surface speed character).")]
         public float surfaceDrive = 0.6f;
 
         [Header("Steering (the SSX carve model)")]
-        [Tooltip("Heading yaw cap (deg/s), surface-independent - the engine's 6 deg/tick.")]
-        public float groundTurnRate = 90f;
         public float airTurnRate = 270f;
-        public float steerStrength = 1.0f;
-        public float headingResponse = 2.0f;
-        public float gripScale = 1f;
-        [Tooltip("How hard the velocity is dragged onto the heading (carve line rate).")]
-        public float carveBite = 8f;
         [Tooltip("Visual deck bank into a carve (deg per lean unit).")]
         public float bankAngleMax = 50f;
 

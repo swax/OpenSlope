@@ -5,25 +5,31 @@ using Basis.Scripts.Device_Management;
 namespace OpenSlope.BasisPlugin
 {
 
-    // Part of BasisBoard (partial): the per-frame ride integration (ground + air branches, charged ollie, speed cap,
-    // integrate/collide/land/snap, orientation) and the out-of-bounds respawn. Ported faithfully from the VRChat board's
-    // Update (VRC/Riding/Board/RideableBoard.cs) with the VRChat-only pieces removed: gaze/head-steer (the ground
-    // branch homes onto VELOCITY only), the seat/view saga (the root is simply held level + yawed to the heading), and
-    // all rail / score / race / audio / FX / networking / coast hooks. The math that makes it feel like a snowboard is
-    // unchanged.
+    // Fixed-tick ride integration. Response and heading follow [Trailmap: 330-carving];
+    // the retained snap/sink contact and approximate banking load differ from the compliant
+    // VRChat contact model. See docs/vrchat/040-carving-response.md.
     public partial class BasisBoard
     {
+        private float _rideRemainder;
+
         void Update()
         {
-            if (!_riding) return;
+            if (!_riding) { _rideRemainder = 0f; return; }
             if (_player == null) { _player = BasisLocalPlayer.Instance; if (_player == null) return; }
             bool vr = BasisDeviceManagement.IsCurrentModeVR();
             ReadInput(vr);
             if (!_riding) return;   // a jump this frame dismounted us (ReadInput -> Stand); don't integrate a stray frame
 
-            float dt = Time.deltaTime;
-            if (dt <= 0f) return;
-            if (dt > 0.05f) dt = 0.05f; // clamp big hitches so a stutter can't fling the board
+            _rideRemainder = Mathf.Min(_rideRemainder + Time.deltaTime, 6f / 60f);
+            while (_rideRemainder >= 1f / 60f && _riding)
+            {
+                _rideRemainder -= 1f / 60f;
+                RideTick(1f / 60f, vr);
+            }
+        }
+
+        void RideTick(float dt, bool vr)
+        {
             float launchSpd = launchLevelSpeed > 0.01f ? launchLevelSpeed : 2.0f;
             _ollieCooldown -= dt;
             if (_oobResetCooldown > 0f) _oobResetCooldown -= dt;
@@ -75,69 +81,27 @@ namespace OpenSlope.BasisPlugin
                 Vector3 n = _contactN;
                 int surf = _pSurf;
 
-                // Grounded gravity = accel-clamp: keep only the downhill-tangential pull (penetration is the snap's job).
-                Vector3 gAccel = Vector3.down * gravity;
-                float gInto = Vector3.Dot(gAccel, n);
-                if (gInto < 0f) gAccel -= n * gInto;
-                _vel += gAccel * dt;
-
-                // Quadratic drag only (terminal limiter). Tuck thins it.
-                float tuck = _throttle > 0f ? _throttle : 0f;
-                float dragMul = 1f - 0.4f * tuck;
-                float sp = _vel.magnitude;
-                if (sp > 1e-4f)
-                {
-                    float newSp = sp - speedDrag * dragMul * sp * sp * dt;
-                    if (newSp < 0f) newSp = 0f;
-                    _vel *= newSp / sp;
-                }
-
-                // Steering: a stick "lean" yaws the heading toward the VELOCITY (auto-center), leading it by the lean
-                // angle; speed-gated up, capped at groundTurnRate, surface-independent. The self-centering slip bounds the
-                // cap into a steady carve angle.
-                float carveGrip = Mathf.Clamp01(CarveGripFor(surf) * gripScale);
-                float vmag = _vel.magnitude;
-                Vector3 fwdN = Vector3.ProjectOnPlane(_fwd, n);
-                fwdN = fwdN.sqrMagnitude > 1e-6f ? fwdN.normalized : _fwd;
-                Vector3 velN = Vector3.ProjectOnPlane(_vel, n);
-                Vector3 velDir = velN.sqrMagnitude > 1e-4f ? velN.normalized : fwdN;
-
-                float leanTarget = Mathf.Clamp(_steer, -1f, 1f) * 0.9051856f * Mathf.Min(1f, vmag / 11.19f);
-                float leanRate = Mathf.Clamp(Mathf.Abs(leanTarget - _lean) * 7.017359f, 0.1f, 8.018349f);
-                if (surf == 3 || surf == 4) leanRate *= 0.5999726f; // powder steers into the lean slower
-                _lean = Mathf.MoveTowards(_lean, leanTarget, leanRate * dt);
-                float turnLean = _lean * 0.5239824f * (1f + 0.2f * (1f - _lean * _lean)) * steerStrength;
-
-                Vector3 refDir = velDir; // MVP: velocity auto-center (VR gaze-steer not ported)
-                float slipRef = Mathf.Atan2(Vector3.Dot(Vector3.Cross(refDir, fwdN), n), Vector3.Dot(refDir, fwdN));
-                float slipVel = Mathf.Atan2(Vector3.Dot(Vector3.Cross(velDir, fwdN), n), Vector3.Dot(velDir, fwdN));
-
-                float speedGate = Mathf.Min(1f, vmag * vmag * 0.0033383f);
-                float align = 40f * Mathf.Min(1f, vmag / 5.5556f) * (1f - Mathf.Abs(Mathf.Sin(slipVel)));
-                align = Mathf.Min(1f, Mathf.Max(0f, align) + 0.01004205f);
-                float postMult = Mathf.Max(Mathf.Abs(_lean), align);
-
-                float capTick = groundTurnRate * Mathf.Deg2Rad / 60f;
-                float hGain = speedGate * postMult * headingResponse * 60f * dt;
-                float hClose = hGain / (1f + hGain);                 // implicit-stable closure (always < 1)
-                float capFrame = capTick * 60f * dt;
-                float yawDeg = Mathf.Clamp((turnLean - slipRef) * hClose, -capFrame, capFrame) * Mathf.Rad2Deg;
-                _fwd = Quaternion.AngleAxis(yawDeg, n) * fwdN;
-                _fwd = Vector3.ProjectOnPlane(_fwd, n);
-                if (_fwd.sqrMagnitude < 1e-6f) _fwd = Vector3.ProjectOnPlane(transform.forward, n);
-                _fwd = _fwd.normalized;
-
-                // Split velocity in the contact frame; carve away only the LATERAL slip (preserve forward + normal lift).
-                Vector3 side = Vector3.Cross(n, _fwd);
-                float vF = Vector3.Dot(_vel, _fwd);
-                float vS = Vector3.Dot(_vel, side);
-                float vN = Vector3.Dot(_vel, n);
-                _slip = vS < 0f ? -vS : vS;
-                vS *= 1f / (1f + carveGrip * carveBite * dt); // implicit decay
+                // [Trailmap: 330] Basis uses the common resistance laws. Its snap contact supplies
+                // an approximate normal reaction; the full compliant contact is owned by VRC/Slopesmith.
+                int row = SurfaceRow(surf);
+                Vector3 fwdN = Vector3.ProjectOnPlane(_fwd, n).normalized;
+                Vector3 side = Vector3.Cross(n, fwdN);
+                float vF = Vector3.Dot(_vel, fwdN), vS = Vector3.Dot(_vel, side), vN = Vector3.Dot(_vel, n);
+                float boost = BoostActive() ? 1f : 0f;
+                float theta = _rideSurfTilt[row] * Mathf.Deg2Rad * _lean;
+                float load = _rideSurfA[row] / 100f;
+                Vector3 groundAccel = Vector3.ProjectOnPlane(Vector3.down * load, n)
+                    + side * (load * Mathf.Max(0f, n.y) * Mathf.Tan(theta));
+                float forwardAccel = RideForwardResistance(row, vF, -_sinkDepth,
+                    Mathf.Max(_sinkBudget, _rideSurfBudget[row]), _charge, boost);
+                float sideAccel = RideLateralResistance(row, vF, vS, _lean, boost);
+                _slip = Mathf.Abs(vS);
+                vF += (Vector3.Dot(groundAccel, fwdN) + forwardAccel) * dt;
+                vS += (Vector3.Dot(groundAccel, side) + sideAccel) * dt;
 
                 // Push/skate to get rolling from rest; pull back to brake.
                 if (_throttle > 0f) vF += pushStrength * _throttle * Mathf.Clamp01(1f - vF / pushCapSpeed) * dt;
-                else if (_throttle < 0f) vF += _throttle * brakeStrength * dt;
+                else if (_throttle < 0f) vF = Mathf.MoveTowards(vF, 0f, -_throttle * brakeStrength * dt);
 
                 // Surface cruise-target re-accel (the surface speed character): deficit-only, only while roughly aligned.
                 float target = SpeedGainFor(surf);
@@ -158,7 +122,19 @@ namespace OpenSlope.BasisPlugin
                         vF += boostAccel * (SpeedMultFor(surf) * 0.4997f) * straight01 * dt;
                 }
 
-                _vel = _fwd * vF + side * vS + n * vN;
+                _vel = fwdN * vF + side * vS + n * vN;
+                float vmag = _vel.magnitude;
+                float speedRef = resistanceMode == 2 ? 11.3827f : resistanceMode == 0 ? 11.3497f : 11.1901f;
+                float leanTarget = Mathf.Clamp(_steer, -0.9051856f, 0.9051856f) * Mathf.Min(1f, vmag / speedRef);
+                float leanRate = Mathf.Clamp(Mathf.Abs(leanTarget - _lean) * 7.017359f, 0.1f, 8.018349f);
+                if (surf == 3 || surf == 4) leanRate *= 0.5999726f;
+                _lean = Mathf.MoveTowards(_lean, leanTarget, leanRate * dt);
+                Vector3 fallLine = n * n.y - Vector3.up;
+                fallLine = fallLine.sqrMagnitude > 1e-8f ? fallLine.normalized : fwdN;
+                float projection = Vector3.Dot(Vector3.Cross(_vel, fwdN), n) / Mathf.Max(vmag, 1e-6f);
+                float yaw = RideHeadingYaw(_lean, RideHeadingLead(_lean, _charge), projection, vmag,
+                    Vector3.Dot(_vel, fwdN), Vector3.Dot(_vel, fallLine), dt);
+                _fwd = (Quaternion.AngleAxis(yaw * Mathf.Rad2Deg, n) * fwdN).normalized;
             }
             else
             {

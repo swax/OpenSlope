@@ -5,10 +5,10 @@ it**, and how that separation is enforced.
 
 The goal is compatibility: a functional specification precise enough to author
 our own game that loads and runs SSX levels. That takes understanding the game —
-its data model, its on-disc formats, its observable behavior — and it
-specifically does *not* take reproducing the original implementation, its
-algorithms, or its source. Those are two different activities, and the
-discipline here exists to keep us in the first one.
+its data model, its on-disc formats, its observable behavior. Functional
+equations may be needed to specify that behavior. The implementation should
+be written from those requirements without carrying over the original code's
+register allocation, instruction sequence or internal organization.
 
 ## The layers
 
@@ -18,21 +18,28 @@ discipline here exists to keep us in the first one.
 | **Clean specification** | [`../specs/`](../specs/) chapter bodies | Observable behavior, functional requirements, formats, measured constants and magnitudes. |
 | **Clean consumers** | Repository/component docs, source, and tests | Original implementations that consume the spec and reference it with `[Trailmap: <anchor>]`. |
 
-The split is not about who is allowed to read what — everything here is one
-workspace. It is about what each layer is *for*. The dirty layer is the lab
-notebook: how we found out, plus the negative results and open leads that have
-no other home. The clean layer is the finding itself, stated so it stands on its
-own.
+These labels describe the purpose of each layer. They do not establish a
+clean-room process: the repository does not enforce separate researchers and
+implementers or restrict who reads the evidence. Research records how a finding
+was reached, including negative results and open leads. The specification states
+the finding so it stands on its own.
 
 **Dirty is not the same as unpublished.** Most of the dirty layer is generated
 locally from your own copy of the game and never committed: `elf-map.md`, the
 `analysis.sqlite` database, the seed data that reseeds it, and `extracted/`. What
 ships is the citation definitions in `specs/`, each carrying its evidence inline.
-So the addresses and offsets behind a published claim are public by design, while
-the disassembly *narrative* and the bulk symbol store stay local. Publishing
-evidence next to a conclusion is the point of the citation convention. What the
-two principles below guard against is different: prose that relays the shape of
-the original code instead of describing behavior.
+Compact addresses and offsets can identify the source of a published claim.
+Public research summaries retain the method, findings, negative results and
+limitations. Preserve detailed register-level reconstructions and the bulk symbol
+store locally; durable records belong under the ignored `ResearchData/` directory.
+Before shortening a public note, save the original there. A citation or a research
+directory does not exempt an instruction narrative from publication review.
+
+Record source provenance accurately, including whether it is supplied by the
+disc owner or independently verified and whether any access-control bypass was
+involved. Executable analysis must not be described as black-box observation.
+A separately written numerical evaluator does not establish an independent
+origin for the behavior it evaluates.
 
 That direction matters. A fact only reaches the spec once we understand it well
 enough to state it without pointing at a disassembly, which is a real bar: it
