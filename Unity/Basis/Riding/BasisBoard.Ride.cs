@@ -89,7 +89,7 @@ namespace OpenSlope.BasisPlugin
                 float vF = Vector3.Dot(_vel, fwdN), vS = Vector3.Dot(_vel, side), vN = Vector3.Dot(_vel, n);
                 float boost = BoostActive() ? 1f : 0f;
                 float theta = _rideSurfTilt[row] * Mathf.Deg2Rad * _lean;
-                float load = _rideSurfA[row] / 100f;
+                float load = _rideSurfA[row] / RESPONSE_UNITS_CENTIMETRES_PER_METRE;
                 Vector3 groundAccel = Vector3.ProjectOnPlane(Vector3.down * load, n)
                     + side * (load * Mathf.Max(0f, n.y) * Mathf.Tan(theta));
                 float forwardAccel = RideForwardResistance(row, vF, -_sinkDepth,
@@ -124,14 +124,17 @@ namespace OpenSlope.BasisPlugin
 
                 _vel = fwdN * vF + side * vS + n * vN;
                 float vmag = _vel.magnitude;
-                float speedRef = resistanceMode == 2 ? 11.3827f : resistanceMode == 0 ? 11.3497f : 11.1901f;
-                float leanTarget = Mathf.Clamp(_steer, -0.9051856f, 0.9051856f) * Mathf.Min(1f, vmag / speedRef);
-                float leanRate = Mathf.Clamp(Mathf.Abs(leanTarget - _lean) * 7.017359f, 0.1f, 8.018349f);
-                if (surf == 3 || surf == 4) leanRate *= 0.5999726f;
+                float speedRef = resistanceMode == 2 ? RESPONSE_LEAN_SPEED_MODE2_MPS
+                    : resistanceMode == 0 ? RESPONSE_LEAN_SPEED_MODE0_MPS : RESPONSE_LEAN_SPEED_DEFAULT_MPS;
+                float leanTarget = Mathf.Clamp(_steer, -RESPONSE_LEAN_INPUT_LIMIT, RESPONSE_LEAN_INPUT_LIMIT)
+                    * Mathf.Min(1f, vmag / speedRef);
+                float leanRate = Mathf.Clamp(Mathf.Abs(leanTarget - _lean) * RESPONSE_LEAN_SLEW_GAIN,
+                    RESPONSE_LEAN_SLEW_MIN_PER_SECOND, RESPONSE_LEAN_SLEW_MAX_PER_SECOND);
+                if (surf == 3 || surf == 4) leanRate *= RESPONSE_LEAN_POWDER_SLEW_SCALE;
                 _lean = Mathf.MoveTowards(_lean, leanTarget, leanRate * dt);
                 Vector3 fallLine = n * n.y - Vector3.up;
-                fallLine = fallLine.sqrMagnitude > 1e-8f ? fallLine.normalized : fwdN;
-                float projection = Vector3.Dot(Vector3.Cross(_vel, fwdN), n) / Mathf.Max(vmag, 1e-6f);
+                fallLine = fallLine.sqrMagnitude > RESPONSE_YAW_FLAT_CROSS_LENGTH_SQ ? fallLine.normalized : fwdN;
+                float projection = Vector3.Dot(Vector3.Cross(_vel, fwdN), n) / Mathf.Max(vmag, RESPONSE_GUARDS_SPEED_MPS);
                 float yaw = RideHeadingYaw(_lean, RideHeadingLead(_lean, _charge), projection, vmag,
                     Vector3.Dot(_vel, fwdN), Vector3.Dot(_vel, fallLine), dt);
                 _fwd = (Quaternion.AngleAxis(yaw * Mathf.Rad2Deg, n) * fwdN).normalized;

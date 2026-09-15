@@ -7,6 +7,26 @@ resistance in the opening contact frame, integrates acceleration, then updates h
 The measured net course-energy gain is retained as historical calibration data, not
 applied as an additional reduced gravity after restoring the resistance.
 
+## Where the numbers live
+
+The `response` section of [ride-v1.json](../../Trailmap/specs/data/ride-v1.json)
+names the resistance, heading, lean, bank and contact coefficients. Each group
+records its spec reference, provenance and units. Surface-dependent values remain
+in `surfaces`; these coefficients are shared across surfaces or selected by mode.
+
+The generator emits `src/app/ride/ride-response.generated.ts` and constants in both
+Unity response partials. Change values in the JSON, formulas in `ride-response.ts`
+and the C# template, then run `python tools/generate_ride_contract.py --unity`.
+The generated constants retain the previous numeric precision and the formulas
+retain their arithmetic order. For example, the yaw cap is radians **per tick**,
+and lateral speed knots are already in m/s; do not convert them again.
+
+`defaults` identifies project-selected neutral inputs; `guards` identifies
+dimensioned numerical floors; `units` identifies conversion factors. None of
+these is presented as a recovered rider attribute. Formula identities (zero,
+unity, signs) and the spec's mode/surface IDs remain inline. The shared guards
+apply to these response paths, not unrelated collision or rendering tolerances.
+
 ## Port choices and limits
 
 The default response tuning uses neutral normalized statistics, the ordinary mode,

@@ -83,14 +83,16 @@ namespace OpenSlope.VrcPlugin
         // The budget is not the sink; it is where the capped pushout starts to intervene.
         float ContactResponse(float A, float P, float error, float vn, float bog, float budget)
         {
-            float accel = A / 100f;                                              // engine units/s^2 -> m/s^2
-            if (error > 0f) return -(A / 30f) * error - (vn > 0f ? P * vn : 0f); // above: soft pull, damped only if separating
-            if (bog < 1e-4f) bog = 1e-4f;                                        // guard a degenerate slewed field
+            float accel = A / RESPONSE_UNITS_CENTIMETRES_PER_METRE;
+            // Above: soft pull, damped only if separating.
+            if (error > 0f) return -(A / RESPONSE_CONTACT_ABOVE_LENGTH_CM) * error - (vn > 0f ? P * vn : 0f);
+            if (bog < RESPONSE_GUARDS_CONTACT_SPAN_METRES) bog = RESPONSE_GUARDS_CONTACT_SPAN_METRES;
             if (error > -bog) return -accel * (error / bog) - P * vn;            // bog zone: 0 -> A across the soft give
             float span = budget - bog;
-            if (span < 1e-4f) span = 1e-4f;
+            if (span < RESPONSE_GUARDS_CONTACT_SPAN_METRES) span = RESPONSE_GUARDS_CONTACT_SPAN_METRES;
             float e = error < -budget ? -budget : error;
-            return accel * (1f - 2f * (e + bog) / span) - P * vn;                // deep: A at -bog, 3A at -budget
+            // Deep: A at -bog, 3A at -budget.
+            return accel * (1f - RESPONSE_CONTACT_DEEP_GAIN * (e + bog) / span) - P * vn;
         }
 
         // ---- Surface cache (copied shape from SurfaceDetector) -----------------------------------------

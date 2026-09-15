@@ -56,7 +56,7 @@ const generatedUnity = readFileSync(resolve(repo, 'Unity/VRC/Riding/Board/Rideab
 const basisGenerated = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Contract.Generated.cs'), 'utf8');
 const basisSurfaces = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Surface.cs'), 'utf8');
 const basisRide = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Ride.cs'), 'utf8');
-assert.match(board, /Vector3\.down \* \(A \/ 100f\)/);
+assert.match(board, /Vector3\.down \* \(A \/ RESPONSE_UNITS_CENTIMETRES_PER_METRE\)/);
 assert.match(board, /RideBankedNormalResponse\(response, capped, theta\)/);
 assert.match(board, /normalSpeed > RIDE_CONTACT_SEPARATION_SPEED/);
 assert.match(board, /RIDE_GROUND_ORIENT_GAIN \* upError \* upError \* upError/);

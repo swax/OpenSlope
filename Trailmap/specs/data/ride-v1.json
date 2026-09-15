@@ -73,6 +73,148 @@
       "note": "Recovered forward and lateral resistance replace the fitted lateral bite. Normalized rider tuning defaults to 0.5 with mode 1, matching edge, load ratio 1 and skid 0; these are project defaults, not retail character statistics. Held boost uses the ports binary strength. Full live caller validation remains open."
     }
   },
+  "response": {
+    "stance": {
+      "source": "330-resistance",
+      "provenance": "Recovered coefficients.",
+      "description": "Dimensionless edge-mismatch multipliers; mode 1 or matching edges use unity.",
+      "values": {
+        "mode0Mismatch": 0.8499836326,
+        "otherMismatch": 0.699878335
+      }
+    },
+    "forward": {
+      "source": "330-resistance",
+      "provenance": "Recovered coefficients in the existing metre-based formulation.",
+      "description": "Stat and boost scales are dimensionless; speedScale converts m/s to x=abs(u)/10; unchargedDrag and skidDrag are in 1/s.",
+      "values": {
+        "mode2LinearBase": 0.707642436,
+        "mode2LinearStatScale": 0.3019791245,
+        "linearBase": 1.0649821758,
+        "linearStatScale": 0.3084552288,
+        "quadraticBase": 1.2848105431,
+        "quadraticStatScale": 0.2903534174,
+        "skidBase": 0.6150994897,
+        "skidStatScale": 0.9181777835,
+        "speedScale": 0.1,
+        "powderDepthBase": 0.5,
+        "unchargedDrag": 0.1057286412,
+        "boostSkidScale": 1.2153687477,
+        "skidDrag": 1.7513076067
+      }
+    },
+    "lateral": {
+      "source": "330-lateral",
+      "provenance": "Recovered coefficients in the existing metre-based formulation.",
+      "description": "Speed knots are m/s (about 20 and 50 km/h); slopes multiply m/s to give dimensionless speed gain. Other gains are dimensionless.",
+      "values": {
+        "lowSpeedMps": 5.555555419922,
+        "midSpeedMps": 13.888887939453,
+        "lowBase": 0.2010370344,
+        "lowSlope": 0.0889972609,
+        "midBase": 0.69546628,
+        "midSlope": 0.0361297949,
+        "highBase": 0.9965478778,
+        "highFalloff": 0.01044131714,
+        "riderBase": 0.0010000000475,
+        "riderStatScale": 1.1412174702,
+        "boostScale": 3.4999945164,
+        "leanScale": 1.0001484156
+      }
+    },
+    "lead": {
+      "source": "330-yaw",
+      "provenance": "Recovered mode-selected heading curve.",
+      "description": "Angles are radians; shape and charge scales are dimensionless. Mode numbers are selectors, not verified rider-attribute names.",
+      "values": {
+        "mode2Shape": 0.208338961,
+        "mode0Shape": 0.3001891971,
+        "defaultShape": 0.400000006,
+        "mode2AngleRad": 0.2622103095,
+        "mode0AngleRad": 0.3491855264,
+        "defaultAngleRad": 0.5239824057,
+        "shapeScale": 0.5,
+        "chargeScale": 0.01
+      }
+    },
+    "yaw": {
+      "source": "330-yaw / 330-alignment-basis",
+      "provenance": "Recovered heading closure and flat-ground fallback threshold.",
+      "description": "speedGate multiplies (m/s)^2*seconds; alignSpeedMps is about 20 km/h; capRadPerTick is about 6 degrees per 60 Hz tick, not rad/s. Other values are dimensionless.",
+      "values": {
+        "slipProjectionLimit": 0.99999,
+        "speedGate": 0.2002984729,
+        "alignScale": 40.0,
+        "alignSpeedMps": 5.555555419922,
+        "alignRatio": 0.5,
+        "alignBase": 0.01004204992,
+        "capRadPerTick": 0.104719758,
+        "flatCrossLengthSq": 1e-08
+      }
+    },
+    "lean": {
+      "source": "330-lean / 330-lean-vals",
+      "provenance": "Recovered lean shaping; existing runtime rounding retained.",
+      "description": "Lean and input are normalized; speed references are m/s; slew rates are lean units/s. Powder keeps the port's 0.5999726 rounding of the spec's 0.599972606.",
+      "values": {
+        "speedMode2Mps": 11.3827,
+        "speedMode0Mps": 11.3497,
+        "speedDefaultMps": 11.1901,
+        "inputLimit": 0.9051856,
+        "slewGain": 7.017359,
+        "slewMinPerSecond": 0.1,
+        "slewMaxPerSecond": 8.018349,
+        "powderSlewScale": 0.5999726
+      }
+    },
+    "bank": {
+      "source": "330-bank-force",
+      "provenance": "Recovered banked-contact clamp.",
+      "description": "Dimensionless multiplier of the surface load acceleration; applied before resolving the banked force.",
+      "values": {
+        "loadCapMultiplier": 2.0
+      }
+    },
+    "contact": {
+      "source": "320-spring / 320-spring-accel",
+      "provenance": "Recovered three-zone contact response.",
+      "description": "aboveLengthCm converts surface A to the above-surface stiffness; deepGain raises the response from A to 3A across the deep zone.",
+      "values": {
+        "aboveLengthCm": 30.0,
+        "deepGain": 2.0
+      }
+    },
+    "units": {
+      "source": "320-spring-accel / 330-bank-force",
+      "provenance": "Unit conversion, not ride tuning.",
+      "description": "Surface A is in centimetres/s^2; divide by centimetresPerMetre to obtain m/s^2.",
+      "values": {
+        "centimetresPerMetre": 100.0
+      }
+    },
+    "defaults": {
+      "source": "330-carve-formula",
+      "provenance": "Project defaults, not recovered retail character statistics.",
+      "description": "Neutral normalized stats, mode 1, matching edge, unity supplied load ratio and zero skid-control state.",
+      "values": {
+        "normalizedStat": 0.5,
+        "mode": 1,
+        "edge": 0,
+        "loadRatio": 1.0,
+        "skid": 0.0
+      }
+    },
+    "guards": {
+      "source": "330-yaw / 330-carve-formula / 320-spring",
+      "provenance": "Project numerical safeguards, not recovered tuning.",
+      "description": "Separate dimensional floors for yaw direction speed, resistance sink budget, and the slewed contact span (also the Unity bog floor).",
+      "values": {
+        "speedMps": 1e-06,
+        "budgetMetres": 1e-06,
+        "contactSpanMetres": 0.0001
+      }
+    }
+  },
   "pose": {
     "groundCubicGain": 90.0,
     "groundRateCapDeg": 270.0,
