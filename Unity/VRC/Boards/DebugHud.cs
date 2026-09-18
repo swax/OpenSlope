@@ -61,6 +61,7 @@ namespace OpenSlope.VrcPlugin
                      + "\nworst " + Mathf.RoundToInt(worstFps);
             if (culler != null) s += "\nobjects drawn " + culler.DrawnCount() + " / " + culler.Total();
             s += "\nplayers " + VRCPlayerApi.GetPlayerCount();
+            s += BoardNetworkStatus();
 
             // Ride stats from the local rider's board (only while actually riding one).
             RideableBoard b = LocalBoard();
@@ -83,6 +84,54 @@ namespace OpenSlope.VrcPlugin
 
             text.text = s;
             _worstDt = 0f;
+        }
+
+        // Session totals across pooled boards. TX/RX should keep increasing while someone rides; parked boards stop.
+        // Useful on the headset itself, where the Unity inspector and the other player's client logs are unavailable.
+        private string BoardNetworkStatus()
+        {
+            if (boardManager == null || boardManager.boards == null) return "";
+            int sent = 0, received = 0, failed = 0, corrected = 0, active = 0, owned = 0;
+            RideableBoard observed = null;
+            float nearest = float.MaxValue;
+            Vector3 playerPos = _player != null ? _player.GetPosition() : transform.position;
+            for (int i = 0; i < boardManager.boards.Length; i++)
+            {
+                RideableBoard b = boardManager.boards[i];
+                if (b == null) continue;
+                sent += b.NetSendCount;
+                received += b.NetReceiveCount;
+                failed += b.NetSendFailures;
+                corrected += b.NetGateCorrections;
+                if (!b.gameObject.activeSelf) continue;
+                active++;
+                if (Networking.IsOwner(b.gameObject)) owned++;
+                float distance = (b.transform.position - playerPos).sqrMagnitude;
+                if (b.IsRiding) { observed = b; nearest = -1f; }
+                else if (distance < nearest) { observed = b; nearest = distance; }
+            }
+            string status = "\nme " + PlayerLabel(_player) + (Networking.IsMaster ? " [MASTER]" : "")
+                + "\nmaster " + PlayerLabel(Networking.Master)
+                + "\npool owner " + PlayerLabel(Networking.GetOwner(boardManager.gameObject))
+                + "\nboards " + active + "  mine " + owned + "  gate fixes " + corrected
+                + "\nnet TX " + sent + "  RX " + received + "  fail " + failed;
+            if (observed != null)
+            {
+                bool own = Networking.IsOwner(observed.gameObject);
+                int count = own ? observed.NetSendCount : observed.NetReceiveCount;
+                float last = own ? observed.NetLastSendTime : observed.NetLastReceiveTime;
+                status += "\n" + observed.gameObject.name + " owner " + PlayerLabel(Networking.GetOwner(observed.gameObject))
+                    + (observed.occupied ? " [IN USE]" : " [FREE]")
+                    + "\n  " + (own ? "TX " : "RX ") + count + "  age "
+                    + (count > 0 ? (Time.time - last).ToString("F1") + "s" : "never");
+            }
+            return status;
+        }
+
+        private string PlayerLabel(VRCPlayerApi player)
+        {
+            if (player == null) return "none";
+            return player.displayName + " #" + player.playerId;
         }
 
         // The board the LOCAL player is riding (IsRiding is true only on the owner-rider's board), or null.

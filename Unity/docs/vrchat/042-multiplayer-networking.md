@@ -5,6 +5,36 @@ instance everyone sees everyone else's board riding under their avatar, board pi
 don't fight, and idle boards cost almost nothing. This is the networking counterpart to
 docs/vrchat/017 (the board itself) and docs/vrchat/025 (performance).
 
+## Diagnosing clustered spawns or a stationary remote rider
+
+The TUNING board's **Show FPS / debug** readout includes the local player, instance master,
+pool owner, active/locally owned board counts, and aggregate successful TX/RX/failed-send counts.
+It also shows the local ridden board (otherwise the nearest active board), its owner, occupancy,
+and the age of its last successful send or received packet. While riding, TX should advance on
+the owner and RX on the observer. A parked board normally stops sending, so an old packet age
+on a free board is expected. `gate fixes` counts corrections of a parked board displaced from
+the anchor saved by `PlaceAtGate`; it should ordinarily remain zero.
+
+`PlaceAtGate` retains the requested pose until the board is taken off its post. The owner
+reasserts that pose before sleeping or sampling a packet, so a later pool/pickup transform reset
+cannot permanently strand the board at the shared build origin. This does not reposition a
+board being ridden/carried or one that has left its post.
+
+Serialization is asynchronous: `OnPreSerialization` captures pose and server timestamp together,
+and `OnPostSerialization` records success/failure. Simulation sleep is separate from network
+completion: an unconfirmed spawn/final pose retries at 2 Hz while parked, and a late join queues
+another send. A successful serialization confirms the SDK send, **not receipt by every peer**.
+The frame-velocity sample is separate from the packet position so deferred serialization cannot
+corrupt the next velocity estimate. Ownership requests arm `_pendingMount` before `SetOwner`,
+which may deliver its callback synchronously.
+
+Run `Unity/tools/diagnostics/board-network-check.cs` as an editor command in an idle ClientSim
+Play session with a built gate. If it creates a remote test player, rerun after the next frame.
+Exit Play afterwards: the check temporarily changes board positions/owners and clicks the posts.
+It exercises compiled Udon with injected serialization callbacks and a simulated activation
+reset. It does not replace a two-client VRChat test: check all posts, each player mounting/riding,
+late join, and ownership after the master leaves. PC and Android clients must use matching builds.
+
 ## Why the board has to be networked
 
 A `VRCStation` positions a seated player at the station's seat transform *on each remote client*.
@@ -75,8 +105,9 @@ Each board syncs its own pose and gates its simulation on ownership:
 - **Owner simulates; everyone else dead-reckons.** The full ride integration in `Update()` runs
   only when `Networking.IsOwner(gameObject)`. In `PostLateUpdate()` (after all movement, so it's
   robust to the rail/out-of-bounds/coast early-returns in `Update()`) the owner samples its pose +
-  velocity into `_netPos`/`_netRot`/`_netVel`; on the send timer it stamps `_netSendTime = ServerNow()`
-  and calls `RequestSerialization()`. It does **not** gate the send on `Networking.IsClogged`: VRChat
+  velocity into `_netPos`/`_netRot`/`_netVel`; on the send timer it calls `RequestSerialization()`.
+  `OnPreSerialization` refreshes the pose and stamps `_netSendTime = ServerNow()` when the SDK
+  actually services the request. It does **not** gate the send on `Networking.IsClogged`: VRChat
   already caches a manual serialization and retries it when the pipe clears, so skipping while clogged
   would only drop the freshest pose and lengthen the very gap the remote has to coast over (clog is
   exactly when the next sample matters most). Because `_netVel` is the transform **delta** (`disp/dt`),
@@ -150,7 +181,7 @@ Each board syncs its own pose and gates its simulation on ownership:
   from jumping every time the game hitches.
 - **Ownership-gated mount.** `Interact()`:
   1. If `_riding` or `occupied` (synced — someone else is on it), do nothing.
-  2. If we don't own it yet, `Networking.SetOwner(localPlayer, gameObject)`, set `_pendingMount`,
+  2. If we don't own it yet, set `_pendingMount`, then `Networking.SetOwner(localPlayer, gameObject)`,
      and return. The mount happens in `OnOwnershipTransferred(localPlayer)` once ownership lands.
      This is what kills the takeover snap — we never simulate while still a non-owner.
   3. If we already own it (solo instance, or a board we just took), seat immediately.
@@ -179,8 +210,9 @@ Each board syncs its own pose and gates its simulation on ownership:
   as an authoritative backstop on any board the pool owner ends up owning (covers a cascade where the
   inheriting owner *also* leaves before the clear broadcasts). Only the owner may publish the clear.
 - **Idle-sleep (`sleepWhenParked`).** Once a board is parked & settled (no rider, stopped, wake
-  melted) for `sleepDelay` (~1.5 s, long enough that its resting pose has synced out), it **sleeps**:
-  `Update()` early-returns and `PostLateUpdate()` stops publishing the pose, so the board drops out
+  melted) for `sleepDelay` (~1.5 s), it **sleeps**:
+  `Update()` skips simulation. `PostLateUpdate()` retries the final pose until successful
+  serialization, then stops publishing, so the board drops out
   of the continuous-sync budget and does no per-frame work. Remotes' `NetFollow` also idles once
   converged. A sleeping board is therefore ~free while it sits there visible — this is what lets
   abandoned/at-the-gate boards **persist on the mountain cheaply** instead of having to be returned.

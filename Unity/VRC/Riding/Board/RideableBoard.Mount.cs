@@ -25,8 +25,9 @@ namespace OpenSlope.VrcPlugin
             // instance we already own everything, so this falls straight through to UseStation.
             if (networked && !Networking.IsOwner(gameObject))
             {
-                Networking.SetOwner(_player, gameObject);
                 _pendingMount = true; _pendingMountTime = Time.time;
+                // SetOwner can dispatch OnOwnershipTransferred before returning. Arm the request first.
+                Networking.SetOwner(_player, gameObject);
                 return; // OnOwnershipTransferred seats us when ownership arrives (or netMountTimeout abandons it)
             }
             CaptureMountArc(); // an airborne click (flying/falling player) keeps its arc through the seat (Grab.cs)
@@ -39,7 +40,7 @@ namespace OpenSlope.VrcPlugin
         {
             _asleep = false;
             _parkTimer = 0f;
-            _nextSendTime = 0; // send the new pose immediately (a re-dispense re-poses the board)
+            QueuePoseSend(); // keep retrying this pose if the board sleeps before a successful send
         }
 
         // Dispenser hook (BoardManager.Dispense): re-pose a POOLED board at a gate post and SCRUB its rider/runtime
@@ -51,6 +52,9 @@ namespace OpenSlope.VrcPlugin
         // Owner-only: the manager owns the board (TryToSpawn) before calling this. See docs/vrchat/042.
         public void PlaceAtGate(Vector3 pos, Quaternion rot)
         {
+            _gatePosition = pos;
+            _gateRotation = rot;
+            _gatePoseValid = true;
             transform.SetPositionAndRotation(pos, rot);
             occupied = false;        // free to mount
             atGate = true;           // sitting available at its post: CoastUpdate bails, and mounting clears it to dispense the next
@@ -88,6 +92,21 @@ namespace OpenSlope.VrcPlugin
             PublishTeleport();       // seed the net sample to the gate pose + zero net velocity so the re-pose can't read as a disp/dt spike
         }
 
+        // Keep the dispenser's pose authoritative while this board is still available at its post. Native pool/pickup
+        // activation can restore a stored transform after PlaceAtGate's immediate write. Reassert before sampling/sleep,
+        // but never drag a mounted, carried, summoned or abandoned board back to the gate.
+        void RestoreGatePose()
+        {
+            if (!_gatePoseValid || !atGate || occupied || _riding || _held) return;
+            if ((transform.position - _gatePosition).sqrMagnitude < 1e-8f &&
+                Quaternion.Angle(transform.rotation, _gateRotation) < 0.01f) return;
+            transform.SetPositionAndRotation(_gatePosition, _gateRotation);
+            if (_pivot != null) { _pivot.position = _gatePosition; _pivot.rotation = _gateRotation; }
+            NetGateCorrections++;
+            WakeUp();
+            PublishTeleport();
+        }
+
         // Position the station enter-location seat for the chase-view test. chaseCamSeat ON -> offset the SeatPoint
         // UP + BEHIND; OFF -> park it at the board origin (normal first-person). VRChat tracks the enter-location
         // continuously, so moving this child re-seats the rider without touching the board's physics origin.
@@ -117,8 +136,7 @@ namespace OpenSlope.VrcPlugin
             Claim();                          // riding a board makes it YOURS, and it stays yours after you step off - that's
                                               // the board the over-the-shoulder summon recalls (Grab.cs / BoardSummon)
             RefreshPickupable();              // riding it: nobody grabs it, us included (Grab.cs)
-            _asleep = false; _parkTimer = 0f; // mounting always wakes the board (it was likely asleep at the gate)
-            _nextSendTime = 0; // force an immediate send so others see occupied=true (anti-steal) without waiting a tick
+            WakeUp(); // mounting always wakes the board and queues occupied=true without waiting a tick
             ApplyChaseSeat();  // re-apply in case the flag/offset changed since Start (re-mount to refresh the chase seat)
             _airTime = 0f;     // fresh airborne timer (orientation grace)
             _telemetryFrame = 0; _telemetryTick = 0; _telemetryEvents = 0; _telemetryHeaderWritten = false;

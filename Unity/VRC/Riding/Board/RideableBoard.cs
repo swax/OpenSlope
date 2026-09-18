@@ -887,6 +887,22 @@ namespace OpenSlope.VrcPlugin
         [UdonSynced] private float _netScale = 1f;
         private float _appliedScale = 1f;         // remote-side: last scale we applied, so we don't touch the collider every packet
         private bool _netInit;                    // a remote has received at least one packet
+        private Vector3 _lastNetSamplePos;       // frame sample, separate from the packet captured in OnPreSerialization
+        private bool _haveNetSample;
+        private bool _poseSendPending;           // sleeping must not discard an unconfirmed spawn/final pose
+        private int _poseRevision;
+        private int _sendingPoseRevision;
+        // Local diagnostics: inspect these in a two-client test to distinguish a send failure from a receive failure.
+        [HideInInspector] public int NetSendCount;
+        [HideInInspector] public int NetSendFailures;
+        [HideInInspector] public int NetReceiveCount;
+        [HideInInspector] public int NetLastBytes;
+        [HideInInspector] public float NetLastSendTime;
+        [HideInInspector] public float NetLastReceiveTime;
+        [HideInInspector] public int NetGateCorrections;
+        private Vector3 _gatePosition;
+        private Quaternion _gateRotation;
+        private bool _gatePoseValid;
         // The VISIBLE deck pose is decoupled from the synced seat/root: the owner writes the carve facing + bank + pitch
         // ONLY on the Heading pivot (the visual block, ~line 1463), and in VR the seat/root we sync is pinned LEVEL - so
         // syncing the root alone leaves a remote viewer watching a flat, non-banking board. We sync the pivot's rotation
@@ -1259,6 +1275,7 @@ namespace OpenSlope.VrcPlugin
             // returns (its cheap "sleep" - no physics). In a solo instance the local player owns everything, so this
             // never blocks and the board runs exactly as the old local-only one did.
             if (networked && !Networking.IsOwner(gameObject)) { IsRiding = false; NetFollow(); RemoteFxUpdate(); return; }
+            RestoreGatePose(); // a pool/pickup activation reset must not leave a parked board at the shared build origin
             // We own this board now. If we were just driving it as a remote (FX running), hand the FX back to the owner
             // paths: clear the flag so the wake carve gate reverts, and stop the remote-started systems UNLESS we own it
             // because we just mounted (the ride owns them then). Idempotent - the flag is false after the first owner frame.
@@ -1284,11 +1301,15 @@ namespace OpenSlope.VrcPlugin
                 else if (_wkN > 0) { WakeAgeOnly(Time.deltaTime); _parkTimer = 0f; } // melt any leftover wake on a now-parked board
                 else if (sleepWhenParked)
                 {
-                    // Fully parked (stopped, wake melted). After a short settle - long enough that the resting pose has
-                    // synced out to everyone - SLEEP: stop the per-frame Update + the pose publish, so an abandoned or
-                    // at-the-gate board costs ~nothing until a mount (OnStationEntered) or re-dispense (WakeUp). docs/vrchat/042.
+                    // Fully parked (stopped, wake melted). Sleep the simulation after settling; the transport separately
+                    // waits for successful serialization of the final pose before it stops sending. docs/vrchat/042.
                     _parkTimer += Time.deltaTime;
-                    if (_parkTimer >= sleepDelay) _asleep = true;
+                    if (_parkTimer >= sleepDelay)
+                    {
+                        _asleep = true;
+                        _netVel = Vector3.zero;
+                        QueuePoseSend(); // publish the final resting pose even if the network was not ready before sleep
+                    }
                 }
                 return;
             }
