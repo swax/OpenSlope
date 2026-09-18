@@ -8,7 +8,8 @@ export function createParticleAtlasTexture(canvas: HTMLCanvasElement) {
 
   /** Copy only the changed cell. All other sprites survive even if the drawing canvas has been reset. */
   function update(x = 0, y = 0, width = canvas.width, height = canvas.height) {
-    if (!context || context.isContextLost()) return;
+    // Canvas2D's context-loss query is optional in some browsers, unlike WebGL's.
+    if (!context || context.isContextLost?.()) return;
     const source = context.getImageData(x, y, width, height).data;
     for (let row = 0; row < height; row++) {
       pixels.set(source.subarray(row * width * 4, (row + 1) * width * 4), ((y + row) * canvas.width + x) * 4);

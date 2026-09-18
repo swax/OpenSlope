@@ -15,7 +15,10 @@ namespace OpenSlope.VrcPlugin
         // board because its previous owner left - in which case we recover it if that owner abandoned it mid-ride.
         public override void OnOwnershipTransferred(VRCPlayerApi player)
         {
-            if (player == null || !player.isLocal) return;
+            if (player == null) return;
+            if (!player.isLocal) { _gatePoseValid = false; return; } // discard our old post when handing the board away
+            _haveNetSample = false; // the previous owner's sample is not our frame-to-frame motion
+            WakeUp();
             // Only a FRESH mount request of our own may seat us. Ownership lands here for reasons that have nothing to do
             // with a click - the over-the-shoulder summon takes ownership to pull the board to your hand, and VRChat
             // reassigns a board whose owner left the instance - and honouring a STALE _pendingMount off one of those seats a
@@ -68,6 +71,8 @@ namespace OpenSlope.VrcPlugin
         // reversal (carve flip / wall - no bounce), drop it when ~stopped (no parked drift), low-pass + clamp. docs/vrchat/042.
         public override void OnDeserialization()
         {
+            NetReceiveCount++;
+            NetLastReceiveTime = Time.time;
             float interval = (float)(_netSendTime - _prevSendTime);
             if (_netVel.sqrMagnitude < 1e-4f)
             {
@@ -147,26 +152,78 @@ namespace OpenSlope.VrcPlugin
             return _serverClock;
         }
 
+        // A pool activation or late join can happen while the owner is parked. Keep the pose pending until the SDK
+        // confirms serialization; a fixed 1.5-second awake window is not a network-delivery guarantee.
+        void OnEnable()
+        {
+            WakeUp();
+        }
+
+        public override void OnPlayerJoined(VRCPlayerApi player)
+        {
+            if (networked && Networking.IsOwner(gameObject)) QueuePoseSend();
+        }
+
+        void QueuePoseSend()
+        {
+            _poseRevision++;
+            _poseSendPending = true;
+            _nextSendTime = 0;
+        }
+
+        // RequestSerialization is queued/rate-limited by VRChat. Capture position AND timestamp when the packet is
+        // actually serialized, including sends requested by Claim/PublishScale rather than the frame timer.
+        public override void OnPreSerialization()
+        {
+            if (!networked || !Networking.IsOwner(gameObject)) return;
+            RestoreGatePose();
+            _netPos = transform.position;
+            _netRot = transform.rotation;
+            _netDeckLocal = _pivot != null ? Quaternion.Inverse(_netRot) * _pivot.rotation : Quaternion.identity;
+            _netBank = _bank;
+            _netSendTime = ServerNow();
+            _sendingPoseRevision = _poseRevision;
+        }
+
+        public override void OnPostSerialization(SerializationResult result)
+        {
+            if (!networked || !Networking.IsOwner(gameObject)) return;
+            if (!result.success)
+            {
+                NetSendFailures++;
+                _poseSendPending = true;
+                return; // the timer retries even if motion has already gone to sleep
+            }
+            NetSendCount++;
+            NetLastBytes = result.byteCount;
+            NetLastSendTime = Time.time;
+            if (_sendingPoseRevision == _poseRevision) _poseSendPending = false;
+        }
+
         // Owner-side send (after every Update path has moved the board, so the rail/OOB/coast early-returns are all
-        // covered). We capture the pose + velocity each frame but only SERIALIZE on the fixed netSendInterval, stamping the
-        // SERVER time so remotes can extrapolate the exact amount. Manual sync (not continuous) = regular, timestamped
+        // covered). We sample velocity each frame and request a send on netSendInterval. OnPreSerialization captures
+        // the final pose and SERVER time together when VRChat services that request. Manual sync = timestamped
         // packets, which is what makes the dead-reckoning + acceleration smooth (docs/vrchat/042; mirrors SaccFlight's transport).
         public override void PostLateUpdate()
         {
             if (!networked || !Networking.IsOwner(gameObject)) return; // remotes follow in Update/NetFollow
+            RestoreGatePose();
             float dt = Time.deltaTime;
-            if (_asleep) return;          // parked & asleep: stop sending so the board leaves the sync budget
+            if (_asleep && !_poseSendPending) return; // only confirmed parked poses can leave the sync budget
             Vector3 pos = transform.position;
-            if (dt > 1e-4f)
+            if (!_haveNetSample || _asleep) _netVel = Vector3.zero;
+            else if (dt > 1e-4f)
             {
                 // The board's ACTUAL world velocity from the transform delta (mode-agnostic: ground, air, rail, coast,
                 // unlike the _vel integrator). Lightly low-passed. A teleport is not real motion: a LARGE one (> netSnapDistance)
-                // reads zero here, and every teleport path (RespawnAt / PlaceAtGate) calls PublishTeleport to seed _netPos to
+                // reads zero here, and every teleport path (RespawnAt / PlaceAtGate) calls PublishTeleport to seed the sample to
                 // the destination + zero _netVel, so even a SHORT hop reads disp = 0 instead of a bogus disp/dt spike. docs/vrchat/042.
-                Vector3 disp = pos - _netPos; // _netPos still holds last frame's sampled pose here
+                Vector3 disp = pos - _lastNetSamplePos;
                 if (disp.sqrMagnitude > netSnapDistance * netSnapDistance) _netVel = Vector3.zero;
                 else _netVel = Vector3.Lerp(_netVel, disp / dt, 0.5f);
             }
+            _lastNetSamplePos = pos;
+            _haveNetSample = true;
             _netPos = pos;
             _netRot = transform.rotation;
             // Also capture the VISIBLE deck pose: the Heading pivot carries the carve facing/bank/pitch the seat/root does
@@ -182,9 +239,10 @@ namespace OpenSlope.VrcPlugin
             double now = ServerNow();
             if (now >= _nextSendTime)
             {
-                _netSendTime = now;
                 RequestSerialization();
-                _nextSendTime = now + (netSendInterval > 0.02f ? netSendInterval : 0.02f);
+                // Parked retries need no ride-rate bandwidth. Once a send succeeds they stop entirely.
+                float interval = _asleep ? 0.5f : (netSendInterval > 0.02f ? netSendInterval : 0.02f);
+                _nextSendTime = now + interval;
             }
         }
 
@@ -192,18 +250,19 @@ namespace OpenSlope.VrcPlugin
         // new pose with ZERO velocity and force an immediate send. PostLateUpdate derives _netVel from the transform DELTA,
         // so a teleport shorter than netSnapDistance would otherwise serialize a huge bogus velocity (disp/dt) and remote
         // ghosts would dead-reckon a rocket off the destination; and without resetting the send timer the new pose waits up
-        // to a full netSendInterval. Seeding _netPos = the destination makes the next PostLateUpdate read disp = 0 (no
-        // spike), and _nextSendTime = 0 lets that same PostLateUpdate send the clean pose THIS tick - with the correct
-        // server timestamp it stamps there (so we deliberately don't RequestSerialization here ourselves). docs/vrchat/042.
+        // to a full netSendInterval. Seeding the frame sample makes the next PostLateUpdate read disp = 0 (no spike).
+        // QueuePoseSend requests the clean pose next tick and keeps it pending through sleep until serialization succeeds.
         void PublishTeleport()
         {
             if (!networked) return;
             _netPos = transform.position;
             _netRot = transform.rotation;
             _netVel = Vector3.zero;
+            _lastNetSamplePos = _netPos;
+            _haveNetSample = true;
             _netTeleport++;    // bump the teleport signal so remotes SNAP onto this pose even when the jump is under netRemoteSnap (a
                                // gate re-dispense moves a board only a few metres - the distance test alone would slide it). See NetFollow.
-            _nextSendTime = 0; // send on the next PostLateUpdate (which stamps _netSendTime), carrying the bumped _netTeleport with it
+            QueuePoseSend(); // send on the next PostLateUpdate; OnPreSerialization stamps the actual packet time
         }
 
         // Remote copy: CHASE this board onto the owner's dead-reckoned pose (carrot/stick - it only ever chases, it never

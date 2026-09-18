@@ -332,8 +332,8 @@ namespace OpenSlope.VrcPlugin
             canvasGO.transform.SetParent(boardRoot, false);
             canvasGO.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
             var crt = canvasGO.GetComponent<RectTransform>();
-            crt.sizeDelta = new Vector2(440f, 240f);
-            crt.localScale = Vector3.one * 0.0009f;   // ~0.40 m wide at the ~1.1 m HUD distance
+            crt.sizeDelta = new Vector2(1000f, 600f);
+            crt.localScale = Vector3.one * 0.00075f;  // room for ownership/network diagnostics plus ride stats
             crt.pivot = new Vector2(0.5f, 0.5f);
             crt.localPosition = Vector3.zero;
 
@@ -345,7 +345,7 @@ namespace OpenSlope.VrcPlugin
             var txtGO = NewUI("Text", crt, out var txtRt); Stretch(txtRt); Inset(txtRt, 20f);
             var txt = txtGO.AddComponent<Text>();
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
-            txt.font = font; txt.fontSize = 40; txt.color = Color.white;
+            txt.font = font; txt.fontSize = 28; txt.color = Color.white;
             txt.alignment = TextAnchor.UpperLeft; txt.raycastTarget = false;
             txt.horizontalOverflow = HorizontalWrapMode.Overflow; txt.verticalOverflow = VerticalWrapMode.Overflow;
             txt.text = "FPS --";
