@@ -1890,7 +1890,7 @@ export class Viewport {
 
   /** Redraw the selected-edge highlight from the substrate (sel.edgeSel, canonical `[lo,hi]` vertex-id pairs).
    *  The edge analogue of refreshEditCells; an empty set clears it. */
-  refreshEditEdges() { this.selection.refreshEditEdges(); }
+  refreshEditEdges() { this.selection.refreshEditEdges(); this.edgeExtrusion.refreshPath(); }
 
   /** Host-facing facade; the layer owns rail colors, arrows, and overlay geometry. */
   setBridgeRails(rails: readonly (readonly number[])[] | null) {
@@ -2611,6 +2611,17 @@ export class Viewport {
   get edgeExtrusionFanMode(): boolean { return this.edgeExtrusion.fanMode; }
   get edgeExtrusionSideFlippable(): boolean { return this.edgeExtrusion.sideFlippable; }
   get edgeExtrusionSegments(): number { return this.edgeExtrusion.segments; }
+  get edgeExtrusionMode() { return this.edgeExtrusion.mode; }
+  get edgeExtrusionPathAvailable() { return this.edgeExtrusion.pathAvailable; }
+  get edgeExtrusionSegmentLength() { return this.edgeExtrusion.segmentLength; }
+  get edgeExtrusionPath() { return this.edgeExtrusion.path; }
+  get edgeExtrusionReversePath() { return this.edgeExtrusion.reversePath; }
+  get edgeExtrusionError() { return this.edgeExtrusion.error; }
+  setEdgeExtrusionMode(value: 'pull' | 'path') { this.edgeExtrusion.setMode(value); }
+  setEdgeExtrusionSegmentLength(value: number) { this.edgeExtrusion.setSegmentLength(value); }
+  setEdgeExtrusionPath(value: string) { this.edgeExtrusion.setPath(value); }
+  setEdgeExtrusionReversePath(value: boolean) { this.edgeExtrusion.setReversePath(value); }
+  refreshEdgeExtrusionPath() { this.edgeExtrusion.refreshPath(); }
   beginEdgeExtrusionStage(): boolean { return this.edgeExtrusion.beginStage(); }
   flipEdgeExtrusionSide(): boolean { return this.edgeExtrusion.flipSide(); }
   commitEdgeExtrusionStage() { this.edgeExtrusion.commitStage(); }

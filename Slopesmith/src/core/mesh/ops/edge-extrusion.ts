@@ -55,18 +55,24 @@ export interface EdgeExtrusionPlan {
   caps?: EdgeExtrusionPlanCap[];
   /** Initial constrained direction for a patch region (the average selected-surface normal). */
   direction?: V3;
-  /** Target depth of one generated wall band, derived from the shortest selected source-edge curve. */
+  /** Target depth of one generated wall band; initially the shortest selected source-edge curve. */
   segmentLength: number;
   /** Effective outgoing handles at every selected endpoint, frozen before adding neighbours changes Bessel. */
   pinnedHandles: Record<string, V3>;
 }
-export interface EdgeExtrusionPlacement {
+export interface EdgeExtrusionRing {
   /** Final authored position of each duplicated source endpoint. */
   vertices: Record<number, V3>;
   /** Final directed handles of each transformed outer edge. */
   handles: Record<string, V3>;
+}
+export interface EdgeExtrusionPlacement extends EdgeExtrusionRing {
   /** Final interior twist vectors of each transformed top patch. */
   twists?: Record<number, [V3, V3, V3, V3]>;
+  /** Path sweep: successive moving rings, excluding the source and including the final placement. */
+  stations?: EdgeExtrusionRing[];
+  /** Existing mesh path used as one side of the strip. Its vertices/curves are reused, never duplicated. */
+  guide?: { source: number; vertices: number[]; handles: Record<string, V3> };
 }
 
 export type EdgeExtrusionPlanResult = { ok: true; plan: EdgeExtrusionPlan } | { ok: false; error: string };
@@ -90,7 +96,7 @@ function uniqueDirectedEdges(edges: readonly (readonly [number, number])[]): [nu
 const bothDirections = (edges: readonly (readonly [number, number])[]) =>
   uniqueDirectedEdges(edges.flatMap(([a, b]) => [[a, b], [b, a]] as [number, number][]));
 
-const MAX_EXTRUSION_SEGMENTS = 16;
+export const MAX_EXTRUSION_SEGMENTS = 512;
 const pointAt = (doc: QuadMeshDoc, vertex: number): V3 => readVertex(doc.vertices, vertex);
 const mixV3 = (a: V3, b: V3, t: number): V3 =>
   [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
@@ -112,12 +118,19 @@ function sourceSegmentLength(doc: QuadMeshDoc, handle: (from: number, to: number
 /** Automatic wall-band count shared by preview and commit. The farthest moved endpoint drives depth while
  * the shortest selected source curve keeps every emitted band no deeper than its narrowest source patch. */
 export function edgeExtrusionSegmentCount(doc: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): number {
+  if (placement.stations) return placement.stations.length;
   let depth = 0;
   for (const vertex of plan.vertices) {
     const from = pointAt(doc, vertex), to = placement.vertices[vertex];
     depth = Math.max(depth, Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]));
   }
   return Math.max(1, Math.min(MAX_EXTRUSION_SEGMENTS, Math.ceil(depth / Math.max(1e-3, plan.segmentLength))));
+}
+
+function ringPoint(doc: QuadMeshDoc, placement: EdgeExtrusionPlacement, source: number, segment: number, segments: number): V3 {
+  if (segment === 0) return pointAt(doc, source);
+  return placement.stations?.[segment - 1].vertices[source]
+    ?? mixV3(pointAt(doc, source), placement.vertices[source], segment / segments);
 }
 
 /** Append n interpolated copies of every moving source vertex. Ring 0 aliases the source id; ring n is the
@@ -127,9 +140,10 @@ function appendExtrusionRings(
 ): Map<number, number[]> {
   const rings = new Map<number, number[]>();
   for (const source of plan.vertices) {
-    const from = pointAt(doc, source), ids = [source];
+    const ids = [source];
     for (let segment = 1; segment <= segments; segment++) {
-      const id = vertices.length / 3, point = mixV3(from, placement.vertices[source], segment / segments);
+      if (placement.guide?.source === source) { ids.push(placement.guide.vertices[segment]); continue; }
+      const id = vertices.length / 3, point = ringPoint(doc, placement, source, segment, segments);
       vertices.push(...point); ids.push(id);
     }
     rings.set(source, ids);
@@ -145,7 +159,9 @@ function writeRingEdgeHandles(
     const source = plan.pinnedHandles[`${a}>${b}`], target = placement.handles[`${a}>${b}`];
     for (let segment = 0; segment <= segments; segment++) {
       const mappedA = rings.get(a)![segment], mappedB = rings.get(b)![segment];
-      edgeHandles[`${mappedA}>${mappedB}`] = mixV3(source, target, segment / segments);
+      edgeHandles[`${mappedA}>${mappedB}`] = segment === 0 ? [...source] as V3
+        : placement.stations ? [...placement.stations[segment - 1].handles[`${a}>${b}`]] as V3
+        : mixV3(source, target, segment / segments);
     }
   }
 }
@@ -155,12 +171,21 @@ function writeCrossHandles(
   segments: number, edgeHandles: Record<string, V3>,
 ) {
   for (const edge of plan.edges) for (const source of [edge.from, edge.to]) {
-    const from = pointAt(doc, source), to = placement.vertices[source], ids = rings.get(source)!;
+    const ids = rings.get(source)!;
+    const point = (segment: number) => ringPoint(doc, placement, source, segment, segments);
     for (let segment = 1; segment <= segments; segment++) {
       const a = ids[segment - 1], b = ids[segment];
-      const pa = mixV3(from, to, (segment - 1) / segments), pb = mixV3(from, to, segment / segments);
-      const delta = sub(pb, pa);
-      edgeHandles[`${a}>${b}`] = mul(delta, 1 / 3); edgeHandles[`${b}>${a}`] = mul(delta, -1 / 3);
+      if (placement.guide?.source === source) {
+        const from = placement.guide.vertices[segment - 1], to = placement.guide.vertices[segment];
+        edgeHandles[`${a}>${b}`] = [...placement.guide.handles[`${from}>${to}`]] as V3;
+        edgeHandles[`${b}>${a}`] = [...placement.guide.handles[`${to}>${from}`]] as V3;
+        continue;
+      }
+      const delta = sub(point(segment), point(segment - 1));
+      edgeHandles[`${a}>${b}`] = placement.stations && segment > 1
+        ? mul(sub(point(segment), point(segment - 2)), 1 / 6) : mul(delta, 1 / 3);
+      edgeHandles[`${b}>${a}`] = placement.stations && segment < segments
+        ? mul(sub(point(segment + 1), point(segment - 1)), -1 / 6) : mul(delta, -1 / 3);
     }
   }
 }
@@ -514,29 +539,20 @@ export function edgeExtrusionPlacementPreviewDoc(doc: QuadMeshDoc, plan: EdgeExt
     return local;
   };
   for (const source of plan.vertices) {
-    const from = pointAt(doc, source), ids: number[] = [];
+    const ids: number[] = [];
     for (let segment = 0; segment <= segments; segment++) {
-      ids.push(vertices.length / 3); vertices.push(...mixV3(from, placement.vertices[source], segment / segments));
+      ids.push(vertices.length / 3); vertices.push(...ringPoint(doc, placement, source, segment, segments));
     }
     rings.set(source, ids); old.set(source, ids[0]); fresh.set(source, ids[segments]);
   }
   for (const side of plan.sideQuads ?? []) for (const source of side.corners) ensureOld(source);
   const edgeHandles: Record<string, V3> = {};
-  for (const [from, to] of plan.movingEdges) for (const [a, b] of [[from, to], [to, from]] as [number, number][]) {
-    const source = plan.pinnedHandles[`${a}>${b}`], target = placement.handles[`${a}>${b}`];
-    for (let segment = 0; segment <= segments; segment++)
-      edgeHandles[`${rings.get(a)![segment]}>${rings.get(b)![segment]}`] = mixV3(source, target, segment / segments);
-  }
+  writeRingEdgeHandles(plan, placement, rings, segments, edgeHandles);
+  writeCrossHandles(doc, plan, placement, rings, segments, edgeHandles);
   const quads: number[][] = [];
   for (const edge of plan.edges) for (let segment = 1; segment <= segments; segment++) {
     const a = rings.get(edge.from)![segment - 1], b = rings.get(edge.to)![segment - 1];
     const na = rings.get(edge.from)![segment], nb = rings.get(edge.to)![segment];
-    for (const source of [edge.from, edge.to]) {
-      const ids = rings.get(source)!, p0 = vertices.slice(ids[segment - 1] * 3, ids[segment - 1] * 3 + 3) as V3;
-      const p1 = vertices.slice(ids[segment] * 3, ids[segment] * 3 + 3) as V3, delta = sub(p1, p0);
-      edgeHandles[`${ids[segment - 1]}>${ids[segment]}`] = mul(delta, 1 / 3);
-      edgeHandles[`${ids[segment]}>${ids[segment - 1]}`] = mul(delta, -1 / 3);
-    }
     // Edge extrusion keeps the source face, while patch-region extrusion removes it and meets a copied top.
     quads.push(plan.kind === 'patch' ? [a, b, na, nb] : [a, na, b, nb]);
   }
@@ -614,20 +630,29 @@ export function applyPatchExtrusion(doc: QuadMeshDoc, selection: readonly number
 
 /** Bake a frozen extrusion plan at its staged outer-edge placement. */
 export function applyPlannedEdgeExtrusion(doc: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): EdgeExtrusionResult {
-  if (plan.vertices.some(v => !placement.vertices[v]?.every(Number.isFinite)))
+  if (!Number.isFinite(plan.segmentLength) || plan.segmentLength <= 0)
+    return { ok: false, error: 'Extrusion segment length must be greater than zero.' };
+  if (placement.stations && (!placement.stations.length || placement.stations.length > MAX_EXTRUSION_SEGMENTS))
+    return { ok: false, error: `Use a longer segment length to keep the extrusion within ${MAX_EXTRUSION_SEGMENTS} segments.` };
+  const placements = [placement, ...(placement.stations ?? [])];
+  if (placement.guide && (!placement.stations || placement.guide.vertices.length !== placement.stations.length + 1
+    || placement.guide.vertices[0] !== placement.guide.source || !plan.vertices.includes(placement.guide.source)
+    || placement.guide.vertices.some(vertex => !Number.isInteger(vertex) || vertex < 0 || vertex >= doc.vertices.length / 3)))
+    return { ok: false, error: 'The selected edge path has changed. Select it again before extruding.' };
+  if (placements.some(ring => plan.vertices.some(v => !ring.vertices[v]?.every(Number.isFinite))))
     return { ok: false, error: 'The staged extrusion contains an invalid endpoint.' };
-  if (plan.movingHandles.some(([from, to]) => !placement.handles[`${from}>${to}`]?.every(Number.isFinite)))
+  if (placements.some(ring => plan.movingHandles.some(([from, to]) => !ring.handles[`${from}>${to}`]?.every(Number.isFinite))))
     return { ok: false, error: 'The staged extrusion contains an invalid curve handle.' };
-  const moved = plan.vertices.some(v => {
-    const i = v * 3, p = placement.vertices[v];
+  const moved = placements.some(ring => plan.vertices.some(v => {
+    const i = v * 3, p = ring.vertices[v];
     return Math.hypot(p[0] - doc.vertices[i], p[1] - doc.vertices[i + 1], p[2] - doc.vertices[i + 2]) >= 1e-4;
-  });
+  }));
   if (!moved) return { ok: false, error: 'Move the staged outer edge away from its source before committing.' };
   if (plan.kind === 'patch') return applyPlannedPatchExtrusion(doc, plan, placement);
   if (plan.sideQuads?.length) return applyPlannedInteriorEdgeExtrusion(doc, plan, placement);
   const segments = edgeExtrusionSegmentCount(doc, plan, placement);
   const vertices = doc.vertices.slice(), quads = doc.quads.map(q => q.slice());
-  const edgeHandles: Record<string, V3> = { ...(doc.edgeHandles ?? {}), ...plan.pinnedHandles };
+  const edgeHandles: Record<string, V3> = { ...(doc.edgeHandles ?? {}), ...plan.pinnedHandles, ...placement.guide?.handles };
   const surfaceMaps = createQuadSurfaceMaps(doc, true);
   const { quadPaint, quadTex, quadOrient, quadLocked, quadLabels } = surfaceMaps;
   const firstAddedVertex = vertices.length / 3;
@@ -652,6 +677,7 @@ export function applyPlannedEdgeExtrusion(doc: QuadMeshDoc, plan: EdgeExtrusionP
   const guard = checkManifold(quads);
   if (!guard.ok) return { ok: false, error: guard.error! };
   const consumed = new Set(plan.edges.map(edge => ekey(edge.from, edge.to)));
+  placement.guide?.vertices.slice(1).forEach((vertex, i) => consumed.add(ekey(placement.guide!.vertices[i], vertex)));
   const freeEdges = (doc.freeEdges ?? []).filter(([a, b]) => !consumed.has(ekey(a, b)));
   const out: QuadMeshDoc = {
     ...doc, vertices, quads, edgeHandles, ...appendMeshIds(doc, addedVertices.length, addedQuads.length),
@@ -674,7 +700,7 @@ function applyPlannedInteriorEdgeExtrusion(
 ): EdgeExtrusionResult {
   const segments = edgeExtrusionSegmentCount(doc, plan, placement);
   const moved = new Set(plan.vertices), vertices = doc.vertices.slice(), quads = doc.quads.map(quad => quad.slice());
-  const edgeHandles: Record<string, V3> = { ...(doc.edgeHandles ?? {}), ...plan.pinnedHandles };
+  const edgeHandles: Record<string, V3> = { ...(doc.edgeHandles ?? {}), ...plan.pinnedHandles, ...placement.guide?.handles };
   const surfaceMaps = createQuadSurfaceMaps(doc, true);
   const { quadPaint, quadTex, quadOrient, quadLocked, quadLabels } = surfaceMaps;
   const firstAddedVertex = vertices.length / 3;
@@ -723,6 +749,11 @@ function applyPlannedInteriorEdgeExtrusion(
   const out: QuadMeshDoc = {
     ...doc, vertices, quads, edgeHandles, ...appendMeshIds(doc, addedVertices.length, addedQuads.length),
   };
+  if (placement.guide) {
+    const consumed = new Set(placement.guide.vertices.slice(1).map((vertex, i) => ekey(placement.guide!.vertices[i], vertex)));
+    const freeEdges = (doc.freeEdges ?? []).filter(([a, b]) => !consumed.has(ekey(a, b)));
+    if (freeEdges.length) out.freeEdges = freeEdges; else delete out.freeEdges;
+  }
   if (quadPaint) out.quadPaint = quadPaint;
   if (quadTex) out.quadTex = quadTex;
   if (quadOrient) out.quadOrient = quadOrient;

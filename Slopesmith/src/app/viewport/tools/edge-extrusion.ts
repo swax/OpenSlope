@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
-import { edgeExtrusionPlacementPreviewDoc, edgeExtrusionSegmentCount, planEdgeExtrusion, planPatchExtrusion, tangentEdgeExtrusionPlacement, type EdgeExtrusionPlacement, type EdgeExtrusionPlan } from '../../../core/mesh/ops';
-import { buildQuadMesh, meshAdjacency, meshCageEdges } from '../../../core/mesh/topology';
+import { applyPlannedEdgeExtrusion, edgeChainExtrusionPlacement, pathEdgeExtrusionPlacement, edgeExtrusionPlacementPreviewDoc, edgeExtrusionSegmentCount, planEdgeExtrusion, planPatchExtrusion, tangentEdgeExtrusionPlacement, type EdgeExtrusionPlacement, type EdgeExtrusionPlan } from '../../../core/mesh/ops';
+import { sampleRail } from '../../../core/rails/rails';
+import { buildQuadMesh, meshAdjacency, meshCageEdges, meshFromDoc } from '../../../core/mesh/topology';
+import { meshEdgeSegments } from '../../../core/mesh/selection';
 import { buildMountainPreview } from '../../../core/mesh/tessellation';
-import { LOFT_PREVIEW_FILL_COLOR } from '../constants';
-import { addCageLines, clearGlyphGroup } from '../shared/overlays';
+import { BRIDGE_RAIL_COLORS, EDIT_EDGE_SEL_WIDTH, LOFT_PREVIEW_FILL_COLOR, LOOP_RENDER_ORDER } from '../constants';
+import { addCageLines, clearGlyphGroup, glyphLines } from '../shared/overlays';
 import type { Stage } from '../stage';
 import {
   edgeIndices, quadIndex, quadIndices, quadName, vertexIndex, vertexNames,
@@ -37,6 +39,12 @@ export function edgeExtrusionOccludingSourceQuads(plan: EdgeExtrusionPlan): numb
  * exact ruled-strip preview, and commit/cancel cleanup. */
 export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) {
   let sideHint: QuadName | null = null;
+  let mode: 'pull' | 'path' = 'pull';
+  let pathId = '';
+  let reversePath = false;
+  let pathError = '';
+  let pathSegments = 0;
+  let segmentLengthOverride: number | null = null;
   let drag: {
     pointerId: number;
     x: number;
@@ -89,6 +97,23 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   group.visible = false;
   stage.worldRoot.add(group);
 
+  // Captured source is independent of the live yellow guide selection and remains visible without a valid preview.
+  const sourceHighlight = new THREE.Group();
+  sourceHighlight.name = 'edge-extrusion-source';
+  sourceHighlight.visible = false;
+  stage.worldRoot.add(sourceHighlight);
+
+  function rebuildSourceHighlight(source: QuadMeshDoc | null) {
+    clearGlyphGroup(sourceHighlight);
+    sourceHighlight.visible = false;
+    if (!staged || mode !== 'path' || !source || !planIntact(source, staged.plan, staged.names)) return;
+    const { mesh, edgeHandle } = meshFromDoc(source);
+    glyphLines(sourceHighlight, meshEdgeSegments(mesh, edgeHandle, edgeIndices(source, staged.edges)), BRIDGE_RAIL_COLORS[0], 1,
+      [stage.container.clientWidth || 1, stage.container.clientHeight || 1], EDIT_EDGE_SEL_WIDTH + 0.5, LOOP_RENDER_ORDER + 2, false);
+    sourceHighlight.children.forEach(child => { child.raycast = () => {}; });
+    sourceHighlight.visible = true;
+  }
+
   /**
    * A plan is frozen once and then transformed, previewed and finally applied — so between staging it and
    * committing it the document may have been renumbered under it. `names` records what its `vertices` were
@@ -107,6 +132,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
       ? planEdgeExtrusion(source, edgeIndices(source, selected), side)
       : planPatchExtrusion(source, quadIndices(source, selectedQuads));
     if (!planned.ok) { stage.cb.onExtrudeEdgesInvalid?.(planned.error); return null; }
+    if (segmentLengthOverride !== null) planned.plan.segmentLength = segmentLengthOverride;
 
     const members = planned.plan.vertices;
     const center = new THREE.Vector3();
@@ -151,6 +177,22 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
 
   function placement(): EdgeExtrusionPlacement | null {
     if (!staged) return null;
+    if (mode === 'path') {
+      const source = deps.meshDoc();
+      if (!source) return null;
+      const selected = deps.selectedEdges(), edges = edgeIndices(source, selected);
+      const rail = pathId ? source.rails?.find(rail => rail.id === pathId) : null;
+      const points = rail ? sampleRail(rail.nodes) : [];
+      if (reversePath) points.reverse();
+      const result = pathId
+        ? rail ? pathEdgeExtrusionPlacement(source, staged.plan, points)
+          : { ok: false as const, error: 'That path is no longer available. Choose another path.' }
+        : selected.length !== edges.length
+          ? { ok: false as const, error: 'The selected edge path has changed. Select its edges again.' }
+          : edgeChainExtrusionPlacement(source, staged.plan, edges);
+      pathError = result.ok ? '' : result.error;
+      return result.ok ? result.placement : null;
+    }
     anchor.updateMatrixWorld(true);
     const vertices: Record<number, V3> = {}, handles: Record<string, V3> = {};
     // The initial fan handle uses a local X axis rotated onto the average continuation direction. Its resting
@@ -180,9 +222,34 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   }
 
   function rebuild() {
-    const source = deps.meshDoc(), placed = placement();
-    if (!staged || !source || !placed) return;
-    if (!planIntact(source, staged.plan, staged.names)) { group.visible = false; return; }
+    const source = deps.meshDoc();
+    rebuildSourceHighlight(source);
+    if (staged && source && !planIntact(source, staged.plan, staged.names)) {
+      pathError = 'That extrusion was staged over geometry this mountain has since changed.';
+      pathSegments = 0;
+      group.visible = false;
+      deps.suppressSourceQuads([]);
+      deps.restoreOtherPreview();
+      return;
+    }
+    const placed = placement();
+    if (mode === 'path') pathSegments = placed?.stations?.length ?? 0;
+    if (!staged || !source || !placed) {
+      group.visible = false;
+      deps.suppressSourceQuads([]);
+      deps.restoreOtherPreview();
+      return;
+    }
+    if (mode === 'path') {
+      const checked = applyPlannedEdgeExtrusion(source, staged.plan, placed);
+      if (!checked.ok) {
+        pathError = checked.error;
+        group.visible = false;
+        deps.suppressSourceQuads([]);
+        deps.restoreOtherPreview();
+        return;
+      }
+    }
     const preview = buildMountainPreview(edgeExtrusionPlacementPreviewDoc(source, staged.plan, placed));
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(preview.positions, 3));
@@ -278,7 +345,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   /** The initial single handle controls one shared continuation distance, rebuilding each outer endpoint on its
    * own frozen tangent so fan-in/fan-out survives. Choosing a transform tool exits this constrained state. */
   function onGizmoChange() {
-    if (!staged) return;
+    if (!staged || mode === 'path') return;
     if (!staged.fanMode || !staged.tangentMove) { rebuild(); return; }
     const axisLen2 = staged.moveAxis.lengthSq();
     if (axisLen2 < 1e-8) { staged.tangentMove = false; rebuild(); return; }
@@ -341,17 +408,22 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     }
   }
 
-  function clearStage() {
+  function clearStage(restoreSource = false) {
     if (!staged) return;
+    const sourceEdges = restoreSource && mode === 'path' ? staged.edges : null;
     staged = null;
+    mode = 'pull'; pathId = ''; reversePath = false; pathError = ''; pathSegments = 0;
     anchor.visible = false;
     anchor.position.set(0, 0, 0); anchor.quaternion.identity(); anchor.scale.setScalar(1);
     group.visible = false;
     fill.geometry.dispose(); fill.geometry = new THREE.BufferGeometry();
     clearGlyphGroup(cage);
+    clearGlyphGroup(sourceHighlight);
+    sourceHighlight.visible = false;
     if (stage.gizmoKind === 'edgeextrusion') stage.detachGizmo();
     deps.suppressSourceQuads([]);
     deps.restoreOtherPreview();
+    if (sourceEdges) stage.cb.onExtrudeEdgeSelection?.(sourceEdges);
     stage.cb.onExtrudeStageChange?.(false);
   }
 
@@ -364,10 +436,12 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
       return;
     }
     const placed = placement();
+    if (!placed) { stage.cb.onExtrudeEdgesInvalid?.(pathError || 'Choose a path before committing the extrusion.'); return; }
     if (placed && stage.cb.onCommitExtrudeEdges?.(staged.plan, placed) !== false) clearStage();
   }
 
   function segmentCount(): number {
+    if (mode === 'path') return pathSegments;
     const source = deps.meshDoc(), placed = placement();
     return staged && source && placed && planIntact(source, staged.plan, staged.names)
       ? edgeExtrusionSegmentCount(source, staged.plan, placed) : 1;
@@ -384,11 +458,36 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (opposite === undefined) return false;
     const planned = planEdgeExtrusion(source, edgeIndices(source, staged.edges), opposite);
     if (!planned.ok) { stage.cb.onExtrudeEdgesInvalid?.(planned.error); return false; }
+    planned.plan.segmentLength = staged.plan.segmentLength;
     sideHint = quadName(source, opposite);
     const names = vertexNames(source, planned.plan.vertices);
     if (names.length !== planned.plan.vertices.length) return false;
     stagePlacement(staged.edges, planned.plan, names, [Math.max(1e-3, staged.distance), 0, 0]);
     return true;
+  }
+
+  function setMode(value: 'pull' | 'path') {
+    if (!staged || value === mode || value === 'path' && staged.plan.kind !== 'edge') return;
+    mode = value;
+    pathError = '';
+    if (mode === 'path') {
+      anchor.visible = false;
+      stage.detachGizmo();
+      stage.cb.onExtrudeEdgeSelection?.([]);
+    } else {
+      stage.cb.onExtrudeEdgeSelection?.(staged.edges);
+      anchor.visible = true;
+      stage.attachGizmo(anchor, 'edgeextrusion', -1);
+    }
+    rebuild();
+    stage.cb.onExtrudeStageChange?.(true);
+  }
+
+  function setSegmentLength(value: number) {
+    if (!staged || !Number.isFinite(value) || value <= 0) return;
+    segmentLengthOverride = value;
+    staged.plan.segmentLength = value;
+    rebuild();
   }
 
   return {
@@ -399,18 +498,29 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     onGizmoChange,
     enableTransform,
     flipSide,
+    setMode,
+    setSegmentLength,
+    setPath(value: string) { pathId = value; reversePath = false; rebuild(); },
+    setReversePath(value: boolean) { reversePath = value; rebuild(); },
+    refreshPath() { if (staged && mode === 'path') rebuild(); },
     setSideHint(quad: number | null) {
       const source = deps.meshDoc();
       sideHint = quad === null || !source ? null : quadName(source, quad);
     },
     commitStage,
-    cancel() { if (drag) finish(null, false); else clearStage(); },
+    cancel() { if (drag) finish(null, false); else clearStage(true); },
     get active() { return !!drag || !!staged; },
     get dragging() { return !!drag; },
     get staged() { return !!staged; },
-    get fanMode() { return !!staged?.fanMode; },
-    get sideFlippable() { return !!staged?.plan.sideQuads?.length; },
+    get fanMode() { return mode === 'pull' && !!staged?.fanMode; },
+    get sideFlippable() { return mode === 'pull' && !!staged?.plan.sideQuads?.length; },
     get segments() { return segmentCount(); },
+    get mode() { return mode; },
+    get pathAvailable() { return staged?.plan.kind === 'edge'; },
+    get segmentLength() { return staged?.plan.segmentLength ?? segmentLengthOverride ?? 10; },
+    get path() { return pathId; },
+    get reversePath() { return reversePath; },
+    get error() { return pathError; },
   };
 }
 

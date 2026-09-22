@@ -32,7 +32,7 @@ export type ToolsPanelDeps = {
     | 'selectConnected' | 'selectOverlappingVertices'
     | 'deleteSelectedMesh' | 'dissolveSelectedMesh' | 'flipSelectedMesh' | 'meshDeleteTargetCount' | 'canDeleteMeshSelection'
     | 'pasteSelectedVertices' | 'canPasteVertices' | 'cancelPastePlacement'
-    | 'ripEdges' | 'insertCellEdge' | 'resetCellShape' | 'creaseVertices' | 'smoothVertices'
+    | 'ripEdges' | 'insertCellEdge' | 'resetCellShape' | 'creaseVertices' | 'smoothVertices' | 'createPatchesFromEdges'
     | 'startBridge' | 'addBridgeRail' | 'reverseBridgeRail' | 'removeBridgeRail' | 'moveBridgeRail'
     | 'completeBridge' | 'cancelBridge' | 'bridgeCandidate' | 'armCreateEdge' | 'armCreatePatch' | 'finishCreatePatch' | 'finishCreateEdge'
     | 'armCreateTube' | 'previewCreateTube' | 'finishCreateTube' | 'cancelCreateTube'

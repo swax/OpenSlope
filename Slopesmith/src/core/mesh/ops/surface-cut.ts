@@ -1,7 +1,7 @@
 import type { EdgeEmbeddedTJunction, QuadMeshDoc, V3 } from '../../doc/types';
 import { buildQuadMesh, meshEdgeHandles, meshAdjacency } from '../topology';
-import { nearestCubicT } from '../../math/bezier';
-import { add } from '../../math/vec';
+import { cubicPoint } from '../../math/bezier';
+import { add, cross, dot, len, mul, norm, sub } from '../../math/vec';
 import {
   ekey, checkManifold, createQuadSurfaceMaps, finishMeshRewrite,
   inheritQuadSurface, locateVertex, looseVertexIds,
@@ -99,9 +99,10 @@ export function validateSurfaceCutPath(doc: QuadMeshDoc, path: readonly SurfaceC
   return { ok: true, complete: true, cells };
 }
 
-/** Find a shortest all-quad surface route between two non-adjacent cut points. The intermediate crossings are
- * seated on shared cubic edges nearest the straight authored stroke, so a long T-to-rim gesture becomes one
- * conforming surface cut instead of falling back to a free edge laid over the terrain. */
+/** Follow the straight stroke across an unambiguous strip of quads, projected along the endpoints' average
+ * surface normal. Every transition must cross a real cubic boundary in stroke order. Connectivity alone is
+ * not sufficient: a shortest topological path can detour around a hole and cut unrelated terrain instead of
+ * creating the requested free edge across the gap. Ambiguous/folded routes require explicit edge picks. */
 export function routeSurfaceCutPath(
   doc: QuadMeshDoc, start: SurfaceCutPoint, end: SurfaceCutPoint,
 ): SurfaceCutPoint[] | null {
@@ -122,42 +123,79 @@ export function routeSurfaceCutPath(
   const proper = (cell: number) => cell >= 0 && cell < doc.quads.length && new Set(doc.quads[cell]).size === 4;
   const starts = cellsFor(start, true).filter(proper), targets = new Set(cellsFor(end, true).filter(proper));
   if (!starts.length || !targets.size) return null;
-  const parent = new Map<number, { previous: number | null; edge: [number, number] | null }>();
-  const pending: number[] = [];
-  for (const cell of starts) { parent.set(cell, { previous: null, edge: null }); pending.push(cell); }
-  let target: number | null = null;
-  while (pending.length && target === null) {
-    const cell = pending.shift()!;
-    if (targets.has(cell)) { target = cell; break; }
+  const a = pointPos(start), delta = sub(pointPos(end), a);
+  let normal: V3 = [0, 0, 0];
+  for (const cell of new Set([...starts, ...targets])) {
     const [A, B, C, D] = doc.quads[cell];
-    for (const edge of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
-      for (const next of adj.edgeQuads.get(ekey(edge[0], edge[1])) ?? []) {
-        if (next === cell || parent.has(next) || !proper(next)) continue;
-        parent.set(next, { previous: cell, edge }); pending.push(next);
+    let n = cross(sub(pos(D), pos(A)), sub(pos(C), pos(B)));
+    if (len(n) < 1e-9) continue;
+    n = norm(n);
+    normal = add(normal, dot(n, normal) < 0 ? mul(n, -1) : n);
+  }
+  if (len(normal) < 1e-9 || len(delta) < 1e-9) return null;
+  normal = norm(normal);
+  const along = sub(delta, mul(normal, dot(delta, normal))), length = len(along);
+  if (length < 1e-6 * len(delta)) return null;
+  const forward = norm(along), sideways = norm(cross(forward, normal));
+  const epsilon = 1e-7, distanceEpsilon = epsilon * Math.max(1, length);
+  type Crossing = { edge: [number, number]; t: number; station: number };
+  const cache = new Map<string, Crossing[] | null>();
+  const crossings = (edge: [number, number]): Crossing[] | null => {
+    const key = ekey(edge[0], edge[1]);
+    if (cache.has(key)) return cache.get(key)!;
+    const p0 = pos(edge[0]), p3 = pos(edge[1]);
+    const controls = [p0, add(p0, edgeHandle(edge[0], edge[1])), add(p3, edgeHandle(edge[1], edge[0])), p3] as [V3, V3, V3, V3];
+    const stations = controls.map(p => dot(sub(p, a), forward) / length);
+    const distances = controls.map(p => dot(sub(p, a), sideways));
+    const signs = distances.filter(d => Math.abs(d) > distanceEpsilon).map(Math.sign);
+    let result: Crossing[] | null = [];
+    if (Math.max(...stations) > epsilon && Math.min(...stations) < 1 - epsilon) {
+      const changes = signs.slice(1).filter((sign, i) => sign !== signs[i]).length;
+      // A coplanar edge or multiple possible roots has no unique crossing. Do not guess, clamp a miss to a
+      // corner, or skip a boundary and search for another way around it.
+      if (!signs.length || changes > 1) result = null;
+      else if (Math.abs(distances[0]) <= distanceEpsilon || Math.abs(distances[3]) <= distanceEpsilon || changes === 1) {
+        let lo = 0, hi = 1;
+        if (Math.abs(distances[0]) <= distanceEpsilon) hi = 0;
+        else if (Math.abs(distances[3]) <= distanceEpsilon) lo = 1;
+        else for (let i = 0; i < 40; i++) {
+          const mid = (lo + hi) / 2, distance = dot(sub(cubicPoint(...controls, mid), a), sideways);
+          if (Math.sign(distance) === Math.sign(distances[0])) lo = mid; else hi = mid;
+        }
+        const t = (lo + hi) / 2, station = dot(sub(cubicPoint(...controls, t), a), forward) / length;
+        if (station > epsilon && station < 1 - epsilon)
+          result = t <= epsilon || t >= 1 - epsilon ? null : [{ edge, t, station }];
       }
     }
+    cache.set(key, result);
+    return result;
+  };
+  for (const first of starts) {
+    let cell = first, station = 0;
+    const visited = new Set<number>(), path: SurfaceCutPoint[] = [start];
+    while (!visited.has(cell)) {
+      visited.add(cell);
+      const [A, B, C, D] = doc.quads[cell];
+      const exits = ([[A, B], [B, D], [D, C], [C, A]] as [number, number][]).map(crossings);
+      if (exits.some(exit => exit === null)) break;
+      const ahead = exits.flatMap(exit => exit!).filter(exit => exit.station > station + epsilon)
+        .sort((x, y) => x.station - y.station);
+      if (!ahead.length) {
+        if (targets.has(cell) && path.length > 1) {
+          path.push(end);
+          if (validateSurfaceCutPath(doc, path).ok) return path;
+        }
+        break;
+      }
+      if (ahead.length > 1 && ahead[1].station - ahead[0].station < epsilon) break;
+      const next = ahead[0];
+      const neighbors = (adj.edgeQuads.get(ekey(...next.edge)) ?? []).filter(id => id !== cell);
+      if (neighbors.length !== 1 || !proper(neighbors[0])) break; // The stroke leaves the quilt; never go around the gap.
+      path.push({ edge: next.edge, t: next.t });
+      cell = neighbors[0]; station = next.station;
+    }
   }
-  if (target === null) return null;
-  const cells: number[] = [], transitions: [number, number][] = [];
-  for (let cell: number | null = target; cell !== null;) {
-    cells.push(cell);
-    const step: { previous: number | null; edge: [number, number] | null } = parent.get(cell)!;
-    if (step.edge) transitions.push(step.edge);
-    cell = step.previous;
-  }
-  cells.reverse(); transitions.reverse();
-  if (cells.length < 2) return null;
-  const a = pointPos(start), b = pointPos(end), path: SurfaceCutPoint[] = [start];
-  for (let i = 0; i < transitions.length; i++) {
-    const edge = transitions[i], p0 = pos(edge[0]), p3 = pos(edge[1]);
-    const p1 = add(p0, edgeHandle(edge[0], edge[1])), p2 = add(p3, edgeHandle(edge[1], edge[0]));
-    const alpha = (i + 1) / cells.length;
-    const guide: V3 = [a[0] + (b[0] - a[0]) * alpha, a[1] + (b[1] - a[1]) * alpha, a[2] + (b[2] - a[2]) * alpha];
-    const t = Math.min(0.999, Math.max(0.001, nearestCubicT(p0, p1, p2, p3, guide, 64)));
-    path.push({ edge: [...edge], t });
-  }
-  path.push(end);
-  return validateSurfaceCutPath(doc, path).ok ? path : null;
+  return null;
 }
 
 export type ApplySurfaceCutResult =

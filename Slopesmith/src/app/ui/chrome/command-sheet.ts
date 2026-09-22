@@ -15,6 +15,7 @@ export type CommandSheetDeps = {
   selectedControlCagesVisible: () => boolean;
   canEditCurvature: () => boolean;
   edgeExtrusionStaged: () => boolean;
+  edgeExtrusionPathMode?: () => boolean;
   edgeExtrusionFanMode: () => boolean;
   edgeExtrusionSideFlippable: () => boolean;
   paletteSurfaceView: () => boolean;
@@ -116,7 +117,10 @@ export function createCommandSheet(deps: CommandSheetDeps) {
             ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),
             ['Del', 'remove'], ['Esc', 'deselect']]))
         : store.currentMode === 'edit' && edgeExtrusionStaged()
-          ? edgeExtrusionFanMode()
+          ? deps.edgeExtrusionPathMode?.()
+            ? helpPanel('Edit Mode — extrude along path', [['LMB', 'select path edge'], ['Ctrl-click', 'add / remove path edge'],
+              ['Shift-click', 'extend path selection'], ['Enter', 'commit extrusion'], ['Esc', 'cancel extrusion']])
+            : edgeExtrusionFanMode()
             ? helpPanel('Edit Mode — extrude', [['distance handle', 'set extrusion depth'],
               ...(edgeExtrusionSideFlippable() ? [['F', 'flip interior side'] as [string, string]] : []),
               ['W', 'full move gizmo'], ['E / R', 'rotate / scale']])

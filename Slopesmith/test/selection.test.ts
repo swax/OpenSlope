@@ -25,6 +25,7 @@ import {
   INDEX_NAMING, resolveCellSelection, resolveEdgeSelection, resolveVertexSelection,
 } from '../src/core/mesh/selection';
 import { copyMeshVertices } from '../src/core/mesh/clipboard';
+import { liveQuadEdges } from '../src/core/mesh/primitives';
 import {
   edgeIndex, quadIndex, quadName, quadNaming, vertexIndex, vertexName, vertexNames, vertexNaming,
 } from '../src/app/state/mesh-names';
@@ -141,6 +142,107 @@ function editor(doc = freshGrid()) {
     log: noop,
   });
   return { store, session, viewport };
+}
+
+// ---- Create Patches fills multiple selected holes and selects their newly minted stable identities --------
+{
+  const doc = freshGrid(), holes = [5, 10], edges = holes.flatMap(q => liveQuadEdges(doc.quads[q]));
+  doc.quads = doc.quads.filter((_, q) => !holes.includes(q));
+  doc.quadIds = doc.quadIds.filter((_, q) => !holes.includes(q));
+  const { store, session } = editor(doc), beforeCount = doc.quads.length;
+  edges.forEach((edge, i) => session.viewportCallbacks.onSelectEdge?.(edge, i ? 'toggle' : 'replace'));
+  session.createPatchesFromEdges();
+  flushFrames();
+  check(store.mdoc.quads.length === beforeCount + 2 && store.cellSel.length === 2,
+    'create patches: both selected holes are filled in one editor command');
+  check(store.cellSel.every((name, i) => quadIndex(store.mdoc, name) === beforeCount + i)
+    && store.anchorCell === store.cellSel[0] && store.edgeSel.length === 0 && store.anchorEdge === null,
+  'create patches: new patches replace the source edges as the live selection');
+  check(store.mdoc.vertexIds.join(',') === doc.vertexIds.join(',') && doc.quads.length === beforeCount,
+    'create patches: source document and existing vertex identities remain unchanged');
+}
+{
+  const { store, session } = editor();
+  liveQuadEdges(store.mdoc.quads[0]).forEach((edge, i) =>
+    session.viewportCallbacks.onSelectEdge?.(edge, i ? 'toggle' : 'replace'));
+  const before = store.mdoc, selected = store.edgeSel;
+  session.createPatchesFromEdges();
+  check(store.mdoc === before && store.edgeSel === selected,
+    'create patches: already-filled boundaries leave the document and selection untouched');
+}
+
+// ---- a single-edge Rip commits through the editor and selects a live boundary lip ------------------------
+{
+  const { store, session } = editor();
+  const vertexCount = store.mdoc.vertices.length / 3;
+  session.viewportCallbacks.onSelectEdge?.([1, COLS + 1], 'replace');
+  session.ripEdges();
+  flushFrames();
+  check(store.mdoc.vertices.length / 3 === vertexCount + 1,
+    'single-edge rip: the editor duplicates the boundary endpoint');
+  const selected = store.edgeSel[0] && edgeIndex(store.mdoc, store.edgeSel[0]);
+  const adj = meshContext(store.mdoc).adj;
+  check(store.edgeSel.length === 1 && !!selected
+    && adj.edgeQuads.get(`${selected[0]},${selected[1]}`)?.length === 1,
+    'single-edge rip: the resulting selection names a live boundary lip');
+  check(store.anchorEdge === store.edgeSel[0], 'single-edge rip: the selected lip is the new edge anchor');
+}
+
+{
+  const { store, session } = editor();
+  session.viewportCallbacks.onSelectEdge?.([COLS + 1, COLS + 2], 'replace');
+  const before = store.mdoc, selected = store.edgeSel;
+  session.ripEdges();
+  check(store.mdoc === before && store.edgeSel === selected,
+    'single-edge rip: an unsupported interior edge preserves the document and selection');
+}
+
+// ---- Create Edge across an opening stays a direct free edge, even with a connected route around it --------
+for (const reverse of [false, true]) {
+  const doc = freshGrid(), hole = CELL_COLS + 1;
+  doc.quads.splice(hole, 1); doc.quadIds.splice(hole, 1);
+  const before = structuredClone(doc), { store, session } = editor(doc);
+  const endpoints = [COLS + 1, COLS * 2 + 2];
+  if (reverse) endpoints.reverse();
+  session.armCreateEdge();
+  for (const vertex of endpoints)
+    session.viewportCallbacks.onCreateEdgePoint?.({ vertex, pos: getVertex(store.mdoc, vertex) });
+  session.finishCreateEdge();
+  flushFrames();
+  check(JSON.stringify(store.mdoc.quads) === JSON.stringify(before.quads)
+    && JSON.stringify(store.mdoc.vertices) === JSON.stringify(before.vertices)
+    && JSON.stringify(store.mdoc.quadIds) === JSON.stringify(before.quadIds),
+  'create edge across gap: both click directions leave all existing patches and corners unchanged');
+  const selected = store.edgeSel[0] && edgeIndex(store.mdoc, store.edgeSel[0]);
+  check(store.mdoc.freeEdges?.length === 1 && store.edgeSel.length === 1
+    && selected?.join(',') === [COLS + 1, COLS * 2 + 2].join(','),
+  'create edge across gap: the committed selection is exactly the requested direct connection');
+}
+
+// ---- path extrusion captures normal edge selections without enabling transforms on the guide -------------
+{
+  const { store, session, viewport } = editor();
+  let seatedSelection = false;
+  Object.defineProperties(viewport, {
+    edgeExtrusionStaged: { get: () => true },
+    edgeExtrusionMode: { get: () => 'path' },
+  });
+  viewport.setCornerGroup = positions => { if (positions.length) seatedSelection = true; };
+  const before = store.mdoc;
+  session.viewportCallbacks.onSelectEdge?.([0, 1], 'replace');
+  const captured = store.edgeSel.map(edge => [...edge] as typeof edge);
+  session.viewportCallbacks.onExtrudeEdgeSelection?.([]);
+  check(store.edgeSel.length === 0 && store.anchorEdge === null,
+    'path extrusion: entering Path clears the live source selection and its anchor');
+  session.viewportCallbacks.onSelectEdge?.([1, COLS + 1], 'replace');
+  session.viewportCallbacks.onSelectEdge?.([COLS + 1, COLS * 2 + 1], 'toggle');
+  check(store.edgeSel.length === 2 && store.mdoc === before,
+    'path extrusion: normal edge picks gather a guide without modifying its geometry');
+  check(!seatedSelection, 'path extrusion: choosing the guide does not attach a move gizmo to it');
+  session.viewportCallbacks.onExtrudeEdgeSelection?.(captured);
+  check(store.edgeSel.length === 1 && store.edgeSel[0][0] === captured[0][0] && store.edgeSel[0][1] === captured[0][1]
+    && store.anchorEdge === store.edgeSel[0] && store.mdoc === before,
+  'path extrusion: restoring the captured source replaces the guide without changing the document');
 }
 
 // ---- reference visibility sets are transient but otherwise mirror authored H / G --------------------------

@@ -145,7 +145,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const movableControlPointCount = () => {
     return store.controlSel.length;
   };
-  const canRotateSelection = () => store.currentMode === 'props'
+  const canRotateSelection = () => viewport.edgeExtrusionStaged && viewport.edgeExtrusionMode === 'path' ? false : store.currentMode === 'props'
     ? store.selectedProp !== null || store.multiSel.length > 0
     : viewport.edgeExtrusionStaged || store.currentMode === 'edit' && !mixedEditSelection()
       && store.bridgeRails === null && cageActive() && (store.controlSel.length
@@ -182,6 +182,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     selectedControlCagesVisible: edit.selectedControlCagesVisible,
     canEditCurvature: edit.canEditCurvature,
     edgeExtrusionStaged: () => viewport.edgeExtrusionStaged,
+    edgeExtrusionPathMode: () => viewport.edgeExtrusionMode === 'path',
     edgeExtrusionFanMode: () => viewport.edgeExtrusionFanMode,
     edgeExtrusionSideFlippable: () => viewport.edgeExtrusionSideFlippable,
     paletteSurfaceView: () => palette.surfaceView,

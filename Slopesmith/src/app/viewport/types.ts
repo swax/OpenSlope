@@ -359,6 +359,8 @@ export interface ViewportCallbacks {
   onCommitExtrudeEdges?(plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): boolean;
   /** Staged-extrusion mode entered or left; the host refreshes toolbox/help state. */
   onExtrudeStageChange?(active: boolean): void;
+  /** Clear the live guide selection on Path entry; restore captured source edges on cancel / return to Pull. */
+  onExtrudeEdgeSelection?(edges: readonly NamedEdge[]): void;
   /** An extrusion was attempted on a selection the topology guard cannot extrude (usually an interior edge). */
   onExtrudeEdgesInvalid?(error: string): void;
   /** Edit mode: the read-only REFERENCE control-net selection (its edge / cell pick, viewport-owned) changed —

@@ -877,7 +877,7 @@ import { check, failures } from './check';
   const boundary0 = watertight(source).boundary;
   const beforeHandle = meshEdgeHandles(buildQuadMesh(source.vertices, source.quads, source.freeEdges), source.edgeHandles)(v0, v1);
   const ripped = applyEdgeRip(source, edges);
-  check(!applyEdgeRip(source, [edges[0]]).ok, 'rip: a single selected edge is refused');
+  check(!applyEdgeRip(source, [edges[0]]).ok, 'rip: a single edge with both endpoints pinned is refused');
   check(JSON.stringify(source) === before, 'rip: source document is untouched');
   check(ripped.ok, 'rip: a connected two-edge interior path is accepted');
   if (ripped.ok) {
