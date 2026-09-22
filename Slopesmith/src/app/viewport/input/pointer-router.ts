@@ -628,13 +628,16 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
 
     // Placement mode owns LMB until Esc puts the held prop down; scene-object selection resumes afterward.
     if (layers.props.propArm) {
-      const hit = stage.ray.intersectObject(access.terrain(), false)[0];
+      // Use the ghost's ground picker: its refit tree follows terrain edits while a stock raycast can
+      // reject that same visible surface against old render bounds. Resolve anew so a miss can't stamp
+      // the previous hover position (and touch placement doesn't need a preceding mouse move).
+      const hit = stage.groundHit();
       if (hit) {
-        stage.cb.onPlaceProp?.(layers.props.seatedDropPos(hit.point), layers.props.pendingYaw, layers.props.pendingScale);
+        stage.cb.onPlaceProp?.(layers.props.seatedDropPos(hit), layers.props.pendingYaw, layers.props.pendingScale);
         if (!layers.props.yawManual) layers.props.pendingYaw = Math.random() * 360;
-        layers.props.propGhostHit = hit.point.clone();
-        layers.props.seatPropGhost(); // show the next drop's (re-rolled) turn right away
       }
+      layers.props.propGhostHit = hit;
+      layers.props.seatPropGhost(); // show the next drop's turn, or hide a preview no longer over terrain
       return;
     }
 
@@ -1401,7 +1404,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
     if (layers.cameraCtl.orbiting) { layers.cameraCtl.applyOrbitMove(e); return; }
     if (layers.cameraCtl.flying) { layers.cameraCtl.applyLook(e.movementX || 0, e.movementY || 0); return; }
-    if (layers.edgeExtrusion.active) { layers.edgeExtrusion.update(e); return; }
+    if (layers.edgeExtrusion.dragging) { layers.edgeExtrusion.update(e); return; }
+    if (layers.edgeExtrusion.staged && layers.edgeExtrusion.mode === 'pull') return;
     if (layers.gems.gemLine) { gemPointerMove(e); return; } // dragging a gem row
     // a deferred single-finger touch that moves past the tap threshold is an orbit-drag, not a tap-to-select
     if (touchNav) { if (Math.hypot(e.clientX - touchNav.x, e.clientY - touchNav.y) > 4) { touchNav = null; layers.cameraCtl.startOrbit(e); } return; }
@@ -1535,7 +1539,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (layers.cameraCtl.twist && layers.cameraCtl.touchPts.size < 2) layers.cameraCtl.twist = null; // a finger lifted: the twist gesture is over
     if (layers.cameraCtl.orbiting) { layers.cameraCtl.endOrbit(e); return; }
     if (layers.cameraCtl.flying) { layers.cameraCtl.endFly(e); return; }
-    if (layers.edgeExtrusion.active) { layers.edgeExtrusion.finish(e, e.type !== 'pointercancel'); return; }
+    // A staged Path extrusion still needs ordinary clicks/taps to select its guide. Only a live pull drag owns release.
+    if (layers.edgeExtrusion.dragging) { layers.edgeExtrusion.finish(e, e.type !== 'pointercancel'); return; }
+    if (layers.edgeExtrusion.staged && layers.edgeExtrusion.mode === 'pull') return;
     if (layers.gems.gemLine) { gemPointerUp(e); return; } // finished a gem-row drag (or a stationary single gem)
     // a deferred single-finger touch that never dragged is a tap: select what's under it, like a mouse click
     if (touchNav) {

@@ -1,7 +1,7 @@
 import type { V3 } from '../../core/doc/types';
 import {
   appendFreeEdge, appendTube, applySurfaceCut, autoWeldCreatedEdgeCrossings, ekey, routeSurfaceCutPath, validateSurfaceCutPath,
-  type SurfaceCutPoint,
+  fillSelectedEdgeHoles, type SurfaceCutPoint,
 } from '../../core/mesh/ops';
 import { applyLoft, railFromEdges, type RailResult } from '../../core/mesh/loft';
 import { getVertex } from '../../core/doc/doc-edit';
@@ -175,6 +175,21 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     resetGizmoMode(); scheduleRebuild();
     refreshCreatedCellSelection();
     toast(`bridge complete · ${rails.length} rails · ${cells.length} ${cells.length === 1 ? 'surface' : 'surfaces'}`, 'ok');
+  }
+
+  function createPatchesFromEdges() {
+    const doc = mdoc(), selected = edgeIndices(doc, store.edgeSel);
+    if (selected.length !== store.edgeSel.length) {
+      toast('Some selected edges no longer exist — select the hole boundaries again.', 'err'); return;
+    }
+    const result = fillSelectedEdgeHoles(doc, selected);
+    if (!result.ok) { toast(result.error, 'err'); return; }
+    commitEditMesh(store, result.doc);
+    clearEdgeSelection(); dropCornerSelection(); clearCellSelection();
+    store.cellSel = quadNames(mdoc(), result.quads); store.anchorCell = store.cellSel[0] ?? null;
+    resetGizmoMode(); scheduleRebuild(); refreshCreatedCellSelection();
+    toast(`${result.quads.length} ${result.quads.length === 1 ? 'patch' : 'patches'} created`
+      + (result.skipped ? ` · ${result.skipped} invalid ${result.skipped === 1 ? 'loop' : 'loops'} skipped` : ''), 'ok');
   }
 
   function armCreateEdge() {
@@ -463,7 +478,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
 
   return {
     bridgeCandidate, startBridge, addBridgeRail, reverseBridgeRail, removeBridgeRail, moveBridgeRail, cancelBridge, completeBridge,
-    armCreateEdge, armCreatePatch, armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
+    createPatchesFromEdges, armCreateEdge, armCreatePatch, armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
     armCreateTrail, previewCreateTrail, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
     finishCreatePatch, addCreateEdgePoint, finishCreateEdge, clearCreateEdge,
   };

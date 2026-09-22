@@ -24,6 +24,8 @@ export {
   applyEdgeExtrusion, applyPatchExtrusion, applyPlannedEdgeExtrusion,
   type EdgeExtrusionPlan, type EdgeExtrusionPlacement,
 } from './edge-extrusion';
+export { pathEdgeExtrusionPlacement, edgeChainExtrusionPlacement } from './edge-extrusion-path';
+export { fillSelectedEdgeHoles, type EdgeHoleFillResult } from './edge-hole-fill';
 export { planLoopCut, loopCutGeometry, hoveredEdge, applyLoopCut, type LoopCutPlan } from './loop-cut';
 export { applyEdgeRip } from './edge-rip';
 export { applyCellEdgeInsert } from './cell-edge-insert';

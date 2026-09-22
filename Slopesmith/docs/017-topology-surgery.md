@@ -35,6 +35,16 @@ Every op is a pure document rewrite with one shared id-maintenance helper:
 
 ## Ops
 
+### Create patches from selected edges
+
+With multiple authored edges selected, **Topology → create patches** fills every complete three- or
+four-edge hole in one document edit. Separate holes and adjoining holes can be filled together; extra
+open chains are ignored. All sides must be selected. Triangles use the ordinary collapsed-edge wedge
+encoding, and new patches become the selection. Existing patches, interior edges, chorded/subdivided
+outlines and degenerate/crossed loops are skipped; if nothing can be filled, a toast explains why.
+The operation reuses the boundary vertices and curves, matches neighboring normals, consumes perimeter
+free edges, and leaves existing patch identities and authored appearance intact.
+
 ### Loop cut (the headline)
 
 From a hovered edge, walk the quad strip through opposite edges (`SurfaceTopology.cellEdges` pairs
@@ -73,8 +83,11 @@ T-junctions and are highlighted red. The manifold guard still rejects degenerate
 Drawing the missing cut across the neighboring patch to one of those T vertices resolves it in place: the host
 edge is split with that existing id, its curve handles are inherited, and two half-split patches become four
 conforming quads without propagating farther.
-If a new stroke runs from a T vertex directly to a non-adjacent surface edge, Create Edge finds the shortest
-all-quad strip between them and inserts the intervening edge crossings automatically. A true rim endpoint is
+If a new stroke runs from a T vertex directly to a non-adjacent surface edge, Create Edge follows the drawn
+stroke across an unambiguous all-quad strip and inserts the actual cubic-edge crossings automatically. Routing
+projects along the endpoints' average surface normal, so it also works on slopes and walls. It stops at an
+opening instead of finding a topological detour around it: a connection across a gap stays a direct free edge.
+Folded or ambiguous routes require explicit intermediate edge picks. A true rim endpoint is
 therefore conforming and never receives a T-node; only stopping on an edge with an untraversed patch beyond it
 creates another explicit T-junction.
 
@@ -115,6 +128,25 @@ Data-model additions this op owns:
 
 Pick two open boundary chains of equal edge count (or one chain to cap): append the connecting quad
 band. With [019](ideas/019-rips.md)'s stitch this is the constructive half of open-boundary editing.
+
+### Edge extrusion
+
+Select an edge or edge run and press **X** to stage an extrusion. The placement panel offers **Pull**
+(the default) and **Path**, with a shared preview and **Enter** to commit or **Esc** to cancel.
+
+- **Pull** keeps the distance handle and Move / Rotate / Scale placement. **Segment length (m)** controls
+  the automatic wall spacing, initially based on the shortest source edge. Changing it updates the preview;
+  the chosen length is remembered for subsequent extrusions in the session. Up to 512 segments are generated.
+- **Path → Selected mesh edges** captures the source edges in blue and clears the live selection. Click the
+  first guide edge, then Ctrl-click or Shift-click to select a yellow connected open chain starting at any
+  vertex of the source run, including a shared middle vertex. Each guide edge becomes one segment of the
+  extrusion. Its existing vertices and Bézier curves are reused as a side or shared seam of the new quads,
+  and free edges become surface edges. A middle-start guide needs free edges because new patches fill both
+  sides; an end-start guide can also join boundary edges. The source mesh stays unchanged until commit.
+  Cancel or switching back to Pull restores the captured source selection.
+- When the mountain contains authored paths or rails, the **follow** list also offers those splines.
+  Their start is aligned with the source edge centre, and the edge turns along the curve. **Reverse path**
+  chooses the other direction; segment length controls the sampling, with extra segments around bends.
 
 ## UI
 

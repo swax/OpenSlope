@@ -19,7 +19,8 @@ the seam becomes two boundary chains ("lips") that share endpoints only (a slit)
 if ripped through to the rim.
 
 - **Endpoints pin by default** (a slit — the reference's dominant form). Ripping across the rim
-  unpins that end.
+  unpins that end. A single interior edge reaching the rim can rip too; a path from rim to rim
+  splits both endpoints, so cutting across a 2×2 quilt separates it into two halves.
 - A rip that ends mid-sheet leaves a **free lip** hairpin — legal, shipped practice.
 - After the rip the two lips are selectable as groups; **lift** is just the existing multi-select
   surface gizmo (raise one lip a few metres — the snow-against-rock break). No new movement code.

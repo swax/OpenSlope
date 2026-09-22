@@ -41,6 +41,7 @@ export interface EditViewportPort {
   setPasteTool(clip: MeshVertexClipboard | null): void;
   readonly pastePlacing: boolean;
   readonly edgeExtrusionStaged: boolean;
+  readonly edgeExtrusionMode?: 'pull' | 'path';
   readonly edgeExtrusionSideFlippable: boolean;
   beginEdgeExtrusionStage(): boolean;
   flipEdgeExtrusionSide(): boolean;

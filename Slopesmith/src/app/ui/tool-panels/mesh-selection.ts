@@ -33,7 +33,7 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
     selectedPatchLockState, toggleSelectedPatchLocks,
     selectConnected, selectOverlappingVertices,
     deleteSelectedMesh, dissolveSelectedMesh, flipSelectedMesh, meshDeleteTargetCount, canDeleteMeshSelection,
-    ripEdges, insertCellEdge, resetCellShape, creaseVertices, smoothVertices,
+    ripEdges, insertCellEdge, resetCellShape, creaseVertices, smoothVertices, createPatchesFromEdges,
     startBridge, beginEdgeExtrusion, beginPointWeld, beginEdgeWeld, weldSelectedEdgeCrossing, weldSelectedCoincidentVertices,
   } = edit;
 
@@ -155,6 +155,12 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
         const selectedEdges = edgeIndices(mdoc, store.edgeSel);
         const hasFree = selectedEdges.some(([a, b]) => free.has(a < b ? `${a},${b}` : `${b},${a}`));
         const boundaryLoop = boundaryEdgeLoopVertices(mdoc, selectedEdges);
+        if (store.edgeSel.length > 1) {
+          const fill = tip(topology!.add({ patches: createPatchesFromEdges }, 'patches').name('create patches'),
+            'Fill every empty 3- or 4-sided hole outlined by the selected edges.',
+            'Select every side of each hole. Existing patches are skipped; new patches reuse the boundary corners and curves.');
+          if (selectedEdges.length < 3) fill.disable();
+        }
         tip(topology!.add({ extrude: beginEdgeExtrusion }, 'extrude').name('▰ extrude (X)'),
           'Stage a new patch strip from the selected edge.',
           'An interior run lifts perpendicular to the surface, uses the side you clicked, and closes with '
@@ -169,11 +175,11 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
             : 'Then select the same number of target edges and press Enter. Their unique vertices are paired '
               + 'by closest distance and fused into the sources.');
         if (!hasFree) {
-          const rip = tip(topology!.add({ rip: ripEdges }, 'rip').name('rip (K)'),
-            'Open the selected interior edge path into two separated lips.',
-            'Each interior vertex is duplicated and the pair separates by 1 m perpendicular to the path. '
-            + 'Needs at least two connected edges.');
-          if (store.edgeSel.length === 1) rip.disable();
+          tip(topology!.add({ rip: ripEdges }, 'rip').name('rip (K)'),
+            'Open the selected interior edge or connected path into two separated lips.',
+            'Split vertices separate by 1 m perpendicular to the path. '
+            + 'Endpoints on the quilt boundary split too, so a rip across the quilt separates it completely. '
+            + 'A single edge needs an endpoint on that boundary.');
         } else detail(topology!, 'free edges can also be used as rails in a bridge');
         const seed = railFromEdges(edgeIndices(mdoc, store.edgeSel));
         if (seed.ok) {

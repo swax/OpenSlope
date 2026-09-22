@@ -49,7 +49,7 @@ type EditCallbackName =
   | 'onSlideBegin' | 'onSlideRecut' | 'onSlideMergePending' | 'onSlideEnd' | 'onEditTransformEnd'
   | 'onCreateEdgePoint' | 'onCreateTubeAxisChange' | 'onCreateTrailPointsChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
   | 'onSelectEditCell' | 'onSelectCellLoop' | 'onSelectEdge' | 'onSelectEdgeLoop'
-  | 'onExtrudeEdges' | 'onCommitExtrudeEdges' | 'onExtrudeStageChange' | 'onExtrudeEdgesInvalid' | 'onRefSelectionChange'
+  | 'onExtrudeEdges' | 'onCommitExtrudeEdges' | 'onExtrudeStageChange' | 'onExtrudeEdgeSelection' | 'onExtrudeEdgesInvalid' | 'onRefSelectionChange'
   | 'onMoveCorner' | 'onMoveHandle' | 'onMoveCageHandle' | 'onMoveTwist';
 
 export type EditViewportCallbacks = Pick<ViewportCallbacks, EditCallbackName>;
@@ -619,6 +619,7 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function seatEditMoveGizmo() {
+    if (view().edgeExtrusionStaged && view().edgeExtrusionMode === 'path') { view().detachSelectionGizmo(); return; }
     const verts = editMoveSet();
     view().setCornerGroup(verts.map(v => getVertex(mdoc(), v)), verts, false);
   }
@@ -976,7 +977,7 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function ripEdges() {
-    if (store.edgeSel.length < 2) return;
+    if (!store.edgeSel.length) return;
     const result = applyEdgeRip(mdoc(), edgeSelIndices(), 1);
     if (!result.ok) { toast(result.error, 'err'); return; }
     commitEditMesh(store, result.doc);
@@ -1712,6 +1713,13 @@ export function createEditSession(deps: EditSessionDeps) {
     },
     onExtrudeStageChange(_active) {
       rebuildTools(); updateCmdSheet();
+    },
+    onExtrudeEdgeSelection(edges) {
+      dropCornerSel(); clearCellSel();
+      store.edgeSel = edges.filter(edge => edgeIndex(mdoc(), edge) !== null).map(edge => [...edge]);
+      store.anchorEdge = store.edgeSel[0] ?? null;
+      view().refreshEditEdges();
+      if (!view().edgeExtrusionStaged) seatEditMoveGizmo();
     },
     onExtrudeEdgesInvalid(error) { toast(error, 'err'); },
     onRefSelectionChange() { refreshEditSelectionUi(); },

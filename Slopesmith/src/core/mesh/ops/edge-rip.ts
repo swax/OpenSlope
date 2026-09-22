@@ -8,7 +8,7 @@ import { readVertex, writeVertex } from '../primitives';
 
 /**
  * The rip: un-stitch a connected interior edge path into two boundary lips separated by a gap, the inverse of
- * a weld. Quad ids stay stable — only the consistently-wound side of each split vertex's fan is reassigned.
+ * a weld. Quad ids stay stable — only one continuous side of each split vertex's fan is reassigned.
  */
 
 export type EdgeRipResult = {
@@ -16,21 +16,22 @@ export type EdgeRipResult = {
   doc: QuadMeshDoc;
   /** The two new boundary chains, in path order. They share only the pinned endpoints. */
   lips: [[number, number][], [number, number][]];
-  /** Original interior path vertices and their duplicated partners, in path order. */
+  /** Original split path vertices and their duplicated partners, in path order. */
   splitVertices: [number, number][];
 } | { ok: false; error: string };
 
 /**
- * RIP — un-stitch a connected interior edge path into two boundary lips. The path endpoints stay pinned; every
- * interior path vertex is duplicated and the consistently-wound side of its incident quad fan is reassigned to
- * that duplicate. The two copies move half of `gap` in opposite directions across the surface, perpendicular to
- * the local path tangent, so the resulting opening is `gap` metres wide.
+ * RIP — un-stitch a connected interior edge path into two boundary lips. Endpoints on the surface rim split
+ * along with every interior path vertex; endpoints inside the sheet stay pinned. One continuous side of each
+ * split vertex's incident quad fan is reassigned to its duplicate. The two copies move half of `gap` in opposite
+ * directions across the surface, perpendicular to the local path tangent, so the opening is `gap` metres wide.
+ * A lone edge needs a rim endpoint: with both endpoints pinned, there is no vertex that can open the seam.
  *
  * Effective handles touching the path are materialised before the neighbour rings change, then copied onto the
  * matching edge on each lip. Quad ids and all quad-keyed paint / texture / orientation / twist maps stay stable.
  */
 export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][], gap = 1): EdgeRipResult {
-  if (edges.length < 2) return { ok: false, error: 'Rip needs at least two selected edges.' };
+  if (!edges.length) return { ok: false, error: 'Rip needs at least one selected edge.' };
   if (!Number.isFinite(gap) || gap <= 0) return { ok: false, error: 'Rip gap must be greater than zero.' };
   const chain = orderEdgeChain(edges);
   if (!chain) return { ok: false, error: 'Rip needs one connected open edge path — not separate runs, a ring, or a branch.' };
@@ -49,6 +50,8 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
       return { ok: false, error: 'Rip only works on interior surface edges with a patch on both sides.' };
     edgeQuads.push(incident);
   }
+  const onRim = (vertex: number): boolean => (adj.neighbors[vertex] ?? []).some(neighbor =>
+    adj.edgeQuads.get(ekey(vertex, neighbor))?.length === 1);
 
   /** The quad-fan sector at path vertex `chain[i]` reached from `seed` without crossing either selected path
    * edge. This remains well-defined at ordinary 3/5 poles: valence changes the sector size, not which side it is. */
@@ -76,13 +79,25 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
   // choice should depend on arbitrary quad ids or winding.
   const traceSide = (start: number): Map<number, Set<number>> | null => {
     const result = new Map<number, Set<number>>();
+    if (onRim(chain[0])) {
+      const component = sectorFrom(0, start);
+      if (edgeQuads[0].filter(q => component.has(q)).length !== 1) return null;
+      result.set(chain[0], component);
+    }
     let previousSideQuad = start;
     for (let i = 1; i < chain.length - 1; i++) {
       const component = sectorFrom(i, previousSideQuad);
+      if (edgeQuads[i - 1].filter(q => component.has(q)).length !== 1) return null;
       const next = edgeQuads[i].filter(q => component.has(q));
       if (next.length !== 1) return null;
       result.set(chain[i], component);
       previousSideQuad = next[0];
+    }
+    const last = chain.length - 1;
+    if (onRim(chain[last])) {
+      const component = sectorFrom(last, previousSideQuad);
+      if (edgeQuads[last - 1].filter(q => component.has(q)).length !== 1) return null;
+      result.set(chain[last], component);
     }
     return result;
   };
@@ -90,10 +105,15 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
   const sideAtVertex = traceSide(starts[0]) ?? traceSide(starts[1]);
   if (!sideAtVertex)
     return { ok: false, error: 'Rip could not trace one continuous side through the selected edge path.' };
+  const splitPath = chain.filter(vertex => sideAtVertex.has(vertex));
+  if (!splitPath.length)
+    return { ok: false, error: 'To rip inside the quilt, select at least two connected edges. A single edge can only rip when it reaches the quilt boundary.' };
 
   const directions = new Map<number, V3>();
-  for (let i = 1; i < chain.length - 1; i++) {
-    const vertex = chain[i], prev = chain[i - 1], next = chain[i + 1], component = sideAtVertex.get(vertex)!;
+  for (let i = 0; i < chain.length; i++) {
+    const vertex = chain[i], component = sideAtVertex.get(vertex);
+    if (!component) continue;
+    const prev = chain[Math.max(0, i - 1)], next = chain[Math.min(chain.length - 1, i + 1)];
     const incident = new Set<number>();
     for (const neighbor of adj.neighbors[vertex] ?? [])
       for (const q of adj.edgeQuads.get(ekey(vertex, neighbor)) ?? []) incident.add(q);
@@ -118,7 +138,7 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
   }
 
   const vertices = doc.vertices.slice(), duplicate = new Map<number, number>();
-  for (const vertex of chain.slice(1, -1)) {
+  for (const vertex of splitPath) {
     const copy = vertices.length / 3, p = pos(vertex), across = directions.get(vertex)!;
     duplicate.set(vertex, copy);
     const half = mul(across, gap / 2);
@@ -143,7 +163,7 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
     surfaceEdges.set(ekey(a, b), [a, b]);
   for (const [a, b] of doc.freeEdges ?? []) surfaceEdges.set(ekey(a, b), [a, b]);
   const edgeHandles: Record<string, V3> = {};
-  const splitSet = new Set(chain.slice(1, -1));
+  const splitSet = new Set(splitPath);
   for (const [a, b] of surfaceEdges.values()) for (const [from, to] of [[a, b], [b, a]] as [number, number][]) {
     const oldFrom = origin(from), oldTo = origin(to);
     const stored = doc.edgeHandles?.[`${oldFrom}>${oldTo}`];
@@ -168,6 +188,6 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
     ok: true,
     doc: out,
     lips: [originalLip, duplicateLip],
-    splitVertices: chain.slice(1, -1).map(vertex => [vertex, duplicate.get(vertex)!]),
+    splitVertices: splitPath.map(vertex => [vertex, duplicate.get(vertex)!]),
   };
 }

@@ -5,6 +5,8 @@ import { createPointerRouter } from '../src/app/viewport/input/pointer-router';
 import { createScenePicking } from '../src/app/viewport/input/scene-picking';
 import { createPropAssets } from '../src/app/viewport/scene/prop-assets';
 import { createPropsLayer } from '../src/app/viewport/scene/props';
+import { Stage } from '../src/app/viewport/stage';
+import { refitSurfaceTrees } from '../src/app/viewport/mesh/surface-trees';
 import { createReferenceDecor } from '../src/app/viewport/scene/reference-decor';
 import {
   COLLISION_OVERLAY_ACTIVE_COLOR, COLLISION_OVERLAY_INACTIVE_COLOR, UNITY_COLLISION_OVERLAY_COLOR,
@@ -167,8 +169,13 @@ const cameraCtl: any = {
   activePointers: new Set<number>(), touchPts: new Map<number, { x: number; y: number }>(), twist: null,
   orbiting: false, flying: false, seatTargetAhead() {},
 };
+let pointerRayX = 0;
 const stage: any = {
   renderer: { domElement: dom }, container: dom, scene, ray,
+  worldRoot: new THREE.Group(), terrainMesh: terrain,
+  pickLocalRay: new THREE.Ray(), pickInv: new THREE.Matrix4(),
+  pickSurface: Stage.prototype.pickSurface, groundHit: Stage.prototype.groundHit,
+  snapDataPoint: (point: V3) => point.map(v => Math.round(v * 10) / 10),
   controls: { enabled: true },
   marqueeEl: { style: {} },
   gizmo: { enabled: true, axis: null, object: null, dragging: false }, gizmoKind: null,
@@ -176,7 +183,7 @@ const stage: any = {
   castAt() {
     scene.updateMatrixWorld(true);
     ray.near = 0; ray.far = Infinity;
-    ray.ray.set(new THREE.Vector3(0, 0, 10), new THREE.Vector3(0, 0, -1));
+    ray.ray.set(new THREE.Vector3(pointerRayX, 0, 10), new THREE.Vector3(0, 0, -1));
   },
   pivotAt() { return new THREE.Vector3(0, 0, 0); },
 };
@@ -312,6 +319,62 @@ stage.cb.onPickPlacedProp = (index: number) => { pickedPlacedProp = index; };
 dom.dispatch('pointerdown', { button: 1 });
 dom.dispatch('pointerup', { button: 1 });
 check(pickedPlacedProp === 7, 'Props middle-click selects the model and arms prop placement');
+
+// After an in-place terrain edit, the preview's refit pick tree knows the new surface but a stock mesh
+// raycast can still reject it against the old bounding sphere. Drive the real ghost + wheel + click path.
+{
+  const geometry = terrain.geometry, positions = geometry.getAttribute('position');
+  stage.groundHit(); // warm the same pick tree the real placement hover reads
+  geometry.computeBoundingSphere();
+  for (let i = 0; i < positions.count; i++) positions.setX(i, positions.getX(i) + 300);
+  positions.needsUpdate = true;
+  const moved = new THREE.Box3(new THREE.Vector3(-100, -100, -100), new THREE.Vector3(400, 100, 100));
+  refitSurfaceTrees(geometry, [moved]);
+  pointerRayX = 300; stage.castAt();
+  check(!ray.intersectObject(terrain, false).length && !!stage.groundHit(),
+    'placement regression: edited terrain is visible to the hover picker but missed by the old click raycast');
+
+  const assets = createPropAssets();
+  assets.propGeom.set('DROP:0', [{ geometry: new THREE.BoxGeometry(100, 100, 100), level: 'DROP',
+    tex: null, frames: [], crowdFrames: [], mat: 0 }]);
+  const held = createPropsLayer(stage, assets, {} as any);
+  held.setArmed({ level: 'DROP', model: 0, baseOffset: 2 });
+  held.pendingYaw = 30;
+  layers.props = held;
+  const drops: { pos: V3; yaw: number; scale: number }[] = [];
+  const originalPlace = stage.cb.onPlaceProp;
+  stage.cb.onPlaceProp = (pos: V3, yaw: number, scale: number) => { drops.push({ pos: [...pos], yaw, scale }); };
+  dom.dispatch('pointermove', {});
+  dom.dispatch('wheel', { deltaY: -1 });
+  dom.dispatch('wheel', { deltaY: -1, shiftKey: true });
+  check(held.propGhost?.visible && held.pendingYaw === 45 && held.pendingScale === 1.1,
+    'the real prop preview follows the edited ground and preserves wheel rotation and scale');
+  const previewPose = held.propGhost!.matrix.clone();
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(drops.length === 1 && drops[0].yaw === 45 && drops[0].scale === 1.1
+    && held.placementPose(drops[0]).equals(previewPose),
+  'click lands exactly one prop at the preview pose, including snapped base offset, wheel turn and scale');
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(drops.length === 2 && held.propArm !== null && drops[1].yaw === 45,
+    'repeat clicks keep stamping the held prop with its manually chosen rotation');
+  pointerRayX = 310; // touch can land somewhere new without a preceding hover
+  dom.dispatch('pointerdown', { pointerType: 'touch' });
+  dom.dispatch('pointerup', { pointerType: 'touch' });
+  check(drops.length === 3 && drops[2].pos[0] === 310,
+    'a touch tap also lands exactly one prop at the new hit without a preceding hover');
+  pointerRayX = 1000;
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(drops.length === 3 && !held.propGhost?.visible,
+    'a click off the terrain does not stamp the last valid preview position');
+
+  held.setArmed(null); layers.props = props; stage.cb.onPlaceProp = originalPlace;
+  pointerRayX = 0;
+  for (let i = 0; i < positions.count; i++) positions.setX(i, positions.getX(i) - 300);
+  positions.needsUpdate = true; refitSurfaceTrees(geometry, [moved]);
+}
 
 // Paint uses a deliberate two-step contract: ordinary LMB only inspects/selects, while MMB selects and arms.
 // Shift+LMB remains range selection. The middle-clicked tile keeps its exact ride feel + D4.
