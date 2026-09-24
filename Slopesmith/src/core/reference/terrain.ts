@@ -5,6 +5,7 @@ import { rgbToHex } from '../math/color';
 import { patchNormal, patchPoint, pushCubicEdge } from '../math/bezier';
 import { sampleTile, sampleTileRGB, remapLightmapUv, type LightmapSet } from '../lighting/lightmap';
 import { buildQuadMesh, type QuadMesh, type EdgeHandle } from '../mesh/topology';
+import { CREASE_DEGREES, seamCreaseDegrees } from '../mesh/creases';
 import type { SurfaceTopology, EdgeCls } from '../mesh/surface';
 
 /**
@@ -479,7 +480,8 @@ export interface ReferenceMesh {
   facesPerPatch: number;
   /** De-duplicated patch-corner positions (the control-point cloud) in editor space. */
   cornerPts: Float32Array;
-  /** Curved control-net edges SHARED by two patches (interior seams), as tessellated segment endpoints. */
+  /** Curved control-net edges SHARED by two patches (interior seams), as tessellated segment endpoints. Creased
+   *  seams are split out into `cornerSegCrease`. */
   cornerSeg: Float32Array;
   /** Curved control-net edges used by ONE patch that stand alone (the quilt's true outer rim), same format. */
   cornerSegBoundary: Float32Array;
@@ -487,6 +489,9 @@ export interface ReferenceMesh {
    *  the same: a boundary loop inside the surface). Tessellated segment endpoints, drawn yellow; the depth
    *  dither then reads a watertight, tucked tear DIM and an exposed one BRIGHT. */
   cornerSegTear: Float32Array;
+  /** Interior seams whose two patches meet past CREASE_DEGREES (core/mesh/creases.ts), split out of `cornerSeg`.
+   *  Same segment format. */
+  cornerSegCrease: Float32Array;
   /** Positions of EXTRAORDINARY control-net vertices whose interior-seam valence is 3 - the quad net
    *  pinches here (fewer than the regular four "Grid" edges meet). Rim/tear edges, which carry
    *  their own colour, are not counted, so only vertices irregular in the shared net are flagged. */
@@ -750,15 +755,16 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
   // the rim and every other loop is a tear. Occluded cage lines dither dim, so a WATERTIGHT tear (both lips
   // tucked into the surface - e.g. a snow drift folded onto a rock face) reads dim, an EXPOSED tear bright.
   const cornerSeg: number[] = [], cornerSegBoundary: number[] = [], cornerSegTear: number[] = [];
+  const cornerSegCrease: number[] = [];
   // interior-seam valence per de-duplicated corner: how many "Grid" edges (shared by two patches, not
   // rim/tear) meet at it. 4 is regular; 3/5 mark the extraordinary poles of the quad net.
   const valence = new Int32Array(cornerPts.length / 3);
 
-  const border: CageEdge[] = [];
+  const border: CageEdge[] = [], grid: CageEdge[] = [];
   let classifiedEdge = 0;
   for (const e of edges.values()) {
     if (classifiedEdge++ > 0 && classifiedEdge % 2048 === 0) yield;
-    if (e.count >= 2) { e.cls = 'grid'; pushCubicEdge(cornerSeg, e.cps[0], e.cps[1], e.cps[2], e.cps[3], EDGE_SEG); valence[cornerIdx.get(e.ka)!]++; valence[cornerIdx.get(e.kb)!]++; }
+    if (e.count >= 2) { e.cls = 'grid'; grid.push(e); valence[cornerIdx.get(e.ka)!]++; valence[cornerIdx.get(e.kb)!]++; }
     else border.push(e);
   }
   // surface connected components (over EVERY edge, interior seams included): each disconnected surface piece is
@@ -821,6 +827,16 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
   // meshEdgeSegments' pushCubicEdge(p0,p1,p2,p3) reproduces the reference's own boundary curve (the same one
   // cornerSeg draws), not a Bessel re-derive that would drift off the real edge.
   const mesh = buildQuadMesh(cornerPts, quads);
+  // Interior seams where the two patches meet at an angle draw as creases — the same measure the authored cage
+  // uses (core/mesh/creases.ts), so the retail levels read as a lesson in where creases go. Only a seam of
+  // exactly two patches has two sides to compare.
+  let creaseChecked = 0;
+  for (const e of grid) {
+    if (creaseChecked++ > 0 && creaseChecked % 2048 === 0) yield;
+    const creased = e.faces.length === 2 && seamCreaseDegrees(mesh, quad => patchControls[quad],
+      cornerIdx.get(e.ka)!, cornerIdx.get(e.kb)!, [e.faces[0], e.faces[1]]) > CREASE_DEGREES;
+    pushCubicEdge(creased ? cornerSegCrease : cornerSeg, e.cps[0], e.cps[1], e.cps[2], e.cps[3], EDGE_SEG);
+  }
   const eidKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
   const handleByEdge = new Map<string, { a: number; ha: V3; hb: V3 }>();
   edgeArr.forEach((e, ei) => {
@@ -838,6 +854,7 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
     cornerPts: new Float32Array(cornerPts),
     cornerSeg: new Float32Array(cornerSeg), cornerSegBoundary: new Float32Array(cornerSegBoundary),
     cornerSegTear: new Float32Array(cornerSegTear),
+    cornerSegCrease: new Float32Array(cornerSegCrease),
     cornerPtsExtra3: new Float32Array(extra3), cornerPtsExtra5: new Float32Array(extra5),
     topology, mesh, edgeHandle,
     min, max, patchCount: n,

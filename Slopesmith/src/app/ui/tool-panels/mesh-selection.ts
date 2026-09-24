@@ -5,6 +5,7 @@ import { meshVertexCanSmooth } from '../../../core/doc/mountain';
 import { buildQuadMesh, meshAdjacency, vertexValence } from '../../../core/mesh/topology';
 import { quadVerts } from '../../../core/doc/doc-edit';
 import type { SelectionMeasure } from '../../../core/mesh/measure';
+import { CREASE_DEGREES } from '../../../core/mesh/creases';
 import { railFromEdges } from '../../../core/mesh/loft';
 import { applyCellEdgeInsert, applyEdgeCrossingWeld, applyMeshDissolve, applyVertexWeld, boundaryEdgeLoopVertices } from '../../../core/mesh/ops';
 import { findTJunctions, T_JUNCTION_TOLERANCE_M } from '../../../core/mesh/t-junctions';
@@ -12,7 +13,7 @@ import {
   coincidentVertexIndices, edgeCrossingIndex, edgeIndices, quadIndices, vertexIndices, vertexNames,
   type VertexName,
 } from '../../state/mesh-names';
-import { actionPair, detail, errorBanner, tip } from '../components/gui';
+import { actionPair, detail, errorBanner, liveDetail, tip } from '../components/gui';
 import { fmtArea, fmtM, type ToolsContext } from './widgets';
 
 // The regional solver remains implemented for benchmark iteration, but its editor entry point stays hidden
@@ -450,6 +451,15 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
       } else {
         detail(g, `${m.count} edges selected`);
         tip(detail(g, fmtM(m.total), 'total'), 'The summed curved length of every selected edge — e.g. a whole ridge run picked along its loop.');
+      }
+      if (m.angle !== null) {
+        const text = (angle: number | null) => angle === null ? '—'
+          : `${angle.toFixed(1)}°${angle > CREASE_DEGREES ? ' · crease' : ''}`;
+        // An editable surface hands a live re-measure, so smooth / crease / drags / undo show without a re-pick.
+        const liveAngle = m.liveAngle, label = m.count === 1 ? 'seam angle' : 'widest seam';
+        tip(liveAngle ? liveDetail(g, () => text(liveAngle()), label) : detail(g, text(m.angle), label),
+          'How sharply the two patches meet along this edge: 0° flows on smoothly, 90° is a right-angle fold.',
+          `The widest angle between the two patches' surface normals along the seam. Past ${CREASE_DEGREES}° the cage draws the edge purple as a crease.`);
       }
       detail(g, 'shift-click along the loop = extend');
       return;

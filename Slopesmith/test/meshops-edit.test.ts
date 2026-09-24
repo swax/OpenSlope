@@ -8,14 +8,20 @@
  * test/meshops.fixture.ts, shared with the other `meshops-*` checks.
  */
 import * as THREE from 'three';
-import { applyBrush, meshSetTwist, migrateMountain } from '../src/core/doc/mountain';
-import { meshFromDoc, quadControlPoints, buildQuadMesh, meshEdgeHandles, meshCageEdges } from '../src/core/mesh/topology';
-import { add, len, mul, sub } from '../src/core/math/vec';
+import { applyBrush, meshCreaseVertices, meshSetTwist, meshSmoothVertices, migrateMountain } from '../src/core/doc/mountain';
+import { meshAdjacency, meshFromDoc, quadControlPoints, buildQuadMesh, meshEdgeHandles, meshCageEdges } from '../src/core/mesh/topology';
+import { add, dot, len, mul, sub } from '../src/core/math/vec';
 import { appendStandalonePatch, meshDeleteTargets, applyMeshDelete, applyMeshDissolve } from '../src/core/mesh/ops';
 import { getVertex, setVertex } from '../src/core/doc/doc-edit';
 import { serializeMountain } from '../src/core/doc/serialize';
 import { copyMeshVertices, meshClipboardText, pasteMeshVertices } from '../src/core/mesh/clipboard';
-import { controlPointCageOwners, controlPointKey, meshControlPoints, moveMeshControlPoints, moveMeshVerticesProportional, setMeshControlPoints } from '../src/core/mesh/control-points';
+import {
+  captureAround, controlPointCageOwners, controlPointKey, meshControlPoints, moveMeshControlPoints, moveMeshVertices,
+  restoreAround, setMeshControlPoints, type EditDirty,
+} from '../src/core/mesh/control-points';
+import { patchNormal } from '../src/core/math/bezier';
+import { creasedSeams } from '../src/core/mesh/creases';
+import { measureEdges, widestSeamAngle } from '../src/core/mesh/measure';
 import { INDEX_NAMING } from '../src/core/mesh/selection';
 import { buildMountainPreview, previewMismatch, refreshPreviewPatches } from '../src/core/mesh/tessellation';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
@@ -90,9 +96,9 @@ import { check, failures } from './check';
     edgeHandles: undefined, quadTwist: undefined, quadPaint: undefined, quadTex: undefined, quadOrient: undefined,
   };
 
-  // Moving one whole edge is a patch resize: its 4x4 cage must stretch in parameter-space proportions even
-  // when every boundary tangent and interior has been hand-shaped (plain corner writes would keep those sparse
-  // offsets fixed and make the first interior row travel the full delta instead of 2/3).
+  // Moving one whole edge is a patch resize. The moved curve keeps its hand-set tangents exactly; the two side
+  // curves change length, so theirs keep their direction and scale with it; the far curve and the interior
+  // twists are untouched. Nothing bends a tangent pair, so no seam can crease.
   const resized = structuredClone(onlyPatch);
   const [A, B, C, D] = resized.quads[0];
   resized.edgeHandles = {
@@ -102,23 +108,27 @@ import { check, failures } from './check';
     [`${C}>${D}`]: [2.5, 0.5, 0.25], [`${D}>${C}`]: [-2, 1, -0.75],
   };
   resized.quadTwist = { 0: [[0.5, 1, -0.5], [-1, 0.25, 0.75], [0.2, -0.4, 1.1], [0.8, 0.6, -0.3]] };
-  const beforeResizeCtx = meshFromDoc(resized);
-  const beforeResize = quadControlPoints(beforeResizeCtx.mesh, beforeResizeCtx.edgeHandle, 0, resized.quadTwist[0]);
+  const handlesBefore = structuredClone(resized.edgeHandles), twistBefore = structuredClone(resized.quadTwist);
+  const chord = (doc: QuadMeshDoc, a: number, b: number) => len(sub(getVertex(doc, b), getVertex(doc, a)));
+  const sideBefore = { ac: chord(resized, A, C), bd: chord(resized, B, D) };
   const edgeDelta: V3 = [9, -3, 6];
-  const resizeChange = moveMeshVerticesProportional(resized, [A, B], edgeDelta);
-  const afterResizeCtx = meshFromDoc(resized);
-  const afterResize = quadControlPoints(afterResizeCtx.mesh, afterResizeCtx.edgeHandle, 0, resized.quadTwist?.[0]);
-  const proportional = afterResize.every((p, i) => {
-    const u = Math.floor(i / 4) / 3; // A-B is u=0 (moved); C-D is u=1 (fixed)
-    return len(sub(p, add(beforeResize[i], mul(edgeDelta, 1 - u)))) < 1e-8;
-  });
-  check(proportional, 'proportional resize: moving an edge carries the shaped 4x4 cage by 1, 2/3, 1/3, 0');
+  const resizeChange = moveMeshVertices(resized, [A, B], edgeDelta);
+  const same = (key: string) => len(sub(resized.edgeHandles![key], handlesBefore[key])) < 1e-9;
+  const scaled = (key: string, ratio: number) => len(sub(resized.edgeHandles![key], mul(handlesBefore[key], ratio))) < 1e-9;
+  const ac = chord(resized, A, C) / sideBefore.ac, bd = chord(resized, B, D) / sideBefore.bd;
+  check(same(`${A}>${B}`) && same(`${B}>${A}`) && same(`${C}>${D}`) && same(`${D}>${C}`),
+    'corner move: an edge moved whole, and the edge left behind, keep their hand-set tangents exactly');
+  check(scaled(`${A}>${C}`, ac) && scaled(`${C}>${A}`, ac) && scaled(`${B}>${D}`, bd) && scaled(`${D}>${B}`, bd)
+    && Math.abs(ac - 1) > 0.01,
+  'corner move: a resized side curve keeps its tangent directions and scales them with its length');
+  check(JSON.stringify(resized.quadTwist) === JSON.stringify(twistBefore),
+    'corner move: interior twists are untouched, so interiors ride their tangents');
   check(resizeChange.quads.length === 1 && resizeChange.edges.length === 4,
-    'proportional resize: reports the exact dirty patch and its four boundary curves for local preview');
+    'corner move: reports the exact dirty patch and its four boundary curves for local preview');
   const sparseResize = structuredClone(onlyPatch);
-  moveMeshVerticesProportional(sparseResize, [0, 1], edgeDelta);
+  moveMeshVertices(sparseResize, [0, 1], edgeDelta);
   check(sparseResize.edgeHandles === undefined && sparseResize.quadTwist === undefined,
-    'proportional resize: an automatic free-patch cage stays automatic when it already scales correctly');
+    'corner move: an automatic cage stays automatic');
 
   const tangent = points.find(cp => cp.id.kind === 'edge')!;
   const tangentOnly = structuredClone(added.doc), corners0 = added.vertices.map(v => getVertex(tangentOnly, v));
@@ -148,6 +158,179 @@ import { check, failures } from './check';
   refreshPreviewPatches(onlyPatch, partial, [0]);
   check(previewMismatch(onlyPatch, partial) === null,
     'live edit preview: a repainted, retiled and reoriented patch matches a full rebuild in every channel');
+}
+
+// ---- 0b2. SMOOTH EDITS: corner moves and tangent drags keep seams G1 unless a crease is asked for ----------
+{
+  // A gently curved 5x5 lattice: the centre vertex is regular with a full ring, so every seam through it is a
+  // true two-patch seam.
+  const N = 5, C = 12;
+  const vertices: number[] = [];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) vertices.push(j * 10, Math.sin(i * 0.7) * 3 + Math.cos(j * 0.5) * 2, i * 10);
+  const quads: number[][] = [];
+  for (let i = 0; i < N - 1; i++) for (let j = 0; j < N - 1; j++) quads.push([i * N + j, i * N + j + 1, (i + 1) * N + j, (i + 1) * N + j + 1]);
+  const lattice: QuadMeshDoc = {
+    ...freshGrid(), vertices, quads,
+    vertexIds: Array.from({ length: N * N }, (_, i) => `s-v${i}`), quadIds: quads.map((_, i) => `s-q${i}`), nextId: 99,
+    edgeHandles: undefined, quadTwist: undefined, quadPaint: undefined, quadTex: undefined, quadOrient: undefined,
+    quadLocked: undefined, freeEdges: undefined, tJunctions: [],
+  };
+  /** The widest normal gap (degrees) across any two-patch seam — 0 on a G1 quilt. */
+  const worstSeam = (doc: QuadMeshDoc) => {
+    const { mesh, edgeHandle } = meshFromDoc(doc);
+    const adj = meshAdjacency(mesh);
+    const param = (quad: number, a: number, b: number, t: number): [number, number] => {
+      const [qa, qb, qc, qd] = mesh.quads[quad];
+      const sides: [number, number, (s: number) => [number, number]][] = [
+        [qa, qb, s => [0, s]], [qc, qd, s => [1, s]], [qa, qc, s => [s, 0]], [qb, qd, s => [s, 1]]];
+      for (const [x, y, f] of sides) { if (x === a && y === b) return f(t); if (x === b && y === a) return f(1 - t); }
+      throw new Error('edge not on quad');
+    };
+    let worst = 0;
+    for (const [key, qs] of adj.edgeQuads) {
+      if (qs.length !== 2) continue;
+      const [a, b] = key.split(',').map(Number);
+      const cp = qs.map(q => quadControlPoints(mesh, edgeHandle, q, doc.quadTwist?.[q] ?? null));
+      for (const t of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+        const n = qs.map((q, i) => { const [u, v] = param(q, a, b, t); return patchNormal(cp[i], u, v); });
+        const cos = Math.abs(dot(n[0], n[1])) / (len(n[0]) * len(n[1]));
+        worst = Math.max(worst, Math.acos(Math.min(1, cos)) * 180 / Math.PI);
+      }
+    }
+    return worst;
+  };
+  check(worstSeam(lattice) < 1e-3, 'smooth edits: the automatic lattice starts G1');
+
+  const raised = structuredClone(lattice);
+  moveMeshVertices(raised, [C], [0, 6, 0]);
+  check(worstSeam(raised) < 1e-3 && raised.edgeHandles === undefined && raised.quadTwist === undefined,
+    'smooth edits: raising a corner of an automatic lattice stays G1 and writes no overrides or twists');
+
+  // The same lattice with every tangent hand-set to its automatic value: shaped, but still smooth.
+  const shaped = structuredClone(lattice);
+  const { mesh: shapedMesh, edgeHandle: shapedHandle } = meshFromDoc(shaped);
+  const shapedAdj = meshAdjacency(shapedMesh);
+  shaped.edgeHandles = {};
+  shapedAdj.neighbors.forEach((nbs, from) => { for (const to of nbs) shaped.edgeHandles![`${from}>${to}`] = shapedHandle(from, to); });
+  const pairBend = (doc: QuadMeshDoc, from: number, a: number, b: number) => {
+    const ha = doc.edgeHandles![`${from}>${a}`], hb = doc.edgeHandles![`${from}>${b}`];
+    return 180 - Math.acos(Math.max(-1, Math.min(1, dot(ha, hb) / (len(ha) * len(hb))))) * 180 / Math.PI;
+  };
+  moveMeshVertices(shaped, [C], [0, 6, 0]);
+  check(pairBend(shaped, C, C - 1, C + 1) < 1e-3 && pairBend(shaped, C, C - N, C + N) < 1e-3
+    && pairBend(shaped, C - 1, C - 2, C) < 1e-3 && pairBend(shaped, C + N, C, C + 2 * N) < 1e-3
+    && worstSeam(shaped) < 1e-3,
+  'smooth edits: moving a corner keeps every hand-set tangent pair straight and every seam G1');
+
+  // Tangent drags: the partner across the corner swings into line and keeps its length; Alt breaks it.
+  const V = (i: number) => lattice.vertexIds[i];
+  const handle = (doc: QuadMeshDoc, from: number, to: number) => meshFromDoc(doc).edgeHandle(from, to);
+  const tangentTarget = add(add(getVertex(lattice, C), handle(lattice, C, C + 1)), [0, 2.5, 1]);
+  const dragged = structuredClone(lattice), dirty: EditDirty = { edges: [], quads: [] };
+  setMeshControlPoints(dragged, [{ id: { kind: 'edge', from: V(C), to: V(C + 1) }, pos: tangentTarget }], { dirty });
+  const partnerBefore = handle(lattice, C, C - 1), partnerAfter = handle(dragged, C, C - 1);
+  const lengthRatio = len(handle(dragged, C, C + 1)) / len(handle(lattice, C, C + 1));
+  check(pairBend(dragged, C, C - 1, C + 1) < 1e-3 && Math.abs(len(partnerAfter) - len(partnerBefore) * lengthRatio) < 1e-9
+    && dirty.edges.length === 1 && dirty.edges[0][0] === C - 1 && dirty.edges[0][1] === C && worstSeam(dragged) < 1e-3,
+  'smooth edits: a dragged tangent swings and scales its partner in ratio, so every seam stays G1');
+
+  const creased = structuredClone(lattice);
+  setMeshControlPoints(creased, [{ id: { kind: 'edge', from: V(C), to: V(C + 1) }, pos: tangentTarget }], { independent: true });
+  check(creased.edgeHandles?.[`${C}>${C - 1}`] === undefined,
+  'smooth edits: Alt (independent) leaves the partner automatic, making a deliberate crease');
+
+  const both = structuredClone(lattice);
+  const partnerTarget = add(getVertex(lattice, C), [-3, -1, 0.5]);
+  setMeshControlPoints(both, [
+    { id: { kind: 'edge', from: V(C), to: V(C + 1) }, pos: tangentTarget },
+    { id: { kind: 'edge', from: V(C), to: V(C - 1) }, pos: partnerTarget },
+  ]);
+  check(len(sub(add(getVertex(both, C), handle(both, C, C - 1)), partnerTarget)) < 1e-9,
+    'smooth edits: a partner placed in the same edit keeps the position it was given');
+
+  const rimTangent = add(add(getVertex(lattice, 5), handle(lattice, 5, 6)), [0, 2, 0]);
+  const rim = structuredClone(lattice);
+  setMeshControlPoints(rim, [{ id: { kind: 'edge', from: V(5), to: V(6) }, pos: rimTangent }]);
+  check(Object.keys(rim.edgeHandles ?? {}).join() === '5>6',
+    'smooth edits: the inward tangent at a rim corner has no partner to swing');
+
+  // Interior drags: the three interiors sharing its corner mirror it, so every seam there stays G1; Alt moves
+  // the one interior alone.
+  const Q = (i: number) => lattice.quadIds[i];
+  const centreQuad = quads.findIndex(q => q[3] === C); // C is this patch's D corner (slot 3)
+  const interiorBefore = quadControlPoints(meshFromDoc(lattice).mesh, meshFromDoc(lattice).edgeHandle, centreQuad)[10];
+  const interiorTarget = add(interiorBefore, [0.5, 3, -0.4]);
+  const mirroredDoc = structuredClone(lattice), mirroredDirty: EditDirty = { edges: [], quads: [] };
+  setMeshControlPoints(mirroredDoc, [{ id: { kind: 'twist', quad: Q(centreQuad), corner: 3 }, pos: interiorTarget }],
+    { dirty: mirroredDirty });
+  const mirroredCtx = meshFromDoc(mirroredDoc);
+  check(len(sub(quadControlPoints(mirroredCtx.mesh, mirroredCtx.edgeHandle, centreQuad, mirroredDoc.quadTwist?.[centreQuad])[10],
+    interiorTarget)) < 1e-9 && new Set(mirroredDirty.quads).size === 3 && worstSeam(mirroredDoc) < 1e-3,
+  'smooth edits: a dragged interior lands exactly while its three corner mirrors keep every seam G1');
+
+  const loneDoc = structuredClone(lattice);
+  setMeshControlPoints(loneDoc, [{ id: { kind: 'twist', quad: Q(centreQuad), corner: 3 }, pos: interiorTarget }],
+    { independent: true });
+  check(Object.keys(loneDoc.quadTwist ?? {}).join() === String(centreQuad) && worstSeam(loneDoc) > 1,
+    'smooth edits: Alt moves the interior alone, creasing the seams around it');
+
+  // The cage's crease colour reads the same measure: nothing on the smooth edits, the Alt seams on the lone one.
+  const creasesOf = (doc: QuadMeshDoc) => {
+    const { mesh, edgeHandle } = meshFromDoc(doc);
+    return creasedSeams(mesh, quad => quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad] ?? null), meshAdjacency(mesh));
+  };
+  const loneCreases = creasesOf(loneDoc);
+  check(creasesOf(lattice).size === 0 && creasesOf(mirroredDoc).size === 0 && creasesOf(dragged).size === 0
+    && loneCreases.size > 0 && [...loneCreases].every(key => quads[centreQuad].some(v => key.split(',').includes(String(v)))),
+  'crease detection: smooth edits flag no seam; an Alt interior flags only seams of the patch it creased');
+
+  // The selected-edge read-out carries the same seam angle: zero on a smooth seam, the crease on a creased one,
+  // and none on a rim edge (one patch, nothing to compare).
+  const angleOf = (doc: QuadMeshDoc, edge: [number, number]) => {
+    const { mesh, edgeHandle } = meshFromDoc(doc);
+    return measureEdges(mesh, edgeHandle, [edge], { adj: meshAdjacency(mesh),
+      controls: quad => quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad] ?? null) })!.angle;
+  };
+  const [creasedA, creasedB] = [...loneCreases][0].split(',').map(Number);
+  check((angleOf(lattice, [C, C + 1]) ?? 1) < 1e-3 && (angleOf(loneDoc, [creasedA, creasedB]) ?? 0) > 10
+    && angleOf(lattice, [0, 1]) === null,
+  'edge read-out: the seam angle is 0 on a smooth seam, the crease angle on a creased one, and absent on a rim');
+
+  // The read-out keeps the picked seams and re-measures them as the surface changes: crease (C) the corner, and
+  // the same seams now read the kink; smooth (S) it again and they read zero.
+  const pickCtx = meshFromDoc(lattice);
+  const picked = measureEdges(pickCtx.mesh, pickCtx.edgeHandle, [[C, C + 1]], { adj: meshAdjacency(pickCtx.mesh),
+    controls: quad => quadControlPoints(pickCtx.mesh, pickCtx.edgeHandle, quad, null) })!;
+  const remeasure = (doc: QuadMeshDoc) => {
+    const { mesh, edgeHandle } = meshFromDoc(doc);
+    return widestSeamAngle(mesh, quad => quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad] ?? null), picked.seams) ?? -1;
+  };
+  const creasedCorner = structuredClone(lattice);
+  meshCreaseVertices(creasedCorner, [C]);
+  const smoothedAgain = structuredClone(creasedCorner);
+  meshSmoothVertices(smoothedAgain, [C]);
+  check(picked.seams.length === 1 && remeasure(creasedCorner) > 1 && remeasure(smoothedAgain) < 1e-3,
+    'edge read-out: the picked seam re-measures live — crease raises its angle, smooth returns it to zero');
+
+  // Alt corner drag: the corner moves alone; every tangent and interior around it keeps its position.
+  const pointsOf = (doc: QuadMeshDoc) => new Map(meshControlPoints(doc).map(cp => [controlPointKey(cp.id), cp.pos]));
+  const altCorner = structuredClone(lattice), altBefore = pointsOf(altCorner), lift: V3 = [0, 6, 0];
+  const snapshot = captureAround(altCorner, [C]);
+  moveMeshVertices(altCorner, [C], lift);
+  restoreAround(altCorner, snapshot, v => v === C ? lift : undefined);
+  const altAfter = pointsOf(altCorner), centreKey = controlPointKey({ kind: 'vertex', vertex: V(C) });
+  check([...altBefore].every(([key, pos]) => len(sub(altAfter.get(key)!, key === centreKey ? add(pos, lift) : pos)) < 1e-8),
+    'alt edits: an Alt corner drag moves only that corner; every other control point stays put');
+
+  // Alt tangent drag: the dragged tangent moves; its partner and the interiors built on it stay put.
+  const altTangent = structuredClone(lattice), tangentBefore = pointsOf(altTangent);
+  const tangentSnapshot = captureAround(altTangent, [C]);
+  const dragKey = controlPointKey({ kind: 'edge', from: V(C), to: V(C + 1) });
+  setMeshControlPoints(altTangent, [{ id: { kind: 'edge', from: V(C), to: V(C + 1) }, pos: tangentTarget }], { independent: true });
+  restoreAround(altTangent, tangentSnapshot, () => undefined, new Set([controlPointKey({ kind: 'edge', from: C, to: C + 1 })]));
+  const tangentAfter = pointsOf(altTangent);
+  check([...tangentBefore].every(([key, pos]) => len(sub(tangentAfter.get(key)!, key === dragKey ? tangentTarget : pos)) < 1e-8),
+    'alt edits: an Alt tangent drag moves only that tangent; its partner and the interiors stay put');
 }
 
 // ---- 0c. PATCH LOCKS: exact bicubic shape protection across every geometric write path ---------------------
@@ -182,7 +365,7 @@ import { check, failures } from './check';
 
   const lockedShape = JSON.stringify(controls(pair)), lockedCorners = pair.quads[0].map(v => getVertex(pair, v));
   setVertex(pair, 0, [99, 99, 99]);
-  const moved = moveMeshVerticesProportional(pair, [0, 1, 2, 3, 4, 5], [0, 6, 0]);
+  const moved = moveMeshVertices(pair, [0, 1, 2, 3, 4, 5], [0, 6, 0]);
   check(pair.quads[0].every((v, i) => JSON.stringify(getVertex(pair, v)) === JSON.stringify(lockedCorners[i]))
     && moved.vertices.join(',') === '4,5' && getVertex(pair, 4)[1] === 6 && getVertex(pair, 5)[1] === 6,
   'patch lock: direct writes and group moves skip protected corners while adjacent terrain still moves');

@@ -49,6 +49,21 @@ try {
     && JSON.stringify(syncMesh.topology) === JSON.stringify(progressiveMesh.topology),
   'progressive reference tessellation yields between chunks without changing mesh identity or topology');
 
+  // Seam tiers on the reference cage: two flat patches continue smoothly, a third folds up 90 degrees into a wall.
+  const flat = (x: number) => ({
+    Points: Array.from({ length: 16 }, (_, index) => [x + Math.floor(index / 4) * 100, (index % 4) * 100, 0]),
+    SurfaceType: 0, TexturePath: '0012.png',
+  });
+  const wall = {
+    Points: Array.from({ length: 16 }, (_, index) => [600, (index % 4) * 100, Math.floor(index / 4) * 100]),
+    SurfaceType: 0, TexturePath: '0012.png',
+  };
+  const folded = buildReferenceMesh([flat(0), flat(300), wall]);
+  const segs = (a: Float32Array) => a.length / 6;
+  check(segs(folded.cornerSeg) > 0 && segs(folded.cornerSegCrease) > 0
+    && segs(folded.cornerSegCrease) === segs(folded.cornerSeg),
+  'reference cage: the smooth seam stays on the grid and the 90-degree wall seam draws as a crease');
+
   const png = encodePng({ w: 2, h: 2, data: new Uint8Array([
     10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
   ]) });

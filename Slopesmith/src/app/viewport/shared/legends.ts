@@ -3,7 +3,8 @@ import { DEFAULT_SURFACE, SURFACE_STYLE, surfaceStyle, SURFACE_TYPES } from '../
 import {
   SURFACE_AUTHOR_OPTIONS, SURFACE_TYPES as REFERENCE_SURFACE_TYPES,
 } from '../../../core/reference/surface-types';
-import { CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, CAGE_LOCKED_COLOR, CAGE_TEAR_COLOR, FRAME_GLYPH_COLOR,
+import { CREASE_DEGREES } from '../../../core/mesh/creases';
+import { CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, CAGE_CREASE_COLOR, CAGE_LOCKED_COLOR, CAGE_TEAR_COLOR, FRAME_GLYPH_COLOR,
   CAGE_EXTRA3_COLOR, CAGE_EXTRA5_COLOR, CAGE_POINT_COLOR } from '../constants';
 import { BACKFACE_TINT_RGB } from '../mesh/backface-tint';
 import { PROP_DARK_TINT_MIX, PROP_CLAY_COLOR, PROP_SOLID_COLOR, PROP_THROUGH_COLOR,
@@ -41,6 +42,7 @@ export function createLegends(container: HTMLElement) {
     [CAGE_BOUNDARY_COLOR, 'Rim (outer edge)'],
     [CAGE_TEAR_COLOR, 'Tear (bright = exposed · dim = watertight)'],
     [CAGE_LOCKED_COLOR, 'Locked patch edge'],
+    [CAGE_CREASE_COLOR, `Crease (patches meet over ${CREASE_DEGREES}°)`],
     [FRAME_GLYPH_COLOR, 'Patch frame F (with the F overlay on)'],
   ] as [number, string][]).map(([c, label]) => [hex(c), label, 'width:16px;height:3px']);
   // extraordinary poles draw as dots (over the reference cage), so swatch them round, not as line strokes
