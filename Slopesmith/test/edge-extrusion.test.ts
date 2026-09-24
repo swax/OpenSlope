@@ -169,6 +169,40 @@ assert(!pathEdgeExtrusionPlacement(source, plan, [[0, 0, 0], [0, 0, 0]]).ok);
 assert(!pathEdgeExtrusionPlacement(source, plan, [[0, 0, 0], [Infinity, 0, 0]]).ok);
 assert(!pathEdgeExtrusionPlacement(source, { ...plan, segmentLength: 0.001 }, path).ok);
 
+// A path that turns while it climbs keeps the profile in its level frame: a cross-section that starts level
+// (horizontal, across the path) stays level at every station. Parallel transport would roll it on this helix.
+{
+  const helix = (k: number, step: number): V3 => [20 * Math.sin(k * step), 2 * k, 5 + 20 * (1 - Math.cos(k * step))];
+  const level = (ring: { vertices: Record<number, V3> }, a: number, b: number, width: number, what: string) => {
+    const across = sub(ring.vertices[b], ring.vertices[a]);
+    assert(Math.abs(across[1]) < 1e-9, `${what}: the profile stays level (dy ${across[1]})`);
+    assert(Math.abs(len(across) - width) < 1e-9, `${what}: the profile keeps its width`);
+  };
+
+  // Rail path: the source edge 1-3 runs along z; a level lead-in heading +x starts the profile level, then the helix.
+  const spiral: V3[] = [[92, 0, 105], ...Array.from({ length: 16 }, (_, k) => helix(k, 0.4).map((c, i) => c + [100, 0, 100][i]) as V3)];
+  const rail = pathEdgeExtrusionPlacement(source, { ...plan, segmentLength: 4 }, spiral);
+  assert(rail.ok, rail.ok ? '' : rail.error);
+  for (const ring of rail.placement.stations!) level(ring, 1, 3, 10, 'rail helix');
+
+  // Mesh path: a free source edge 0-1 and a free-edge helix chain rising from vertex 1.
+  const free = fixture();
+  free.quads = [];
+  free.vertices = [0, 0, -5, 0, 0, 5, ...Array.from({ length: 12 }, (_, k) => helix(k + 1, 0.4)).flat()];
+  free.freeEdges = [[0, 1], ...Array.from({ length: 12 }, (_, k) => [k + 1, k + 2] as [number, number])];
+  delete free.quadPaint; delete free.quadTex;
+  free.edgeHandles = { '1>2': [2.5, 0, 0] }; // the path leaves the source level, heading +x
+  Object.assign(free, seedMeshIds(0, free.vertices.length / 3, 0));
+  const p = planEdgeExtrusion(free, [[0, 1]]);
+  assert(p.ok, p.ok ? '' : p.error);
+  const climb = edgeChainExtrusionPlacement(free, p.plan, free.freeEdges.slice(1));
+  assert(climb.ok, climb.ok ? '' : climb.error);
+  climb.placement.stations!.forEach((ring, i) => {
+    level(ring, 0, 1, 10, `chain helix station ${i}`);
+    assert.deepEqual(ring.vertices[1], helix(i + 1, 0.4), 'the guide vertex itself carries the profile');
+  });
+}
+
 // Drive the actual staged layer: Pull defaults, settings update preview, mesh picks supply the path, cancel is pure.
 let selection: NamedEdge[] = [[source.vertexIds[1], source.vertexIds[3]]];
 let currentDoc = source;

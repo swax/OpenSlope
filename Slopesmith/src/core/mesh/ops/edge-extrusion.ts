@@ -1,6 +1,7 @@
 import type { QuadMeshDoc, V3 } from '../../doc/types';
 import { appendMeshIds, seedMeshIds } from '../../doc/ids';
-import { add, mul, norm, sub } from '../../math/vec';
+import { add, cross, dot, mul, norm, sub } from '../../math/vec';
+import type { PathFrame } from '../path-frame';
 import { cubicPolyline, patchNormal } from '../../math/bezier';
 import { buildQuadMesh, meshEdgeHandles, quadControlPoints, meshAdjacency } from '../topology';
 import {
@@ -71,8 +72,10 @@ export interface EdgeExtrusionPlacement extends EdgeExtrusionRing {
   twists?: Record<number, [V3, V3, V3, V3]>;
   /** Path sweep: successive moving rings, excluding the source and including the final placement. */
   stations?: EdgeExtrusionRing[];
-  /** Existing mesh path used as one side of the strip. Its vertices/curves are reused, never duplicated. */
-  guide?: { source: number; vertices: number[]; handles: Record<string, V3> };
+  /** Existing mesh path used as one side of the strip. Its vertices/curves are reused, never duplicated.
+   *  `frames` (one per guide vertex) are the local frames the profile was placed in, from which every other
+   *  track's curve is derived so it runs parallel to the guide (sweptTrackHandles). */
+  guide?: { source: number; vertices: number[]; handles: Record<string, V3>; frames?: PathFrame[] };
 }
 
 export type EdgeExtrusionPlanResult = { ok: true; plan: EdgeExtrusionPlan } | { ok: false; error: string };
@@ -170,6 +173,7 @@ function writeCrossHandles(
   doc: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement, rings: Map<number, number[]>,
   segments: number, edgeHandles: Record<string, V3>,
 ) {
+  const turn = placement.guide?.frames ? guideTurnRates(doc, placement.guide) : null;
   for (const edge of plan.edges) for (const source of [edge.from, edge.to]) {
     const ids = rings.get(source)!;
     const point = (segment: number) => ringPoint(doc, placement, source, segment, segments);
@@ -181,6 +185,11 @@ function writeCrossHandles(
         edgeHandles[`${b}>${a}`] = [...placement.guide.handles[`${to}>${from}`]] as V3;
         continue;
       }
+      if (placement.guide && turn) {
+        [edgeHandles[`${a}>${b}`], edgeHandles[`${b}>${a}`]] =
+          sweptTrackHandles(doc, placement.guide, turn, segment, point(segment - 1), point(segment));
+        continue;
+      }
       const delta = sub(point(segment), point(segment - 1));
       edgeHandles[`${a}>${b}`] = placement.stations && segment > 1
         ? mul(sub(point(segment), point(segment - 2)), 1 / 6) : mul(delta, 1 / 3);
@@ -188,6 +197,59 @@ function writeCrossHandles(
         ? mul(sub(point(segment + 1), point(segment - 1)), -1 / 6) : mul(delta, -1 / 3);
     }
   }
+}
+
+/** The two handles of one profile point's track over guide segment `segment`, from the swept surface itself:
+ * the track is T = G + F·c — the guide curve plus the profile offset carried in the turning frame — so its end
+ * tangents are the guide's plus the frame's turn acting on the offset: h_track = h_guide + |h_guide| (Ω × offset),
+ * Ω the frame's turn per metre at that station (guideTurnRates). The track therefore leaves every station
+ * parallel to the guide's direction there, a track on the inside of a bend shortens with it while the outside
+ * lengthens (on a circular guide, exactly the offset circle's handles), and because both segments meeting at a
+ * station share its Ω, the track runs through the station without a kink. */
+function sweptTrackHandles(
+  doc: QuadMeshDoc, guide: NonNullable<EdgeExtrusionPlacement['guide']>, turn: readonly V3[], segment: number,
+  start: V3, end: V3,
+): [V3, V3] {
+  const from = guide.vertices[segment - 1], to = guide.vertices[segment];
+  const h0 = guide.handles[`${from}>${to}`], h1 = guide.handles[`${to}>${from}`];
+  const swing = (h: V3, rate: V3, offset: V3) => mul(cross(rate, offset), Math.hypot(h[0], h[1], h[2]));
+  return [
+    add(h0, swing(h0, turn[segment - 1], sub(start, pointAt(doc, from)))),
+    sub(h1, swing(h1, turn[segment], sub(end, pointAt(doc, to)))),
+  ];
+}
+
+/** The guide frame's turn per metre at each station, as a rotation-rate vector: the guide's own bend there
+ * (G′ × G″ / |G′|³ on each side, exact even where an end segment bends unevenly) plus its spin about the path —
+ * level-frame twist and the points' roll — spread evenly over each segment. A station between two segments takes
+ * the mean of both sides, so every track through it turns at one rate and stays smooth (sweptTrackHandles). */
+function guideTurnRates(doc: QuadMeshDoc, guide: NonNullable<EdgeExtrusionPlacement['guide']>): V3[] {
+  const { vertices, handles, frames } = guide;
+  const sides: V3[][] = vertices.map(() => []);
+  for (let s = 0; s + 1 < vertices.length; s++) {
+    const from = vertices[s], to = vertices[s + 1];
+    const p0 = pointAt(doc, from), p1 = pointAt(doc, to);
+    const h0 = handles[`${from}>${to}`], h1 = handles[`${to}>${from}`];
+    const spin = rotationVector(frames![s], frames![s + 1]), length = Math.hypot(...sub(p1, p0));
+    const rate = (d1: V3, d2: V3, x: V3): V3 => {
+      const speed = Math.hypot(d1[0], d1[1], d1[2]);
+      const bend = speed < 1e-9 ? [0, 0, 0] as V3 : mul(cross(d1, d2), 1 / (speed * speed * speed));
+      return add(bend, mul(x, length < 1e-9 ? 0 : dot(spin, x) / length));
+    };
+    sides[s].push(rate(mul(h0, 3), mul(add(sub(p1, p0), sub(h1, mul(h0, 2))), 6), frames![s].x));
+    sides[s + 1].push(rate(mul(h1, -3), mul(add(sub(p0, p1), sub(h0, mul(h1, 2))), 6), frames![s + 1].x));
+  }
+  return sides.map(rates => mul(rates.reduce(add, [0, 0, 0] as V3), 1 / Math.max(1, rates.length)));
+}
+
+/** The rotation vector (axis × angle) turning frame `a` onto frame `b`. */
+function rotationVector(a: PathFrame, b: PathFrame): V3 {
+  // R = Σ b_k a_kᵀ over the three axes; its skew part is sin θ · axis.
+  const r = (i: number, j: number) => b.x[i] * a.x[j] + b.y[i] * a.y[j] + b.z[i] * a.z[j];
+  const skew: V3 = [(r(2, 1) - r(1, 2)) / 2, (r(0, 2) - r(2, 0)) / 2, (r(1, 0) - r(0, 1)) / 2];
+  const sine = Math.hypot(...skew), cosine = (r(0, 0) + r(1, 1) + r(2, 2) - 1) / 2;
+  const angle = Math.atan2(sine, cosine);
+  return sine < 1e-12 ? [0, 0, 0] : mul(skew, angle / sine);
 }
 
 /** The source patch's outward cross-boundary tangent at each control point of one oriented perimeter edge. */

@@ -52,6 +52,12 @@ export const CAGE_LOCKED_COLOR = 0xff3b30;
  *  blue's own saturation (54%) and lightness (65%) turned to a purple hue (275 deg), so a crease reads as the
  *  same net with a different kind of seam rather than a louder line. */
 export const CAGE_CREASE_COLOR = 0xad74d6;
+/** A free point's local axes (core/mesh/path-frame.ts), X / Y / Z in the transform gizmo's red / green / blue:
+ *  X runs along the path, Y is its up, Z the sideways axis a path extrusion keeps level unless the point rolls. */
+export const FREE_POINT_AXIS_COLORS = [0xff4a4a, 0x4ad04a, 0x4a86ff] as const;
+/** Axis stub length: this share of the point's shortest edge, so stubs never reach a neighbour, capped in metres. */
+export const FREE_POINT_AXIS_SHARE = 0.25;
+export const FREE_POINT_AXIS_MAX_M = 3;
 /** Extraordinary control-net poles: vertices whose interior-seam valence is not the regular 4. Blue marks
  *  valence 3 and purple marks valence 5; both match the normal green vertex dots' saturation + lightness so
  *  topology changes hue without changing visual weight. Authored/reference cages and the legend reuse them. */

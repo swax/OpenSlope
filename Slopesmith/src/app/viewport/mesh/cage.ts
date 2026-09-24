@@ -6,12 +6,14 @@ import { ekey } from '../../../core/mesh/ops';
 import { controlPointKey, meshControlPoints, type MeshControlPoint, type MeshControlPointId } from '../../../core/mesh/control-points';
 import { lockedEdgeSet } from '../../../core/mesh/locks';
 import { creasedSeams } from '../../../core/mesh/creases';
+import { edgePathFrame, isFreePoint, vertexRollOf } from '../../../core/mesh/path-frame';
 import { controlPointIndex, edgeIndices, quadIndices, type NamedEdge, type QuadName } from '../../state/mesh-names';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import type { ReferenceMesh } from '../../../core/reference/terrain';
 import {
   CAGE_BOUNDARY_COLOR, CAGE_CREASE_COLOR, CAGE_EDGE_SEG, CAGE_EXTRA3_COLOR, CAGE_EXTRA5_COLOR, CAGE_INTERIOR_COLOR, CAGE_LOCKED_COLOR,
-  CAGE_POINT_COLOR, CAGE_TEAR_COLOR, CTRL_CAGE_COLOR, HANDLE_DIRS, HANDLE_NUB_PX, SURFACE_POLY_OFFSET,
+  CAGE_POINT_COLOR, CAGE_TEAR_COLOR, CTRL_CAGE_COLOR, FREE_POINT_AXIS_COLORS, FREE_POINT_AXIS_MAX_M, FREE_POINT_AXIS_SHARE,
+  HANDLE_DIRS, HANDLE_NUB_PX, SURFACE_POLY_OFFSET,
 } from '../constants';
 import { addCageLines, addCageLinesBehind, addCagePoints, addCagePointsBehind } from '../shared/overlays';
 import type { Stage } from '../stage';
@@ -290,6 +292,7 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     interiorParts.crease.edges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: creaseGeometry, floatOffset: i * edgeStride, edge }));
     lockedEdges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: lockedGeometry, floatOffset: i * edgeStride, edge }));
     addCagePoints(cageGroup, pg, CAGE_POINT_COLOR, 3.5, ghost);
+    if (doc && eh) addFreePointAxes(doc, corners, adj, eh, ghost);
     // Only explicitly pinned edge / patch cages are batched here. Their full cage gets a normal depth-tested
     // pass plus a faint behind-surface pass; every other floating control point remains absent and unpickable.
     if (subCageOn) {
@@ -331,6 +334,28 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
         addCagePoints(cageGroup, authoredPole5Geometry, CAGE_EXTRA5_COLOR, 3.5, ghost, 12);
       }
     }
+  }
+
+  /** A point on a path carries a frame — its direction and roll, core/mesh/path-frame.ts — that path extrusion
+   *  sweeps a profile in, so every free point shows its local X / Y / Z as short stubs in the gizmo's colours.
+   *  Rebuilt with the cage (drag release), not per drag frame; the gizmo shows the live frame meanwhile. */
+  function addFreePointAxes(doc: QuadMeshDoc, corners: ArrayLike<number>, adj: MeshAdjacency, eh: EdgeHandle, ghost: boolean) {
+    const stubs: number[][] = [[], [], []];
+    const at = (vertex: number): V3 => [corners[vertex * 3], corners[vertex * 3 + 1], corners[vertex * 3 + 2]];
+    for (let vertex = 0; vertex < corners.length / 3; vertex++) {
+      if (mesh.vertexHidden(vertex) || !isFreePoint(adj, vertex)) continue;
+      const frame = edgePathFrame(corners, adj, vertex, { handle: eh, roll: vertexRollOf(doc, vertex), ids: doc.vertexIds });
+      if (!frame) continue;
+      const p = at(vertex);
+      const shortest = Math.min(...adj.neighbors[vertex].map(nb => {
+        const q = at(nb);
+        return Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+      }));
+      const reach = Math.min(FREE_POINT_AXIS_MAX_M, shortest * FREE_POINT_AXIS_SHARE);
+      [frame.x, frame.y, frame.z].forEach((axis, i) =>
+        stubs[i].push(...p, p[0] + axis[0] * reach, p[1] + axis[1] * reach, p[2] + axis[2] * reach));
+    }
+    stubs.forEach((segments, i) => { if (segments.length) addCageLines(cageGroup, segments, FREE_POINT_AXIS_COLORS[i], 0.95, ghost); });
   }
 
   function filteredSubCage<Id>(

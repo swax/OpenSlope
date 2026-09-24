@@ -1,5 +1,8 @@
 import type { QuadMeshDoc, V3 } from '../../doc/types';
-import { add, cross, dot, len, lerp, mul, norm, rotateAroundAxis, sub } from '../../math/vec';
+import { add, dot, len, lerp, mul, norm, sub } from '../../math/vec';
+import {
+  fromPathFrame, levelPathFrame, pathRunsForward, rolledPathFrame, toPathFrame, vertexRollOf, type PathFrame,
+} from '../path-frame';
 import { readVertex } from '../primitives';
 import { buildQuadMesh, meshAdjacency, meshEdgeHandles } from '../topology';
 import { ekey } from './contract';
@@ -55,28 +58,32 @@ export function edgeChainExtrusionPlacement(
     return len(sum) > 1e-8 ? norm(sum)
       : norm(sub(readVertex(doc.vertices, chain[Math.min(i + 1, chain.length - 1)]), readVertex(doc.vertices, chain[Math.max(0, i - 1)])));
   };
+  // Each guide vertex's own roll banks the profile there (QuadMeshDoc.vertexRoll), measured from the root's. The
+  // chain runs root→end; a roll is authored against the lower→higher-id direction (pathRunsForward), so it
+  // reads negated wherever the chain runs the other way.
+  const roll = (i: number) => {
+    const back = chain[Math.max(0, i - 1)], ahead = chain[Math.min(chain.length - 1, i + 1)];
+    return (pathRunsForward(doc.vertexIds, back, ahead) ? 1 : -1) * vertexRollOf(doc, chain[i]);
+  };
   const origin = readVertex(doc.vertices, root);
-  let offsets = Object.fromEntries(plan.vertices.map(vertex => [vertex, sub(readVertex(doc.vertices, vertex), origin)]));
-  let handles: Record<string, V3> = Object.fromEntries(plan.movingHandles.map(([a, b]) => [`${a}>${b}`, plan.pinnedHandles[`${a}>${b}`]]));
-  let previous = tangent(0);
-  const stations: EdgeExtrusionRing[] = [];
+  const profile = localProfile(doc, plan, origin, tangent(0), roll(0));
+  let previous = tangent(0), level = profile.level;
+  const stations: EdgeExtrusionRing[] = [], frames = [profile.frame];
   for (let i = 1; i < chain.length; i++) {
-    const next = tangent(i), axis = cross(previous, next), cosine = Math.max(-1, Math.min(1, dot(previous, next)));
-    if (cosine < -0.999999) return { ok: false, error: 'The path doubles back too sharply. Smooth that turn before extruding.' };
-    if (len(axis) > 1e-8) {
-      const unit = norm(axis), angle = Math.acos(cosine);
-      offsets = Object.fromEntries(Object.entries(offsets).map(([vertex, offset]) => [vertex, rotateAroundAxis(offset, unit, angle)]));
-      handles = Object.fromEntries(Object.entries(handles).map(([edge, value]) => [edge, rotateAroundAxis(value, unit, angle)]));
-    }
-    const at = readVertex(doc.vertices, chain[i]);
-    stations.push({ vertices: Object.fromEntries(plan.vertices.map(vertex => [vertex, add(at, offsets[vertex])])), handles: { ...handles } });
+    const next = tangent(i);
+    if (dot(previous, next) < -0.999999) return { ok: false, error: 'The path doubles back too sharply. Smooth that turn before extruding.' };
+    level = levelPathFrame(next, level.y) ?? level;
+    const frame = rolledPathFrame(level, roll(i));
+    stations.push(profile.at(readVertex(doc.vertices, chain[i]), frame));
+    frames.push(frame);
     previous = next;
   }
-  return { ok: true, placement: { ...stations[stations.length - 1], stations, guide: { source: root, vertices: chain, handles: guideHandles } } };
+  return { ok: true, placement: { ...stations[stations.length - 1], stations,
+    guide: { source: root, vertices: chain, handles: guideHandles, frames } } };
 }
 
-/** Sweep a captured edge along a sampled path. Align the path's start with the source centroid, retain the
- * source's initial orientation, and parallel-transport its cross-section around bends without introducing roll.
+/** Sweep a captured edge along a sampled path. Align the path's start with the source centroid and carry its
+ * cross-section in the path's level frame (localProfile), so it keeps its sideways axis horizontal around bends.
  * Arc-length stations obey the chosen segment length; extra stations resolve changes of direction. */
 export function pathEdgeExtrusionPlacement(
   doc: QuadMeshDoc, plan: EdgeExtrusionPlan, path: readonly V3[],
@@ -113,25 +120,35 @@ export function pathEdgeExtrusionPlacement(
   }
   const tangent = (i: number) => norm(sub(sampled[Math.min(segments, i + 1)], sampled[Math.max(0, i - 1)]));
   let previousTangent = tangent(0);
-  let offsets: Record<number, V3> = {};
-  let handles: Record<string, V3> = Object.fromEntries(plan.movingHandles.map(([a, b]) => [`${a}>${b}`, plan.pinnedHandles[`${a}>${b}`]]));
   const center = mul(plan.vertices.reduce<V3>((sum, vertex) => add(sum, readVertex(doc.vertices, vertex)), [0, 0, 0]), 1 / plan.vertices.length);
-  for (const vertex of plan.vertices) offsets[vertex] = sub(readVertex(doc.vertices, vertex), center);
+  const profile = localProfile(doc, plan, center, previousTangent);
+  let frame = profile.level;
   const stations: EdgeExtrusionRing[] = [];
   for (let i = 1; i <= segments; i++) {
-    const nextTangent = tangent(i), axis = cross(previousTangent, nextTangent);
-    const cosine = Math.max(-1, Math.min(1, dot(previousTangent, nextTangent)));
-    if (cosine < -0.999999)
+    const nextTangent = tangent(i);
+    if (dot(previousTangent, nextTangent) < -0.999999)
       return { ok: false, error: 'The path doubles back too sharply. Smooth that turn before extruding.' };
-    if (len(axis) > 1e-8) {
-      const unitAxis = norm(axis), angle = Math.acos(cosine);
-      offsets = Object.fromEntries(Object.entries(offsets).map(([vertex, offset]) => [vertex, rotateAroundAxis(offset, unitAxis, angle)]));
-      handles = Object.fromEntries(Object.entries(handles).map(([edge, handle]) => [edge, rotateAroundAxis(handle, unitAxis, angle)]));
-    }
-    const at = add(center, sub(sampled[i], sampled[0]));
-    const vertices = Object.fromEntries(plan.vertices.map(vertex => [vertex, add(at, offsets[vertex])]));
-    stations.push({ vertices, handles: { ...handles } });
+    frame = levelPathFrame(nextTangent, frame.y) ?? frame;
+    stations.push(profile.at(add(center, sub(sampled[i], sampled[0])), frame));
     previousTangent = nextTangent;
   }
   return { ok: true, placement: { ...stations[stations.length - 1], stations } };
+}
+
+/** The captured profile — its vertices about `origin` and its moving handles — held in the path's local frame at
+ * the start (level, turned by `roll`), so each station rebuilds it in its own frame (levelPathFrame): the profile
+ * keeps its relation to the path's local axes, its sideways axis staying level through turns that climb or
+ * descend unless a station's roll banks it. `level` is the unrolled start frame a sweep continues from. */
+function localProfile(doc: QuadMeshDoc, plan: EdgeExtrusionPlan, origin: V3, startTangent: V3, roll = 0) {
+  const level = levelPathFrame(startTangent) ?? { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+  const frame = rolledPathFrame(level, roll);
+  const offsets = plan.vertices.map(vertex => [vertex, toPathFrame(frame, sub(readVertex(doc.vertices, vertex), origin))] as const);
+  const handles = plan.movingHandles.map(([a, b]) => [`${a}>${b}`, toPathFrame(frame, plan.pinnedHandles[`${a}>${b}`])] as const);
+  return {
+    level, frame,
+    at: (point: V3, station: PathFrame): EdgeExtrusionRing => ({
+      vertices: Object.fromEntries(offsets.map(([vertex, local]) => [vertex, add(point, fromPathFrame(station, local))])),
+      handles: Object.fromEntries(handles.map(([edge, local]) => [edge, fromPathFrame(station, local)])),
+    }),
+  };
 }

@@ -244,6 +244,13 @@ export interface QuadMeshDoc extends MountainMeta {
   /** Semantic label memberships for terrain patches (quad index → label ids). Serialized by stable quad id,
    *  and remapped/inherited by the shared topology-operation contract like paint and texture channels. */
   quadLabels?: Record<number, string[]>;
+  /** Per-point roll, radians, about the path through the point: turns its level local frame (x along the path,
+   *  y as near world-up as x permits — core/mesh/path-frame.ts) about x. Rotating a free point writes it; path
+   *  extrusion carries the profile in the rolled frame, so a rolled point banks the sweep there. Absent ⇒ 0.
+   *  Keyed by STABLE VERTEX ID in memory as well as on disk, unlike the index-keyed channels above: a roll only
+   *  matters on free paths, so no topology op has to carry it, and an id cannot land on the wrong vertex after a
+   *  renumbering. An id this document no longer has is inert. */
+  vertexRoll?: Record<string, number>;
   /** Evaluation mode of an authored MODEL's materialized edit doc: every edge handle derives as chord/3
    *  and the stored curvature channels (edgeHandles / quadTwist) are ignored, so the bicubic quilt
    *  degree-elevates each flat quad EXACTLY — the surface is the polygons. Never set on a mountain. */

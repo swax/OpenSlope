@@ -3,6 +3,7 @@ import type { MeshBVH } from 'three-mesh-bvh';
 import type { PlacedProp, QuadMeshDoc, V3 } from '../../../core/doc/types';
 import { buildQuadMesh, meshAdjacency, meshEdgeHandles, vertexAxes, vertexFrame, type EdgeHandle, type MeshAdjacency } from '../../../core/mesh/topology';
 import { planCellSlide } from '../../../core/mesh/slide';
+import { edgePathFrame, isFreePoint, pathRollOf, vertexRollOf } from '../../../core/mesh/path-frame';
 import { mul } from '../../../core/math/vec';
 import { controlPointKey, type MeshControlPoint, type MeshControlPointId } from '../../../core/mesh/control-points';
 import type { PreviewData } from '../../../core/mesh/tessellation';
@@ -22,35 +23,14 @@ export function resolveGizmoFrame(frame: GizmoFrame, forceWorld: boolean): Gizmo
 
 export type LocalFrame = { tu: THREE.Vector3; tv: THREE.Vector3; n: THREE.Vector3 };
 
-/** A stable slope-free frame for a vertex connected only by free edges. Local X follows the longest chord
- *  through its edge neighbours; local Y stays as close to world-up as that tangent permits. Vertex-id ordering
- *  gives both ends of one free edge the same X direction, so a selected edge's averaged frame cannot cancel. */
-export function edgeConnectedFrame(pos: number[], adj: MeshAdjacency, id: number): LocalFrame | null {
-  const point = (index: number) => new THREE.Vector3(pos[index * 3], pos[index * 3 + 1], pos[index * 3 + 2]);
-  const neighbors = (adj.neighbors[id] ?? []).filter(index => index >= 0 && index * 3 + 2 < pos.length);
-  if (!neighbors.length) return null;
-
-  let a = id, b = neighbors[0], best = -1;
-  if (neighbors.length > 1) {
-    for (let i = 0; i < neighbors.length - 1; i++) for (let j = i + 1; j < neighbors.length; j++) {
-      const d = point(neighbors[i]).distanceToSquared(point(neighbors[j]));
-      if (d > best) { best = d; a = neighbors[i]; b = neighbors[j]; }
-    }
-  }
-  if (a > b) [a, b] = [b, a];
-  const tu = point(b).sub(point(a));
-  if (tu.lengthSq() < 1e-10) return null;
-  tu.normalize();
-
-  const n = new THREE.Vector3(0, 1, 0).addScaledVector(tu, -tu.y);
-  if (n.lengthSq() < 1e-10) {
-    const reference = Math.abs(tu.x) <= Math.abs(tu.z)
-      ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
-    n.copy(reference).addScaledVector(tu, -reference.dot(tu));
-  }
-  n.normalize();
-  const tv = new THREE.Vector3().crossVectors(tu, n).normalize();
-  return { tu, tv, n };
+/** A stable slope-free frame for a vertex connected only by free edges: its path frame (core edgePathFrame —
+ *  X along the path, Y as near world-up as X permits, turned by the point's roll), as the gizmo's LocalFrame. */
+export function edgeConnectedFrame(pos: number[], adj: MeshAdjacency, id: number,
+  options: { handle?: EdgeHandle; roll?: number; ids?: readonly string[] } = {}): LocalFrame | null {
+  const frame = edgePathFrame(pos, adj, id, options);
+  if (!frame) return null;
+  const v = (c: V3) => new THREE.Vector3(c[0], c[1], c[2]);
+  return { tu: v(frame.x), tv: v(frame.z), n: v(frame.y) };
 }
 
 // The Surface-mode slide's frozen drag-start net (`SlideExact`) and pure planner live in core/mesh/slide-gesture.ts —
@@ -148,17 +128,14 @@ export function createTransformLayer(
     members: { vertex: VertexName; pos: THREE.Vector3 }[];
     edgeHandles: { from: VertexName; to: VertexName; offset: THREE.Vector3 }[];
     quadTwist: { quad: QuadName; offsets: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3] }[];
+    /** Each free point's drag-start local X (path) and Y, scene space: the rotated pair is read back as a roll. */
+    frames: { vertex: VertexName; x: THREE.Vector3; y: THREE.Vector3 }[];
   };
   type FrozenControlPoint = { id: MeshControlPointId; pos: THREE.Vector3 };
   type FrozenProp = { index: number; pos: THREE.Vector3; rot: THREE.Quaternion };
   // Rotation always evaluates the drag-start snapshot, so repeated objectChange events never accumulate drift.
   // Scene-root positions carry the editor's Z flip; converting back to authored data negates Z once at the edge.
-  let rotationDrag: {
-    kind: 'corners'; anchor: THREE.Quaternion; pivot: THREE.Vector3;
-    members: { vertex: VertexName; pos: THREE.Vector3 }[];
-    edgeHandles: { from: VertexName; to: VertexName; offset: THREE.Vector3 }[];
-    quadTwist: { quad: QuadName; offsets: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3] }[];
-  } | {
+  let rotationDrag: ({ kind: 'corners'; anchor: THREE.Quaternion; pivot: THREE.Vector3 } & FrozenCorners) | {
     kind: 'controlpoints'; anchor: THREE.Quaternion; pivot: THREE.Vector3;
     members: { id: MeshControlPointId; pos: THREE.Vector3 }[];
   } | {
@@ -171,12 +148,8 @@ export function createTransformLayer(
     props: FrozenProp[];
   } | null = null;
   // Scale mirrors rotation's frozen-snapshot contract, but reads the anchor's live scale instead of quaternion.
-  let scaleDrag: {
-    kind: 'corners'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3;
-    members: { vertex: VertexName; pos: THREE.Vector3 }[];
-    edgeHandles: { from: VertexName; to: VertexName; offset: THREE.Vector3 }[];
-    quadTwist: { quad: QuadName; offsets: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3] }[];
-  } | {
+  let scaleDrag: ({ kind: 'corners'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3 }
+    & FrozenCorners) | {
     kind: 'controlpoints'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3;
     members: { id: MeshControlPointId; pos: THREE.Vector3 }[];
   } | {
@@ -234,10 +207,12 @@ export function createTransformLayer(
     applyGizmoFrame();
   }
 
-  /** Rotation applies to geometry with an extent (two or more movable mesh/control points) and prop poses. */
+  /** Rotation applies to geometry with an extent (two or more movable mesh/control points), prop poses, and a
+   *  lone free point, whose own frame (its path direction and roll) is what it turns. */
   function rotationActive(): boolean {
     if (gizmoMode !== 'rotate') return false;
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
+    if (stage.gizmoKind === 'corner') return selectedFreePoint() !== null;
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
     if (stage.gizmoKind === 'controlpoints') return sel.controlPointSel().length > 1;
     if (stage.gizmoKind === 'editmixed') {
@@ -348,8 +323,10 @@ export function createTransformLayer(
    * frozen here would then land on a different corner, which is exactly the silent kind of wrong.
    */
   function freezeCorners(mixed = false): FrozenCorners | null {
-    const net = mesh.net(), doc = mesh.meshDoc(), groupIdx = sel.cornerGroupIdx();
-    if ((!mixed && stage.gizmoKind !== 'corners') || !net || !doc || groupIdx.length < (mixed ? 1 : 2)) return null;
+    const net = mesh.net(), doc = mesh.meshDoc(), single = !mixed ? selectedFreePoint() : null;
+    const groupIdx = single !== null ? [single] : sel.cornerGroupIdx();
+    if ((!mixed && single === null && stage.gizmoKind !== 'corners') || !net || !doc
+      || groupIdx.length < (mixed || single !== null ? 1 : 2)) return null;
     const selected = new Set(groupIdx);
     const members = groupIdx.flatMap(index => {
       const vertex = doc.vertexIds[index];
@@ -376,7 +353,12 @@ export function createTransformLayer(
         [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
       return [{ quad: name, offsets: vectors }];
     });
-    return { members, edgeHandles, quadTwist };
+    const frames = groupIdx.flatMap(index => {
+      const frame = freePointFrame(index), vertex = doc.vertexIds[index];
+      return frame && vertex !== undefined
+        ? [{ vertex, x: dataToScene([frame.tu.x, frame.tu.y, frame.tu.z]), y: dataToScene([frame.n.x, frame.n.y, frame.n.z]) }] : [];
+    });
+    return { members, edgeHandles, quadTwist, frames };
   }
 
   function freezeControlPoints(): FrozenControlPoint[] {
@@ -459,6 +441,10 @@ export function createTransformLayer(
       quadTwist: corners.quadTwist.map(twist => ({
         quad: twist.quad,
         offsets: twist.offsets.map(rotatedVector) as [V3, V3, V3, V3],
+      })),
+      // The handles above carry the point's path direction round; what is left of its frame is a roll.
+      vertexRoll: corners.frames.map(frame => ({
+        vertex: frame.vertex, roll: pathRollOf(rotatedVector(frame.x), rotatedVector(frame.y)),
       })),
     });
     if (drag.kind === 'corners') {
@@ -886,13 +872,32 @@ export function createTransformLayer(
   function cornerFrame(index: number, edgeFallback = false): LocalFrame | null {
     const net = mesh.net();
     if (!net) return null;
+    if (edgeFallback && isFreePoint(net.adj, index)) return freePointFrame(index);
     const f = vertexFrame(net.positions, net.adj, index);
     const tu = new THREE.Vector3(f.tu[0], f.tu[1], f.tu[2]);
     const tv = new THREE.Vector3(f.tv[0], f.tv[1], f.tv[2]);
     const n = new THREE.Vector3(f.n[0], f.n[1], f.n[2]);
-    if (tu.lengthSq() < 1e-10 || tv.lengthSq() < 1e-10 || n.lengthSq() < 1e-10)
-      return edgeFallback ? edgeConnectedFrame(net.positions, net.adj, index) : null;
+    if (tu.lengthSq() < 1e-10 || tv.lengthSq() < 1e-10 || n.lengthSq() < 1e-10) {
+      const doc = mesh.meshDoc();
+      return edgeFallback ? edgeConnectedFrame(net.positions, net.adj, index, {
+        handle: mesh.edgeHandle() ?? undefined, roll: doc ? vertexRollOf(doc, index) : 0, ids: doc?.vertexIds,
+      }) : null;
+    }
     return { tu: tu.normalize(), tv: tv.normalize(), n }; // n already unit from vertexFrame
+  }
+
+  /** A free point's rolled path frame (edgeConnectedFrame), or null when `index` is not a free point. */
+  function freePointFrame(index: number): LocalFrame | null {
+    const net = mesh.net(), doc = mesh.meshDoc();
+    if (!net || !doc || !isFreePoint(net.adj, index)) return null;
+    return edgeConnectedFrame(net.positions, net.adj, index,
+      { handle: mesh.edgeHandle() ?? undefined, roll: vertexRollOf(doc, index), ids: doc.vertexIds });
+  }
+
+  /** The single selected corner when it is a free point — the one lone point Rotate applies to. */
+  function selectedFreePoint(): number | null {
+    const corner = stage.gizmoKind === 'corner' ? sel.selectedCorner() : null, net = mesh.net();
+    return corner !== null && net && isFreePoint(net.adj, corner) ? corner : null;
   }
 
   /** The averaged surface frame over the multi-corner selection (its centroid gizmo), from the members' own
