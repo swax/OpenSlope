@@ -78,6 +78,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         ]
         : [
           ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),
+          ['Alt drag', 'move alone (allows creases)'],
           ['Ctrl+A', 'select connected'],
           ['H', 'hide selection'],
           ...((store.edgeSel.length || store.cellSel.length) && canEditCurvature()

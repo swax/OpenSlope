@@ -1,8 +1,9 @@
 import type { V3 } from '../doc/types';
 import { add, cross, len, sub } from '../math/vec';
 import { cubicPolyline, patchPoint } from '../math/bezier';
-import type { EdgeHandle, QuadMesh } from './topology';
-import { readVertex } from './primitives';
+import type { EdgeHandle, MeshAdjacency, QuadMesh } from './topology';
+import { readVertex, undirectedEdgeKey } from './primitives';
+import { seamCreaseDegrees, type PatchControls } from './creases';
 
 /**
  * Metric read-outs for a control-net selection — the true surface measurements the Edit toolbox shows so a
@@ -98,6 +99,27 @@ export interface EdgeMeasure {
   count: number;
   /** Total curved length over every selected edge (a single edge = its own length). */
   total: number;
+  /** How sharply the two patches meet along the edge, in degrees (core/mesh/creases.ts) — the widest across a
+   *  multi-selection. Null when no selected edge is a seam between exactly two patches (a rim, a free edge). */
+  angle: number | null;
+  /** The selected edges that are two-patch seams, so a read-out can re-measure `angle` as the surface changes. */
+  seams: Seam[];
+  /** Re-measure `angle` against the live surface (supplied by a host whose surface is editable); a read-out
+   *  polls it so the value follows smooth / crease / drags without the selection being re-picked. */
+  liveAngle?: () => number | null;
+}
+
+/** An edge a–b and the two patches either side of it. */
+export type Seam = { a: number; b: number; quads: [number, number] };
+
+/** The widest seam angle over `seams`, or null when there are none. */
+export function widestSeamAngle(mesh: QuadMesh, controls: PatchControls, seams: readonly Seam[]): number | null {
+  let angle: number | null = null;
+  for (const seam of seams) {
+    if (!mesh.quads[seam.quads[0]] || !mesh.quads[seam.quads[1]]) continue; // topology moved on under the pick
+    angle = Math.max(angle ?? 0, seamCreaseDegrees(mesh, controls, seam.a, seam.b, seam.quads));
+  }
+  return angle;
 }
 
 export interface CellMeasure {
@@ -117,12 +139,26 @@ export interface CellMeasure {
  *  the authored net or the read-only reference. */
 export type SelectionMeasure = EdgeMeasure | CellMeasure;
 
-/** Fold an edge selection into its measure (total curved length + count), or null when empty. */
-export function measureEdges(mesh: QuadMesh, eh: EdgeHandle, edges: readonly [number, number][]): EdgeMeasure | null {
+/** Fold an edge selection into its measure (total curved length + count + seam angle), or null when empty.
+ *  `seams` gives the surface's adjacency and a patch's sixteen control points (as for measureCells), so the seam
+ *  angle can compare the two patches either side of each edge. The adjacency is the caller's already-derived one:
+ *  a selection read-out must not rebuild the whole mountain's topology. Without it (a caller after length
+ *  alone) the angle is null. */
+export function measureEdges(mesh: QuadMesh, eh: EdgeHandle, edges: readonly [number, number][],
+  seamSource?: { adj: MeshAdjacency; controls: PatchControls }): EdgeMeasure | null {
   if (!edges.length) return null;
   let total = 0;
   for (const [a, b] of edges) total += edgeLength(mesh, eh, a, b);
-  return { kind: 'edge', count: edges.length, total };
+  const seams: Seam[] = [];
+  if (seamSource) {
+    const { adj } = seamSource;
+    for (const [a, b] of edges) {
+      const quads = adj.edgeQuads.get(undirectedEdgeKey(a, b));
+      if (quads?.length === 2) seams.push({ a, b, quads: [quads[0], quads[1]] });
+    }
+  }
+  return { kind: 'edge', count: edges.length, total, seams,
+    angle: seamSource ? widestSeamAngle(mesh, seamSource.controls, seams) : null };
 }
 
 /**

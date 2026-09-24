@@ -19,8 +19,8 @@ import { applySlidePlan, type SlidePlan } from '../../core/mesh/slide';
 import { resolveEdgeSelection, resolveVertexSelection, resolveCellSelection, type EdgeSelectMode } from '../../core/mesh/selection';
 import { getVertex, setVertex, quadVerts } from '../../core/doc/doc-edit';
 import {
-  controlPointKey, meshControlPoints, moveMeshControlPoints, moveMeshVerticesProportional, setMeshControlPoints,
-  type MeshControlPointId,
+  alignCornerTwists, alignOppositeTangent, captureAround, controlPointKey, meshControlPoints, moveMeshVertices,
+  restoreAround, setMeshControlPoints, type EditDirty, type MeshControlPointId, type MeshControlPointTarget,
 } from '../../core/mesh/control-points';
 import {
   controlPointIsLocked, edgeIsLocked, lockedEdgeSet, lockedVertexSet, quadIsLocked, setQuadsLocked,
@@ -560,9 +560,84 @@ export function createEditSession(deps: EditSessionDeps) {
     vertices?: readonly number[];
     edges?: readonly [number, number][];
     quads?: readonly number[];
-  }) {
+  }, dirty?: EditDirty) {
+    if (dirty && (dirty.edges.length || dirty.quads.length)) {
+      const edges = new Map([...change.edges ?? [], ...dirty.edges].map(edge => [ekey(edge[0], edge[1]), edge] as const));
+      change = { ...change, edges: [...edges.values()], quads: [...new Set([...change.quads ?? [], ...dirty.quads])] };
+    }
     if (view().previewMeshEdit(mdoc(), change)) scheduleCommit();
     else scheduleRebuild();
+  }
+
+  /** Alt: a drag moves exactly what it grabbed and pins every other control point, creases allowed. Without
+   *  it, every drag keeps the surface smooth by carrying the points it depends on, shown or not. */
+  const independent = () => !!view().independentDrag;
+
+  /** Run one drag frame's writes. Under Alt, every tangent and interior around `around` that the edit did not
+   *  place itself (`placed`, controlPointKey over live indices) is pinned back to where it was; `moved` gives
+   *  each corner's displacement so a curve or patch moved whole still carries its own points. */
+  function editFrame(around: readonly number[], edit: (dirty: EditDirty) => void,
+    moved: (vertex: number) => V3 | undefined, placed: ReadonlySet<string> = new Set()): EditDirty {
+    const dirty: EditDirty = { edges: [], quads: [] };
+    const snapshot = independent() ? captureAround(mdoc(), around) : null;
+    edit(dirty);
+    if (snapshot) {
+      const kept = restoreAround(mdoc(), snapshot, moved, placed);
+      dirty.edges.push(...kept.edges); dirty.quads.push(...kept.quads);
+    }
+    return dirty;
+  }
+
+  /** Place control points at absolute targets in one drag frame. `alsoMove` runs first inside the same frame
+   *  (a mixed selection's corner move) and names the corners it moves and their displacement. */
+  function placeControlPoints(targets: readonly MeshControlPointTarget[],
+    alsoMove?: { vertices: readonly number[]; delta: V3; run: () => void }) {
+    const doc = mdoc();
+    const around = [...alsoMove?.vertices ?? []], moves = new Map<number, V3>(), placed = new Set<string>();
+    for (const vertex of alsoMove?.vertices ?? []) moves.set(vertex, alsoMove!.delta);
+    for (const t of targets) {
+      const id = controlPointIndex(doc, t.id);
+      if (!id) continue;
+      placed.add(controlPointKey(id));
+      if (id.kind === 'vertex') {
+        const p = getVertex(doc, id.vertex);
+        moves.set(id.vertex, [t.pos[0] - p[0], t.pos[1] - p[1], t.pos[2] - p[2]]);
+        around.push(id.vertex);
+      } else if (id.kind === 'edge') around.push(id.from);
+    }
+    let count = 0;
+    const dirty = editFrame(around, frame => {
+      alsoMove?.run();
+      count = setMeshControlPoints(doc, targets, { independent: independent(), dirty: frame });
+    }, vertex => moves.get(vertex), placed);
+    // The pin may have re-set tangents under a placed interior; its absolute target is exact, so place it again.
+    const interiors = targets.filter(t => t.id.kind === 'twist');
+    if (independent() && interiors.length) setMeshControlPoints(doc, interiors, { independent: true });
+    return { count, dirty };
+  }
+
+  /** Drag one directed tangent: its opposite partner swings into line (smooth) unless Alt. */
+  function moveTangent(from: number, to: number, pos: V3) {
+    const doc = mdoc();
+    if (edgeIsLocked(doc, from, to)) return;
+    const dirty = editFrame([from], frame => {
+      const base = getVertex(doc, from), previous = meshFromDoc(doc).edgeHandle(from, to);
+      meshSetHandle(doc, from, to, [pos[0] - base[0], pos[1] - base[1], pos[2] - base[2]]);
+      if (independent() || doc.linearCage) return;
+      const partner = alignOppositeTangent(doc, from, to, previous,
+        meshAdjacency(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges)));
+      if (partner) frame.edges.push(partner);
+    }, () => undefined, new Set([controlPointKey<number>({ kind: 'edge', from, to })]));
+    previewMeshChange({ edges: [[from, to]] }, dirty);
+  }
+
+  /** Move corners in one drag frame: smooth by default, alone under Alt. */
+  function moveCorners(vertices: readonly number[], delta: V3) {
+    let change: ReturnType<typeof moveMeshVertices> = { vertices: [], edges: [], quads: [] };
+    const moving = new Set(vertices);
+    const dirty = editFrame(vertices, () => { change = moveMeshVertices(mdoc(), vertices, delta); },
+      vertex => moving.has(vertex) ? delta : undefined);
+    return { change, dirty };
   }
 
   function setGizmoMode(mode: 'move' | 'rotate' | 'scale', refresh = false) {
@@ -1501,15 +1576,20 @@ export function createEditSession(deps: EditSessionDeps) {
     onRangeSelectCorner(index) { if (store.bridgeRails === null && !crossFamilyModifier('corner')) selectCornerMulti(index, 'range'); },
     onToggleCorner(index) { if (store.bridgeRails === null) selectCornerMulti(index, 'toggle'); },
     onMoveCorners(delta) {
-      const change = moveMeshVerticesProportional(mdoc(), editMoveSet(), delta);
-      previewMeshChange(change);
+      const { change, dirty } = moveCorners(editMoveSet(), delta);
+      previewMeshChange(change, dirty);
       if (store.regionSel.length) view().setRegionMarks(selectedVertexIndices().map(i => getVertex(mdoc(), i)));
     },
     onMoveControlPoints(delta) {
       const movable = movableControlPoints(store.controlSel);
       if (!movable.length) return;
-      moveMeshControlPoints(mdoc(), movable, delta);
-      previewMeshChange(controlPointChange(movable));
+      const live = new Map(meshControlPoints(mdoc()).map(point => [controlPointKey(point.id), point.pos]));
+      const targets = movable.flatMap(id => {
+        const pos = live.get(controlPointKey(id));
+        return pos ? [{ id, pos: [pos[0] + delta[0], pos[1] + delta[1], pos[2] + delta[2]] as V3 }] : [];
+      });
+      const { dirty } = placeControlPoints(targets);
+      previewMeshChange(controlPointChange(movable), dirty);
     },
     onMoveMixedEditSelection(delta) {
       if (!mixedEditSelection()) return;
@@ -1522,17 +1602,19 @@ export function createEditSession(deps: EditSessionDeps) {
         const pos = live.get(controlPointKey(id));
         return pos ? [{ id, pos: [pos[0] + delta[0], pos[1] + delta[1], pos[2] + delta[2]] as V3 }] : [];
       });
-      const proportional = moveMeshVerticesProportional(doc, mixedEditMoveVertices(), delta);
-      const movedFloating = setMeshControlPoints(doc, targets);
-      if (proportional.vertices.length || movedFloating) {
+      let corners: ReturnType<typeof moveMeshVertices> = { vertices: [], edges: [], quads: [] };
+      const vertices = mixedEditMoveVertices();
+      const { count: movedFloating, dirty } = placeControlPoints(targets,
+        { vertices, delta, run: () => { corners = moveMeshVertices(doc, vertices, delta); } });
+      if (corners.vertices.length || movedFloating) {
         const direct = movedFloating ? controlPointChange(floating) : { vertices: [], edges: [], quads: [] };
-        const edges = new Map([...proportional.edges, ...direct.edges]
+        const edges = new Map([...corners.edges, ...direct.edges]
           .map(edge => [ekey(edge[0], edge[1]), edge] as const));
         previewMeshChange({
-          vertices: [...new Set([...proportional.vertices, ...direct.vertices])],
+          vertices: [...new Set([...corners.vertices, ...direct.vertices])],
           edges: [...edges.values()],
-          quads: [...new Set([...proportional.quads, ...direct.quads])],
-        });
+          quads: [...new Set([...corners.quads, ...direct.quads])],
+        }, dirty);
       }
       // Vertex-only point marquees draw their orange marks through setCornerGroup rather than the live
       // control-point cache. Refresh those marks explicitly so they follow the combined anchor every frame.
@@ -1553,7 +1635,7 @@ export function createEditSession(deps: EditSessionDeps) {
       const rigid = writeRigidCornerUpdate(update.corners);
       const movable = new Set(movableControlPoints(store.controlSel).map(controlPointKey));
       const controlPoints = update.controlPoints.filter(target => movable.has(controlPointKey(target.id)));
-      const movedControlPoints = setMeshControlPoints(doc, controlPoints);
+      const { count: movedControlPoints, dirty } = placeControlPoints(controlPoints);
       const direct = movedControlPoints
         ? controlPointChange(controlPoints.map(target => target.id)) : { vertices: [], edges: [], quads: [] };
       if (rigid.change.vertices.length || rigid.change.edges.length || rigid.change.quads.length || movedControlPoints) {
@@ -1563,7 +1645,7 @@ export function createEditSession(deps: EditSessionDeps) {
           vertices: [...new Set([...rigid.change.vertices, ...direct.vertices])],
           edges: [...edges.values()],
           quads: [...new Set([...rigid.change.quads, ...direct.quads])],
-        });
+        }, dirty);
       }
       if (store.regionSel.length && !store.controlSel.some(point => point.kind !== 'vertex'))
         view().setRegionMarks(selectedVertexIndices().map(vertex => getVertex(doc, vertex)));
@@ -1583,15 +1665,15 @@ export function createEditSession(deps: EditSessionDeps) {
       const movable = new Set(movableControlPoints(store.controlSel).map(controlPointKey));
       const updates = targets.filter(target => movable.has(controlPointKey(target.id)));
       if (!updates.length) return;
-      setMeshControlPoints(mdoc(), updates);
-      previewMeshChange(controlPointChange(updates.map(target => target.id)));
+      const { dirty } = placeControlPoints(updates);
+      previewMeshChange(controlPointChange(updates.map(target => target.id)), dirty);
     },
     onScaleControlPoints(targets) {
       const movable = new Set(movableControlPoints(store.controlSel).map(controlPointKey));
       const updates = targets.filter(target => movable.has(controlPointKey(target.id)));
       if (!updates.length) return;
-      setMeshControlPoints(mdoc(), updates);
-      previewMeshChange(controlPointChange(updates.map(target => target.id)));
+      const { dirty } = placeControlPoints(updates);
+      previewMeshChange(controlPointChange(updates.map(target => target.id)), dirty);
     },
     onRotateCorners(update) { applyRigidCornerUpdate(update); },
     onScaleCorners(update) { applyRigidCornerUpdate(update); },
@@ -1724,9 +1806,10 @@ export function createEditSession(deps: EditSessionDeps) {
     onExtrudeEdgesInvalid(error) { toast(error, 'err'); },
     onRefSelectionChange() { refreshEditSelectionUi(); },
     onMoveCorner(index, pos) {
-      if (lockedVertexSet(mdoc()).has(index)) return;
-      setVertex(mdoc(), index, pos);
-      previewMeshChange({ vertices: [index] });
+      const old = getVertex(mdoc(), index);
+      const { change, dirty } = moveCorners([index], [pos[0] - old[0], pos[1] - old[1], pos[2] - old[2]]);
+      if (!change.vertices.length) return;
+      previewMeshChange({ vertices: change.vertices }, dirty);
       refreshHandles();
     },
     onMoveHandle(dir, pos) {
@@ -1734,23 +1817,22 @@ export function createEditSession(deps: EditSessionDeps) {
       if (corner === null || !selectedDirNb) return;
       const neighbour = selectedDirNb[dir as HandleDir];
       if (neighbour === undefined || neighbour < 0) return;
-      if (edgeIsLocked(mdoc(), corner, neighbour)) return;
-      const base = getVertex(mdoc(), corner);
-      meshSetHandle(mdoc(), corner, neighbour, [pos[0] - base[0], pos[1] - base[1], pos[2] - base[2]]);
-      previewMeshChange({ edges: [[corner, neighbour]] });
+      moveTangent(corner, neighbour, pos);
     },
-    onMoveCageHandle(from, to, pos) {
-      if (edgeIsLocked(mdoc(), from, to)) return;
-      const base = getVertex(mdoc(), from);
-      meshSetHandle(mdoc(), from, to, [pos[0] - base[0], pos[1] - base[1], pos[2] - base[2]]);
-      previewMeshChange({ edges: [[from, to]] });
-    },
+    onMoveCageHandle(from, to, pos) { moveTangent(from, to, pos); },
     onMoveTwist(quad, corner, pos) {
-      if (quadIsLocked(mdoc(), quad)) return;
-      const { mesh, edgeHandle } = meshFromDoc(mdoc());
+      const doc = mdoc();
+      if (quadIsLocked(doc, quad) || corner < 0 || corner > 3) return;
+      const { mesh, edgeHandle } = meshFromDoc(doc);
       const base = quadControlPoints(mesh, edgeHandle, quad)[INTERIOR_CP[corner]];
-      meshSetTwist(mdoc(), quad, corner, [pos[0] - base[0], pos[1] - base[1], pos[2] - base[2]]);
-      previewMeshChange({ quads: [quad] });
+      const was = doc.quadTwist?.[quad]?.[corner] ?? [0, 0, 0];
+      const twist: V3 = [pos[0] - base[0], pos[1] - base[1], pos[2] - base[2]];
+      meshSetTwist(doc, quad, corner, twist);
+      // An interior moves alone only under Alt; otherwise its mirrors around the corner follow to stay smooth.
+      const mirrored = independent() || doc.linearCage ? []
+        : alignCornerTwists(doc, quad, corner as 0 | 1 | 2 | 3, [twist[0] - was[0], twist[1] - was[1], twist[2] - was[2]],
+          meshAdjacency(mesh));
+      previewMeshChange({ quads: [quad, ...mirrored] });
     },
   };
 

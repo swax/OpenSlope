@@ -5,11 +5,12 @@ import { meshPoleIndices } from '../../../core/mesh/selection';
 import { ekey } from '../../../core/mesh/ops';
 import { controlPointKey, meshControlPoints, type MeshControlPoint, type MeshControlPointId } from '../../../core/mesh/control-points';
 import { lockedEdgeSet } from '../../../core/mesh/locks';
+import { creasedSeams } from '../../../core/mesh/creases';
 import { controlPointIndex, edgeIndices, quadIndices, type NamedEdge, type QuadName } from '../../state/mesh-names';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import type { ReferenceMesh } from '../../../core/reference/terrain';
 import {
-  CAGE_BOUNDARY_COLOR, CAGE_EDGE_SEG, CAGE_EXTRA3_COLOR, CAGE_EXTRA5_COLOR, CAGE_INTERIOR_COLOR, CAGE_LOCKED_COLOR,
+  CAGE_BOUNDARY_COLOR, CAGE_CREASE_COLOR, CAGE_EDGE_SEG, CAGE_EXTRA3_COLOR, CAGE_EXTRA5_COLOR, CAGE_INTERIOR_COLOR, CAGE_LOCKED_COLOR,
   CAGE_POINT_COLOR, CAGE_TEAR_COLOR, CTRL_CAGE_COLOR, HANDLE_DIRS, HANDLE_NUB_PX, SURFACE_POLY_OFFSET,
 } from '../constants';
 import { addCageLines, addCageLinesBehind, addCagePoints, addCagePointsBehind } from '../shared/overlays';
@@ -258,26 +259,35 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     // Pull locked edges out of their ordinary grid/rim batches (rather than overdrawing them) so red is exact
     // over Wireframe, Surface and Texture, and each retained live-edit range still names one curve.
     const locked = doc ? lockedEdgeSet(doc) : new Set<string>();
+    // Creased seams — where the two patches meet at an angle instead of flowing on (core/mesh/creases.ts) — draw
+    // in their own colour, on the same measure as the reference cage, so an unintended kink shows in the wires.
+    // Measured on the release rebuild, not per drag frame.
+    // A model's flat cage is faceted by design, so every one of its edges is an angle and none is flagged.
+    const creased = eh && pv && !doc?.linearCage
+      ? creasedSeams(pv.mesh, quad => quadControlPoints(pv.mesh, eh, quad, pv.twistOf(quad)), adj) : new Set<string>();
     const partition = (kept: { segments: number[]; edges: [number, number][] }) => {
-      const normalSegments: number[] = [], normalEdges: [number, number][] = [];
-      const lockedSegments: number[] = [], lockedEdges: [number, number][] = [];
+      const part = () => ({ segments: [] as number[], edges: [] as [number, number][] });
+      const parts = { normal: part(), locked: part(), crease: part() };
       kept.edges.forEach((edge, i) => {
-        const isLocked = locked.has(ekey(edge[0], edge[1]));
-        (isLocked ? lockedSegments : normalSegments).push(...kept.segments.slice(i * edgeStride, (i + 1) * edgeStride));
-        (isLocked ? lockedEdges : normalEdges).push(edge);
+        const key = ekey(edge[0], edge[1]);
+        const part = locked.has(key) ? parts.locked : creased.has(key) ? parts.crease : parts.normal;
+        part.segments.push(...kept.segments.slice(i * edgeStride, (i + 1) * edgeStride));
+        part.edges.push(edge);
       });
-      return { normalSegments, normalEdges, lockedSegments, lockedEdges };
+      return parts;
     };
     const interiorParts = partition(keptInterior), boundaryParts = partition(keptBoundary);
-    interior = interiorParts.normalSegments; interiorEdges = interiorParts.normalEdges;
-    boundary = boundaryParts.normalSegments; boundaryEdges = boundaryParts.normalEdges;
-    const lockedSegments = [...interiorParts.lockedSegments, ...boundaryParts.lockedSegments];
-    const lockedEdges = [...interiorParts.lockedEdges, ...boundaryParts.lockedEdges];
+    interior = interiorParts.normal.segments; interiorEdges = interiorParts.normal.edges;
+    boundary = boundaryParts.normal.segments; boundaryEdges = boundaryParts.normal.edges;
+    const lockedSegments = [...interiorParts.locked.segments, ...boundaryParts.locked.segments];
+    const lockedEdges = [...interiorParts.locked.edges, ...boundaryParts.locked.edges];
     const interiorGeometry = addCageLines(cageGroup, interior, CAGE_INTERIOR_COLOR, 0.75, ghost);
     const boundaryGeometry = addCageLines(cageGroup, boundary, CAGE_BOUNDARY_COLOR, 0.9, ghost);
+    const creaseGeometry = addCageLines(cageGroup, interiorParts.crease.segments, CAGE_CREASE_COLOR, 0.75, ghost);
     const lockedGeometry = addCageLines(cageGroup, lockedSegments, CAGE_LOCKED_COLOR, 0.98, ghost);
     interiorEdges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: interiorGeometry, floatOffset: i * edgeStride, edge }));
     boundaryEdges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: boundaryGeometry, floatOffset: i * edgeStride, edge }));
+    interiorParts.crease.edges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: creaseGeometry, floatOffset: i * edgeStride, edge }));
     lockedEdges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: lockedGeometry, floatOffset: i * edgeStride, edge }));
     addCagePoints(cageGroup, pg, CAGE_POINT_COLOR, 3.5, ghost);
     // Only explicitly pinned edge / patch cages are batched here. Their full cage gets a normal depth-tested
@@ -582,6 +592,7 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     addCageLines(refCageGroup, data.cornerSeg, CAGE_INTERIOR_COLOR, 0.7, ghost);
     addCageLines(refCageGroup, data.cornerSegBoundary, CAGE_BOUNDARY_COLOR, 0.85, ghost);
     addCageLines(refCageGroup, data.cornerSegTear, CAGE_TEAR_COLOR, 0.95, ghost);
+    addCageLines(refCageGroup, data.cornerSegCrease, CAGE_CREASE_COLOR, 0.7, ghost);
     addCagePoints(refCageGroup, pg, CAGE_POINT_COLOR, 3, ghost);
     // Extraordinary poles (interior-seam valence 3 / 5) replace the green hue without changing point size.
     const cloud = (pts: Float32Array) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pts, 3)); return g; };

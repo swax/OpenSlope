@@ -48,6 +48,10 @@ export const CAGE_TEAR_COLOR = 0xffe000;
 export const CAGE_INTERIOR_COLOR = 0x74acd6;
 /** Protected authored patch edges in the wires-only view. */
 export const CAGE_LOCKED_COLOR = 0xff3b30;
+/** Creased seams, where two patches meet past CREASE_DEGREES (core/mesh/creases.ts), on both cages: the grid
+ *  blue's own saturation (54%) and lightness (65%) turned to a purple hue (275 deg), so a crease reads as the
+ *  same net with a different kind of seam rather than a louder line. */
+export const CAGE_CREASE_COLOR = 0xad74d6;
 /** Extraordinary control-net poles: vertices whose interior-seam valence is not the regular 4. Blue marks
  *  valence 3 and purple marks valence 5; both match the normal green vertex dots' saturation + lightness so
  *  topology changes hue without changing visual weight. Authored/reference cages and the legend reuse them. */

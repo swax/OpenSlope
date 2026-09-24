@@ -179,6 +179,7 @@ export class Viewport {
   private viewGridStepValue: SnapStep = 5;
   private snapOn = false;                 // global move + placement grid snap
   private snapStepValue: SnapStep = 5;
+  private pointerAlt = false;             // Alt on the latest pointer event (independentDrag)
   private rotationSnapStepValue: RotationSnapStep = 15;
   readonly assets = createPropAssets(); // shared prop-model geometry / group-def / outline caches (props + gems + reference)
   readonly rails: RailsLayer;
@@ -1076,6 +1077,11 @@ export class Viewport {
     // faces / cave roofs). Tracked here separately from flyKey (which only reads Shift while flying); ignored
     // mid-drag (the frame locks once a drag starts, restored on drag end) and cleared on blur so a Shift
     // released outside the window can't stick.
+    // Alt read off the pointer itself (capture phase, ahead of the gizmo's own pointermove), so a press or
+    // release mid-drag applies from the next frame and a release outside the window can't stick.
+    const trackAlt = (e: PointerEvent) => { this.pointerAlt = e.altKey; };
+    window.addEventListener('pointerdown', trackAlt, { capture: true });
+    window.addEventListener('pointermove', trackAlt, { capture: true });
     window.addEventListener('keydown', e => { if (e.key === 'Shift') this.transforms.shiftKey(true); });
     window.addEventListener('keyup', e => { if (e.key === 'Shift') this.transforms.shiftKey(false); });
     window.addEventListener('blur', () => {
@@ -2604,6 +2610,9 @@ export class Viewport {
   }
 
   get pastePlacing(): boolean { return this.clipboardPlacement.active; }
+
+  /** Alt on the latest pointer event: an Edit drag moves only what it grabbed, creases allowed. */
+  get independentDrag(): boolean { return this.pointerAlt; }
 
   // ---- selected-edge extrusion --------------------------------------------------------------------------
 

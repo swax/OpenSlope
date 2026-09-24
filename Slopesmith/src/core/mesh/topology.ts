@@ -143,6 +143,20 @@ export function buildQuadMesh(vertices: number[], quads: number[][], freeEdges: 
   return { vertices, quads, freeEdges, quadCount: quads.length, vertexCount: vertices.length / 3, topology: topologyFromQuads(quads, vertices.length / 3) };
 }
 
+/** The neighbour straight across `from` from `to`: the unique incident edge sharing NO quad with from→to (the
+ *  "onward edge" the reference loop tracer follows). Null where it is not unique — an extraordinary pole, or
+ *  the inward edge at a rim corner. The two tangents on this axis are the pair a smooth corner keeps collinear. */
+export function oppositeNeighbour(adj: MeshAdjacency, from: number, to: number): number | null {
+  const qs = adj.edgeQuads.get(ekey(from, to)) ?? [];
+  let opp: number | null = null, count = 0;
+  for (const x of adj.neighbors[from] ?? []) {
+    if (x === to) continue;
+    const qx = adj.edgeQuads.get(ekey(from, x)) ?? [];
+    if (!qx.some(q => qs.includes(q))) { opp = x; count++; }
+  }
+  return count === 1 ? opp : null;
+}
+
 /**
  * The directed-edge handle over a general quad mesh: an OVERRIDE if the doc pinned one, else the smooth
  * (Bessel) default. The default is the chord-weighted tangent at `from` along the axis through the edge to
@@ -190,15 +204,9 @@ export function meshEdgeHandles(mesh: QuadMesh, overrides?: Record<string, V3>,
   return (from, to) => {
     const ov = overrides?.[`${from}>${to}`];
     if (ov) return ov;
-    const qs = edgeQuads.get(ekey(from, to)) ?? [];
-    let opp = -1, count = 0;
-    for (const x of neighbors[from]) {
-      if (x === to) continue;
-      const qx = edgeQuads.get(ekey(from, x)) ?? [];
-      if (!qx.some(q => qs.includes(q))) { opp = x; count++; } // shares no quad with from→to: the opposite axis edge
-    }
+    const opp = oppositeNeighbour(adj, from, to);
     let t: V3;
-    if (count === 1) t = besselTangent(P(opp), P(from), P(to)); // two-sided: grid-interior identical
+    if (opp !== null) t = besselTangent(P(opp), P(from), P(to)); // two-sided: grid-interior identical
     else if (poles.has(from)) {
       const chord = sub(P(to), P(from)), normal = poleNormal(from);
       const projected = sub(chord, mul(normal, dot(chord, normal)));

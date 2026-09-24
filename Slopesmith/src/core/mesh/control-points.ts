@@ -1,9 +1,12 @@
 import type { QuadMeshDoc, V3 } from '../doc/types';
 import { getVertex, moveVertex } from '../doc/doc-edit';
-import { buildQuadMesh, meshEdgeHandles, meshFromDoc, quadControlPoints, INTERIOR_CP, type EdgeHandle, type QuadMesh } from './topology';
+import {
+  buildQuadMesh, meshAdjacency, meshEdgeHandles, meshFromDoc, oppositeNeighbour, quadControlPoints, INTERIOR_CP,
+  type MeshAdjacency, type QuadMesh,
+} from './topology';
 import { meshSetHandle, meshSetTwist } from '../doc/mountain';
 import { undirectedEdgeKey } from './primitives';
-import { controlPointIsLocked, lockedEdgeSet, lockedVertexSet } from './locks';
+import { controlPointIsLocked, edgeIsLocked, lockedEdgeSet, lockedVertexSet, quadIsLocked } from './locks';
 import type { MeshControlPointId } from './control-point-types';
 
 export type { MeshControlPointId } from './control-point-types';
@@ -106,8 +109,15 @@ export function moveMeshControlPoints(doc: QuadMeshDoc, ids: readonly MeshContro
 
 /** Place an arbitrary authored control-point set at absolute positions. Writes follow the same dependency order
  * as batch translation: corners first, directed boundary handles relative to their possibly moved owners, then
- * interiors relative to the final zero-twist cage. This is the exact sink for rotating mixed point selections. */
-export function setMeshControlPoints(doc: QuadMeshDoc, incoming: readonly MeshControlPointTarget[]): number {
+ * interiors relative to the final zero-twist cage. This is the exact sink for rotating mixed point selections.
+ *
+ * Placed points keep the surface smooth: a tangent's opposite partner swings into line with it
+ * (alignOppositeTangent) and an interior's mirrors around its corner follow it (alignCornerTwists), unless the
+ * partner is itself a target. `independent` (Alt) skips both — exactly the targets move, creases allowed; the
+ * caller pins everything else with captureAround / restoreAround. Points rewritten beyond the targets are
+ * appended to `dirty` for the live preview. */
+export function setMeshControlPoints(doc: QuadMeshDoc, incoming: readonly MeshControlPointTarget[],
+  options: { independent?: boolean; dirty?: EditDirty } = {}): number {
   // A target naming geometry this document no longer carries is dropped: the point it addressed is gone, so
   // there is nothing to place and nothing to say about it (docs/039 tombstones).
   const vertexAt = new Map(doc.vertexIds.map((id, index) => [id, index]));
@@ -139,23 +149,44 @@ export function setMeshControlPoints(doc: QuadMeshDoc, incoming: readonly MeshCo
     const i = t.vertex * 3;
     doc.vertices[i] = t.pos[0]; doc.vertices[i + 1] = t.pos[1]; doc.vertices[i + 2] = t.pos[2];
   }
+  const smooth = !options.independent && !doc.linearCage;
+  // Each dragged tangent's length before this edit: its partner scales by the same factor (alignOppositeTangent).
+  const before = smooth && targets.some(t => t.kind === 'edge') ? meshFromDoc(doc).edgeHandle : null;
+  const previous = new Map(targets.flatMap(t => t.kind === 'edge' && before
+    ? [[`${t.from}>${t.to}`, before(t.from, t.to)] as const] : []));
+  const placedEdges = new Set<string>();
   for (const t of targets) if (t.kind === 'edge') {
     const p = getVertex(doc, t.from);
     meshSetHandle(doc, t.from, t.to, [t.pos[0] - p[0], t.pos[1] - p[1], t.pos[2] - p[2]]);
+    placedEdges.add(`${t.from}>${t.to}`);
+  }
+  const adj = smooth && targets.some(t => t.kind !== 'vertex')
+    ? meshAdjacency(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges)) : null;
+  if (adj) for (const t of targets) if (t.kind === 'edge') {
+    const aligned = alignOppositeTangent(doc, t.from, t.to, previous.get(`${t.from}>${t.to}`)!, adj, placedEdges);
+    if (aligned) options.dirty?.edges.push(aligned);
   }
   if (targets.some(t => t.kind === 'twist')) {
     const { mesh, edgeHandle } = meshFromDoc(doc);
+    const placedTwists = new Set(targets.flatMap(t => t.kind === 'twist' ? [`${t.quad}:${t.corner}`] : []));
     for (const t of targets) if (t.kind === 'twist') {
       const base = quadControlPoints(mesh, edgeHandle, t.quad)[INTERIOR_CP[t.corner]];
-      meshSetTwist(doc, t.quad, t.corner, [t.pos[0] - base[0], t.pos[1] - base[1], t.pos[2] - base[2]]);
+      const was = doc.quadTwist?.[t.quad]?.[t.corner] ?? [0, 0, 0];
+      const twist: V3 = [t.pos[0] - base[0], t.pos[1] - base[1], t.pos[2] - base[2]];
+      meshSetTwist(doc, t.quad, t.corner, twist);
+      if (adj) options.dirty?.quads.push(...alignCornerTwists(doc, t.quad, t.corner,
+        [twist[0] - was[0], twist[1] - was[1], twist[2] - was[2]], adj, placedTwists));
     }
   }
   return targets.length;
 }
 
-export type ProportionalVertexMove = {
+/** Geometry an edit rewrote beyond its own targets, in previewMeshEdit's shape. */
+export type EditDirty = { edges: [number, number][]; quads: number[] };
+
+export type MeshVertexMove = {
   vertices: number[];
-  /** Every patch whose 4x4 cage was proportionally deformed. */
+  /** Every patch touching a moved corner — the dirty set for the live preview. */
   quads: number[];
   /** Every boundary curve belonging to those patches (canonical endpoint order). */
   edges: [number, number][];
@@ -168,58 +199,40 @@ const distSq = (a: V3, b: V3) => {
   return x * x + y * y + z * z;
 };
 
-type ProportionalMoveContext = {
+type VertexMoveContext = {
   vertices: number[];
   quads: number[][];
   freeEdges?: [number, number][];
   mesh: QuadMesh;
-  edgeHandle: EdgeHandle;
-  /** Mutable map captured by edgeHandle, including when the document started with no sparse overrides. */
-  overrides: Record<string, V3>;
   vertQuads: number[][];
 };
 
-// A drag changes positions many times but not topology. Keep the derived adjacency/handle provider beside the
-// document so subsequent pointer frames touch only the few incident patches. Weak keys make replaced documents
-// disappear naturally; reference checks invalidate if a topology operation swaps either backing array.
-const proportionalMoveContexts = new WeakMap<QuadMeshDoc, ProportionalMoveContext>();
-function proportionalMoveContext(doc: QuadMeshDoc): ProportionalMoveContext {
-  const cached = proportionalMoveContexts.get(doc);
-  const handlesCompatible = cached && (doc.edgeHandles === cached.overrides
-    || (doc.edgeHandles === undefined && Object.keys(cached.overrides).length === 0));
-  if (cached && cached.vertices === doc.vertices && cached.quads === doc.quads
-    && cached.freeEdges === doc.freeEdges && handlesCompatible) return cached;
-
+// A drag changes positions many times but not topology. Keep the corner→patch index beside the document so
+// subsequent pointer frames touch only the few incident patches. Weak keys make replaced documents disappear
+// naturally; reference checks invalidate if a topology operation swaps a backing array.
+const vertexMoveContexts = new WeakMap<QuadMeshDoc, VertexMoveContext>();
+function vertexMoveContext(doc: QuadMeshDoc): VertexMoveContext {
+  const cached = vertexMoveContexts.get(doc);
+  if (cached && cached.vertices === doc.vertices && cached.quads === doc.quads && cached.freeEdges === doc.freeEdges) return cached;
   const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
-  const overrides = doc.edgeHandles ?? {};
   const vertQuads: number[][] = Array.from({ length: mesh.vertexCount }, () => []);
   for (let quad = 0; quad < mesh.quads.length; quad++) {
     for (const vertex of new Set(mesh.quads[quad])) vertQuads[vertex]?.push(quad);
   }
-  const context = { vertices: doc.vertices, quads: doc.quads, freeEdges: doc.freeEdges, mesh, overrides, vertQuads,
-    edgeHandle: meshEdgeHandles(mesh, overrides) };
-  proportionalMoveContexts.set(doc, context);
+  const context = { vertices: doc.vertices, quads: doc.quads, freeEdges: doc.freeEdges, mesh, vertQuads };
+  vertexMoveContexts.set(doc, context);
   return context;
 }
 
-/** Move mesh corners while deforming every affected bicubic cage proportionally.
+/** Move mesh corners without creasing the surface.
  *
- * A plain corner-only write leaves an authored tangent offset numerically unchanged. That makes the control
- * point nearest a moved edge travel too far (or not far enough) when the edge resizes. Here the displacement
- * over each affected patch is the bilinear interpolation of its four corner displacements. Consequently a
- * moved edge travels 100%, its adjacent control row 2/3, the next row 1/3, and the opposite edge 0% — exactly
- * the proportions of a 4x4 Bezier cage. Effective boundary/interior points are snapshotted before the corner
- * write and then re-encoded as sparse edge-handle / twist offsets afterward.
- *
- * Automatic handles stay automatic whenever their newly derived position already equals the proportional
- * target. An override is introduced only where the automatic Bessel result would otherwise move a control
- * point away from that target. This keeps a simple free patch sparse while preserving shaped connected cages.
+ * A seam is smooth (G1) while the tangents through each corner stay collinear and each patch's interiors keep
+ * their offsets from the tangents they are built on. A move therefore writes corners only: automatic tangents
+ * re-derive around the new positions, a hand-set tangent keeps its direction and is scaled with its own edge's
+ * length (so resizing a shaped patch still resizes its tangents, and an edge moved whole keeps them exactly),
+ * and twists are untouched. No override is ever created, so an automatic cage stays automatic.
  */
-export function moveMeshVerticesProportional(
-  doc: QuadMeshDoc,
-  moving: readonly number[],
-  delta: V3,
-): ProportionalVertexMove {
+export function moveMeshVertices(doc: QuadMeshDoc, moving: readonly number[], delta: V3): MeshVertexMove {
   const vertexCount = doc.vertices.length / 3;
   const lockedVertices = lockedVertexSet(doc);
   const vertices = [...new Set(moving)]
@@ -229,88 +242,183 @@ export function moveMeshVerticesProportional(
   if (!vertices.length || (!delta[0] && !delta[1] && !delta[2])) return { vertices, quads: [], edges: [] };
 
   const moved = new Set(vertices);
-  const d = (v: number): V3 => moved.has(v) ? delta : [0, 0, 0];
-  const { mesh, edgeHandle, overrides, vertQuads } = proportionalMoveContext(doc);
+  const { mesh, vertQuads } = vertexMoveContext(doc);
   const affected = new Set<number>();
   for (const vertex of vertices) for (const quad of vertQuads[vertex] ?? []) affected.add(quad);
   const quads = [...affected].sort((a, b) => a - b);
   const edgePairs = new Map<string, [number, number]>();
-
+  const addEdge = (a: number, b: number) => { if (a !== b) edgePairs.set(edgeKey(a, b), a < b ? [a, b] : [b, a]); };
   for (const q of quads) {
     const [A, B, C, D] = mesh.quads[q];
-    for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
-      if (a === b) continue;
-      const pair: [number, number] = a < b ? [a, b] : [b, a];
-      edgePairs.set(edgeKey(a, b), pair);
-    }
+    addEdge(A, B); addEdge(B, D); addEdge(D, C); addEdge(C, A);
   }
+  for (const [a, b] of mesh.freeEdges) if (moved.has(a) || moved.has(b)) addEdge(a, b);
 
-  // Capture the exact effective points, not merely sparse offsets: an automatic Bessel point is still part of
-  // the visible 4x4 cage and must land at the same proportional target as a hand-pulled point.
-  const edgeTargets: { from: number; to: number; pos: V3; explicit: boolean }[] = [];
-  for (const [a, b] of edgePairs.values()) {
-    const pa = getVertex(doc, a), pb = getVertex(doc, b), da = d(a), db = d(b);
-    const hab = edgeHandle(a, b), hba = edgeHandle(b, a);
-    edgeTargets.push(
-      {
-        from: a, to: b,
-        pos: [pa[0] + hab[0] + (2 * da[0] + db[0]) / 3, pa[1] + hab[1] + (2 * da[1] + db[1]) / 3, pa[2] + hab[2] + (2 * da[2] + db[2]) / 3],
-        explicit: overrides[`${a}>${b}`] !== undefined,
-      },
-      {
-        from: b, to: a,
-        pos: [pb[0] + hba[0] + (2 * db[0] + da[0]) / 3, pb[1] + hba[1] + (2 * db[1] + da[1]) / 3, pb[2] + hba[2] + (2 * db[2] + da[2]) / 3],
-        explicit: overrides[`${b}>${a}`] !== undefined,
-      },
-    );
-  }
-
-  const uv: readonly [number, number][] = [[1 / 3, 1 / 3], [1 / 3, 2 / 3], [2 / 3, 1 / 3], [2 / 3, 2 / 3]];
-  const interiorTargets = quads.map(quad => {
-    const corners = mesh.quads[quad], cp = quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad] ?? null);
-    const ds = corners.map(d);
-    return {
-      quad,
-      explicit: doc.quadTwist?.[quad] !== undefined,
-      pos: uv.map(([u, v], corner) => {
-        const wA = (1 - u) * (1 - v), wB = (1 - u) * v, wC = u * (1 - v), wD = u * v;
-        const move: V3 = [
-          ds[0][0] * wA + ds[1][0] * wB + ds[2][0] * wC + ds[3][0] * wD,
-          ds[0][1] * wA + ds[1][1] * wB + ds[2][1] * wC + ds[3][1] * wD,
-          ds[0][2] * wA + ds[1][2] * wB + ds[2][2] * wC + ds[3][2] * wD,
-        ];
-        const p = cp[INTERIOR_CP[corner]];
-        return [p[0] + move[0], p[1] + move[1], p[2] + move[2]] as V3;
-      }),
-    };
-  });
+  // Only a curve with exactly one moving end changes length; one moved whole (or not at all) keeps its tangents.
+  const chord = (a: number, b: number) => Math.sqrt(distSq(getVertex(doc, a), getVertex(doc, b)));
+  const resized = [...edgePairs.values()]
+    .filter(([a, b]) => moved.has(a) !== moved.has(b))
+    .filter(([a, b]) => doc.edgeHandles?.[`${a}>${b}`] || doc.edgeHandles?.[`${b}>${a}`])
+    .map(([a, b]) => ({ a, b, before: chord(a, b) }));
 
   for (const v of vertices) moveVertex(doc, v, delta);
 
-  // Compare against the post-corner automatic result first. Do not materialise an override when the derived
-  // handle already lands exactly where the proportional cage asks it to.
-  let handlesChanged = false;
-  for (const target of edgeTargets) {
-    const p = getVertex(doc, target.from), h = edgeHandle(target.from, target.to);
-    const current: V3 = [p[0] + h[0], p[1] + h[1], p[2] + h[2]];
-    if (target.explicit || distSq(current, target.pos) > CP_EPS_SQ) {
-      overrides[`${target.from}>${target.to}`] = [target.pos[0] - p[0], target.pos[1] - p[1], target.pos[2] - p[2]];
-      handlesChanged = true;
-    }
-  }
-  if (handlesChanged && doc.edgeHandles !== overrides) doc.edgeHandles = overrides;
-
-  // Boundary writes change each Ferguson interior base, so resolve that base only after every edge target is in
-  // place. Existing sculpt tuples remain explicit; an untouched zero-twist patch stays sparse when it matches.
-  for (const target of interiorTargets) {
-    const base = quadControlPoints(mesh, edgeHandle, target.quad);
-    for (let corner = 0; corner < 4; corner++) {
-      const p = base[INTERIOR_CP[corner]], wanted = target.pos[corner];
-      if (target.explicit || distSq(p, wanted) > CP_EPS_SQ) {
-        meshSetTwist(doc, target.quad, corner, [wanted[0] - p[0], wanted[1] - p[1], wanted[2] - p[2]]);
-      }
+  const lockedEdges = lockedEdgeSet(doc);
+  for (const { a, b, before } of resized) {
+    const after = chord(a, b);
+    if (before < 1e-9 || after < 1e-9 || lockedEdges.has(edgeKey(a, b))) continue;
+    const scale = after / before;
+    for (const key of [`${a}>${b}`, `${b}>${a}`]) {
+      const h = doc.edgeHandles?.[key];
+      if (h) doc.edgeHandles![key] = [h[0] * scale, h[1] * scale, h[2] * scale];
     }
   }
 
   return { vertices, quads, edges: [...edgePairs.values()] };
+}
+
+/** Swing the opposite partner of the just-dragged tangent `from→to` into one straight line with it, so the curve
+ * through `from` stays smooth — the Bezier-tool convention for dragging a handle. The partner scales by the same
+ * factor the dragged tangent's length changed (from `previous`), keeping the pair's length ratio: that ratio must
+ * match the far ends of the seams through `from` for them to stay G1 along their length, not just at the corner.
+ * Only a corner with a unique opposite edge has a partner (a regular corner, or along a rim); a pole or the inward
+ * edge of a rim corner has none. `skip` names directed tangents (`from>to`) placed in the same edit, which are
+ * left as the user set them. Returns the partner curve when it was rewritten, else null. */
+export function alignOppositeTangent(doc: QuadMeshDoc, from: number, to: number, previous: V3, adj: MeshAdjacency,
+  skip: ReadonlySet<string> = new Set()): [number, number] | null {
+  const opp = oppositeNeighbour(adj, from, to);
+  if (opp === null || skip.has(`${from}>${opp}`) || edgeIsLocked(doc, from, opp)) return null;
+  const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
+  const eh = meshEdgeHandles(mesh, doc.edgeHandles, adj);
+  const h = eh(from, to), partner = eh(from, opp);
+  const hLen = Math.hypot(h[0], h[1], h[2]), previousLen = Math.hypot(previous[0], previous[1], previous[2]);
+  const partnerLen = Math.hypot(partner[0], partner[1], partner[2]) * (previousLen < 1e-9 ? 1 : hLen / previousLen);
+  if (hLen < 1e-9 || partnerLen < 1e-9) return null;
+  const aligned: V3 = [-h[0] / hLen * partnerLen, -h[1] / hLen * partnerLen, -h[2] / hLen * partnerLen];
+  if (distSq(aligned, partner) <= CP_EPS_SQ) return null;
+  meshSetHandle(doc, from, opp, aligned);
+  return from < opp ? [from, opp] : [opp, from];
+}
+
+/** Keep a corner smooth after one of its interiors moved by `delta` (twist change): the interiors of the patches
+ * across each seam at that corner mirror it, scaled by the tangent ratio across the seam, and the diagonal patch
+ * takes the product — the twist relation that keeps the 3x3 control block around a regular corner a smooth net.
+ * A rim corner mirrors across its one shared seam; a pole has no unique partners and is left alone. `skip`
+ * names interiors (`quad:corner`) placed in the same edit. Returns the patches rewritten. */
+export function alignCornerTwists(doc: QuadMeshDoc, quad: number, corner: 0 | 1 | 2 | 3, delta: V3, adj: MeshAdjacency,
+  skip: ReadonlySet<string> = new Set()): number[] {
+  if (!delta[0] && !delta[1] && !delta[2]) return [];
+  const q = doc.quads[quad];
+  const A = q?.[corner];
+  if (A === undefined || q.indexOf(A) !== q.lastIndexOf(A)) return [];
+  // The corner's two in-patch neighbours, in the [A,B,C,D] layout (A-B / C-D across v, A-C / B-D down u).
+  const IN_PATCH: readonly [number, number][] = [[1, 2], [0, 3], [0, 3], [1, 2]];
+  const [x, y] = IN_PATCH[corner].map(slot => q[slot]);
+  const eh = meshEdgeHandles(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges), doc.edgeHandles, adj);
+  const ratio = (to: number, opp: number) => {
+    const a = eh(A, to), b = eh(A, opp);
+    const la = Math.hypot(a[0], a[1], a[2]);
+    return la < 1e-9 ? 0 : Math.hypot(b[0], b[1], b[2]) / la;
+  };
+  const xOpp = oppositeNeighbour(adj, A, x), yOpp = oppositeNeighbour(adj, A, y);
+  const across = (a: number, b: number) => (adj.edgeQuads.get(edgeKey(a, b)) ?? []).find(other => other !== quad);
+  const patchWith = (a: number, b: number) => (adj.edgeQuads.get(edgeKey(A, a)) ?? [])
+    .find(p => (adj.edgeQuads.get(edgeKey(A, b)) ?? []).includes(p));
+  const mirrors: [number | undefined, number][] = [];
+  // Across seam A-x the neighbour holds A's other axis, so the mirror scales by that axis's ratio.
+  if (yOpp !== null) mirrors.push([across(A, x), -ratio(y, yOpp)]);
+  if (xOpp !== null) mirrors.push([across(A, y), -ratio(x, xOpp)]);
+  if (xOpp !== null && yOpp !== null) mirrors.push([patchWith(xOpp, yOpp), ratio(x, xOpp) * ratio(y, yOpp)]);
+  const changed: number[] = [];
+  for (const [other, k] of mirrors) {
+    if (other === undefined || other === quad || !k) continue;
+    const slot = doc.quads[other].indexOf(A) as 0 | 1 | 2 | 3;
+    if (slot < 0 || skip.has(`${other}:${slot}`) || quadIsLocked(doc, other)) continue;
+    const was = doc.quadTwist?.[other]?.[slot] ?? [0, 0, 0];
+    meshSetTwist(doc, other, slot, [was[0] + delta[0] * k, was[1] + delta[1] * k, was[2] + delta[2] * k]);
+    changed.push(other);
+  }
+  return changed;
+}
+
+/** Every tangent and interior an edit around `vertices` could disturb, at its effective absolute position: the
+ * tangents leaving those corners or their neighbours (an automatic tangent reads its neighbours' positions), and
+ * the interiors of every patch touching them. The Alt (independent) edit pins these with restoreAround. */
+export type ControlPointSnapshot = {
+  handles: { from: number; to: number; pos: V3 }[];
+  interiors: { quad: number; corner: 0 | 1 | 2 | 3; pos: V3 }[];
+};
+
+export function captureAround(doc: QuadMeshDoc, vertices: readonly number[]): ControlPointSnapshot {
+  const snapshot: ControlPointSnapshot = { handles: [], interiors: [] };
+  if (doc.linearCage || !vertices.length) return snapshot;
+  const { mesh, edgeHandle } = meshFromDoc(doc);
+  const adj = meshAdjacency(mesh);
+  const ring = new Set(vertices);
+  for (const v of vertices) for (const nb of adj.neighbors[v] ?? []) ring.add(nb);
+  for (const from of ring) for (const to of adj.neighbors[from] ?? []) {
+    const p = getVertex(doc, from), h = edgeHandle(from, to);
+    snapshot.handles.push({ from, to, pos: [p[0] + h[0], p[1] + h[1], p[2] + h[2]] });
+  }
+  mesh.quads.forEach((q, quad) => {
+    if (!q.some(v => ring.has(v))) return;
+    const cp = quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad] ?? null);
+    for (const corner of [0, 1, 2, 3] as const) snapshot.interiors.push({ quad, corner, pos: cp[INTERIOR_CP[corner]] });
+  });
+  return snapshot;
+}
+
+/** Pin a captured neighbourhood back after an independent edit. A point keeps its absolute position unless
+ * everything it is built from moved: a tangent rides along only when both ends of its curve moved (an edge move),
+ * an interior only when all four of its patch's corners moved (a patch move). `skip` names, by controlPointKey
+ * over live indices, the points the edit placed itself. Sparse: a point already in place gets no override. */
+export function restoreAround(
+  doc: QuadMeshDoc,
+  snapshot: ControlPointSnapshot,
+  moved: (vertex: number) => V3 | undefined,
+  skip: ReadonlySet<string> = new Set(),
+): EditDirty {
+  const dirty: EditDirty = { edges: [], quads: [] };
+  if (!snapshot.handles.length && !snapshot.interiors.length) return dirty;
+  const overrides = (doc.edgeHandles ??= {});
+  const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
+  const edgeHandle = meshEdgeHandles(mesh, overrides); // reads the live override map, so restored tangents count
+  const lockedVertices = lockedVertexSet(doc), lockedEdges = lockedEdgeSet(doc);
+  const edges = new Map<string, [number, number]>();
+  for (const held of snapshot.handles) {
+    const id: MeshControlPointId<number> = { kind: 'edge', from: held.from, to: held.to };
+    if (skip.has(controlPointKey(id)) || controlPointIsLocked(doc, id, lockedVertices, lockedEdges)) continue;
+    const da = moved(held.from), db = moved(held.to);
+    const target: V3 = da && db
+      ? [0, 1, 2].map(axis => held.pos[axis] + (2 * da[axis] + db[axis]) / 3) as V3
+      : held.pos;
+    const p = getVertex(doc, held.from), h = edgeHandle(held.from, held.to);
+    if (distSq([p[0] + h[0], p[1] + h[1], p[2] + h[2]], target) <= CP_EPS_SQ) continue;
+    overrides[`${held.from}>${held.to}`] = [target[0] - p[0], target[1] - p[1], target[2] - p[2]];
+    edges.set(edgeKey(held.from, held.to), held.from < held.to ? [held.from, held.to] : [held.to, held.from]);
+  }
+  if (!Object.keys(overrides).length) doc.edgeHandles = undefined;
+
+  // Interiors re-seat against the final tangents, so they resolve only after every handle above is written.
+  const uv: readonly [number, number][] = [[1 / 3, 1 / 3], [1 / 3, 2 / 3], [2 / 3, 1 / 3], [2 / 3, 2 / 3]];
+  const quads = new Set<number>();
+  for (const held of snapshot.interiors) {
+    const id: MeshControlPointId<number> = { kind: 'twist', quad: held.quad, corner: held.corner };
+    const corners = mesh.quads[held.quad];
+    if (!corners || skip.has(controlPointKey(id)) || controlPointIsLocked(doc, id, lockedVertices, lockedEdges)) continue;
+    const ds = corners.map(moved);
+    let target = held.pos;
+    if (ds.every(d => d !== undefined)) {
+      const [u, v] = uv[held.corner], w = [(1 - u) * (1 - v), (1 - u) * v, u * (1 - v), u * v];
+      target = [0, 1, 2].map(axis => held.pos[axis] + ds.reduce((sum, d, i) => sum + d![axis] * w[i], 0)) as V3;
+    }
+    const current = quadControlPoints(mesh, edgeHandle, held.quad, doc.quadTwist?.[held.quad] ?? null)[INTERIOR_CP[held.corner]];
+    if (distSq(current, target) <= CP_EPS_SQ) continue;
+    const base = quadControlPoints(mesh, edgeHandle, held.quad)[INTERIOR_CP[held.corner]];
+    meshSetTwist(doc, held.quad, held.corner, [target[0] - base[0], target[1] - base[1], target[2] - base[2]]);
+    quads.add(held.quad);
+  }
+  dirty.edges = [...edges.values()];
+  dirty.quads = [...quads];
+  return dirty;
 }

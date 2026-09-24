@@ -40,6 +40,8 @@ export interface EditViewportPort {
   projectedVerticesInsidePatches(quads: readonly number[]): number[];
   setPasteTool(clip: MeshVertexClipboard | null): void;
   readonly pastePlacing: boolean;
+  /** Alt held on the live pointer: a drag moves only what it grabbed (creases allowed) instead of staying smooth. */
+  readonly independentDrag?: boolean;
   readonly edgeExtrusionStaged: boolean;
   readonly edgeExtrusionMode?: 'pull' | 'path';
   readonly edgeExtrusionSideFlippable: boolean;

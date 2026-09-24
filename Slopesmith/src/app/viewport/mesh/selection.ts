@@ -7,7 +7,7 @@ import {
   type VertexSelectMode, type EdgeSelectMode,
 } from '../../../core/mesh/selection';
 import { ekey } from '../../../core/mesh/ops';
-import { measureEdges, measureCells, type SelectionMeasure } from '../../../core/mesh/measure';
+import { measureEdges, measureCells, widestSeamAngle, type SelectionMeasure } from '../../../core/mesh/measure';
 import { copyMeshVertices, type MeshVertexClipboard } from '../../../core/mesh/clipboard';
 import { controlPointCageOwners, controlPointKey, type MeshControlPoint, type MeshControlPointId } from '../../../core/mesh/control-points';
 import { controlPointIsLocked, lockedEdgeSet, lockedVertexSet } from '../../../core/mesh/locks';
@@ -1230,7 +1230,9 @@ export function createSelectionLayer(
   function refMeasure(): SelectionMeasure | null {
     const d = access.refData();
     if (!d) return null;
-    if (sel.refEdgeSel.length) return measureEdges(d.mesh, d.edgeHandle, sel.refEdgeSel);
+    const adj = refAdjacency();
+    if (sel.refEdgeSel.length) return measureEdges(d.mesh, d.edgeHandle, sel.refEdgeSel,
+      adj ? { adj, controls: q => d.patchControls[q] } : undefined);
     if (sel.refCellSel.length) return measureCells(q => d.patchControls[q] as V3[], sel.refCellSel);
     return null;
   }
@@ -1240,7 +1242,19 @@ export function createSelectionLayer(
   function authoredMeasure(): SelectionMeasure | null {
     const preview = access.preview();
     if (!preview) return null;
-    if (sel.edgeSel.length) return measureEdges(preview.mesh, preview.edgeHandle, edgeSelIndices());
+    const controlsOf = (pv: PreviewData) => (quad: number) => quadControlPoints(pv.mesh, pv.edgeHandle, quad, pv.twistOf(quad));
+    const adj = access.net()?.adj;
+    if (sel.edgeSel.length) {
+      const measure = measureEdges(preview.mesh, preview.edgeHandle, edgeSelIndices(),
+        adj ? { adj, controls: controlsOf(preview) } : undefined);
+      // The authored surface changes under a standing selection (smooth / crease / drags / undo), so the read-out
+      // re-measures the picked seams against whatever preview is current rather than the one it was picked on.
+      if (measure) measure.liveAngle = () => {
+        const pv = access.preview();
+        return pv ? widestSeamAngle(pv.mesh, controlsOf(pv), measure.seams) : null;
+      };
+      return measure;
+    }
     if (sel.cellSel.length) return measureCells(
       quad => quadControlPoints(preview.mesh, preview.edgeHandle, quad, preview.twistOf(quad)),
       cellSelIndices(),
