@@ -28,7 +28,7 @@ export type ToolsPanelDeps = {
     | 'selectedPatchLockState' | 'toggleSelectedPatchLocks'
     | 'labelsAvailable' | 'labelRows' | 'selectedLabelTargets' | 'selectedLabelState' | 'setSelectedLabel'
     | 'createLabel' | 'renameLabel' | 'deleteLabel' | 'selectLabel'
-    | 'narrowEditSelection' | 'rotatableSelection' | 'setGizmoMode'
+    | 'narrowEditSelection' | 'rotatableSelection' | 'selectedFreePoint' | 'setGizmoMode'
     | 'selectConnected' | 'selectOverlappingVertices'
     | 'deleteSelectedMesh' | 'dissolveSelectedMesh' | 'flipSelectedMesh' | 'meshDeleteTargetCount' | 'canDeleteMeshSelection'
     | 'pasteSelectedVertices' | 'canPasteVertices' | 'cancelPastePlacement'

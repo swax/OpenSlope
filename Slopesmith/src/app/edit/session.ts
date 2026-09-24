@@ -6,6 +6,7 @@ import {
   HANDLE_DIRS, type HandleDir,
 } from '../../core/doc/mountain';
 import { buildQuadMesh, meshAdjacency, meshEdgeHandles, meshFromDoc, quadControlPoints, INTERIOR_CP, type MeshAdjacency } from '../../core/mesh/topology';
+import { isFreePoint } from '../../core/mesh/path-frame';
 import {
   planLoopCut, applyLoopCut, meshContext, applyEdgeRip, applyCellEdgeInsert, applyVertexWeld, applyVertexWeldTogether,
   appendPatchFromCorners, applyEdgeExtrusion, applyPlannedEdgeExtrusion, applyEdgeWeldSets, applyEdgeLoopWeld,
@@ -546,6 +547,13 @@ export function createEditSession(deps: EditSessionDeps) {
     };
   }
 
+  /** A lone selected point on a path (no patch on any of its edges) turns about itself: its frame is what rotates. */
+  function selectedFreePoint(): boolean {
+    if (store.selectedCorner === null || store.regionSel.length) return false;
+    const doc = mdoc(), vertex = vertexIndex(doc, store.selectedCorner);
+    return vertex !== null && isFreePoint(meshAdjacency(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges)), vertex);
+  }
+
   function rotatableSelection(): boolean {
     if (view().edgeExtrusionStaged) return true;
     if (store.currentMode === 'props') return store.selectedProp !== null || store.multiSel.length > 0;
@@ -553,7 +561,7 @@ export function createEditSession(deps: EditSessionDeps) {
     if (mixedEditSelection()) return store.currentMode === 'edit' && cageActive() && mixedEditAnchorPositions().length > 1;
     if (store.controlSel.length) return store.currentMode === 'edit' && cageActive() && movableControlPoints(store.controlSel).length > 1;
     return store.currentMode === 'edit' && cageActive()
-      && (store.regionSel.length > 1 || store.edgeSel.length > 0 || store.cellSel.length > 0);
+      && (store.regionSel.length > 1 || store.edgeSel.length > 0 || store.cellSel.length > 0 || selectedFreePoint());
   }
 
   function previewMeshChange(change: {
@@ -641,7 +649,7 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function setGizmoMode(mode: 'move' | 'rotate' | 'scale', refresh = false) {
-    if (mode === 'scale' && mixedEditSelection()) return;
+    if (mode === 'scale' && (mixedEditSelection() || selectedFreePoint())) return;
     if (mode !== 'move' && !rotatableSelection()) return;
     store.gizmoMode = mode;
     view().setGizmoMode(mode);
@@ -1523,6 +1531,15 @@ export function createEditSession(deps: EditSessionDeps) {
         quads.push(quad);
       }
     }
+    // Roll is keyed by the vertex's own name (QuadMeshDoc.vertexRoll); zero stays sparse.
+    for (const item of update.vertexRoll ?? []) {
+      const vertex = vertexIndex(doc, item.vertex);
+      if (vertex === null || lockedVertices.has(vertex)) continue;
+      const rolls = (doc.vertexRoll ??= {});
+      if (Math.abs(item.roll) > 1e-9) rolls[item.vertex] = item.roll; else delete rolls[item.vertex];
+      if (!Object.keys(rolls).length) delete doc.vertexRoll;
+      if (!vertices.includes(vertex)) vertices.push(vertex);
+    }
     return { change: { vertices, edges, quads }, marks };
   }
 
@@ -1838,7 +1855,8 @@ export function createEditSession(deps: EditSessionDeps) {
 
   return {
     viewportCallbacks,
-    activeEditFamily, mixedEditSelection, transformSelectionActive, rotatableSelection, setGizmoMode, resetGizmoMode,
+    activeEditFamily, mixedEditSelection, transformSelectionActive, rotatableSelection, selectedFreePoint, setGizmoMode,
+    resetGizmoMode,
     toggleEditProp,
     beginEdgeExtrusion, flipEdgeExtrusionSide, commitEdgeExtrusion, cancelEdgeExtrusion,
     clearCellSel, clearEdgeSel, exitRegion, deselectEdit, refreshHandles, narrowEditSelection,

@@ -453,6 +453,33 @@ import { check, failures } from './check';
     && deletedEdge.doc.freeEdges === undefined && deletedEdge.doc.vertices.length === base.vertices.length,
     'delete: a selected free edge and its now-unused endpoints are removed without touching surfaces');
 
+  // A patch removed only because one of its edges or corners was picked leaves its other edges as free edges,
+  // each keeping the exact curve it had; a picked patch still takes all of its edges with it.
+  {
+    const [a, b, c, d] = added.doc.quads[q];
+    const edgeSet = (doc: QuadMeshDoc) => new Set((doc.freeEdges ?? []).map(([x, y]) => x < y ? `${x},${y}` : `${y},${x}`));
+    const was = meshFromDoc(added.doc);
+    const byEdge = applyMeshDelete(added.doc, { edges: [[c, d]] });
+    check(byEdge.ok && byEdge.quads === 1 && byEdge.vertices === 0,
+      'delete: picking a patch edge removes the patch but keeps all four corners');
+    if (byEdge.ok) {
+      const free = edgeSet(byEdge.doc), now = meshFromDoc(byEdge.doc);
+      const at = (v: number) => byEdge.doc.vertexIds.indexOf(added.doc.vertexIds[v]);
+      const kept = [[a, b], [b, d], [c, a]] as [number, number][];
+      check(kept.every(([x, y]) => free.has(at(x) < at(y) ? `${at(x)},${at(y)}` : `${at(y)},${at(x)}`)) && free.size === 3,
+        'delete: the patch’s unpicked edges survive as free edges; the picked one goes');
+      check(kept.every(([x, y]) => [[x, y], [y, x]].every(([f, t]) =>
+        JSON.stringify(now.edgeHandle(at(f), at(t))) === JSON.stringify(was.edgeHandle(f, t)))),
+        'delete: a surviving edge keeps the exact curve it had as a patch boundary');
+    }
+    const byCorner = applyMeshDelete(added.doc, { vertices: [c] });
+    check(byCorner.ok && byCorner.vertices === 1 && edgeSet(byCorner.doc).size === 2,
+      'delete: picking a corner drops it and its two edges, leaving the other two as free edges');
+    const byPatch = applyMeshDelete(added.doc, { quads: [q] });
+    check(byPatch.ok && byPatch.vertices === 4 && !byPatch.doc.freeEdges?.length,
+      'delete: a picked patch still removes its edges and now-unused corners');
+  }
+
   const onePatch: QuadMeshDoc = {
     ...base,
     vertices: added.doc.vertices.slice(A * 3, (A + 4) * 3),

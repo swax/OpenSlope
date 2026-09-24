@@ -26,6 +26,8 @@ export interface RigidCornerUpdate {
   vertices: { vertex: VertexName; pos: V3 }[];
   edgeHandles: { from: VertexName; to: VertexName; offset: V3 }[];
   quadTwist: { quad: QuadName; offsets: [V3, V3, V3, V3] }[];
+  /** Absolute roll of each rotated free point (QuadMeshDoc.vertexRoll) — Rotate only. */
+  vertexRoll?: { vertex: VertexName; roll: number }[];
 }
 
 /** One absolute rotation frame for the combined Edit marquee. Directly selected control points are kept

@@ -109,7 +109,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   viewport.setGizmoFrame(store.gizmoFrame); // sync the viewport to the restored pill
 
   // Transform tool for selections with an actual orientation / footprint. Point-only selections deliberately
-  // remain Move: rotating or scaling one point around itself has no visible meaning.
+  // remain Move: rotating or scaling one point around itself has no visible meaning — except a lone point on a
+  // free path, which carries a frame (its direction and roll) that Rotate turns; it still has nothing to scale.
   const transformPill = segmented<'move' | 'rotate' | 'scale'>(
     [
       { value: 'move', label: 'Move', title: 'Move the selected item or group (W).' },
@@ -150,7 +151,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     : viewport.edgeExtrusionStaged || store.currentMode === 'edit' && !mixedEditSelection()
       && store.bridgeRails === null && cageActive() && (store.controlSel.length
       ? movableControlPointCount() > 1
-      : store.edgeSel.length > 0 || store.cellSel.length > 0);
+      : store.edgeSel.length > 0 || store.cellSel.length > 0 || edit.selectedFreePoint());
   type EditSelectionKind = 'point' | 'edge' | 'patch' | 'prop';
   const editSelectionCounts = (): { kind: EditSelectionKind; count: number; readOnly: boolean }[] => {
     const authoredPoints = store.controlSel.length || store.regionSel.length || (store.selectedCorner !== null ? 1 : 0);
@@ -291,6 +292,9 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     const mixedCanRotate = store.currentMode === 'edit' && mixedEditSelection() && edit.rotatableSelection();
     if (!canRotate && !mixedCanRotate && store.gizmoMode !== 'move') { store.gizmoMode = 'move'; viewport.setGizmoMode('move'); }
     transformPillRow.style.display = canRotate ? 'flex' : 'none';
+    const freePoint = store.currentMode === 'edit' && edit.selectedFreePoint();
+    transformPill.setEnabled('scale', !freePoint);
+    if (freePoint && store.gizmoMode === 'scale') { store.gizmoMode = 'move'; viewport.setGizmoMode('move'); }
     transformPill.refresh();
     framePillLabel.textContent = store.gizmoMode === 'rotate' ? 'Rotate in' : store.gizmoMode === 'scale' ? 'Scale in' : 'Move in';
     const frameVisible = store.currentMode === 'edit' && cageActive() && hasMeshTransformSelection()
