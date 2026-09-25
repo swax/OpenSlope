@@ -17,7 +17,10 @@ import type { SceneSel } from './ui/chrome/scene-panel';
 import { toast } from './ui/components/toast';
 import type { RotationSnapStep, SnapStep, Viewport, ViewportCallbacks } from './viewport/viewport';
 import { shortcutForMode } from './mode-shortcuts';
-import { attachModelEffectsToProp, createEmptyEffectsDocument, nextPlacedPropId } from '../core/effects/authoring';
+import {
+  attachEffectTemplateToProp, attachEffectToProp, attachModelEffectsToProp, createEmptyEffectsDocument,
+  nextPlacedPropId,
+} from '../core/effects/authoring';
 import { nextGemId, nextLightId } from '../core/doc/ids';
 import type { RigLight } from '../core/reference/lights';
 import { placedPropCollisionProfile } from '../core/props/contact';
@@ -260,6 +263,17 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         ...(store.armedProp.group ? { group: store.armedProp.group } : {}),
       };
       props.push(applyBehaviour(placed, store.armedProp.behaviour));
+      // The held effect (docs/069 · Effects): a shipped model's portable one, attached through the slot every
+      // placement of it shares, or the copied placement's own slot. Before the declared effects below, so a copy
+      // of an imported prop shares its source's effect rather than growing a slot of its own.
+      const held = store.armedProp.effect;
+      if (held && !store.armedProp.effectOff) {
+        const effects = (store.mdoc.effects ??= createEmptyEffectsDocument(store.mdoc.name));
+        if (held.kind === 'template')
+          attachEffectTemplateToProp(effects, id, held.template, propOps().shortPropName(store.armedProp.name));
+        else if (effects.slots.some(slot => slot.id === held.slot))
+          attachEffectToProp(effects, id, held.slot, held.circumstance);
+      }
       // A model that declared its own effects gets them attached here, so stamping a snow gun down gives
       // you one that is already throwing snow rather than one waiting to be wired up. Emitters and
       // scrolling surfaces both become ordinary nodes in an ordinary persistent graph, which the Effects
@@ -345,8 +359,9 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (!p) return;
       // The copy carries everything the placement does — its sounds and self-lighting too, not only contact.
       const behaviour = { ...behaviourOf(p), nativeCollision: structuredClone(placedPropCollisionProfile(p)) };
-      if (p.group) void propOps().armGroupById(p.level, p.group, { behaviour });
-      else void propOps().armProp(p.level, p.model, p.name, { behaviour });
+      const from = { behaviour, ...(p.id ? { placementId: p.id } : {}) }; // …and shares its effect (docs/069)
+      if (p.group) void propOps().armGroupById(p.level, p.group, from);
+      else void propOps().armProp(p.level, p.model, p.name, from);
     },
     onSelectReferenceProp(level, model, modelName, inst) { // read-only pick of a reference prop (all-null clears it)
       const selected = level !== null && model !== null && modelName !== null;

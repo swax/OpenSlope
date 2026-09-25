@@ -1,6 +1,7 @@
 import type { PlacedProp, Rail, V3 } from '../doc/types';
 import { isTilted, rotateByPlacement, unrotateByPlacement, type PropRotation } from '../props/pose';
 import { ensureRailIds, isMotionPath, nativeSplineFields, railStartsOff } from '../rails/rails';
+import { DEFAULT_EFFECT_CIRCUMSTANCES, type PropEffectTemplate } from '../props/effect-defaults';
 import {
   cloneEffectsDocument,
   compatibleEffectSemanticTypes,
@@ -451,6 +452,40 @@ export function attachModelEffectsToProp(document: EffectsDocument, propId: stri
   return true;
 }
 
+/**
+ * Give a new placement an effect default (docs/069 · Effects): the slot other placements carrying the same effect
+ * already share, or a fresh one built from the template when none does. Placements share it as retail instances
+ * share one slot — 22 GARI crash bags, one Roller — so retuning the effect in the Effects editor retunes every prop
+ * that carries it. Returns false when the prop already carries an effect, which leaves one attached by hand alone.
+ */
+export function attachEffectTemplateToProp(document: EffectsDocument, propId: string,
+  template: PropEffectTemplate, name: string): boolean {
+  if (effectAttachments(document).some(item => item.target.id === propId)) return false;
+  const columns = DEFAULT_EFFECT_CIRCUMSTANCES.filter(column => template.circumstances[column]?.length);
+  if (!columns.length) return false;
+  const graphIds = new Set(document.graphs.map(graph => graph.id));
+  let slot = document.slots.find(item => {
+    const ext = object(item.extensions?.slopesmith) ? item.extensions.slopesmith : null;
+    return ext?.effectDefault === template.key
+      && columns.every(column => !!item.circumstances[column] && graphIds.has(item.circumstances[column]!));
+  });
+  if (!slot) {
+    const circumstances = emptyEffectCircumstances();
+    for (const column of columns) {
+      const graphId = nextEffectId(document, 'graph');
+      document.graphs.push({ id: graphId, name: `${name} · ${effectCircumstanceLabel(column)}`,
+        nodes: template.circumstances[column]!.map((node, index) =>
+          ({ ...structuredClone(node), id: `${graphId}/node:${index.toString().padStart(4, '0')}` })) });
+      circumstances[column] = graphId;
+    }
+    slot = { id: nextEffectId(document, 'slot'), name: `${name} effect`, circumstances,
+      extensions: { slopesmith: { effectDefault: template.key } } };
+    document.slots.push(slot);
+  }
+  attachEffectToProp(document, propId, slot.id, columns.includes('collision') ? 'collision' : columns[0]);
+  return true;
+}
+
 /** A template's chain as concrete nodes in a fresh graph. Ids number from zero because the graph is new. */
 function templateNodes(template: EffectTemplate, graphId: string): EffectNode[] {
   return (template.nodes ?? []).map((node, index) =>
@@ -641,6 +676,46 @@ export function authoredEffectBindings(document: EffectsDocument,
       const graphId = slot.circumstances[circumstance];
       const graph = graphId ? graphById.get(graphId) : null;
       if (graph) out.push({ prop, slot, circumstance, graph });
+    }
+  }
+  return out;
+}
+
+/** The scalar mass a Roller node activates its body with; null for any other node, or a mass that is not positive
+ *  (which preview and export both skip). */
+export function rollerNodeMass(node: Pick<EffectNode, 'semanticType' | 'payload'>): number | null {
+  if (node.semanticType !== 'property.roller') return null;
+  const type0 = node.payload.type0;
+  const roller = object(type0) ? type0.type0Sub0 : null;
+  const mass = object(roller) ? roller.U0 : null;
+  return typeof mass === 'number' && Number.isFinite(mass) && mass > 0 ? mass : null;
+}
+
+/**
+ * The placements a collision effect makes knockable, with the mass it activates each with — the authored twin of
+ * the reference join (server/routes/props.ts `rollerInstanceMasses`) and what gives an authored Roller its shove
+ * in Test [Trailmap: 130-collision-data, 370-world-interaction]. A Roller in a placement's own collision graph
+ * activates that placement; a remote call in it whose called graph carries one activates the call's target.
+ */
+export function authoredRollerMasses(document: EffectsDocument | null | undefined,
+  props: readonly PlacedProp[]): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!document) return out;
+  const graphMass = (graph: EffectGraph | null): number | null => {
+    for (const node of graph?.nodes ?? []) {
+      const mass = rollerNodeMass(node);
+      if (mass !== null) return mass;
+    }
+    return null;
+  };
+  for (const binding of authoredEffectBindings(document, props)) {
+    if (binding.circumstance !== 'collision' || !binding.prop.id) continue;
+    const inline = graphMass(binding.graph);
+    if (inline !== null) out.set(binding.prop.id, inline);
+    for (const node of binding.graph.nodes) {
+      const call = authoredInstanceEffectCall(document, props, node);
+      const mass = call?.target?.id ? graphMass(call.graph) : null;
+      if (mass !== null) out.set(call!.target!.id!, mass);
     }
   }
   return out;
@@ -1286,12 +1361,7 @@ export function validateEffectsAuthoring(document: EffectsDocument, props: reado
     owners.forEach((owner, oi) => owner.nodes.forEach((node, ni) => {
       const path = `$.${ownerKind}[${oi}].nodes[${ni}]`;
       if (node.semanticType === 'property.roller') {
-        const type0 = node.payload.type0;
-        const roller = typeof type0 === 'object' && type0 !== null && !Array.isArray(type0)
-          ? (type0 as Record<string, unknown>).type0Sub0 : null;
-        const mass = typeof roller === 'object' && roller !== null && !Array.isArray(roller)
-          ? (roller as Record<string, unknown>).U0 : null;
-        if (typeof mass !== 'number' || !Number.isFinite(mass) || mass <= 0) out.push({
+        if (rollerNodeMass(node) === null) out.push({
           severity: 'warning', path: `${path}.payload.type0.type0Sub0.U0`,
           message: 'Roller mass must be a number greater than zero. As it stands, preview and the exported bundle both skip this Roller',
         });

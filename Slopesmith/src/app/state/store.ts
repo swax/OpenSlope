@@ -1,5 +1,7 @@
 import type { V3 } from '../../core/doc/types';
 import type { StampBehaviour } from '../../core/props/defaults';
+import type { PropEffectTemplate } from '../../core/props/effect-defaults';
+import type { EffectCircumstance } from '../../core/effects/authoring-contract';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { Brush } from '../../core/paint/textures';
 import type { GizmoFrame, GizmoMode, Mode, RotationSnapStep, SnapStep } from '../viewport/viewport';
@@ -83,7 +85,17 @@ export type ArmedProp = { level: string; model: number; name: string; group?: st
   behaviour: StampBehaviour;
   /** Where `behaviour` came from: the model's defaults (a library pick), a reference instance's own facts, or a
    *  placement being copied. */
-  from: 'defaults' | 'instance' | 'placement' };
+  from: 'defaults' | 'instance' | 'placement';
+  /** The effect each stamp is given (docs/069 · Effects), when there is one: the model's or the picked instance's
+   *  portable effect, or the effect slot of the placement being copied, which the copy then shares. */
+  effect?: HeldEffect;
+  /** The author switched the effect off for this hold: stamps carry the behaviour alone. */
+  effectOff?: boolean };
+
+/** An effect a held prop gives its stamps: a template from the reference level, or a placement's own slot. */
+export type HeldEffect =
+  | { kind: 'template'; template: PropEffectTemplate; matching?: number; total?: number }
+  | { kind: 'slot'; slot: string; circumstance: EffectCircumstance };
 
 export type Store = {
   mdoc: EditDoc;                     // the active document — a quad mesh; the generators' lattice is promoted before it lands here

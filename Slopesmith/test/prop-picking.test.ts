@@ -21,7 +21,7 @@ import {
 } from '../src/app/viewport/cursor';
 import { placementMatrix } from '../src/core/export/props';
 import type { V3 } from '../src/core/doc/types';
-import { createEmptyEffectsDocument } from '../src/core/effects/authoring';
+import { addEffectTemplateToProp, createEmptyEffectsDocument } from '../src/core/effects/authoring';
 import { check, failures } from './check';
 
 class FakeDom {
@@ -988,6 +988,38 @@ selectionLayer.setCollisionOverlayVisible(false);
 check(authoredColliderOverlay?.visible === false, 'The collider preference hides the authored selection overlay');
 selectionLayer.setCollisionOverlayVisible(true);
 selectionLayer.setSelection(null);
+
+// An authored Roller makes its placement knockable in Test exactly as a reference crash bag is: its colliders
+// carry the Roller's mass, and its physics donor's inertia when it has one, so the ride takes the shove path.
+{
+  const inertia = new Float32Array([0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01]);
+  extentAssets.registerPropModels({
+    level: 'TEST', instances: [], materials: new Map(), crowdFrames: [], models: [],
+    physicsMassProps: new Map([[7, { com: [0, 0, 12], invInertia: inertia }]]),
+  });
+  const solidBox = { mode: 2 as const, playerCollision: true, responseMass: 1e30, playerBounce: true, bounceAmount: 0.5 };
+  const place = (id: string, withDonor: boolean) => ({
+    id, level: 'TEST', model: 99, name: 'launcher', pos: [1, 2, 3] as V3, yaw: 0, scale: 1,
+    nativeCollision: withDonor ? { ...solidBox, physicsSource: { level: 'TEST', body: 7 } } : solidBox,
+  });
+  const effects = createEmptyEffectsDocument('rollers');
+  addEffectTemplateToProp(effects, 'prop-bag', 'roller');
+  addEffectTemplateToProp(effects, 'prop-cone', 'roller');
+  selectionLayer.setPlacedProps([place('prop-bag', true), place('prop-cone', false), place('prop-post', true)],
+    null, [], effects);
+  const colliders = selectionLayer.rideColliders();
+  const of = (id: string) => colliders.filter(source => source.object.kind === 'authored' && source.object.id === id);
+  const bag = of('prop-bag'), cone = of('prop-cone'), post = of('prop-post');
+  check(bag.length > 0 && bag.every(source => source.dynamicMass === 5 && source.solid),
+    'An authored Roller gives its placement the Roller’s mass while its contact stays solid');
+  check(bag.every(source => source.body?.com.join() === '0,0,12' && source.body.invInertia === inertia),
+    'and carries its physics donor’s centre of mass and inertia to the shove');
+  check(cone.length > 0 && cone.every(source => source.dynamicMass === 5 && !source.body),
+    'A Roller with no physics donor still shoves, translation-only');
+  check(post.length > 0 && post.every(source => source.dynamicMass === 0 && !source.body),
+    'A placement with no Roller stays a static obstacle, donor or not');
+  selectionLayer.setPlacedProps([], null);
+}
 
 // Test mode: a prop standing on the ride target is part of that mountain, so its clicked point is an ordinary
 // play point (the start flag / an AI drop) rather than an unavailable-target notice. Props on the OTHER mountain

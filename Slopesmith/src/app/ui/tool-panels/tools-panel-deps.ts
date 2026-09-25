@@ -16,7 +16,7 @@ import type { TextureLibrary } from '../../paint/library';
 import type { PropLibrary } from '../../props/library';
 import type { PropPreview } from '../../props/preview';
 import type { Play } from '../../ride/play';
-import type { Store } from '../../state/store';
+import type { HeldEffect, Store } from '../../state/store';
 import type { Viewport } from '../../viewport/viewport';
 
 export type ToolsPanelDeps = {
@@ -92,13 +92,15 @@ export type ToolsPanelDeps = {
   /** Pick up a prop: with `behaviour`, a copy of a placement's settings; with `sourceIndex`, a reference instance's
    *  own facts; with neither, the model's defaults (docs/069). */
   armProp: (level: string, model: number, name: string,
-    from?: { behaviour?: PropBehaviour; sourceIndex?: number }) => Promise<void>;
-  armGroupById: (level: string, id: string, from?: { behaviour?: PropBehaviour }) => Promise<void>;
+    from?: { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string }) => Promise<void>;
+  armGroupById: (level: string, id: string, from?: { behaviour?: PropBehaviour; placementId?: string }) => Promise<void>;
   deselectPropOrLight: () => void;
   // prop defaults (docs/069)
   propDefaults: (level: string, model: number) => ResolvedPropDefaults;
   /** What a group picked from the library stamps: each member its own model's defaults. */
   groupDefaults: (level: string, def: GroupDef) => StampBehaviour;
+  /** The portable effect a shipped model hands new placements, if it has one (docs/069 · Effects). */
+  modelEffect: (level: string, model: number) => HeldEffect | undefined;
   placementsOfModel: (level: string, model: number) => PlacedProp[];
   saveModelDefaults: (level: string, model: number, behaviour: PropBehaviour | null) => Promise<boolean>;
   applyBehaviourToPlaced: (level: string, model: number, behaviour: PropBehaviour) => number;

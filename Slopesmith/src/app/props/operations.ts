@@ -6,12 +6,12 @@ import {
   applyBehaviour, groupMemberDefaults, instanceBehaviour, resolvePropDefaults, sameBehaviour, sanitizePropBehaviour,
   stampBehaviour, type ResolvedPropDefaults, type StampBehaviour,
 } from '../../core/props/defaults';
-import { detachEffectFromProp } from '../../core/effects/authoring';
+import { detachEffectFromProp, effectAttachments } from '../../core/effects/authoring';
 import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
 import type { UvScrollEffect } from '../../core/effects/world-effects';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../../core/lighting/sign-lights';
 import { authoredGroupLights, type GroupDef, type GroupsPayload } from '../../core/reference/groups';
-import type { ArmedProp, Store } from '../state/store';
+import type { ArmedProp, HeldEffect, Store } from '../state/store';
 import type { Mode, Viewport } from '../viewport/viewport';
 import type { PropLibrary } from './library';
 import type { PropPreview } from './preview';
@@ -55,15 +55,46 @@ export function createPropOps(deps: PropOpsDeps) {
    *  - `sourceIndex`: an exact reference instance (MMB on the reference, or its inspector's ＋ place) — that
    *    instance's own contact, surface, hit sound, self-lighting and mode layer;
    *  - neither: a library pick — the MODEL's defaults.
+   * The effect follows the same source (docs/069 · Effects): the model's portable effect, the instance's own, or
+   * — with `placementId` — the copied placement's effect slot, which the copies then share.
    */
-  type ArmFrom = { behaviour?: PropBehaviour; sourceIndex?: number };
+  type ArmFrom = { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string };
 
-  function armBehaviour(level: string, model: number, from: ArmFrom): Pick<ArmedProp, 'behaviour' | 'from'> {
-    if (from.behaviour) return { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' };
+  function armBehaviour(level: string, model: number, from: ArmFrom):
+    Pick<ArmedProp, 'behaviour' | 'from' | 'effect'> {
+    if (from.behaviour) return { behaviour: stampBehaviour(level, from.behaviour), from: 'placement',
+      ...withEffect(placementEffect(from.placementId)) };
+    const props = propLevels.get(level);
     const source = typeof from.sourceIndex === 'number'
-      ? propLevels.get(level)?.instances.find(instance => instance.sourceIndex === from.sourceIndex) : undefined;
-    if (source) return { behaviour: instanceBehaviour(level, source), from: 'instance' };
-    return { behaviour: propDefaults(level, model).behaviour, from: 'defaults' };
+      ? props?.instances.find(instance => instance.sourceIndex === from.sourceIndex) : undefined;
+    if (source) {
+      const template = source.effect !== undefined ? props?.effects?.[source.effect] : undefined;
+      return { behaviour: instanceBehaviour(level, source), from: 'instance',
+        ...withEffect(template ? { kind: 'template', template: structuredClone(template) } : undefined) };
+    }
+    return { behaviour: propDefaults(level, model).behaviour, from: 'defaults', ...withEffect(modelEffect(level, model)) };
+  }
+
+  const withEffect = (effect: HeldEffect | undefined) => effect ? { effect } : {};
+
+  /** The portable effect a shipped level's model hands new placements (docs/069 · Effects), with how many of its
+   *  visible copies carry it. None for the author's own models, whose effects they attach themselves. */
+  function modelEffect(level: string, model: number): HeldEffect | undefined {
+    const props = propLevels.get(level);
+    const found = props?.models.find(candidate => candidate.id === model)?.effect;
+    const template = found ? props?.effects?.[found.template] : undefined;
+    return template && found
+      ? { kind: 'template', template: structuredClone(template), matching: found.matching, total: found.total }
+      : undefined;
+  }
+
+  /** The effect slot a placement carries, for its copies to share. */
+  function placementEffect(placementId: string | undefined): HeldEffect | undefined {
+    const effects = store.mdoc.effects;
+    if (!effects || !placementId) return undefined;
+    const attachment = effectAttachments(effects).find(item => item.enabled && item.target.id === placementId);
+    return attachment && effects.slots.some(slot => slot.id === attachment.slot)
+      ? { kind: 'slot', slot: attachment.slot, circumstance: attachment.circumstance } : undefined;
   }
 
   /** The defaults a new placement of this model starts with: the author's saved ones for their own models,
@@ -322,9 +353,12 @@ export function createPropOps(deps: PropOpsDeps) {
     } catch (e) { toast(`groups load failed: ${e}`, 'err'); return; }
     if (!def) { toast(`no group "${id}" in ${level}`, 'err'); return; }
     const leader = def.props[0];
+    // A group gets no effect default: until an effect can attach to one member, it would attach to the whole
+    // group, which Test plays as one prop and the ISO as one copy per member. A copied group keeps its own.
     store.armedProp = { level, model: leader.model, name: def.name, group: def.id,
       ...(from.behaviour
-        ? { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' as const }
+        ? { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' as const,
+          ...withEffect(placementEffect(from.placementId)) }
         : { behaviour: groupDefaults(level, def), from: 'defaults' as const }) };
     store.selectedProp = null;
     store.multiSel = [];
@@ -443,7 +477,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   return {
     modelDeclarations,
-    propDefaults, groupDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
+    propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
     ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
     reloadImportedProps,

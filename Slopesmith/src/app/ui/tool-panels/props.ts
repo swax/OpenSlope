@@ -18,6 +18,7 @@ import {
   type ResolvedPropDefaults,
 } from '../../../core/props/defaults';
 import type { GroupDef } from '../../../core/reference/groups';
+import { effectTemplateLabel } from '../../../core/props/effect-defaults';
 import { freeScreen, screenForProp, screensOfProp } from '../../props/screens';
 import { screenPose, screenProp } from '../../../core/props/screen';
 import {
@@ -31,7 +32,7 @@ import {
   authoredAmbientEvent, HIT_GATED_EVENT_POOL,
 } from '../../../core/effects/external-sound';
 import {
-  authoredEffectBindings, authoredPropHasEffectCircumstance, effectAttachments,
+  authoredEffectBindings, authoredPropHasEffectCircumstance, effectAttachments, rollerNodeMass,
 } from '../../../core/effects/authoring';
 import { collisionSoundSource } from '../../../core/effects/collision-sound';
 import { placementCancelButton, type ToolsContext } from './widgets';
@@ -151,7 +152,7 @@ export function createPropTools(ctx: ToolsContext) {
     gui, store, viewport, persistUi, multiList, propPreview, scheduleRebuild, rebuildTools,
     defOfPlaced, placedBaseOffset, shortPropName, propLevels, groupDefIdx,
     armProp, armGroupById, deselectPropOrLight, lightTool,
-    propDefaults, groupDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
+    propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     deleteSelectedProp, deleteMultiSelProps, deleteSelectedLight, deleteSelectedScreen, revealScreens,
     modelEdit, editSection, goToEffects,
     library, reloadImportedProps, setAuthoredModelTexture, setAuthoredModelFrames,
@@ -926,6 +927,40 @@ export function createPropTools(ctx: ToolsContext) {
     return { host, section };
   }
 
+  /**
+   * The held prop's effect (docs/069 · Effects): what each stamp is given, where it came from, and a switch to
+   * place without it. Nothing when the hold carries no effect.
+   */
+  function addHeldEffectSection(armed: ArmedProp, changed: () => void) {
+    const held = armed.effect;
+    if (!held) return null;
+    const section = editSection('props-held-effect', 'Effect', true);
+    if (held.kind === 'template') {
+      const mass = Object.values(held.template.circumstances).flat()
+        .map(node => node ? rollerNodeMass(node) : null).find(value => value !== null) ?? null;
+      detail(section, `${effectTemplateLabel(held.template)}${mass !== null ? ` · mass ${mass}` : ''}`, 'effect');
+      const name = shortPropName(armed.name);
+      const [line, more] = armed.from === 'instance'
+        ? [`This ${name}’s own effect.`, 'Middle-clicking a prop in the reference level takes that copy’s effect.']
+        : [`${held.matching === held.total ? `All ${held.total}` : `${held.matching} of ${held.total}`} placed `
+            + `${name} in ${armed.level} carry it.`,
+          'Only effects that act on the prop alone come across; sounds, particles, crowds and gems do not yet. Every '
+            + 'placement of it shares one effect, so retuning it in Effects mode retunes them all.'];
+      note(section, line, more);
+    } else {
+      note(section, 'Shares the copied prop’s effect.',
+        'Copies run one effect slot between them, as the retail levels do, so retuning it in Effects mode changes '
+          + 'every copy.');
+    }
+    tip(section.add({ on: !armed.effectOff }, 'on').name('attach on place').onChange((on: boolean) => {
+      if (on) delete armed.effectOff; else armed.effectOff = true;
+      changed();
+    }), 'Give each placed copy this effect.',
+    'It lands as an ordinary effect attachment, which the Effects editor then owns: retune it, or detach it from '
+      + 'one placement, like any other.');
+    return section;
+  }
+
   /** One line on where the held prop's settings came from, and a detail for the info badge. */
   function heldProvenance(armed: ArmedProp, resolved: ResolvedPropDefaults): [string, string] {
     const name = shortPropName(armed.name);
@@ -978,7 +1013,7 @@ export function createPropTools(ctx: ToolsContext) {
     const aboutSection = editSection('props-held-defaults', armed.group ? 'Group settings' : 'Placement defaults', true);
     const [provenance, more] = heldProvenance(armed, resolved);
     note(aboutSection, provenance, more);
-    const edited = () => armed.from === 'defaults' && !sameBehaviour(armed.behaviour, defaults);
+    const edited = () => armed.from === 'defaults' && (!sameBehaviour(armed.behaviour, defaults) || !!armed.effectOff);
     const statusText = () => armed.from === 'placement' ? 'copy of a placed prop'
       : armed.from === 'instance' ? 'copy of a reference prop'
         : edited() ? 'changed — not saved' : 'model defaults';
@@ -1010,6 +1045,10 @@ export function createPropTools(ctx: ToolsContext) {
       const reset = tip(gui.add({ reset: () => {
         armed.behaviour = structuredClone(defaults);
         armed.from = 'defaults';
+        // …and the model's effect with it; a group has none by default (docs/069 · Effects).
+        const effect = def ? undefined : modelEffect(armed.level, armed.model);
+        if (effect) armed.effect = effect; else delete armed.effect;
+        delete armed.effectOff;
         rebuildTools();
       } }, 'reset').name('↺ use model defaults'),
       'Drop the changes and hold this model with its defaults again.');
@@ -1034,13 +1073,16 @@ export function createPropTools(ctx: ToolsContext) {
         yaw: 0, scale: 1, ...armed.behaviour }, `held:${armed.level}:${armed.group}`)
       : null;
     const memberHost = members?.host ?? host;
+    // Switching the effect off is a change to the hold like any other, so the panel redraws to offer ↺ back.
+    const effectSection = addHeldEffectSection(armed, rebuildTools);
     const modeSection = addModeSection(host);
     const { contactSection } = addContactSection(memberHost);
     const lightingSection = addLightingSection(memberHost);
     const impactSection = addImpactSection(memberHost);
     const emitterSection = addEmitterSection(memberHost);
     aboutSection.domElement.before(...actionRows);
-    aboutSection.domElement.after(...(members ? [members.section.domElement] : []), modeSection.domElement,
+    aboutSection.domElement.after(...(members ? [members.section.domElement] : []),
+      ...(effectSection ? [effectSection.domElement] : []), modeSection.domElement,
       contactSection.domElement, lightingSection.domElement, impactSection.domElement, emitterSection.domElement);
   }
 
@@ -1122,8 +1164,10 @@ export function createPropTools(ctx: ToolsContext) {
           typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile)) });
       // a group's component list rides the preview card above
       const placeAction = tip(gui.add({ place: () => {
-        if (prop.group) void armGroupById(prop.level, prop.group, { behaviour: copied() });
-        else void armProp(prop.level, prop.model, prop.name, { behaviour: copied() });
+        // …and shares its effect, if it carries one (docs/069 · Effects).
+        const from = { behaviour: copied(), ...(prop.id ? { placementId: prop.id } : {}) };
+        if (prop.group) void armGroupById(prop.level, prop.group, from);
+        else void armProp(prop.level, prop.model, prop.name, from);
       } }, 'place')
         .name(def ? '＋ place group' : '＋ place prop'),
       `Put a copy of this ${def ? 'group' : 'prop'} on the cursor, then move over the terrain and click to place it.`);

@@ -3,6 +3,7 @@ import type { BodyShape, UnityBodyRecipe } from '../collision/unity-body';
 import type { ExternalSoundEmitter } from '../effects/external-sound';
 import { registerCollisionSoundIndex, type CollisionSoundIndex } from '../effects/collision-sound';
 import type { UvScrollEffect } from '../effects/world-effects';
+import type { PropEffectDefault, PropEffectTemplate } from '../props/effect-defaults';
 export { NATIVE_COLLISION_MODE } from '../collision/native';
 
 /** A material law authored explicitly rather than inferred from native flags or texture pixels. */
@@ -164,6 +165,9 @@ export interface PropModel {
   /** What every new placement of this model starts with, when the author saved some (docs/069). Only the
    *  author's own models carry these; an extracted level's are derived from its instances instead. */
   defaults?: PropBehaviour;
+  /** The effect an extracted level's model hands every new placement (docs/069 · Effects): which of the level's
+   *  `effects` its visible copies most often carry, and how many do. Absent when that is none, or not portable. */
+  effect?: PropEffectDefault;
 }
 
 /** One placement of a model in the level: a raw-space transform + which model it draws. */
@@ -214,6 +218,8 @@ export interface PropInstance {
   collisionModels?: string[];
   /** Native ADL listener-region records (`Sounds.ExternalSounds`), with their type-specific payload intact. */
   externalSounds: ExternalSoundEmitter[];
+  /** Index into the level's `effects` when this copy's effect slot is a portable effect default (docs/069). */
+  effect?: number;
   /** Native per-instance PS2 lighting. Retail placements carry this already; authored placements omit it
    * because their preview/export lighting is derived live from the authored sun and terrain bake. */
   lighting?: {
@@ -258,6 +264,8 @@ export interface LevelProps {
   unityBodyRecipes?: Map<number, UnityBodyRecipe>;
   /** PhysicsIndex → the same body's rigid-body mass properties, when it authored a usable tensor. */
   physicsMassProps?: Map<number, PhysicsBodyMassProps>;
+  /** The level's portable effects — what `PropModel.effect` and `PropInstance.effect` index (docs/069). */
+  effects?: PropEffectTemplate[];
 }
 
 /**
@@ -285,7 +293,11 @@ export interface PropsPayload {
     /** Emitters the SOURCE MODEL declared (an imported GLB's glTF `extras`, docs/032). */
     emitters?: { fields: Record<string, number> }[];
     /** The author's saved defaults for an imported model (docs/069). */
-    defaults?: PropBehaviour }[];
+    defaults?: PropBehaviour;
+    /** Effect default: template index into `effects`, with its matching / total visible copies (docs/069). */
+    fx?: { t: number; n: number; of: number } }[];
+  /** An extracted level's portable effects, which models and instances index by `fx` (docs/069). */
+  effects?: PropEffectTemplate[];
   /** `scroll` is material motion the SOURCE MODEL declared for itself — an imported GLB reading its own
    *  glTF `extras`. Extracted levels leave it unset and get their motion from the level's effect graphs
    *  instead; this exists because an imported prop has no graph to be attached to. */
@@ -316,7 +328,8 @@ export interface PropsPayload {
     /** physics-pool rigid-body record; omitted when the instance has none (PhysicsIndex -1) */ px?: number;
     /** native mode-1 Collision/*.obj ids; omitted when the instance carries no collision proxy */ cp?: string[];
     /** ExternalSounds: type, event, world-axis offset, and type-specific U5+ tail. */
-    xs?: { t: number; s: number; o: number[]; p: number[] }[] }[];
+    xs?: { t: number; s: number; o: number[]; p: number[] }[];
+    /** index into `effects` when this copy's effect is portable; omitted otherwise */ fx?: number }[];
   error?: string;
 }
 
@@ -380,6 +393,9 @@ export function propModelMaterials(props: LevelProps, model: PropModel): PropMod
 /** Decode the server payload into typed-array models + instances the viewport can instance directly. */
 export function decodeProps(payload: PropsPayload): LevelProps {
   registerCollisionSoundIndex(payload.soundIndex);
+  const effects = Array.isArray(payload.effects) ? payload.effects : [];
+  // An index only counts when it lands on a template, so an older or damaged payload degrades to "no effect".
+  const effectAt = (index: unknown): boolean => Number.isInteger(index) && !!effects[index as number];
   const models: PropModel[] = payload.models.map(m => ({
     id: m.id,
     name: m.name,
@@ -387,6 +403,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
     ...(m.animation ? { animation: m.animation } : {}),
     ...(m.emitters?.length ? { emitters: m.emitters } : {}),
     ...(m.defaults && typeof m.defaults === 'object' ? { defaults: m.defaults } : {}),
+    ...(m.fx && effectAt(m.fx.t) ? { effect: { template: m.fx.t, matching: m.fx.n, total: m.fx.of } } : {}),
     subs: m.subs.map(s => {
       const pb = b64ToBytes(s.pos);
       const ub = b64ToBytes(s.uv);
@@ -431,6 +448,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
       offset: [x.o[0] ?? 0, x.o[1] ?? 0, x.o[2] ?? 0],
       params: x.p.filter(Number.isFinite),
     })),
+    ...(effectAt(i.fx) ? { effect: i.fx } : {}),
     ...(i.la?.length === 3 ? {
       lighting: {
         ambient: [i.la[0], i.la[1], i.la[2]] as V3,
@@ -503,6 +521,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
   return {
     level: payload.level, models, instances, materials, crowdFrames: payload.crowdFrames ?? [],
     collisionMeshes, physicsBodies, unityBodyRecipes, physicsMassProps,
+    ...(effects.length ? { effects } : {}),
   };
 }
 

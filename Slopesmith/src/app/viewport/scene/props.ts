@@ -4,7 +4,7 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import type { PlacedProp, V3 } from '../../../core/doc/types';
 import type { EffectsDocument } from '../../../core/effects/document';
 import {
-  authoredPropHasEffectCircumstance,
+  authoredPropHasEffectCircumstance, authoredRollerMasses,
   authoredPropHoldsAtEnd,
   authoredPropMaterialControl,
   authoredPropMaterialEffects,
@@ -1303,6 +1303,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       object.updateWorldMatrix(true, false);
       return object.matrixWorld;
     };
+    // Which placements a collision Roller makes knockable, and how heavy — the same join the reference props'
+    // `dynamicMass` comes from. Response mass and PlayerBounce still decide whether the contact is solid; the
+    // Roller independently activates the body [Trailmap: 130-collision-data, 370-world-interaction].
+    const rollers = authoredRollerMasses(effects, lastPlacedProps);
     for (let i = 0; i < lastPlacedProps.length; i++) {
       const placed = lastPlacedProps[i], root = placedPropMeshes[i];
       if (!root) continue;
@@ -1340,6 +1344,15 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       const key = `authored:${member === undefined ? id : groupMemberKey(id, member)}`;
       const object = { kind: 'authored' as const, id, ...(member === undefined ? {} : { member }) };
       const native = prop.nativeCollision;
+      // A knockable prop takes the rigid-body shove, with its physics donor's inertia when it has one; without
+      // a donor it still leaves, translation-only, as a reference body with no authored tensor does.
+      const rollerMass = rollers.get(id) ?? 0;
+      const massProps = rollerMass > 0 && native?.physicsSource
+        ? assets.physicsMass(native.physicsSource.level, native.physicsSource.body) : null;
+      const movable = rollerMass > 0 ? {
+        dynamicMass: rollerMass,
+        ...(massProps ? { body: { com: massProps.com, invInertia: massProps.invInertia } } : {}),
+      } : { dynamicMass: 0 };
       if (native) {
         const donor = native.physicsSource;
         const spheres = donor ? assets.physicsBody(donor.level, donor.body) : null;
@@ -1355,9 +1368,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           bounce: native.playerBounce ? native.bounceAmount : 0,
           playerBounce: native.playerBounce,
           surface: typeof prop.surface === 'number' ? prop.surface : -1,
-          // NativeCollisionProfile carries response state only. Per [Trailmap: 370-world-interaction], an authored Roller effect activates motion
-          // separately; until that graph is joined here this collider remains static/pass-through as authored.
-          dynamicMass: 0,
+          ...movable,
         };
         if (native.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && spheres?.length) {
           const body = unitMeshes(root, i, member)[0];
@@ -1392,6 +1403,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           matrixWorld: mesh.matrixWorld.clone(), solid, liveMatrix: objectPose(mesh),
           bounce: solid ? (typeof prop.bounce === 'number' ? prop.bounce : 0.5) : 0,
           surface: solid && typeof prop.surface === 'number' ? prop.surface : -1,
+          ...movable,
         });
       }
     }
