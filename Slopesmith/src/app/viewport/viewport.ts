@@ -45,7 +45,8 @@ import type { LightRig } from '../../core/reference/lights';
 import type { PlacedLight } from '../../core/lighting/sign-lights';
 import { propPreviewIntensity } from '../../core/lighting/prop-lights';
 import { lightToWorkingSpace } from '../../core/lighting/color-space';
-import type { GroupDef } from '../../core/reference/groups';
+import { memberWorldPos, type GroupDef } from '../../core/reference/groups';
+import { groupMemberKey, groupMemberProp } from '../../core/props/defaults';
 import {
   referenceEffectInstanceIndices, referenceSplineOriginalIndex, type ReferenceEffectsData,
 } from '../../core/reference/effects';
@@ -3169,13 +3170,13 @@ export class Viewport {
   private applyAuthoredAmbience(props: readonly PlacedProp[]) {
     const sources: AmbientSoundSource[] = [];
     const claims = this.meshDoc?.hitGatedSounds;
-    for (const prop of props) {
+    const push = (id: string, key: string, prop: PlacedProp, center: V3) => {
       // A claimed WAV carries the gated event it took over, so the bed gates it through the ordinary id test
       // rather than needing a second notion of "gated" threaded down here.
       const event = authoredAmbientEvent(prop.ambientSound, prop.ambientSoundFile, claims);
-      if (!prop.id || (event < 0 && !prop.ambientSoundFile)) continue;
+      if (event < 0 && !prop.ambientSoundFile) return;
       sources.push({
-        key: `authored:${prop.id}`,
+        key,
         emitter: {
           type: prop.ambientHalfExtents ? 1 : 0,
           sound: event,
@@ -3187,14 +3188,25 @@ export class Viewport {
             halfExtents: prop.ambientHalfExtents,
           }),
         },
-        owner: authoredOwnerKey(prop.id),
+        owner: authoredOwnerKey(id),
         // Handed over in EDITOR metres. The bed converts it into the frame the listener is measured in,
         // which is the reference holder's — and that holder carries a comparison offset this does not.
-        center: prop.pos,
+        center,
         space: 'editor',
         level: prop.level,
         ...(prop.ambientSoundFile ? { file: prop.ambientSoundFile } : {}),
       });
+    };
+    for (const prop of props) {
+      if (!prop.id) continue;
+      if (!prop.group) { push(prop.id, `authored:${prop.id}`, prop, prop.pos); continue; }
+      // A group loops per member, at the member, as the export writes it (docs/069): a member with an entry of
+      // its own by that entry, under its own key; otherwise only the leader carries the placement's loop.
+      for (const m of this.assets.membersOf(prop.level, prop.model, prop.name, prop.group)) {
+        const own = !!prop.memberBehaviour?.[String(m.model)];
+        push(prop.id, `authored:${own ? groupMemberKey(prop.id, m.model) : prop.id}`,
+          groupMemberProp(prop, m.model), memberWorldPos(prop, m.relPos));
+      }
     }
     this.authoredAmbience = sources;
     this.pushPlacedAmbience();

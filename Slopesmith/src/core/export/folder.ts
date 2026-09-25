@@ -1,7 +1,7 @@
 import type { EditDoc } from '../doc/doc-edit';
 import { authoredParticleTextures } from '../effects/particle-textures';
 import { parseTexRef } from '../paint/textures';
-import type { V3 } from '../doc/types';
+import type { PlacedProp, V3 } from '../doc/types';
 import { environmentDocument, normalizeEnvironmentBed } from '../audio/environment';
 import {
   authoredPropTextureFlip, authoredPropUvScroll, createEmptyEffectsDocument,
@@ -21,6 +21,7 @@ import { decodeProps } from '../reference/props';
 import { AUTHORED_MODEL_LEVEL, modelNumber } from '../doc/models';
 import { IMPORTED_PROP_LEVEL } from '../props/imported';
 import { placedPropSolid } from '../props/contact';
+import { groupMemberKey } from '../props/defaults';
 import { particleDonorLevel } from '../particles/volumes';
 import { buildLevelFiles, toRaw } from './level';
 import { buildMaterialCombiner } from './materials';
@@ -225,9 +226,12 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     // a group placement bakes as its member models at the derived poses — identical-origin instances, the
     // same form the shipped levels author assemblies in (docs/015). Members keep the placement's stable id
     // so an attached effect covers the whole assembly, the same join the viewport renders with.
+    // Each member is ALSO registered under its own member key, which is what its per-member tuning (docs/069)
+    // joins on; effects, poses and clips keep joining on the placement id.
     const expanded = refPlacements.flatMap(pp => {
       const def = pp.group ? defIdx.get(`${pp.level}:${pp.group}`) : undefined;
-      return def ? expandGroupProps(pp, def).map(member => ({ ...member, id: pp.id })) : [pp];
+      return def ? expandGroupProps(pp, def).map(member => ({ ...member, id: pp.id,
+        ...(pp.id ? { memberKey: groupMemberKey(pp.id, member.model) } : {}) })) : [pp];
     });
     const { obj: startObj, v, vt } = objCounts();
     const bake = bakePlacedProps(expanded, geometryOf, combiner, v, vt, scrollIndexOf);
@@ -415,19 +419,31 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     }
     return clip;
   };
-  for (const pp of doc.props ?? []) {
-    if (!pp.id) continue;
+  /**
+   * What per-prop tuning is keyed by (docs/069): a plain placement is one record under its id; a GROUP placement
+   * is one per member, under `groupMemberKey`, carrying that member's own behaviour — so one tree's trunk and
+   * leaves ship different contact and sounds. Only per-member tuning uses these keys; nothing per-member is
+   * written under the group's own id, so no member can be claimed by both (`joined` is first-wins).
+   */
+  const tuningUnits = (doc.props ?? []).flatMap((pp): { key: string; prop: PlacedProp }[] => {
+    if (!pp.id) return [];
+    const def = pp.group ? defIdx.get(`${pp.level}:${pp.group}`) : undefined;
+    return def
+      ? expandGroupProps(pp, def).map(member => ({ key: groupMemberKey(pp.id!, member.model), prop: member }))
+      : [{ key: pp.id, prop: pp }];
+  });
+  for (const { key, prop: pp } of tuningUnits) {
     if (typeof pp.collisionSoundFile === 'string' && pp.collisionSoundFile) {
       const custom = await stageCustom(pp.collisionSoundFile, 'hit');
       if (custom) {
-        collisionSounds[pp.id] = custom.event;
-        collisionSoundClips[pp.id] = custom.clip;
+        collisionSounds[key] = custom.event;
+        collisionSoundClips[key] = custom.clip;
       }
     } else if (typeof pp.collisionSound === 'number' && pp.collisionSound >= 0) {
       const event = Math.trunc(pp.collisionSound);
-      collisionSounds[pp.id] = event;
+      collisionSounds[key] = event;
       const clip = await stageBank(pp.level, event);
-      if (clip) collisionSoundClips[pp.id] = clip;
+      if (clip) collisionSoundClips[key] = clip;
     }
     // Region and falloff ride along in EDITOR metres; `authoredAmbientRecord` does the clamping, the unit
     // conversion and the axis reorder in one place at the moment the native record is stamped.
@@ -438,11 +454,11 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     };
     if (typeof pp.ambientSoundFile === 'string' && pp.ambientSoundFile) {
       const custom = await stageCustom(pp.ambientSoundFile, 'emitter');
-      if (custom) ambientSounds[pp.id] = { event: custom.event, ...ambientRegion, clip: custom.clip };
+      if (custom) ambientSounds[key] = { event: custom.event, ...ambientRegion, clip: custom.clip };
     } else if (typeof pp.ambientSound === 'number' && pp.ambientSound >= 0) {
       const event = Math.trunc(pp.ambientSound);
       const clip = await stageExternalBank(pp.level, event);
-      ambientSounds[pp.id] = { event, ...ambientRegion, ...(clip ? { clip } : {}) };
+      ambientSounds[key] = { event, ...ambientRegion, ...(clip ? { clip } : {}) };
     }
   }
   const soundCount = Object.keys(collisionSounds).length;
@@ -471,15 +487,15 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   const propSurfaces: Record<string, number> = {};
   const propModePresence: Record<string, 'showoff'> = {};
   const nativeCollisions: Record<string, NativeCollisionExport> = {};
-  for (const pp of doc.props ?? []) {
-    if (!pp.id) continue;
-    if (pp.modePresence === 'showoff') propModePresence[pp.id] = 'showoff';
+  // The mode layer is the whole group's, so it stays joined on the placement id.
+  for (const pp of doc.props ?? []) if (pp.id && pp.modePresence === 'showoff') propModePresence[pp.id] = 'showoff';
+  for (const { key, prop: pp } of tuningUnits) {
     if (placedPropSolid(pp) && typeof pp.bounce === 'number' && pp.bounce >= 0)
-      propBounce[pp.id] = Math.round(pp.bounce * 1000) / 1000;
+      propBounce[key] = Math.round(pp.bounce * 1000) / 1000;
     if (placedPropSolid(pp) && typeof pp.surface === 'number' && pp.surface >= 0)
-      propSurfaces[pp.id] = Math.trunc(pp.surface);
+      propSurfaces[key] = Math.trunc(pp.surface);
     if (pp.nativeCollision) {
-      nativeCollisions[pp.id] = {
+      nativeCollisions[key] = {
         mode: pp.nativeCollision.mode,
         playerCollision: pp.nativeCollision.playerCollision,
         responseMass: pp.nativeCollision.responseMass,

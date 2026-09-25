@@ -1,6 +1,8 @@
-import type { NativeCollisionProfile, PropBehaviour } from '../doc/types';
+import type { NativeCollisionProfile, PlacedProp, PropBehaviour } from '../doc/types';
 import type { LevelProps, PropInstance } from '../reference/props';
-import { collisionProfileFromSourceInstance, defaultPlacedPropCollision } from './contact';
+import {
+  collisionProfileFromSourceInstance, defaultPlacedPropCollision, placedPropCollisionProfile,
+} from './contact';
 import { ownGeometry } from './kind';
 import { PROP_FULL_BRIGHT_RECORD } from '../lighting/prop-lights';
 
@@ -29,7 +31,12 @@ export const PROP_BEHAVIOUR_FIELDS = [
   'nativeCollision', 'surface', 'modePresence',
   'collisionSound', 'collisionSoundFile',
   'ambientSound', 'ambientSoundFile', 'ambientRadius', 'ambientFalloff', 'ambientHalfExtents',
-  'fullBright',
+  'fullBright', 'memberBehaviour',
+] as const satisfies readonly (keyof PropBehaviour)[];
+
+/** The positional loop and its region — the fields a group member inherits only if it is the leader. */
+const AMBIENT_FIELDS = [
+  'ambientSound', 'ambientSoundFile', 'ambientRadius', 'ambientFalloff', 'ambientHalfExtents',
 ] as const satisfies readonly (keyof PropBehaviour)[];
 
 /** A behaviour with its collision profile always present — what a placement is actually stamped with. */
@@ -122,7 +129,94 @@ export function sanitizePropBehaviour(raw: unknown): PropBehaviour | null {
   if (Array.isArray(extents) && extents.length === 3 && extents.every(e => finiteAtLeast(e, 0) && e > 0))
     out.ambientHalfExtents = [extents[0], extents[1], extents[2]];
   if (r.fullBright === true) out.fullBright = true;
+  // A group's per-member behaviour: model-id keys, each a complete behaviour of its own. Members carry no mode
+  // layer (it is the group's) and no members of their own.
+  const members = r.memberBehaviour;
+  if (members && typeof members === 'object' && !Array.isArray(members)) {
+    const clean: Record<string, PropBehaviour> = {};
+    for (const [key, value] of Object.entries(members)) {
+      if (!/^\d+$/.test(key)) continue;
+      const entry = sanitizePropBehaviour(value);
+      if (!entry) continue;
+      delete entry.memberBehaviour;
+      delete entry.modePresence;
+      clean[key] = entry;
+    }
+    if (Object.keys(clean).length) out.memberBehaviour = clean;
+  }
   return Object.keys(out).length ? out : null;
+}
+
+/** The key a group member's own records go by — its Test collider and sound, its export tuning (docs/069). */
+export const groupMemberKey = (id: string, model: number): string => `${id}#${model}`;
+
+/**
+ * How one member of a GROUP placement behaves: its own entry when the placement carries per-member behaviour,
+ * else the placement's own fields — except the ambient loop, which only the leader inherits, so a group placed
+ * before per-member behaviour keeps ONE loop (as Test always played it) rather than one per member. The mode
+ * layer is always the group's. A member with no collision profile is inferred downstream exactly as a plain
+ * placement without one is.
+ */
+export function memberBehaviour(pp: PlacedProp, model: number): PropBehaviour {
+  const own = pp.memberBehaviour?.[String(model)];
+  const out = behaviourOf(own ?? pp);
+  delete out.memberBehaviour;
+  if (!own && model !== pp.model) for (const field of AMBIENT_FIELDS) delete out[field];
+  if (pp.modePresence === 'showoff') out.modePresence = 'showoff'; else delete out.modePresence;
+  return out;
+}
+
+/** A behaviour and each of its group members' (docs/069) — every record a sound file or event can be named on. */
+export function behaviourRecords(behaviour: PropBehaviour): PropBehaviour[] {
+  return [behaviour, ...Object.values(behaviour.memberBehaviour ?? {})];
+}
+
+/** The legacy pre-profile contact flags a member infers from: its placement's, unless it has an entry of its own. */
+export function memberLegacyContact(pp: PlacedProp, model: number): Pick<PlacedProp, 'solid' | 'bounce'> {
+  if (pp.memberBehaviour?.[String(model)]) return {};
+  return { ...(pp.solid !== undefined ? { solid: pp.solid } : {}), ...(pp.bounce !== undefined ? { bounce: pp.bounce } : {}) };
+}
+
+/** A group placement as one member sees it: the same placement, with that member's behaviour in place of its own. */
+export function groupMemberProp(pp: PlacedProp, model: number): PlacedProp {
+  const out = applyBehaviour({ ...pp, model }, memberBehaviour(pp, model));
+  delete out.solid;
+  delete out.bounce;
+  return Object.assign(out, memberLegacyContact(pp, model));
+}
+
+/**
+ * An entry for every member of a group, each holding what that member does NOW — its collision profile included,
+ * inferred where the placement never stored one. What the first per-member edit writes, so giving one member
+ * settings of its own changes no other member. `collisionEffect`: the placement has a collision effect attached.
+ */
+export function materializeMemberBehaviour(pp: PlacedProp, models: readonly number[], collisionEffect = false):
+  Record<string, PropBehaviour> {
+  const out: Record<string, PropBehaviour> = {};
+  for (const model of models) {
+    const member = groupMemberProp(pp, model);
+    const entry = memberBehaviour(pp, model);
+    delete entry.modePresence;
+    const hitSound = typeof member.collisionSound === 'number' || !!member.collisionSoundFile;
+    entry.nativeCollision = structuredClone(placedPropCollisionProfile(member, collisionEffect, hitSound));
+    out[String(model)] = entry;
+  }
+  return out;
+}
+
+/**
+ * Per-member behaviour for a group about to be placed: each member model's OWN defaults — which is what makes a
+ * tree group arrive with a solid trunk under ride-through, rustling leaves. Keyed as `PlacedProp.memberBehaviour`.
+ */
+export function groupMemberDefaults(level: string, models: readonly number[], props: LevelProps | undefined):
+  Record<string, StampBehaviour> {
+  const out: Record<string, StampBehaviour> = {};
+  for (const model of models) {
+    const behaviour = resolvePropDefaults(level, model, props).behaviour;
+    delete behaviour.modePresence; // the group's, not a member's
+    out[String(model)] = behaviour;
+  }
+  return out;
 }
 
 /** Retail's self-lit convention: no key light at all and an ambient record of exactly 256 on every channel. */

@@ -12,6 +12,7 @@ import { sphereVsNativeBox, sweptSphereVsNativeBox } from '../../core/collision/
 import { RIDER_DECK_SAMPLES, RIDER_PROBE_SAMPLES, riderBodyCentre, riderProbeOffsets } from './rider-volume';
 import type { RideKeys } from './input';
 import type { RideObstacleHit, RideObstacleObject, RideObstacleSource } from './obstacles';
+import { obstacleKeyCovers } from './obstacles';
 // The tuning table and the stateless contact/vector math live beside this file; both are re-exported below so
 // every symbol this module has always published still resolves through `app/ride/physics`.
 import {
@@ -395,7 +396,21 @@ export function createRideModel(o: RideModelOpts) {
   /** The crack drain. Charged from per-tick surface containment, which is the CARRIED regime, and from a
    *  blocking obstacle hit, which is the IMPACT one — the two costs differ by two orders of magnitude. */
   function retireObstacle(key: string): void {
-    for (const meta of obstacleMetas) if (meta.key === key) meta.enabled = false;
+    for (const covered of setObstaclesEnabled(key, false)) clearObstacleLatches(covered);
+  }
+
+  /** Flip every collider `key` covers (a group placement's covers its members); returns each key it touched,
+   *  `key` itself always included. */
+  function setObstaclesEnabled(key: string, enabled: boolean): Set<string> {
+    const covered = new Set([key]);
+    for (const meta of obstacleMetas) if (obstacleKeyCovers(meta.key, key)) {
+      meta.enabled = enabled;
+      covered.add(meta.key);
+    }
+    return covered;
+  }
+
+  function clearObstacleLatches(key: string): void {
     barrierTouches.delete(key);
     barrierIterationTouches.delete(key);
     barrierSensorTouches.delete(key);
@@ -408,11 +423,7 @@ export function createRideModel(o: RideModelOpts) {
    * the rider was still close to its cached faces.
    */
   function restoreObstacle(key: string): void {
-    for (const meta of obstacleMetas) if (meta.key === key) meta.enabled = true;
-    barrierTouches.delete(key);
-    barrierIterationTouches.delete(key);
-    barrierSensorTouches.delete(key);
-    obstacleHitNext.delete(key);
+    for (const covered of setObstaclesEnabled(key, true)) clearObstacleLatches(covered);
     crackedSurfaces?.restore(key);
   }
 

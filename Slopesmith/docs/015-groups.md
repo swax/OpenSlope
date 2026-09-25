@@ -77,7 +77,8 @@ gizmos, not the editable free-light ones).
   (`prepareSet`), with the **component list** right below the name: `▪` per member model, a coloured dot +
   kind/intensity per light. A plain prop shows no list.
 - **Tools** — a selected group shows the usual turn / size / delete (labelled *delete group*); the
-  base-keeping scale nudge uses the assembly's lowest member.
+  base-keeping scale nudge uses the assembly's lowest member. Its contact, sound and lighting can differ per
+  member, picked in **Member settings** (docs/069 · Groups).
 
 ## Prop tint from the rig (all placements)
 
@@ -91,7 +92,8 @@ lamp. A placement that catches no light keeps its shared materials (no clones). 
 
 - **Props** — `expandGroupProps` turns each group placement into per-member placements for the Props.obj
   bake: identical-origin instances, exactly the form the shipped levels author. The log line counts
-  placements vs baked prop meshes.
+  placements vs baked prop meshes. Each member carries its own behaviour, and its tuning joins on
+  `<id>#<model>` (docs/069 · Groups).
 - **Lights** — the group lights join the sign + free lights: baked into the terrain lightmap and written to
   `Lights.json` (a Type-1 spot / Type-2 point at the placement-derived position, HDR colour, cone cosine,
   reach-sized influence box). Verified: a placed street-lamp group exports one spot at exactly the lamp-head

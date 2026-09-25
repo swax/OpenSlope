@@ -1,6 +1,7 @@
 import type { EditDoc } from '../doc/doc-edit';
 import { AUTHORED_MODEL_LEVEL } from '../doc/models';
 import { IMPORTED_PROP_LEVEL } from '../props/imported';
+import { behaviourRecords } from '../props/defaults';
 
 export const SLOPESMITH_EXPORT_MANIFEST = 'Slopesmith.json';
 export const SLOPESMITH_EXPORT_SCHEMA = 1;
@@ -94,10 +95,13 @@ export function classifyExportProvenance(
   for (const prop of doc.props ?? []) {
     if (prop.level === IMPORTED_PROP_LEVEL) supplied.add('user-imported-model');
     else if (prop.level !== AUTHORED_MODEL_LEVEL && !internalLevel(prop.level)) retail.add('retail-prop-art');
-    if (prop.nativeCollision?.physicsSource && !internalLevel(prop.nativeCollision.physicsSource.level))
-      retail.add('retail-collision-shape');
-    if (prop.collisionSoundFile || prop.ambientSoundFile) supplied.add('user-audio');
-    if (prop.collisionSound !== undefined || prop.ambientSound !== undefined) retail.add('retail-audio');
+    // Its group members' own behaviour (docs/069) names audio and collision donors too.
+    for (const record of behaviourRecords(prop)) {
+      if (record.collisionSoundFile || record.ambientSoundFile) supplied.add('user-audio');
+      if (record.collisionSound !== undefined || record.ambientSound !== undefined) retail.add('retail-audio');
+      if (record.nativeCollision?.physicsSource && !internalLevel(record.nativeCollision.physicsSource.level))
+        retail.add('retail-collision-shape');
+    }
   }
 
   for (const model of doc.models ?? []) {

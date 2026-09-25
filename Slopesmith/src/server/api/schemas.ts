@@ -436,6 +436,12 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       ambientSoundFile: { type: 'string' },
       ambientRadius: { type: 'number' },
       group: { type: 'string', description: 'Group-def id when this placement is a mined group.' },
+      memberBehaviour: {
+        type: 'object', additionalProperties: { type: 'object' },
+        description: 'Group placements only: each member\'s own behaviour, keyed by its model id — the same '
+          + 'fields as the placement (nativeCollision, surface, collisionSound, ambient*, fullBright). When present '
+          + 'it holds every member; modePresence stays the placement\'s.',
+      },
       effectTrigger: {
         type: 'object', properties: { size: V3 },
         description: 'Makes this an invisible trigger volume for effects: use level "@effects", model 0, '

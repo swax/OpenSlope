@@ -1,6 +1,7 @@
 import type { Gem, PlacedProp, QuadMeshDoc, Rail, Screen, SunLight, V3 } from '../doc/types';
 import { screenPose, screenProp } from '../props/screen';
 import { isEffectTriggerProp } from '../effects/trigger-volume';
+import { groupMemberKey } from '../props/defaults';
 import type { EditDoc } from '../doc/doc-edit';
 import { surfaceStyle, DEFAULT_SUN } from '../doc/types';
 import { bakeLightmaps, type DiffuseSampler } from '../lighting/bake';
@@ -575,10 +576,15 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
     const standsAt = (p: PlacedProp): V3 =>
       [p.pos[0], p.pos[1] + p.scale * (opts?.propBaseOffset?.(p) ?? 0), p.pos[2]];
     const baked = bakeLightmaps(patches, sun, proceduralDiffuse(patches), rig, litProps.map(standsAt));
+    const light = (p: PlacedProp, i: number, fullBright: boolean) =>
+      roundPropLight(propInstanceLight(sun, baked.probeLight[i], baked.probeAO[i], fullBright, p));
+    // A group's members share its probe but each keeps its own self-lit flag (docs/069). Member keys go in
+    // FIRST: the join is first-wins per baked name, so a member's entry beats the placement-wide one.
     litProps.forEach((p, i) => {
-      propLights[p.id!] = roundPropLight(
-        propInstanceLight(sun, baked.probeLight[i], baked.probeAO[i], p.fullBright === true, p));
+      for (const [model, member] of Object.entries(p.memberBehaviour ?? {}))
+        propLights[groupMemberKey(p.id!, Number(model))] = light(p, i, member.fullBright === true);
     });
+    litProps.forEach((p, i) => { propLights[p.id!] = light(p, i, p.fullBright === true); });
     for (let i = 0; i < patches.length; i++) {
       patches[i].LightMapPoint = baked.patchLm[i].rect;
       patches[i].LightmapID = baked.patchLm[i].id;

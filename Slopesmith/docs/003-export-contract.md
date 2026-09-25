@@ -60,7 +60,11 @@ The `Effects.json.extensions.slopesmith` joins are keyed by stable placement id 
 `bakedGroups`: `collisionSounds` stores the native ADL event id per placement, `collisionSoundClips` names its
 direct-import WAV, and `ambientSounds` carries `{ event, radius, clip? }`. `customSoundEvents` maps portable
 reserved event ids to `Sounds/*.wav`; `customSounds` separately maps direct PlaySound course-bank slots to
-WAVs. `propBounce` / `propSurfaces` carry solid-contact tuning. Dynamic movement has no
+WAVs. `propBounce` / `propSurfaces` carry solid-contact tuning. A group placement's per-member tuning
+(docs/069) is keyed `<placement id>#<model>`, which `bakedGroups` maps to that member's mesh alone; nothing
+per-member is written under the placement id, so the first-wins join never has two claims on one mesh.
+Self-lit lighting is the one exception: a member's `propLighting` entry is written before the placement's, so
+it wins. Dynamic movement has no
 parallel editor-only join: a collision `property.roller` node is the single source of its target and mass for
 Slopesmith, ISO packing, and the Unity bundle, as required by
 [Trailmap: 130-collision-data, 370-world-interaction]. The spec owns that

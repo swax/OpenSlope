@@ -3,6 +3,7 @@ import type { RawRigLight } from './lights';
 import { reachM, colorHex } from './lights';
 import { rawLinearToEditor, normalize, type PlacedLight } from '../lighting/sign-lights';
 import { composeYaw, rotateByPlacement, tiltFields } from '../props/pose';
+import { applyBehaviour, memberBehaviour, memberLegacyContact } from '../props/defaults';
 
 /**
  * GROUP PROPS (docs/015): assemblies mined from a reference level's own placement data — the fire hydrant
@@ -309,7 +310,7 @@ export function mineGroups(
 
 /** A member's world position: the group-local offset scaled + rotated through the placement (mirrors
  *  signlights.mapPoint, already past rawLinearToEditor). */
-function memberWorldPos(pp: PlacedProp, rel: V3): V3 {
+export function memberWorldPos(pp: PlacedProp, rel: V3): V3 {
   const r = rotateByPlacement([rel[0] * pp.scale, rel[1] * pp.scale, rel[2] * pp.scale], pp);
   return [r[0] + pp.pos[0], r[1] + pp.pos[1], r[2] + pp.pos[2]];
 }
@@ -319,14 +320,19 @@ function memberWorldPos(pp: PlacedProp, rel: V3): V3 {
  *  `relYaw` is a turn in the GROUP's frame, so it composes onto the placement's rotation rather than adding
  *  to its yaw — a tilted group carries its members around with it. */
 export function expandGroupProps(pp: PlacedProp, def: GroupDef): PlacedProp[] {
-  return def.props.map(m => ({
-    level: pp.level,
-    model: m.model,
-    name: m.name,
-    pos: memberWorldPos(pp, m.relPos),
-    ...composeYawFields(pp, m.relYaw),
-    scale: pp.scale,
-  }));
+  // Each member carries its OWN behaviour (docs/069) — the trunk solid, the leaves ride-through — so what the
+  // export bakes and stamps per member is what Test collides with per member.
+  return def.props.map(m => {
+    const member: PlacedProp = {
+      level: pp.level,
+      model: m.model,
+      name: m.name,
+      pos: memberWorldPos(pp, m.relPos),
+      ...composeYawFields(pp, m.relYaw),
+      scale: pp.scale,
+    };
+    return Object.assign(applyBehaviour(member, memberBehaviour(pp, m.model)), memberLegacyContact(pp, m.model));
+  });
 }
 
 function composeYawFields(pp: PlacedProp, relYaw: number): { yaw: number; pitch?: number; roll?: number } {

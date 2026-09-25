@@ -16,6 +16,7 @@ import {
 import { authoredPatchContact, referencePatchContact } from '../../ride/patch-contact';
 import { RIDER_HEAD_Y } from '../../ride/physics-tuning';
 import type { RideObstacleHit, RideObstacleObject, RideObstacleSource, RideState } from '../../ride/physics';
+import { obstacleKeyCovers } from '../../ride/obstacles';
 import { createRideColliderOverlay } from './ride-collider-overlay';
 import type { RideEffectAction } from '../../ride/effect-actions';
 import type { RaceMode } from '../../../core/doc/race';
@@ -1114,7 +1115,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     walkObstacles?.restore(key);
     // WebXR keeps its crack pool above any one board mount, so a breakable respawn must re-arm that owner too.
     xrCrackedSurfaces?.restore(key);
-    xrBrokenSurfaces.delete(key);
+    for (const broken of xrBrokenSurfaces) if (obstacleKeyCovers(broken, key)) xrBrokenSurfaces.delete(broken);
   }
 
   function togglePause() { if (ride) ride.setPaused(!ride.paused); }

@@ -14,8 +14,10 @@ import { SURFACE_AUTHOR_OPTIONS, surfaceTypeLabel } from '../../../core/referenc
 import type { NativeCollisionProfile, PlacedProp, PropBehaviour, Screen, V3 } from '../../../core/doc/types';
 import type { ArmedProp } from '../../state/store';
 import {
-  baselineBehaviour, behaviourOf, sameBehaviour, type ResolvedPropDefaults,
+  applyBehaviour, baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
+  type ResolvedPropDefaults,
 } from '../../../core/props/defaults';
+import type { GroupDef } from '../../../core/reference/groups';
 import { freeScreen, screenForProp, screensOfProp } from '../../props/screens';
 import { screenPose, screenProp } from '../../../core/props/screen';
 import {
@@ -149,7 +151,7 @@ export function createPropTools(ctx: ToolsContext) {
     gui, store, viewport, persistUi, multiList, propPreview, scheduleRebuild, rebuildTools,
     defOfPlaced, placedBaseOffset, shortPropName, propLevels, groupDefIdx,
     armProp, armGroupById, deselectPropOrLight, lightTool,
-    propDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
+    propDefaults, groupDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     deleteSelectedProp, deleteMultiSelProps, deleteSelectedLight, deleteSelectedScreen, revealScreens,
     modelEdit, editSection, goToEffects,
     library, reloadImportedProps, setAuthoredModelTexture, setAuthoredModelFrames,
@@ -855,12 +857,89 @@ export function createPropTools(ctx: ToolsContext) {
     return { contactSection, profile };
   }
 
+  /** Whose settings each GROUP's inspector shows (docs/069), by placement id or held group, for the session. */
+  const memberPicks = new Map<string, number | 'all'>();
+
+  /**
+   * The member picker for a GROUP (docs/069). A group is one placement, and until any member differs they all
+   * share its settings — "whole group" edits those. Picking a member shows what that member does, and the first
+   * edit to it gives EVERY member an entry of its own holding what it does now, so no other member changes. Once
+   * split, a group is edited member by member until "one setting for all" folds it back.
+   *
+   * `group` is the host for the whole group; `owner` is the placement member fallbacks resolve against (for a held
+   * group, a stand-in built from its behaviour). Returns the host the contact, lighting and sound sections bind
+   * to — the mode layer is always the group's.
+   */
+  function addMemberSection(group: BehaviourHost, def: GroupDef, owner: PlacedProp, pickKey: string):
+    { host: BehaviourHost; section: ReturnType<typeof editSection> } {
+    const section = editSection(`${group.key}-members`, 'Member settings', true);
+    const target = group.target;
+    const models = def.props.map(m => m.model);
+    const split = !!target.memberBehaviour;
+    let pick = memberPicks.get(pickKey) ?? 'all';
+    if (pick !== 'all' && !models.includes(pick)) pick = 'all';
+    if (split && pick === 'all') pick = models[0];
+    const options: Record<string, string> = split ? {} : { 'whole group': 'all' };
+    for (const m of def.props) {
+      const label = shortPropName(m.name);
+      options[label in options ? `${label} #${m.model}` : label] = String(m.model);
+    }
+    tip(section.add({ member: String(pick) }, 'member', options).name('settings for').onChange((value: string) => {
+      memberPicks.set(pickKey, value === 'all' ? 'all' : Number(value));
+      rebuildTools();
+    }), 'Whose settings the sections below show and change.',
+    'A group is one placement. Its members share its settings until you change one member’s; from then on each '
+      + 'keeps its own, so a trunk can stay solid inside ride-through, rustling leaves. The mode layer is always '
+      + 'the whole group’s.');
+    if (pick === 'all') {
+      note(section, 'Every member behaves alike. Pick one to give it settings of its own.');
+      return { host: group, section };
+    }
+    const model = pick;
+    const collisionEffect = !!group.placement
+      && authoredPropHasEffectCircumstance(store.mdoc.effects, group.placement.id, 'collision');
+    // Stored entries are edited in place; a member without one (every member, before the first split) gets what
+    // it does now, and the whole set is written back on the first change.
+    const entries = { ...materializeMemberBehaviour(owner, models, collisionEffect), ...target.memberBehaviour };
+    const entry = entries[String(model)];
+    if (split) {
+      const name = shortPropName(def.props.find(m => m.model === model)?.name ?? '');
+      tip(section.add({ unify: () => {
+        const mode = target.modePresence;
+        applyBehaviour(target, materializeMemberBehaviour({ ...owner, memberBehaviour: entries }, [model],
+          collisionEffect)[String(model)]);
+        if (mode) target.modePresence = mode;
+        if (group.placement) { delete group.placement.solid; delete group.placement.bounce; }
+        memberPicks.set(pickKey, 'all');
+        group.changed();
+        rebuildTools();
+      } }, 'unify').name('⊟ one setting for all members'),
+      `Give every member ${name}’s settings and edit the group as one again.`);
+    } else {
+      note(section, 'Changing this member gives each member settings of its own.');
+    }
+    const host: BehaviourHost = {
+      target: entry, level: group.level, key: `${group.key}-member`,
+      placement: group.placement ? groupMemberProp({ ...group.placement, memberBehaviour: entries }, model) : undefined,
+      changed: () => { target.memberBehaviour = entries; group.changed(); },
+    };
+    return { host, section };
+  }
+
   /** One line on where the held prop's settings came from, and a detail for the info badge. */
   function heldProvenance(armed: ArmedProp, resolved: ResolvedPropDefaults): [string, string] {
     const name = shortPropName(armed.name);
-    if (armed.group) return [`A group places as one prop, so all its members share these settings.`,
-      'Per-member defaults — a solid trunk under ride-through leaves — need a group to carry settings per '
-      + 'member, which it does not yet. Until then a group starts from the standard settings.'];
+    if (armed.group) {
+      if (armed.from === 'placement') return [`Copying a placed ${name}: its settings, member by member.`,
+        '“use model defaults” switches back to what each member’s own model starts with.'];
+      return armed.behaviour.memberBehaviour
+        ? [`Each member of ${name} starts with its own model’s defaults.`,
+          'A tree’s trunk and leaves are different models, so each brings its own contact and sound. Pick a member '
+          + 'below to see or change what it does.']
+        : [`Every member of ${name} starts alike, so the group shares one set of settings.`,
+          'These are the leader’s model defaults, which every member’s match. Pick a member below to give it '
+          + 'settings of its own.'];
+    }
     if (armed.from === 'placement') return [`Copying a placed ${name}: its settings, not the model’s defaults.`,
       '“use model defaults” switches the held prop back to what a library pick of this model starts with.'];
     if (armed.from === 'instance') return [`Copying one ${armed.level} ${name}: that copy’s own settings.`,
@@ -892,11 +971,14 @@ export function createPropTools(ctx: ToolsContext) {
    */
   function buildHeldPropTools(armed: ArmedProp) {
     const resolved = propDefaults(armed.level, armed.model);
+    const def = armed.group ? groupDefIdx.get(`${armed.level}:${armed.group}`) : undefined;
+    // What "model defaults" means for what is held: the model's, or for a group each member's own (docs/069).
+    const defaults = def ? groupDefaults(armed.level, def) : resolved.behaviour;
     const name = shortPropName(armed.name);
     const aboutSection = editSection('props-held-defaults', armed.group ? 'Group settings' : 'Placement defaults', true);
     const [provenance, more] = heldProvenance(armed, resolved);
     note(aboutSection, provenance, more);
-    const edited = () => armed.from === 'defaults' && !sameBehaviour(armed.behaviour, resolved.behaviour);
+    const edited = () => armed.from === 'defaults' && !sameBehaviour(armed.behaviour, defaults);
     const statusText = () => armed.from === 'placement' ? 'copy of a placed prop'
       : armed.from === 'instance' ? 'copy of a reference prop'
         : edited() ? 'changed — not saved' : 'model defaults';
@@ -926,7 +1008,7 @@ export function createPropTools(ctx: ToolsContext) {
     }
     if (armed.from !== 'defaults' || edited()) {
       const reset = tip(gui.add({ reset: () => {
-        armed.behaviour = structuredClone(resolved.behaviour);
+        armed.behaviour = structuredClone(defaults);
         armed.from = 'defaults';
         rebuildTools();
       } }, 'reset').name('↺ use model defaults'),
@@ -945,14 +1027,21 @@ export function createPropTools(ctx: ToolsContext) {
       actionRows.push(apply.domElement);
     }
 
+    // A held group edits member by member like a placed one; its stand-in placement is what member fallbacks
+    // resolve against, and every write still lands on the held behaviour itself.
+    const members = def && def.props.length > 1
+      ? addMemberSection(host, def, { level: armed.level, model: armed.model, name: armed.name, pos: [0, 0, 0],
+        yaw: 0, scale: 1, ...armed.behaviour }, `held:${armed.level}:${armed.group}`)
+      : null;
+    const memberHost = members?.host ?? host;
     const modeSection = addModeSection(host);
-    const { contactSection } = addContactSection(host);
-    const lightingSection = addLightingSection(host);
-    const impactSection = addImpactSection(host);
-    const emitterSection = addEmitterSection(host);
+    const { contactSection } = addContactSection(memberHost);
+    const lightingSection = addLightingSection(memberHost);
+    const impactSection = addImpactSection(memberHost);
+    const emitterSection = addEmitterSection(memberHost);
     aboutSection.domElement.before(...actionRows);
-    aboutSection.domElement.after(modeSection.domElement, contactSection.domElement, lightingSection.domElement,
-      impactSection.domElement, emitterSection.domElement);
+    aboutSection.domElement.after(...(members ? [members.section.domElement] : []), modeSection.domElement,
+      contactSection.domElement, lightingSection.domElement, impactSection.domElement, emitterSection.domElement);
   }
 
   function buildPropTools() {
@@ -1013,18 +1102,24 @@ export function createPropTools(ctx: ToolsContext) {
       }), 'Scale the prop up or down — its base stays on the ground.');
       // The behaviour sections are shared with the held prop's panel (docs/069): same controls, bound here to
       // this placement, whose edits re-render the scene.
-      const host: BehaviourHost = {
+      const groupHost: BehaviourHost = {
         target: prop, level: prop.level, key: 'props-authored', changed: scheduleRebuild, placement: prop,
       };
-      const modeSection = addModeSection(host);
+      // A group with more than one member picks whose settings the sections show; the mode layer is the group's.
+      const members = def && def.props.length > 1
+        ? addMemberSection(groupHost, def, prop, prop.id ?? `index:${store.selectedProp}`) : null;
+      const host = members?.host ?? groupHost;
+      const modeSection = addModeSection(groupHost);
       const impactSection = addImpactSection(host);
       const emitterSection = addEmitterSection(host);
       const lightingSection = addLightingSection(host);
-      const { contactSection, profile } = addContactSection(host);
-      // ＋ place copies EVERYTHING this placement carries — its sounds and self-lighting as well as its contact.
-      // Read when clicked, not when the panel was built: some edits (mode layer, self-lit) do not rebuild it.
-      // A legacy placement with no stored profile copies the one inferred for it above.
-      const copied = () => ({ ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision ?? profile) });
+      const { contactSection } = addContactSection(host);
+      // ＋ place copies EVERYTHING this placement carries — its sounds and self-lighting as well as its contact,
+      // and a group's per-member settings. Read when clicked, not when the panel was built: some edits (mode
+      // layer, self-lit) do not rebuild it. A legacy placement with no stored profile copies its inferred one.
+      const copied = () => ({ ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision
+        ?? placedPropCollisionProfile(prop, authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
+          typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile)) });
       // a group's component list rides the preview card above
       const placeAction = tip(gui.add({ place: () => {
         if (prop.group) void armGroupById(prop.level, prop.group, { behaviour: copied() });
@@ -1100,9 +1195,9 @@ export function createPropTools(ctx: ToolsContext) {
       // the prop it covers (docs/051).
       const screenSection = addScreenSection(prop);
       transformSection.domElement.before(...actionRows);
-      transformSection.domElement.after(modeSection.domElement, contactSection.domElement, lightingSection.domElement,
-        impactSection.domElement, emitterSection.domElement, screenSection.domElement,
-        materialSection.domElement);
+      transformSection.domElement.after(...(members ? [members.section.domElement] : []), modeSection.domElement,
+        contactSection.domElement, lightingSection.domElement, impactSection.domElement, emitterSection.domElement,
+        screenSection.domElement, materialSection.domElement);
       return;
     }
     const ref = store.selectedRefProp;

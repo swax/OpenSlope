@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import { resolveCollisionSound, type CollisionSoundBank } from '../../../core/effects/collision-sound';
 import type { PropInstance } from '../../../core/reference/props';
+import { groupMemberKey } from '../../../core/props/defaults';
 import type { RideObstacleObject } from '../../ride/physics';
 import {
   createAmbientSoundLayer,
@@ -187,8 +188,9 @@ export function createPropSoundLayer(hooks: PropSoundHooks): PropSoundLayer {
       // registers the entity before resolving that row to a clip. Both prop kinds arm: an authored placement
       // carrying a gated event is hit-gated in retail exactly as a reference one is, so Test has to be too.
       ambient.arm(propOwnerKey(object));
-      const source = object.kind === 'reference'
-        ? referenceSources.get(object.index) : authoredSources.get(object.id);
+      // A group member with behaviour of its own sounds as that member alone — silent if its entry is.
+      const source = object.kind === 'reference' ? referenceSources.get(object.index)
+        : authoredSources.get(object.member === undefined ? object.id : groupMemberKey(object.id, object.member));
       // The debounce guards the one-shot alone. Arming is permanent and idempotent, so rate-limiting it
       // would only risk dropping the very first contact — the one that has to land.
       if (!source) return;

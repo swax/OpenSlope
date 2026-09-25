@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { INTERSECTED, MeshBVH, NOT_INTERSECTED } from 'three-mesh-bvh';
 import type { RideObstacleHit, RideObstacleSource } from './physics';
+import { obstacleKeyCovers } from './obstacles';
 import { MOVABLE_MIN_IMPACT, RIDER_MASS_TERM, SHOVE_RESTITUTION } from './physics-tuning';
 import { unionLeafNormal } from './physics-math';
 import type { WalkGround } from './xr/walk';
@@ -489,15 +490,17 @@ export function createWalkObstacleWorld(
     }
   }
 
-  function retire(key: string) {
-    for (const meta of metas) if (meta.source.key === key) meta.enabled = false;
+  function setEnabled(key: string, enabled: boolean) {
     hitNext.delete(key);
+    for (const meta of metas) if (obstacleKeyCovers(meta.source.key, key)) {
+      meta.enabled = enabled;
+      hitNext.delete(meta.source.key);
+    }
   }
 
-  function restore(key: string) {
-    for (const meta of metas) if (meta.source.key === key) meta.enabled = true;
-    hitNext.delete(key);
-  }
+  function retire(key: string) { setEnabled(key, false); }
+
+  function restore(key: string) { setEnabled(key, true); }
 
   function dispose() { geometry.dispose(); }
 
