@@ -27,6 +27,7 @@
 import type { UvScrollEffect } from '../effects/world-effects';
 import type { PropAlphaMode, PropModelAnimation, PropModelAnimationObject, PropModelCurve } from '../reference/props';
 import type { FalGenerationProvenance } from '../paint/fal-models';
+import type { PropBehaviour } from '../doc/types';
 
 /** The synthetic prop-library "level" imported models live under. A placement of one is an ordinary
  *  `PlacedProp` carrying this level and the model's assigned number, so selection, gizmos, multi-select,
@@ -501,6 +502,9 @@ export interface ImportedPropRecord {
   animation?: PropModelAnimation;
   /** fal endpoint/terms snapshot retained when this model came from Generate prop. No prompt or API key. */
   generation?: FalGenerationProvenance;
+  /** What every new placement of this model starts with (docs/069) — saved from the library's defaults panel,
+   *  or carried over from the reference model a revise copied. */
+  defaults?: PropBehaviour;
 }
 
 /** Display name for an imported model, from its GLB file name: "old_lamp_post.glb" → "old lamp post". */

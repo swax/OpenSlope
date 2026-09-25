@@ -1,4 +1,4 @@
-import type { CoursePath, AuthoredLight, Gem, V3 } from '../core/doc/types';
+import type { CoursePath, AuthoredLight, Gem, PlacedProp, V3 } from '../core/doc/types';
 import {
   applyBrush, applyGrabBrush, applyPushBrush, createFlattenBrushPlane, createGrabBrushState,
   type BrushOp, type BrushDir, type BrushFalloff, type FlattenMode, type FlattenPlaneBehavior,
@@ -21,6 +21,7 @@ import { attachModelEffectsToProp, createEmptyEffectsDocument, nextPlacedPropId 
 import { nextGemId, nextLightId } from '../core/doc/ids';
 import type { RigLight } from '../core/reference/lights';
 import { placedPropCollisionProfile } from '../core/props/contact';
+import { applyBehaviour, behaviourOf } from '../core/props/defaults';
 import { unrotateByPlacement, writePropRotation } from '../core/props/pose';
 import { screenProp } from '../core/props/screen';
 import type { RideEvent } from '../core/session/ride-event';
@@ -252,12 +253,13 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       // and nothing gets selected, so the gizmo never lands under the ghost mid-stamp. A held GROUP stamps
       // one placement carrying the def id; its members + lights derive from it (docs/015).
       const id = nextPlacedPropId(props);
-      props.push({ id, level: store.armedProp.level, model: store.armedProp.model, name: store.armedProp.name, pos, yaw, scale,
-        nativeCollision: structuredClone(store.armedProp.nativeCollision),
-        ...(typeof store.armedProp.surface === 'number' ? { surface: store.armedProp.surface } : {}),
-        ...(store.armedProp.modePresence === 'showoff' ? { modePresence: 'showoff' as const } : {}),
+      // Every stamp COPIES the held behaviour (docs/069) — the model's defaults, a picked instance's facts, or
+      // the placement being copied — so later edits to either side stay independent.
+      const placed: PlacedProp = { id, level: store.armedProp.level, model: store.armedProp.model,
+        name: store.armedProp.name, pos, yaw, scale,
         ...(store.armedProp.group ? { group: store.armedProp.group } : {}),
-      });
+      };
+      props.push(applyBehaviour(placed, store.armedProp.behaviour));
       // A model that declared its own effects gets them attached here, so stamping a snow gun down gives
       // you one that is already throwing snow rather than one waiting to be wired up. Emitters and
       // scrolling surfaces both become ordinary nodes in an ordinary persistent graph, which the Effects
@@ -341,16 +343,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     onPickPlacedProp(i: number) { // MMB a placed prop → hold its model (or its whole group) to place more
       const p = store.mdoc.props?.[i];
       if (!p) return;
-      if (p.group) void propOps().armGroupById(p.level, p.group, {
-        nativeCollision: structuredClone(placedPropCollisionProfile(p)),
-        ...(typeof p.surface === 'number' ? { surface: p.surface } : {}),
-        ...(p.modePresence === 'showoff' ? { modePresence: 'showoff' as const } : {}),
-      });
-      else void propOps().armProp(p.level, p.model, p.name, {
-        nativeCollision: structuredClone(placedPropCollisionProfile(p)),
-        ...(typeof p.surface === 'number' ? { surface: p.surface } : {}),
-        ...(p.modePresence === 'showoff' ? { modePresence: 'showoff' as const } : {}),
-      });
+      // The copy carries everything the placement does — its sounds and self-lighting too, not only contact.
+      const behaviour = { ...behaviourOf(p), nativeCollision: structuredClone(placedPropCollisionProfile(p)) };
+      if (p.group) void propOps().armGroupById(p.level, p.group, { behaviour });
+      else void propOps().armProp(p.level, p.model, p.name, { behaviour });
     },
     onSelectReferenceProp(level, model, modelName, inst) { // read-only pick of a reference prop (all-null clears it)
       const selected = level !== null && model !== null && modelName !== null;

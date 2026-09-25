@@ -6,6 +6,7 @@ import { retireName, safeDataName, storeUnderFreeName } from './safe-name';
 import { IMPORTED_PROP_LEVEL, type ImportedPropRecord } from '../../core/props/imported';
 import type { PropsPayload } from '../../core/reference/props';
 import { propAlphaMode } from '../../core/reference/props';
+import { sanitizePropBehaviour } from '../../core/props/defaults';
 
 /**
  * Storage for IMPORTED props (docs/032) — the GLB models a user loads through the Prop Library's Custom
@@ -92,7 +93,10 @@ export async function saveImportedProp(name: string, record: Omit<ImportedPropRe
     taken: candidate => pathExists(join(dir, `${candidate}.json`)),
     write: async stored => {
       await ensureDir(dir);
-      const saved: ImportedPropRecord = { ...record, id: await issueModelNumber() };
+      // Defaults arrive from a revise (the reference model's derived behaviour) or a clone; kept only well-formed.
+      const { defaults: rawDefaults, ...rest } = record;
+      const defaults = sanitizePropBehaviour(rawDefaults);
+      const saved: ImportedPropRecord = { ...rest, ...(defaults ? { defaults } : {}), id: await issueModelNumber() };
       await writeFile(join(dir, `${stored}.json`), JSON.stringify(saved));
       return saved;
     },
@@ -163,9 +167,26 @@ export async function replaceImportedProp(id: number, next: Omit<ImportedPropRec
   if (!shape?.subs?.length || !Array.isArray(shape.materials))
     throw new Error('that file did not convert to a model');
   const { file, record } = await findImportedProp(id);
-  const saved: ImportedPropRecord = { ...next, id, name: record.name };
+  // New geometry is not a new behaviour: the model's saved defaults (docs/069) outlive a Replace, as its name does.
+  const defaults = sanitizePropBehaviour(shape.defaults) ?? record.defaults;
+  const { defaults: _incoming, ...geometry } = next as ImportedPropRecord;
+  const saved: ImportedPropRecord = { ...geometry, ...(defaults ? { defaults } : {}), id, name: record.name };
   await writeFile(join(importedDir(), file), JSON.stringify(saved));
   return { id, name: saved.name, file };
+}
+
+/**
+ * Save one stored model's DEFAULTS (docs/069) — what a new placement of it starts with — leaving geometry,
+ * materials, clip and emitters exactly as they are. A narrow patch like the material one: the body is a
+ * behaviour record only, sanitized field by field, and `null` (or nothing usable) clears the defaults.
+ */
+export async function updateImportedPropDefaults(id: number, next: unknown):
+  Promise<{ id: number; name: string; defaults: ImportedPropRecord['defaults'] | null }> {
+  const { file, record } = await findImportedProp(id);
+  const defaults = sanitizePropBehaviour(next);
+  const { defaults: _old, ...rest } = record;
+  await writeFile(join(importedDir(), file), JSON.stringify(defaults ? { ...rest, defaults } : rest));
+  return { id, name: record.name, defaults };
 }
 
 /**
@@ -279,6 +300,7 @@ export async function importedPropsPayload(): Promise<PropsPayload> {
       // Object indices are LOCAL to the record and stay that way — unlike materials, nothing shares the
       // hierarchy across models, so there is no counter to rebase against.
       ...(record.animation ? { animation: record.animation } : {}),
+      ...(record.defaults ? { defaults: record.defaults } : {}),
     });
     matBase += record.materials.length;
   }

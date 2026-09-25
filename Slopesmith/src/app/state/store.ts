@@ -1,4 +1,5 @@
-import type { NativeCollisionProfile, V3 } from '../../core/doc/types';
+import type { V3 } from '../../core/doc/types';
+import type { StampBehaviour } from '../../core/props/defaults';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { Brush } from '../../core/paint/textures';
 import type { GizmoFrame, GizmoMode, Mode, RotationSnapStep, SnapStep } from '../viewport/viewport';
@@ -76,11 +77,13 @@ type RefPropRef = { level: string; model: number; name: string;
   externalSounds?: ExternalSoundEmitter[] };
 type RefLightRef = { level: string; light: RigLight };
 type RefScreenRef = { level: string; screen: ReferenceScreenPickDetails };
-type ArmedProp = { level: string; model: number; name: string; group?: string;
-  /** Complete inferred/explicit profile copied onto every stamped placement. */
-  nativeCollision: NativeCollisionProfile; surface?: number;
-  /** Semantic authoring setting; absent means the ordinary all-modes layer. */
-  modePresence?: 'showoff' };
+export type ArmedProp = { level: string; model: number; name: string; group?: string;
+  /** What every stamp copies (docs/069): contact, surface, mode layer, sounds, self-lighting — always with a
+   *  complete collision profile. Editable in the held prop's panel before placing. */
+  behaviour: StampBehaviour;
+  /** Where `behaviour` came from: the model's defaults (a library pick), a reference instance's own facts, or a
+   *  placement being copied. */
+  from: 'defaults' | 'instance' | 'placement' };
 
 export type Store = {
   mdoc: EditDoc;                     // the active document — a quad mesh; the generators' lattice is promoted before it lands here

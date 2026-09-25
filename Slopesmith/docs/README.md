@@ -58,6 +58,8 @@ Start with the [authoring index](authoring/README.md) for the editor prerequisit
 - [027 — Reference Effects](027-reference-effects.md)
 - [028 — Tiled Props (authored models)](028-authored-models.md) — one tile, mapping computed, editable here.
 - [032 — Imported Props (textured props)](032-imported-props.md) — their own UV layout, across many materials.
+- [069 — Prop Defaults](069-prop-defaults.md) — how a model's placements start out: derived from a shipped
+  level's instances, or saved on your own props.
 - [033 — Generated Textures](033-generate-texture.md)
 - [046 — Blender Bridge](046-blender-bridge.md) — the round trip out to Blender and back onto the same model.
 - [047 — Light Glints](047-light-glints.md) — the halo/star sparkle a glow light draws, ported from Unity.

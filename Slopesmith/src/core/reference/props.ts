@@ -1,4 +1,4 @@
-import type { V3 } from '../doc/types';
+import type { PropBehaviour, V3 } from '../doc/types';
 import type { BodyShape, UnityBodyRecipe } from '../collision/unity-body';
 import type { ExternalSoundEmitter } from '../effects/external-sound';
 import { registerCollisionSoundIndex, type CollisionSoundIndex } from '../effects/collision-sound';
@@ -161,6 +161,9 @@ export interface PropModel {
    *  as native `type2Sub0` payloads with their spawn point already in model-local raw cm. Placing such a
    *  model auto-attaches them; extracted levels never set this, because they have graphs of their own. */
   emitters?: { fields: Record<string, number> }[];
+  /** What every new placement of this model starts with, when the author saved some (docs/069). Only the
+   *  author's own models carry these; an extracted level's are derived from its instances instead. */
+  defaults?: PropBehaviour;
 }
 
 /** One placement of a model in the level: a raw-space transform + which model it draws. */
@@ -280,7 +283,9 @@ export interface PropsPayload {
     piece?: number; piecePivot?: number[]; object?: number }[];
     rotation?: PropModelRotation; animation?: PropModelAnimation;
     /** Emitters the SOURCE MODEL declared (an imported GLB's glTF `extras`, docs/032). */
-    emitters?: { fields: Record<string, number> }[] }[];
+    emitters?: { fields: Record<string, number> }[];
+    /** The author's saved defaults for an imported model (docs/069). */
+    defaults?: PropBehaviour }[];
   /** `scroll` is material motion the SOURCE MODEL declared for itself — an imported GLB reading its own
    *  glTF `extras`. Extracted levels leave it unset and get their motion from the level's effect graphs
    *  instead; this exists because an imported prop has no graph to be attached to. */
@@ -381,6 +386,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
     ...(m.rotation ? { rotation: m.rotation } : {}),
     ...(m.animation ? { animation: m.animation } : {}),
     ...(m.emitters?.length ? { emitters: m.emitters } : {}),
+    ...(m.defaults && typeof m.defaults === 'object' ? { defaults: m.defaults } : {}),
     subs: m.subs.map(s => {
       const pb = b64ToBytes(s.pos);
       const ub = b64ToBytes(s.uv);

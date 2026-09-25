@@ -26,7 +26,7 @@ import type { PropModelAnimationObject, PropModelCurve } from '../src/core/refer
 import { bakedPropClip, placementMatrix, placementSimilarity, rawInstanceQuat } from '../src/core/export/props';
 import { placementQuat, propRotationFromQuat, writePropRotation } from '../src/core/props/pose';
 import type { BakedPropClip } from '../src/core/export/props';
-import type { PlacedProp } from '../src/core/doc/types';
+import type { PlacedProp, PropBehaviour } from '../src/core/doc/types';
 import { CUSTOM_TEX_LEVEL, resolvePropTex } from '../src/core/paint/textures';
 import { IMPORTED_PROP_LEVEL, MAX_IMPORT_EMITTERS, MAX_IMPORT_FLIPBOOK_FRAMES, MAX_IMPORT_TRIS,
   OS_ANIM_EXTRA, OS_EFFECT_EXTRA,
@@ -35,7 +35,8 @@ import { IMPORTED_PROP_LEVEL, MAX_IMPORT_EMITTERS, MAX_IMPORT_FLIPBOOK_FRAMES, M
   scaleDraftTo } from '../src/core/props/imported';
 import { draftToRecord } from '../src/app/props/glb-import';
 import { cloneImportedProp, deleteImportedProp, importedPropsPayload, listImportedProps, renameImportedProp,
-  replaceImportedProp, saveImportedProp, updateImportedPropMaterials } from '../src/server/routes/imported-props';
+  replaceImportedProp, saveImportedProp, updateImportedPropDefaults, updateImportedPropMaterials,
+} from '../src/server/routes/imported-props';
 import { retiredNamesFile } from '../src/server/routes/safe-name';
 import { bakeGltf } from '../scripts/snowknife-cli';
 import { saveCustomTexture } from '../src/server/routes/textures';
@@ -847,6 +848,36 @@ try {
     try { await updateImportedPropMaterials(skinId, { id: 0 } as unknown as []); }
     catch { refusedMaterials = true; }
     check(refusedMaterials, 'a body that is not an array of rows is refused rather than emptying the table');
+
+    // DEFAULTS (docs/069): what every new placement of the model starts with. A narrow patch like the material
+    // one — sanitized on the way in, kept by a Replace, carried to the library, cleared by null.
+    const dressed = await saveImportedProp('zz-test-manage-defaults', {
+      ...record('zz test defaults', null, 16),
+      defaults: { collisionSound: 7, fullBright: true, bogus: 1 } as unknown as PropBehaviour,
+    });
+    written.push(dressed.file);
+    check(JSON.stringify(dressed.record.defaults) === JSON.stringify({ collisionSound: 7, fullBright: true }),
+      'a new record (a revise carrying its source model’s behaviour) keeps only well-formed defaults');
+    const leafy = {
+      nativeCollision: { mode: 1, playerCollision: true, responseMass: 0, playerBounce: false, bounceAmount: 0 },
+      collisionSound: 7,
+    };
+    const savedDefaults = await updateImportedPropDefaults(dressed.record.id, { ...leafy, surface: -1, modePresence: 'race' });
+    check(JSON.stringify(savedDefaults.defaults) === JSON.stringify(leafy),
+      'saving defaults drops anything that is not a valid behaviour field');
+    const onDisk = (await listImportedProps()).find(e => e.record.id === dressed.record.id)!.record;
+    check(onDisk.subs[0].pos === dressed.record.subs[0].pos && JSON.stringify(onDisk.defaults) === JSON.stringify(leafy),
+      'the defaults are stored and the geometry is untouched');
+    await replaceImportedProp(dressed.record.id, record('replacement geometry', null, 17));
+    check(JSON.stringify((await listImportedProps()).find(e => e.record.id === dressed.record.id)!.record.defaults)
+      === JSON.stringify(leafy), 'new geometry does not change how the model behaves: Replace keeps its defaults');
+    const listed = decodeProps(await importedPropsPayload()).models.find(m => m.id === dressed.record.id);
+    check(listed?.defaults?.collisionSound === 7 && listed.defaults.nativeCollision?.responseMass === 0,
+      'the catalogue payload carries the defaults to the library');
+    const cleared = await updateImportedPropDefaults(dressed.record.id, null);
+    check(cleared.defaults === null
+      && !(await listImportedProps()).find(e => e.record.id === dressed.record.id)!.record.defaults,
+      'saving null clears the defaults');
   }
 
   // --- the catalogue decodes like any level -------------------------------------------------------

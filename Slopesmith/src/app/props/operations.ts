@@ -1,20 +1,23 @@
-import type { NativeCollisionProfile, PlacedProp, V3 } from '../../core/doc/types';
-import { AUTHORED_MODEL_LEVEL, authoredModelLevelProps } from '../../core/doc/models';
+import type { PlacedProp, PropBehaviour, V3 } from '../../core/doc/types';
+import { AUTHORED_MODEL_LEVEL, authoredModelLevelProps, findModelByNumber } from '../../core/doc/models';
 import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
-import { collisionProfileFromSourceInstance, defaultPlacedPropCollision } from '../../core/props/contact';
+import {
+  applyBehaviour, baselineBehaviour, instanceBehaviour, resolvePropDefaults, sanitizePropBehaviour, stampBehaviour,
+  type ResolvedPropDefaults,
+} from '../../core/props/defaults';
 import { detachEffectFromProp } from '../../core/effects/authoring';
 import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
 import type { UvScrollEffect } from '../../core/effects/world-effects';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../../core/lighting/sign-lights';
 import { authoredGroupLights, type GroupDef, type GroupsPayload } from '../../core/reference/groups';
-import type { Store } from '../state/store';
+import type { ArmedProp, Store } from '../state/store';
 import type { Mode, Viewport } from '../viewport/viewport';
 import type { PropLibrary } from './library';
 import type { PropPreview } from './preview';
 import { dropScreensForProp } from './screens';
 import { toast } from '../ui/components/toast';
-import { fetchJson } from '../net/fetch-json';
+import { fetchJson, postJson } from '../net/fetch-json';
 import { runDiagnosticPhase } from '../net/diagnostics';
 
 /**
@@ -46,33 +49,69 @@ export function createPropOps(deps: PropOpsDeps) {
   /** Short prop label: drop the "Mdl_" prefix and the trailing "_<n>" instance suffix (matches the library). */
   const shortPropName = (n: string) => n.replace(/^Mdl_/, '').replace(/_\d+$/, '');
 
-  type PlacementContactDefaults = {
-    nativeCollision?: NativeCollisionProfile;
-    /** Native instance copied directly from the reference viewport (MMB). */
-    sourceIndex?: number;
-    /** Backward-compatible call shape for older/library callers; compiled once into the complete profile. */
-    solid?: boolean;
-    bounce?: number;
-    surface?: number;
-    /** Semantic event-layer setting; raw native LTG integers never enter the authored document. */
-    modePresence?: 'showoff';
-  };
+  /**
+   * What a held prop will stamp (docs/069), by how it was picked up:
+   *  - `behaviour`: copying a placement (MMB on it, or its ＋ place) — its own settings, exactly;
+   *  - `sourceIndex`: an exact reference instance (MMB on the reference, or its inspector's ＋ place) — that
+   *    instance's own contact, surface, hit sound, self-lighting and mode layer;
+   *  - neither: a library pick — the MODEL's defaults.
+   */
+  type ArmFrom = { behaviour?: PropBehaviour; sourceIndex?: number };
 
-  function placementCollision(level: string, contact: PlacementContactDefaults): NativeCollisionProfile {
-    if (contact.nativeCollision) return structuredClone(contact.nativeCollision);
-    const source = typeof contact.sourceIndex === 'number'
-      ? propLevels.get(level)?.instances.find(instance => instance.sourceIndex === contact.sourceIndex) : undefined;
-    if (source) return collisionProfileFromSourceInstance(level, source);
-    const out = defaultPlacedPropCollision(level);
-    if (typeof contact.solid === 'boolean') {
-      out.mode = contact.solid ? 1 : 0;
-      out.playerCollision = contact.solid;
-      out.responseMass = contact.solid ? 1e30 : 0;
-      out.playerBounce = contact.solid;
-      out.bounceAmount = contact.solid ? 0.5 : 0;
+  function armBehaviour(level: string, model: number, from: ArmFrom): Pick<ArmedProp, 'behaviour' | 'from'> {
+    if (from.behaviour) return { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' };
+    const source = typeof from.sourceIndex === 'number'
+      ? propLevels.get(level)?.instances.find(instance => instance.sourceIndex === from.sourceIndex) : undefined;
+    if (source) return { behaviour: instanceBehaviour(level, source), from: 'instance' };
+    return { behaviour: propDefaults(level, model).behaviour, from: 'defaults' };
+  }
+
+  /** The defaults a new placement of this model starts with: the author's saved ones for their own models,
+   *  derived from the level's placements for a shipped one, else the standard starting point (docs/069). */
+  function propDefaults(level: string, model: number): ResolvedPropDefaults {
+    return resolvePropDefaults(level, model, propLevels.get(level));
+  }
+
+  /** The existing single placements of one model — what "apply to placed" would change. Groups and effect
+   *  triggers are not placements OF a model in that sense. */
+  function placementsOfModel(level: string, model: number): PlacedProp[] {
+    return (store.mdoc.props ?? []).filter(p => p.level === level && p.model === model
+      && !p.group && !isEffectTriggerProp(p));
+  }
+
+  /**
+   * Save `behaviour` as this model's defaults (docs/069), or clear them with null. Only the author's own models
+   * have somewhere to keep them: a tiled model's record is in the document (so the save is an ordinary,
+   * undoable document edit), an imported one's is its catalogue file. False for a shipped level's model.
+   */
+  async function saveModelDefaults(level: string, model: number, behaviour: PropBehaviour | null): Promise<boolean> {
+    const clean = behaviour ? sanitizePropBehaviour(behaviour) : null;
+    if (level === AUTHORED_MODEL_LEVEL) {
+      const record = findModelByNumber(store.mdoc, model);
+      if (!record) return false;
+      if (clean) record.defaults = clean; else delete record.defaults;
+      syncAuthoredModelLevel(); // the resolver reads the re-baked level; renderDoc would get there a frame later
+      scheduleRebuild();
+      return true;
     }
-    if (typeof contact.bounce === 'number') out.bounceAmount = Math.max(0, contact.bounce);
-    return out;
+    if (level === IMPORTED_PROP_LEVEL) {
+      await postJson(`/api/custom-prop-defaults?id=${model}`, JSON.stringify(clean));
+      // Patched in place rather than refetched: nothing else in the catalogue changed, and a refetch would
+      // re-register every imported model's geometry for one record's behaviour.
+      const entry = propLevels.get(level)?.models.find(m => m.id === model);
+      if (entry) { if (clean) entry.defaults = clean; else delete entry.defaults; }
+      return true;
+    }
+    return false;
+  }
+
+  /** Give every existing placement of the model `behaviour` — the explicit way to push changed defaults onto
+   *  props already on the mountain, since placements copy rather than link. Returns how many changed. */
+  function applyBehaviourToPlaced(level: string, model: number, behaviour: PropBehaviour): number {
+    const placed = placementsOfModel(level, model);
+    for (const p of placed) applyBehaviour(p, stampBehaviour(level, behaviour));
+    if (placed.length) { scheduleRebuild(); rebuildTools(); }
+    return placed.length;
   }
 
   const propBaseOffsetCache = new Map<string, number>(); // `${level}:${model}` -> the model's lowest point above its origin (editor m)
@@ -243,18 +282,14 @@ export function createPropOps(deps: PropOpsDeps) {
   /** Pick up a prop (from the Library, or middle-clicking a reference / placed prop): arm placement mode, drop
    *  any placed-prop selection (so the preview shows what you're now holding), and jump to Props mode. The
    *  viewport shows it as a ghost under the cursor; a click drops it, Esc puts it down. */
-  async function armProp(level: string, model: number, name: string,
-    contact: PlacementContactDefaults = {}) {
+  async function armProp(level: string, model: number, name: string, from: ArmFrom = {}) {
     try { await ensurePropLevel(level); } catch (e) { toast(`props load failed: ${e}`, 'err'); return; }
-    const source = typeof contact.sourceIndex === 'number'
-      ? propLevels.get(level)?.instances.find(instance => instance.sourceIndex === contact.sourceIndex) : undefined;
-    store.armedProp = { level, model, name,
-      nativeCollision: placementCollision(level, contact),
-      ...(contact.modePresence === 'showoff' || source?.ltgState === 2 ? { modePresence: 'showoff' as const } : {}),
-      ...(typeof contact.surface === 'number' ? { surface: contact.surface }
-        : source && source.surface >= 0 ? { surface: source.surface } : {}) };
+    store.armedProp = { level, model, name, ...armBehaviour(level, model, from) };
     store.selectedProp = null; // holding a new prop deselects any placed one (the gizmo releases on the next rebuild)
     store.multiSel = [];       // …and any box selection
+    // …and a picked reference instance, whose inspector would otherwise sit where the held prop's panel belongs
+    store.selectedRefProp = null;
+    viewport.clearRefPropSelection();
     viewport.setLightArmed(false); // arming a prop cancels a held light
     store.railDrawing = false; viewport.setRailArmed(false); // …and cancels rail drawing
     store.gemArmed = false; viewport.setGemArmed(false); store.trickTool = null; // …and leaves the trick tools
@@ -267,8 +302,7 @@ export function createPropOps(deps: PropOpsDeps) {
   /** Pick up a GROUP (from the Library's Groups section, or middle-clicking a placed group): arm the whole
    *  assembly for placement — the ghost previews every member; a click drops ONE placement that carries them
    *  all (docs/015). The armed leader model is what the placement stores / previews. */
-  async function armGroupById(level: string, id: string,
-    contact: PlacementContactDefaults = {}) {
+  async function armGroupById(level: string, id: string, from: ArmFrom = {}) {
     let def: GroupDef | undefined;
     try {
       await ensurePropLevel(level); // members render from the same level payload
@@ -276,12 +310,17 @@ export function createPropOps(deps: PropOpsDeps) {
     } catch (e) { toast(`groups load failed: ${e}`, 'err'); return; }
     if (!def) { toast(`no group "${id}" in ${level}`, 'err'); return; }
     const leader = def.props[0];
+    // A group stamps ONE placement, so it has one behaviour for every member; per-member defaults (a solid
+    // trunk under ride-through leaves) need the group to carry behaviour per member, which it does not yet.
+    // Until then a group starts from the standard behaviour, as it always has, or from the placement copied.
     store.armedProp = { level, model: leader.model, name: def.name, group: def.id,
-      nativeCollision: placementCollision(level, contact),
-      ...(contact.modePresence === 'showoff' ? { modePresence: 'showoff' as const } : {}),
-      ...(typeof contact.surface === 'number' ? { surface: contact.surface } : {}) };
+      ...(from.behaviour
+        ? { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' as const }
+        : { behaviour: baselineBehaviour(level), from: 'defaults' as const }) };
     store.selectedProp = null;
     store.multiSel = [];
+    store.selectedRefProp = null;
+    viewport.clearRefPropSelection();
     viewport.setLightArmed(false);
     store.railDrawing = false; viewport.setRailArmed(false);
     store.gemArmed = false; viewport.setGemArmed(false); store.trickTool = null;
@@ -395,6 +434,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   return {
     modelDeclarations,
+    propDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
     ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
     reloadImportedProps,

@@ -277,6 +277,7 @@ export function authoredModelLevelProps(mdoc: QuadMeshDoc): LevelProps {
     }
     return {
       id: modelNumber(model.id), name: model.name,
+      ...(model.defaults ? { defaults: model.defaults } : {}), // docs/069: the author's saved defaults
       subs: [{
         mat: model.texture ? modelNumber(model.id) : -1,     // per-model material slot carrying its tile ref
         positions: new Float32Array(positions),
