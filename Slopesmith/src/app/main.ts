@@ -1,4 +1,4 @@
-import type { CoursePath } from '../core/doc/types';
+import type { CoursePath, PlacedProp } from '../core/doc/types';
 import { SURFACE_TYPES } from '../core/doc/types';
 import {
   defaultMountain, migrateMountain,
@@ -26,6 +26,7 @@ import { quadIndex, quadIndices, quadName } from './state/mesh-names';
 import { reconcileTJunctionGeometry } from '../core/mesh/t-junctions';
 import { createNetWatcher, type NetChange } from '../core/mesh/incremental';
 import { AUTHORED_MODEL_LEVEL, createAuthoredModel, duplicateAuthoredModel, findModel, modelEditDocFor, modelIdFromNumber, modelNumber, rebaseModelToPlacement } from '../core/doc/models';
+import { applyBehaviour } from '../core/props/defaults';
 import { turnD4 } from '../core/paint/orientation';
 import { recordFromReferenceProp, revisedPropName } from '../core/props/adopt';
 import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
@@ -1490,6 +1491,8 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   shortPropName: propOps.shortPropName, propBaseOffset: propOps.propBaseOffset,
   armProp: propOps.armProp, armGroupById: propOps.armGroupById,
   deselectPropOrLight: propOps.deselectPropOrLight,
+  propDefaults: propOps.propDefaults, placementsOfModel: propOps.placementsOfModel,
+  saveModelDefaults: propOps.saveModelDefaults, applyBehaviourToPlaced: propOps.applyBehaviourToPlaced,
   cancelPlacement: () => { viewport.setLightArmed(false); trickTools.cancelTrickTools(); },
   lightTool,
   getPlay: () => play,
@@ -1843,8 +1846,10 @@ function exitModelEdit(refreshUi = true) {
   if (model?.vertices.length && !(store.mdoc.props ?? []).some(pp =>
     pp.level === AUTHORED_MODEL_LEVEL && modelIdFromNumber(pp.model) === model.id)) {
     const props = (store.mdoc.props ??= []);
-    props.push({ level: AUTHORED_MODEL_LEVEL, model: modelNumber(model.id), name: model.name,
-      pos: [model.anchor[0], model.anchor[1], model.anchor[2]], yaw: 0, scale: 1 });
+    // The home placement is a placement like any other: it starts from the model's defaults (docs/069).
+    const home: PlacedProp = { level: AUTHORED_MODEL_LEVEL, model: modelNumber(model.id), name: model.name,
+      pos: [model.anchor[0], model.anchor[1], model.anchor[2]], yaw: 0, scale: 1 };
+    props.push(applyBehaviour(home, propOps.propDefaults(AUTHORED_MODEL_LEVEL, modelNumber(model.id)).behaviour));
     ensurePlacedPropIds(props);
   }
   // an EMPTY model (no geometry, no placements) evaporates on exit: with the click-off flow a stray click
@@ -1942,6 +1947,10 @@ Promise<{ id: number; name: string; detail: string } | null> {
   const copyName = revisedPropName(name || source.name);
   const adopted = recordFromReferenceProp(props, source, copyName);
   if (!adopted.record.subs.length) { toast('This prop has no mesh to revise.', 'err'); return null; }
+  // The copy behaves like what it was copied from (docs/069): a revised reference tree keeps the leaves'
+  // ride-through contact and leaf sound its placements in the level carry, as its own saved defaults.
+  const inherited = propOps.propDefaults(level, model);
+  if (inherited.source !== 'baseline') adopted.record.defaults = inherited.behaviour;
   let saved;
   try {
     // `adopt=1` brings the ART across too, not just a ref to it. Without it the mesh would be the author's

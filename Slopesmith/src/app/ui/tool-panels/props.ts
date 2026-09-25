@@ -11,7 +11,11 @@ import {
 import { openSoundLibrary } from '../../effects/sound-library';
 import { AUTHORED_MODEL_LEVEL, modelIdFromNumber } from '../../../core/doc/models';
 import { SURFACE_AUTHOR_OPTIONS, surfaceTypeLabel } from '../../../core/reference/surface-types';
-import type { NativeCollisionProfile, PlacedProp, Screen, V3 } from '../../../core/doc/types';
+import type { NativeCollisionProfile, PlacedProp, PropBehaviour, Screen, V3 } from '../../../core/doc/types';
+import type { ArmedProp } from '../../state/store';
+import {
+  baselineBehaviour, behaviourOf, sameBehaviour, type ResolvedPropDefaults,
+} from '../../../core/props/defaults';
 import { freeScreen, screenForProp, screensOfProp } from '../../props/screens';
 import { screenPose, screenProp } from '../../../core/props/screen';
 import {
@@ -145,6 +149,7 @@ export function createPropTools(ctx: ToolsContext) {
     gui, store, viewport, persistUi, multiList, propPreview, scheduleRebuild, rebuildTools,
     defOfPlaced, placedBaseOffset, shortPropName, propLevels, groupDefIdx,
     armProp, armGroupById, deselectPropOrLight, lightTool,
+    propDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     deleteSelectedProp, deleteMultiSelProps, deleteSelectedLight, deleteSelectedScreen, revealScreens,
     modelEdit, editSection, goToEffects,
     library, reloadImportedProps, setAuthoredModelTexture, setAuthoredModelFrames,
@@ -249,7 +254,7 @@ export function createPropTools(ctx: ToolsContext) {
       : store.selectedProp !== null ? `prop:${store.selectedProp}`
         : store.selectedRefProp
           ? `ref:${store.selectedRefProp.level}:${store.selectedRefProp.sourceIndex ?? store.selectedRefProp.name}`
-          : null;
+          : store.armedProp ? `held:${store.armedProp.level}:${store.armedProp.model}` : null;
     if (next === loopOwner) return;
     loopOwner = next;
     // Stop before the panel is rebuilt without its button, not after: the sound and the control that stops it
@@ -289,12 +294,30 @@ export function createPropTools(ctx: ToolsContext) {
     else tip(target.add({ play: actions.play }, 'play').name('▶ play sound'), actions.playTitle);
   }
 
+  /**
+   * What the behaviour sections — mode presence, contact, lighting, impact sound, emitters — edit (docs/069): a
+   * PLACEMENT, or the held prop's next-stamp behaviour, seeded from its model's defaults. The two share field
+   * names, so one set of controls serves both and a held prop reads row for row against a placed one.
+   */
+  interface BehaviourHost {
+    /** The record the controls read and write. */
+    target: PropBehaviour;
+    /** The level sound events and a physics donor resolve against. */
+    level: string;
+    /** `editSection` key prefix, so each panel remembers its own open sections. */
+    key: string;
+    /** After a value edit: re-render the scene for a placement; just mark the draft changed for a held prop. */
+    changed(): void;
+    /** Present when editing a placement — enables its effect/trigger diagnostics and the collider overlay. */
+    placement?: PlacedProp;
+  }
+
   /** Upload a WAV through the shared library and assign it to one prop sound channel. */
-  async function loadPropSound(prop: PlacedProp, field: 'collisionSoundFile' | 'ambientSoundFile', label: string) {
+  async function loadPropSound(host: BehaviourHost, field: 'collisionSoundFile' | 'ambientSoundFile', label: string) {
     const stored = await pickCustomSound();
     if (!stored) return;
-    prop[field] = stored;
-    scheduleRebuild();
+    host.target[field] = stored;
+    host.changed();
     rebuildTools();
     toast(`${mountainName} ${label} "${stored}" assigned.`, 'ok');
   }
@@ -302,37 +325,41 @@ export function createPropTools(ctx: ToolsContext) {
   /** Browse the extracted banks for an event id, hear it, and assign what was picked. The prop stores an
    *  EVENT, so the browser opens in its event mode: the slot an id lands on cannot be reversed back into one
    *  (several ids share a slot), which is why this is not the same pick as a Play sound node's. */
-  function browsePropSound(prop: PlacedProp, field: 'collisionSound' | 'ambientSound') {
+  function browsePropSound(host: BehaviourHost, field: 'collisionSound' | 'ambientSound') {
+    const target = host.target;
     const fileField = field === 'collisionSound' ? 'collisionSoundFile' : 'ambientSoundFile';
     void openSoundLibrary({
       mountainName,
       mode: field === 'collisionSound' ? 'collision-events' : 'external-events',
-      level: prop.level,
-      slot: prop[field],
-      file: prop[fileField],
+      level: host.level,
+      slot: target[field],
+      file: target[fileField],
       assign: id => {
-        prop[field] = id;
-        delete prop[fileField]; // an event replaces the custom clip; a WAV set alongside would win silently
-        scheduleRebuild();
+        target[field] = id;
+        delete target[fileField]; // an event replaces the custom clip; a WAV set alongside would win silently
+        host.changed();
         rebuildTools();
       },
       assignFile: file => {
-        prop[fileField] = file;
-        scheduleRebuild();
+        target[fileField] = file;
+        host.changed();
         rebuildTools();
       },
     });
   }
 
   /** Materialize an older map's inferred settings only when the user edits them. Explicit profiles are never
-   *  rewritten by effect/sound attachments; those combinations are diagnosed below instead. */
-  function editableCollisionProfile(prop: PlacedProp, collisionEffect: boolean, hitSound: boolean): NativeCollisionProfile {
-    if (!prop.nativeCollision) {
-      prop.nativeCollision = structuredClone(placedPropCollisionProfile(prop, collisionEffect, hitSound));
-      delete prop.solid;
-      delete prop.bounce;
+   *  rewritten by effect/sound attachments; those combinations are diagnosed below instead. A held prop always
+   *  carries a complete profile, so only a legacy placement ever takes the inference branch. */
+  function editableCollisionProfile(host: BehaviourHost, collisionEffect: boolean, hitSound: boolean): NativeCollisionProfile {
+    const target = host.target;
+    if (!target.nativeCollision) {
+      target.nativeCollision = structuredClone(host.placement
+        ? placedPropCollisionProfile(host.placement, collisionEffect, hitSound)
+        : baselineBehaviour(host.level).nativeCollision);
+      if (host.placement) { delete host.placement.solid; delete host.placement.bounce; }
     }
-    return prop.nativeCollision;
+    return target.nativeCollision;
   }
 
   /** Tools content in Props mode: a big preview of the held / selected prop, then its turn / size / delete or
@@ -476,6 +503,458 @@ export function createPropTools(ctx: ToolsContext) {
     return section;
   }
 
+  // ---- behaviour sections (docs/069): one set of controls for a placement and for the held prop ----
+
+  /** Which native event layer the prop lives on. */
+  function addModeSection(host: BehaviourHost) {
+    const target = host.target;
+    // Authors choose the event-layer meaning, not the LTG integer that happens to encode it. State 2 is
+    // validated as the complete retail Showoff object layer (rails, pickups, and support geometry); state 1
+    // remains visible only as reference provenance until its general-purpose runtime contract is proven.
+    const modeSection = editSection(`${host.key}-mode-presence`, 'Mode presence', false);
+    const presence = { mode: target.modePresence ?? 'all' };
+    tip(modeSection.add(presence, 'mode', {
+      'all modes': 'all',
+      'showoff only': 'showoff',
+    }).name('shown in').onChange((mode: string) => {
+      if (mode === 'showoff') target.modePresence = 'showoff'; else delete target.modePresence;
+      host.changed();
+    }), 'All modes uses the ordinary instance layer; Showoff only uses the GemIndex layer (LTG state 2).',
+    'A Showoff-only prop and its collider are absent in Race and Freeride. Effects can still apply '
+      + 'additional mode-specific hiding.');
+    return modeSection;
+  }
+
+  /** The hit sound: an ADL event id or an uploaded WAV. */
+  function addImpactSection(host: BehaviourHost) {
+    const target = host.target, level = host.level;
+    // The retail prop-hit one-shot: an ADL EVENT id (not a bank slot) resolved through the global table to
+    // the prop's source-level course bank and played positionally on contact, impact-scaled and debounced
+    // [Trailmap: 420-audio-runtime]. -1 = no record (silent). Persisted on the placement; test rides play it.
+    const impactSection = editSection(`${host.key}-impact`, 'Impact sound', false);
+    const sound = { id: target.collisionSound ?? -1 };
+    const soundCtl = tip(impactSection.add(sound, 'id').step(1).name(`hit sound (${collisionSoundMeta(sound.id, level)})`)
+      .onChange((id: number) => {
+        const next = Math.max(-1, Math.trunc(id));
+        if (next < 0) delete target.collisionSound; else target.collisionSound = next;
+        soundCtl.name(`hit sound (${collisionSoundMeta(next, level)})`);
+        host.changed();
+        rebuildTools();
+      }), 'ADL event id played when the rider hits this prop; -1 = silent.',
+      'E.g. 6 rock, 31 metal rail, 72 tree trunk. The readout shows the resolved bank slot; ids the '
+      + 'resolver leaves unmapped stay silent.');
+    // Custom hit sound: an uploaded WAV overriding the event id. The export allocates it a reserved event
+    // id and the ISO repacker encodes it into the target course bank (collision-sound.ts pool).
+    const uploaded = customSounds();
+    if (uploaded.length) {
+      const currentFile = target.collisionSoundFile ?? '';
+      tip(impactSection.add({ file: currentFile }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
+        .name('custom wav').onChange((file: string) => {
+          if (file) target.collisionSoundFile = file; else delete target.collisionSoundFile;
+          host.changed();
+          rebuildTools();
+        }), 'Use an uploaded WAV as the hit sound; repacked ISOs carry it into the level’s bank.');
+    }
+    const impactPath = target.collisionSoundFile || typeof target.collisionSound === 'number'
+      ? soundFilepath(level, target.collisionSound, target.collisionSoundFile) : null;
+    if (target.collisionSoundFile || typeof target.collisionSound === 'number') addSoundFilepath(impactSection, impactPath);
+    addSoundActions(impactSection, {
+      browse: () => browsePropSound(host, 'collisionSound'),
+      browseName: '🔊 browse impact events…',
+      browseTitle: 'Browse the ADL impact events by name and hear each before picking one.',
+      load: () => void loadPropSound(host, 'collisionSoundFile', 'hit sound'),
+      loadName: '⤒ load custom wav…',
+      loadTitle: `Upload a WAV and assign it as the hit sound. Stored with ${mountainName} (PCM16 mono, ≤10 s).`,
+      play: impactPath ? () => {
+        if (target.collisionSoundFile) auditionCustomSound(target.collisionSoundFile);
+        else auditionCollisionSound(level, target.collisionSound ?? -1);
+      } : null,
+      playTitle: 'Audition the assigned impact sound — the custom WAV if set, else the bank clip.',
+    });
+    return impactSection;
+  }
+
+  /** The positional ambient loop (`ExternalSounds`) and its listener region. */
+  function addEmitterSection(host: BehaviourHost) {
+    const target = host.target, level = host.level;
+    const uploaded = customSounds();
+    // Per-placement ExternalSounds loop. The same event resolver is used for retail bank sounds; a custom WAV
+    // shares the reserved event pool with custom impacts. Radius stays in metres in the document and is converted
+    // to SSX centimetres only when stamping the ADL record.
+    const emitterSection = editSection(`${host.key}-emitters`, 'Emitters', false);
+    const ambient = { id: target.ambientSound ?? -1 };
+    const ambientCtl = tip(emitterSection.add(ambient, 'id').step(1).name(`ambient loop (${externalSoundMeta(ambient.id, level)})`)
+      .onChange((id: number) => {
+        const next = Math.max(-1, Math.trunc(id));
+        if (next < 0) delete target.ambientSound; else target.ambientSound = next;
+        ambientCtl.name(`ambient loop (${externalSoundMeta(next, level)})`);
+        host.changed();
+        rebuildTools();
+      }), 'Looping positional ExternalSounds event carried by this prop; -1 = none.',
+      '97–99 are the shared crowd loops. A custom ambient WAV takes precedence over the event id.');
+    if (uploaded.length) {
+      const currentAmbient = target.ambientSoundFile ?? '';
+      tip(emitterSection.add({ file: currentAmbient }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
+        .name('ambient custom wav').onChange((file: string) => {
+          if (file) target.ambientSoundFile = file; else delete target.ambientSoundFile;
+          host.changed();
+          rebuildTools();
+        }), 'Use an uploaded WAV as this prop’s ambient loop instead of a bank event id.');
+    }
+    // An uploaded WAV can be hit-gated only by CLAIMING one of the engine's three ids, which also takes over
+    // that id's course-bank slot for the whole target level. Offered here, beside the file it applies to,
+    // and stored on the mountain so one WAV means the same thing on every prop that uses it — which is why the
+    // claim is a document edit whether a placement or a held prop's defaults are being set up.
+    if (target.ambientSoundFile) {
+      const claims = store.mdoc.hitGatedSounds ?? [];
+      const held = claims.indexOf(target.ambientSoundFile);
+      const gatedState = { gated: held >= 0 };
+      tip(emitterSection.add(gatedState, 'gated')
+        .name(held >= 0 ? `hit-gated (claims event ${HIT_GATED_EVENT_POOL[held]})` : 'hit-gated')
+        .onChange((on: boolean) => {
+          const next = [...claims];
+          if (on) {
+            // Reuse a released slot before growing, so the three stay as compact as they can be without
+            // ever moving a claim that is still held.
+            let at = next.indexOf('');
+            if (at < 0 && next.length < HIT_GATED_EVENT_POOL.length) at = next.push('') - 1;
+            if (at < 0) {
+              toast(`Only ${HIT_GATED_EVENT_POOL.length} hit-gated loops are possible — the engine tests `
+                + 'exactly three event ids. Release one first.', 'warn');
+              rebuildTools();
+              return;
+            }
+            next[at] = target.ambientSoundFile!;
+          } else {
+            next[held] = ''; // blank, never splice: positions are the event ids
+            while (next.length && next[next.length - 1] === '') next.pop();
+          }
+          store.mdoc.hitGatedSounds = next.length ? next : undefined;
+          scheduleRebuild();
+          rebuildTools();
+        }),
+      'Make this loop HIT-GATED: silent until the rider hits the prop, then sounding for the rest of the run.',
+      'Only three are possible in the whole game — the engine tests exactly three event ids — so claiming '
+      + 'one takes that id and its course-bank slot over for the entire target level: any retail prop using '
+      + 'that event plays this clip instead. Merqury City is the only shipped course that uses them (cars 16, '
+      + 'hydrants 28, police 57); everywhere else the slots are unclaimed and this costs nothing.');
+    }
+    // Assigning 16/28/57 directly does the same thing — engine-fixed on the event id, so it happens whether
+    // or not the author meant it. Say so where the id is chosen rather than leaving a prop that ships
+    // "silent" and looks broken.
+    if (isInteractiveAmbientEvent(
+      authoredAmbientEvent(target.ambientSound, target.ambientSoundFile, store.mdoc.hitGatedSounds))) {
+      tip(detail(emitterSection, 'point · hit-gated', 'ambient trigger'),
+        'Interactive ambient class — silent until the rider hits THIS prop, then on for the rest of the run.',
+        'The class is events 16 cars / 28 fire hydrants / 57 police cars. Every other event plays on '
+        + 'listener proximity alone; membership is fixed in the engine, so the id alone decides it.');
+      // A prop nothing can hit can never arm, so this combination ships permanently silent.
+      const contact = target.nativeCollision;
+      if (contact && (contact.playerCollision === false || contact.mode === NATIVE_COLLISION_MODE.none))
+        note(emitterSection, 'No player contact, so this hit-gated loop can never arm and stays silent. '
+          + 'Give the prop a collision shape with Player contact on, or pick a non-gated event.');
+    }
+    // Shape first: it decides whether the next control is one radius or three half-extents, and an
+    // ellipsoid is the reason those two readings can't be collapsed into a single "size" row.
+    const ellipsoid = !!target.ambientHalfExtents;
+    const shapeState = { kind: ellipsoid ? 'ellipsoid' : 'sphere' };
+    tip(emitterSection.add(shapeState, 'kind', {
+      'point · sphere (type 0)': 'sphere',
+      'axis-aligned ellipsoid (type 1)': 'ellipsoid',
+    }).name('ambient shape').onChange((kind: string) => {
+      // Switching seeds the new form from the old one's size, so the region a prop already had does not
+      // jump when its shape changes — a sphere becomes the ellipsoid that contains it, and back.
+      if (kind === 'ellipsoid') {
+        const r = target.ambientRadius ?? AUTHORED_AMBIENT_DEFAULT_M;
+        target.ambientHalfExtents = [r, r, r];
+      } else {
+        const [x = AUTHORED_AMBIENT_DEFAULT_M, y = x, z = x] = target.ambientHalfExtents ?? [];
+        target.ambientRadius = Math.max(x, y, z);
+        delete target.ambientHalfExtents;
+      }
+      host.changed();
+      rebuildTools();
+    }), 'The listener region this loop is heard inside: one radius, or a half-extent per axis.',
+    'Sphere is native ExternalSound type 0; ellipsoid is type 1 — how retail covers a long highway or a '
+      + 'wide fan of grandstand. Type 2 directional regions stay read-only: their angular gate has no '
+      + 'settled meaning yet, so Slopesmith will not author one it cannot reproduce.');
+    if (ellipsoid) {
+      const extents = target.ambientHalfExtents ?? [
+        AUTHORED_AMBIENT_DEFAULT_M, AUTHORED_AMBIENT_DEFAULT_M, AUTHORED_AMBIENT_DEFAULT_M];
+      (['x', 'y', 'z'] as const).forEach((label, axis) => {
+        const state = { m: extents[axis] };
+        tip(emitterSection.add(state, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
+          .name(`half-extent ${label} (m)`).onChange((m: number) => {
+            const next: V3 = [...(target.ambientHalfExtents ?? extents)] as V3;
+            next[axis] = m;
+            target.ambientHalfExtents = next;
+            host.changed();
+          }), `Half-extent along editor ${label.toUpperCase()} — prop to region boundary on that axis.`,
+          'The export reorders these into the native axis order, so what the cyan outline shows is the '
+          + 'volume that ships.');
+      });
+    } else {
+      const ambientRadius = { m: typeof target.ambientRadius === 'number' ? target.ambientRadius : AUTHORED_AMBIENT_DEFAULT_M };
+      tip(emitterSection.add(ambientRadius, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
+        .name('ambient radius (m)').onChange((m: number) => {
+          if (Math.abs(m - AUTHORED_AMBIENT_DEFAULT_M) < 1e-9) delete target.ambientRadius; else target.ambientRadius = m;
+          host.changed();
+        }), 'Maximum audible distance, previewed as a cyan wire sphere in the viewport.',
+        'Retail stores this radius in centimetres; Unity receives metres.');
+    }
+    const falloffState = { curve: String(target.ambientFalloff ?? AUTHORED_AMBIENT_DEFAULT_CURVE) };
+    tip(emitterSection.add(falloffState, 'curve', Object.fromEntries(
+      [0, 1, 2, 3, 4, 5].map(c => [`curve ${c} · ${externalSoundFalloffLabel(c)}`, String(c)]),
+    )).name('ambient falloff').onChange((value: string) => {
+      const curve = Number(value);
+      if (curve === AUTHORED_AMBIENT_DEFAULT_CURVE) delete target.ambientFalloff; else target.ambientFalloff = curve;
+      host.changed();
+    }), 'How gain falls from full volume at the emitter to silence at the region boundary.',
+    'The six exact curves the retail runtime evaluates. Linear (2) is what the confirmed retail crowd '
+      + 'emitters use and stays the default.');
+    const ambientPath = target.ambientSoundFile
+      ? soundFilepath(level, undefined, target.ambientSoundFile)
+      : typeof target.ambientSound === 'number' ? externalSoundSource(level, target.ambientSound) : null;
+    if (target.ambientSoundFile || typeof target.ambientSound === 'number') addSoundFilepath(emitterSection, ambientPath);
+    addSoundActions(emitterSection, {
+      browse: () => browsePropSound(host, 'ambientSound'),
+      browseName: '🔊 browse emitter events…',
+      browseTitle: 'Browse the ExternalSounds events — River, Snowmachine, the crowd loops — and hear each first.',
+      load: () => void loadPropSound(host, 'ambientSoundFile', 'ambient loop'),
+      loadName: '⤒ load ambient wav…',
+      loadTitle: 'Upload and assign a custom positional loop. The current upload cap is 10 seconds.',
+      play: ambientPath ? () => {
+        const key = `${loopOwner ?? ''}:ambient`;
+        if (target.ambientSoundFile) auditionCustomSoundLoop(key, target.ambientSoundFile);
+        else auditionExternalSoundLoop(key, level, target.ambientSound ?? -1);
+      } : null,
+      loopKey: `${loopOwner ?? ''}:ambient`,
+      playTitle: 'Hold the loop to hear how it carries — it stops when you stop it or deselect the prop. '
+        + 'Placed ambience is otherwise silent outside Test.',
+    });
+    return emitterSection;
+  }
+
+  /** Self-lit: retail's own per-prop lighting setting. */
+  function addLightingSection(host: BehaviourHost) {
+    const target = host.target;
+    // Self-lit is retail's own per-prop lighting setting, and the only one the shipped data justifies
+    // authoring by hand: everything else about a prop's lighting (key magnitude, direction) is derived
+    // from the sun and the ground under it. Ungated, because a placed reference sign wants it exactly as
+    // much as a custom one — retail ships 3–12% of each level's props this way (docs/032 · lighting).
+    const lightingSection = editSection(`${host.key}-lighting`, 'Lighting', false);
+    const litState = { self: target.fullBright === true };
+    tip(lightingSection.add(litState, 'self').name('self-lit (ignores sun)').onChange((on: boolean) => {
+      if (on) target.fullBright = true; else delete target.fullBright;
+      host.changed();
+    }), 'Ship this placement full-bright — the sun never shades it.',
+    'How retail lights sign faces, LCD screens, jumbotrons and lamp heads. Off = lit by the authored sun '
+      + 'like the snow under it.');
+    return lightingSection;
+  }
+
+  /** Contact & collision: the exact native profile, its ride surface, and every conflict worth warning about.
+   *  Returns the effective profile as well, which the placement's ＋ place copies. */
+  function addContactSection(host: BehaviourHost) {
+    const target = host.target, level = host.level, placement = host.placement;
+    const contactSection = editSection(`${host.key}-contact`, 'Contact & collision', false);
+    if (placement) addCollisionOverlayToggle(contactSection); // the overlay draws the SELECTED placement's collider
+    // Effects attach to a placement's id, so only a placement can have a collision effect or a Roller request.
+    const collisionEffect = !!placement && authoredPropHasEffectCircumstance(store.mdoc.effects, placement.id, 'collision');
+    const rollerEffect = !!placement && !!store.mdoc.effects && authoredEffectBindings(store.mdoc.effects, [placement])
+      .some(binding => binding.circumstance === 'collision'
+        && binding.graph.nodes.some(node => node.semanticType === 'property.roller'));
+    const hitSound = typeof target.collisionSound === 'number' || !!target.collisionSoundFile;
+    const profile = placement ? placedPropCollisionProfile(placement, collisionEffect, hitSound)
+      : target.nativeCollision ?? baselineBehaviour(level).nativeCollision;
+    const donorData = profile.physicsSource ? propLevels.get(profile.physicsSource.level) : undefined;
+    const missingLoadedBody = !!profile.physicsSource && !!donorData
+      && !donorData.physicsBodies?.has(profile.physicsSource.body);
+    const effectiveState = profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && missingLoadedBody
+      ? 'none' : collisionProfileContactState(profile);
+    const effectiveSolid = effectiveState === 'solid';
+
+    // Defaults are materialized on placement, but these remain the independent spec fields recovered from
+    // ObjectProperties. Attachments never override them: incompatible effect/sound combinations warn below.
+    const editProfile = (change: (value: NativeCollisionProfile) => void) => {
+      const value = editableCollisionProfile(host, collisionEffect, hitSound);
+      change(value);
+      host.changed();
+      rebuildTools();
+    };
+    const shape = { mode: profile.mode };
+    tip(contactSection.add(shape, 'mode', COLLISION_SHAPE_OPTIONS)
+      .name('collision shape').onChange((mode: number) => editProfile(value => { value.mode = Number(mode) as 0 | 1 | 2 | 3; })),
+    CONTACT_HELP.shape, `${CONTACT_MORE.shape} An authored mesh proxy is generated from this placement.`);
+    const gates = { contact: profile.playerCollision, response: profile.playerBounce };
+    tip(contactSection.add(gates, 'contact').name('player contact').onChange((on: boolean) =>
+      editProfile(value => { value.playerCollision = on; })), CONTACT_HELP.contact, CONTACT_MORE.contact);
+    tip(contactSection.add(gates, 'response').name('player bounce').onChange((on: boolean) =>
+      editProfile(value => { value.playerBounce = on; })), CONTACT_HELP.bounceGate);
+    const mass = { responseMass: profile.responseMass };
+    tip(contactSection.add(mass, 'responseMass').min(0).name('collision response mass').onFinishChange((raw: number) =>
+      editProfile(value => { value.responseMass = Number.isFinite(raw) ? Math.max(0, raw) : 0; })),
+    CONTACT_HELP.responseMass, CONTACT_MORE.responseMass);
+    const bounce = { amount: profile.bounceAmount };
+    tip(contactSection.add(bounce, 'amount', 0, 1, 0.01).name('bounce amount').onFinishChange((raw: number) =>
+      editProfile(value => { value.bounceAmount = Number.isFinite(raw) ? Math.max(0, raw) : 0; })),
+    CONTACT_HELP.bounceAmount, CONTACT_MORE.bounceAmount);
+    const surfaceState = { surface: typeof target.surface === 'number' ? target.surface : -1 };
+    tip(contactSection.add(surfaceState, 'surface', Object.fromEntries(SURFACE_AUTHOR_OPTIONS.map(o => [o.name, o.type])))
+      .name('ride surface').onChange((surface: number) => {
+        if (surface < 0) delete target.surface; else target.surface = Math.trunc(surface);
+        host.changed(); rebuildTools();
+      }), CONTACT_HELP.surface, CONTACT_MORE.surface);
+
+    const donor = {
+      level: profile.physicsSource?.level ?? level,
+      body: profile.physicsSource?.body ?? -1,
+    };
+    tip(contactSection.add(donor, 'body').step(1).name('physics body index').onFinishChange((raw: number) => {
+      const body = Number.isFinite(raw) ? Math.trunc(raw) : -1;
+      editProfile(value => {
+        if (body < 0) delete value.physicsSource;
+        else value.physicsSource = { level: String(donor.level).trim() || level, body };
+      });
+    }), CONTACT_HELP.physicsBody, CONTACT_MORE.physicsBody);
+    tip(contactSection.add(donor, 'level').name('physics source level').onFinishChange((raw: string) => {
+      const donorLevel = String(raw).trim() || level;
+      editProfile(value => {
+        if (value.physicsSource) value.physicsSource = { level: donorLevel, body: value.physicsSource.body };
+      });
+    }), `${CONTACT_HELP.physicsLevel} Set a body index first.`, CONTACT_MORE.physicsLevel);
+
+    tip(detail(contactSection,
+      `${placedPropContactLabel(effectiveState)} · ${effectiveShapeLabel(profile)}${rollerEffect ? ' · Roller requested' : ''}`,
+      'effective collision result'), CONTACT_HELP.result);
+
+    // Detected conflicts live directly under the effective result so the author never has to infer whether
+    // a setting will be ignored. warningBanner is the shared yellow diagnostic presentation.
+    if ((collisionEffect || hitSound) && effectiveState === 'none')
+      warningBanner(contactSection, 'Collision warning: the attached effect or hit sound cannot fire because the current shape/contact settings produce no eligible contact.');
+    if (profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && !profile.physicsSource)
+      warningBanner(contactSection, 'Collision warning: physics-body spheres are selected without a physics body, so there is no contact shape.');
+    if (missingLoadedBody)
+      warningBanner(contactSection, `Collision warning: body ${profile.physicsSource!.body} was not found in the loaded ${profile.physicsSource!.level} physics pool.`);
+    if (profile.mode === NATIVE_COLLISION_MODE.none && profile.playerCollision)
+      warningBanner(contactSection, 'Collision warning: Player contact is enabled, but “none” supplies no shape.');
+    if (profile.mode !== NATIVE_COLLISION_MODE.none && !profile.playerCollision)
+      warningBanner(contactSection, 'Collision warning: the selected shape is ignored while Player contact is off.');
+    if (profile.playerBounce && profile.responseMass === 0)
+      warningBanner(contactSection, 'Response warning: PlayerBounce is enabled, but response mass is exactly 0, so contact remains ride-through.');
+    if (!profile.playerBounce && profile.responseMass !== 0)
+      warningBanner(contactSection, 'Response warning: response mass is stored, but PlayerBounce-off suppresses physical rider response. Contact effects/sounds remain eligible.');
+    if (!effectiveSolid && typeof target.surface === 'number' && target.surface >= 0)
+      warningBanner(contactSection, 'Contact warning: ride surface is ignored because the current settings do not produce a solid response.');
+    if (!profile.playerBounce && profile.bounceAmount !== 0)
+      warningBanner(contactSection, 'Response warning: bounce amount is stored but ignored while PlayerBounce is off.');
+    if (placement?.effectTrigger && effectiveSolid)
+      warningBanner(contactSection, 'Trigger warning: this effect trigger has a solid response and will physically block or deflect the rider.');
+    if (rollerEffect && !profile.physicsSource)
+      warningBanner(contactSection, 'PS2 ISO warning: Roller previews and Unity movement work, but this custom ISO prop has no native sphere-tree body/inertia and will remain static in PCSX2.');
+    return { contactSection, profile };
+  }
+
+  /** One line on where the held prop's settings came from, and a detail for the info badge. */
+  function heldProvenance(armed: ArmedProp, resolved: ResolvedPropDefaults): [string, string] {
+    const name = shortPropName(armed.name);
+    if (armed.group) return [`A group places as one prop, so all its members share these settings.`,
+      'Per-member defaults — a solid trunk under ride-through leaves — need a group to carry settings per '
+      + 'member, which it does not yet. Until then a group starts from the standard settings.'];
+    if (armed.from === 'placement') return [`Copying a placed ${name}: its settings, not the model’s defaults.`,
+      '“use model defaults” switches the held prop back to what a library pick of this model starts with.'];
+    if (armed.from === 'instance') return [`Copying one ${armed.level} ${name}: that copy’s own settings.`,
+      'Middle-clicking a prop in the reference level takes that exact copy’s settings. “use model defaults” '
+      + 'switches to what most of this model’s copies carry.'];
+    if (resolved.source === 'saved') return [`Your saved defaults for ${name}.`,
+      'Every new placement of this model starts with these. Placements already on the mountain keep their own '
+      + 'settings until you apply these to them.'];
+    if (resolved.source === 'reference') {
+      const all = resolved.matching === resolved.total;
+      return [`Derived from ${armed.level}: ${all ? `all ${resolved.total}` : `${resolved.matching} of ${resolved.total}`} `
+        + `placed ${name} behave like this.`,
+      'A shipped level has no per-model settings — each placed copy carries its own — so these are the settings its '
+        + 'copies most often use. Middle-click a particular copy in the level to take its exact settings instead. '
+        + 'Saving defaults is for your own props: revise this one into your library to keep a set of its own.'];
+    }
+    return ownGeometry(armed.level)
+      ? [`${name} has no saved defaults — it starts decorative and silent.`,
+        'Set it up below and save, and every new placement of it starts that way.']
+      : [`${name} is never visibly placed in ${armed.level}, so it starts from the standard settings.`,
+        'Borrowed art starts solid. Change anything below before placing.'];
+  }
+
+  /**
+   * The HELD prop's panel (docs/069): what the next placement will carry, seeded from the model's defaults — the
+   * author's saved ones, or for a shipped level's model the settings its placements most often have — and
+   * editable before placing. For the author's own models the result can be saved back as the defaults, and any
+   * held settings can be pushed onto the placements already on the mountain.
+   */
+  function buildHeldPropTools(armed: ArmedProp) {
+    const resolved = propDefaults(armed.level, armed.model);
+    const name = shortPropName(armed.name);
+    const aboutSection = editSection('props-held-defaults', armed.group ? 'Group settings' : 'Placement defaults', true);
+    const [provenance, more] = heldProvenance(armed, resolved);
+    note(aboutSection, provenance, more);
+    const edited = () => armed.from === 'defaults' && !sameBehaviour(armed.behaviour, resolved.behaviour);
+    const statusText = () => armed.from === 'placement' ? 'copy of a placed prop'
+      : armed.from === 'instance' ? 'copy of a reference prop'
+        : edited() ? 'changed — not saved' : 'model defaults';
+    const status = detail(aboutSection, statusText(), 'next placement');
+    tip(status, 'What the next click stamps. Each placement copies these, so later edits here never change '
+      + 'props already placed.');
+    const host: BehaviourHost = {
+      target: armed.behaviour, level: armed.level, key: 'props-held',
+      // Nothing is placed yet, so an edit re-renders nothing; only the status line follows it.
+      changed: () => { (status.object as { x: string }).x = statusText(); status.updateDisplay(); },
+    };
+
+    const actionRows: HTMLElement[] = [];
+    if (resolved.savable && !armed.group) {
+      const save = tip(gui.add({ save: async () => {
+        try {
+          await saveModelDefaults(armed.level, armed.model, armed.behaviour);
+        } catch (e) { toast(`Saving defaults failed — ${e instanceof Error ? e.message : e}`, 'err'); return; }
+        armed.from = 'defaults';
+        toast(`Saved — every new ${name} starts with these settings.`, 'ok');
+        rebuildTools();
+      } }, 'save').name('⤓ save as model defaults'),
+      'Save these settings as this model’s defaults — every new placement of it starts with them.',
+      'Contact, surface, mode layer, hit and ambient sound, self-lighting. Stored with the model itself, so '
+        + 'they travel with it rather than with this session.');
+      actionRows.push(save.domElement);
+    }
+    if (armed.from !== 'defaults' || edited()) {
+      const reset = tip(gui.add({ reset: () => {
+        armed.behaviour = structuredClone(resolved.behaviour);
+        armed.from = 'defaults';
+        rebuildTools();
+      } }, 'reset').name('↺ use model defaults'),
+      'Drop the changes and hold this model with its defaults again.');
+      actionRows.push(reset.domElement);
+    }
+    const placedCount = armed.group ? 0 : placementsOfModel(armed.level, armed.model).length;
+    if (placedCount) {
+      const apply = tip(gui.add({ apply: () => {
+        const n = applyBehaviourToPlaced(armed.level, armed.model, armed.behaviour);
+        toast(`Applied to ${n} placed ${name}${n === 1 ? '' : 's'} — undo puts theirs back.`, 'ok');
+      } }, 'apply').name(`⇉ apply to ${placedCount} placed`),
+      `Give every ${name} already on the mountain these settings.`,
+      'Placements copy their settings when stamped rather than following the model, so changing defaults never '
+        + 'changes existing props by itself — this is the explicit way. Groups keep their own.');
+      actionRows.push(apply.domElement);
+    }
+
+    const modeSection = addModeSection(host);
+    const { contactSection } = addContactSection(host);
+    const lightingSection = addLightingSection(host);
+    const impactSection = addImpactSection(host);
+    const emitterSection = addEmitterSection(host);
+    aboutSection.domElement.before(...actionRows);
+    aboutSection.domElement.after(modeSection.domElement, contactSection.domElement, lightingSection.domElement,
+      impactSection.domElement, emitterSection.domElement);
+  }
+
   function buildPropTools() {
     updatePropPreview();
     if (store.selectedScreen !== null || store.selectedRefScreen !== null) {
@@ -532,334 +1011,42 @@ export function createPropTools(ctx: ToolsContext) {
         lastScale = s;
         scheduleRebuild();
       }), 'Scale the prop up or down — its base stays on the ground.');
-      // Authors choose the event-layer meaning, not the LTG integer that happens to encode it. State 2 is
-      // validated as the complete retail Showoff object layer (rails, pickups, and support geometry); state 1
-      // remains visible only as reference provenance until its general-purpose runtime contract is proven.
-      const modeSection = editSection('props-authored-mode-presence', 'Mode presence', false);
-      const presence = { mode: prop.modePresence ?? 'all' };
-      tip(modeSection.add(presence, 'mode', {
-        'all modes': 'all',
-        'showoff only': 'showoff',
-      }).name('shown in').onChange((mode: string) => {
-        if (mode === 'showoff') prop.modePresence = 'showoff'; else delete prop.modePresence;
-        scheduleRebuild();
-      }), 'All modes uses the ordinary instance layer; Showoff only uses the GemIndex layer (LTG state 2).',
-      'A Showoff-only prop and its collider are absent in Race and Freeride. Effects can still apply '
-        + 'additional mode-specific hiding.');
-      // The retail prop-hit one-shot: an ADL EVENT id (not a bank slot) resolved through the global table to
-      // the prop's source-level course bank and played positionally on contact, impact-scaled and debounced
-      // [Trailmap: 420-audio-runtime]. -1 = no record (silent). Persisted on the placement; test rides play it.
-      const impactSection = editSection('props-authored-impact', 'Impact sound', false);
-      const sound = { id: prop.collisionSound ?? -1 };
-      const soundCtl = tip(impactSection.add(sound, 'id').step(1).name(`hit sound (${collisionSoundMeta(sound.id, prop.level)})`)
-        .onChange((id: number) => {
-          const next = Math.max(-1, Math.trunc(id));
-          if (next < 0) delete prop.collisionSound; else prop.collisionSound = next;
-          soundCtl.name(`hit sound (${collisionSoundMeta(next, prop.level)})`);
-          scheduleRebuild();
-          rebuildTools();
-        }), 'ADL event id played when the rider hits this prop; -1 = silent.',
-        'E.g. 6 rock, 31 metal rail, 72 tree trunk. The readout shows the resolved bank slot; ids the '
-        + 'resolver leaves unmapped stay silent.');
-      // Custom hit sound: an uploaded WAV overriding the event id. The export allocates it a reserved event
-      // id and the ISO repacker encodes it into the target course bank (collision-sound.ts pool).
-      const uploaded = customSounds();
-      if (uploaded.length) {
-        const currentFile = prop.collisionSoundFile ?? '';
-        tip(impactSection.add({ file: currentFile }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
-          .name('custom wav').onChange((file: string) => {
-            if (file) prop.collisionSoundFile = file; else delete prop.collisionSoundFile;
-            scheduleRebuild();
-            rebuildTools();
-          }), 'Use an uploaded WAV as the hit sound; repacked ISOs carry it into the level’s bank.');
-      }
-      const impactPath = prop.collisionSoundFile || typeof prop.collisionSound === 'number'
-        ? soundFilepath(prop.level, prop.collisionSound, prop.collisionSoundFile) : null;
-      if (prop.collisionSoundFile || typeof prop.collisionSound === 'number') addSoundFilepath(impactSection, impactPath);
-      addSoundActions(impactSection, {
-        browse: () => browsePropSound(prop, 'collisionSound'),
-        browseName: '🔊 browse impact events…',
-        browseTitle: 'Browse the ADL impact events by name and hear each before picking one.',
-        load: () => void loadPropSound(prop, 'collisionSoundFile', 'hit sound'),
-        loadName: '⤒ load custom wav…',
-        loadTitle: `Upload a WAV and assign it as the hit sound. Stored with ${mountainName} (PCM16 mono, ≤10 s).`,
-        play: impactPath ? () => {
-          if (prop.collisionSoundFile) auditionCustomSound(prop.collisionSoundFile);
-          else auditionCollisionSound(prop.level, prop.collisionSound ?? -1);
-        } : null,
-        playTitle: 'Audition the assigned impact sound — the custom WAV if set, else the bank clip.',
-      });
-      // Per-placement ExternalSounds loop. The same event resolver is used for retail bank sounds; a custom WAV
-      // shares the reserved event pool with custom impacts. Radius stays in metres in the document and is converted
-      // to SSX centimetres only when stamping the ADL record.
-      const emitterSection = editSection('props-authored-emitters', 'Emitters', false);
-      const ambient = { id: prop.ambientSound ?? -1 };
-      const ambientCtl = tip(emitterSection.add(ambient, 'id').step(1).name(`ambient loop (${externalSoundMeta(ambient.id, prop.level)})`)
-        .onChange((id: number) => {
-          const next = Math.max(-1, Math.trunc(id));
-          if (next < 0) delete prop.ambientSound; else prop.ambientSound = next;
-          ambientCtl.name(`ambient loop (${externalSoundMeta(next, prop.level)})`);
-          scheduleRebuild();
-          rebuildTools();
-        }), 'Looping positional ExternalSounds event carried by this prop; -1 = none.',
-        '97–99 are the shared crowd loops. A custom ambient WAV takes precedence over the event id.');
-      if (uploaded.length) {
-        const currentAmbient = prop.ambientSoundFile ?? '';
-        tip(emitterSection.add({ file: currentAmbient }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
-          .name('ambient custom wav').onChange((file: string) => {
-            if (file) prop.ambientSoundFile = file; else delete prop.ambientSoundFile;
-            scheduleRebuild();
-            rebuildTools();
-          }), 'Use an uploaded WAV as this prop’s ambient loop instead of a bank event id.');
-      }
-      // An uploaded WAV can be hit-gated only by CLAIMING one of the engine's three ids, which also takes over
-      // that id's course-bank slot for the whole target level. Offered here, beside the file it applies to,
-      // and stored on the mountain so one WAV means the same thing on every prop that uses it.
-      if (prop.ambientSoundFile) {
-        const claims = store.mdoc.hitGatedSounds ?? [];
-        const held = claims.indexOf(prop.ambientSoundFile);
-        const gatedState = { gated: held >= 0 };
-        tip(emitterSection.add(gatedState, 'gated')
-          .name(held >= 0 ? `hit-gated (claims event ${HIT_GATED_EVENT_POOL[held]})` : 'hit-gated')
-          .onChange((on: boolean) => {
-            const next = [...claims];
-            if (on) {
-              // Reuse a released slot before growing, so the three stay as compact as they can be without
-              // ever moving a claim that is still held.
-              let at = next.indexOf('');
-              if (at < 0 && next.length < HIT_GATED_EVENT_POOL.length) at = next.push('') - 1;
-              if (at < 0) {
-                toast(`Only ${HIT_GATED_EVENT_POOL.length} hit-gated loops are possible — the engine tests `
-                  + 'exactly three event ids. Release one first.', 'warn');
-                rebuildTools();
-                return;
-              }
-              next[at] = prop.ambientSoundFile!;
-            } else {
-              next[held] = ''; // blank, never splice: positions are the event ids
-              while (next.length && next[next.length - 1] === '') next.pop();
-            }
-            store.mdoc.hitGatedSounds = next.length ? next : undefined;
-            scheduleRebuild();
-            rebuildTools();
-          }),
-        'Make this loop HIT-GATED: silent until the rider hits the prop, then sounding for the rest of the run.',
-        'Only three are possible in the whole game — the engine tests exactly three event ids — so claiming '
-        + 'one takes that id and its course-bank slot over for the entire target level: any retail prop using '
-        + 'that event plays this clip instead. Merqury City is the only shipped course that uses them (cars 16, '
-        + 'hydrants 28, police 57); everywhere else the slots are unclaimed and this costs nothing.');
-      }
-      // Assigning 16/28/57 directly does the same thing — engine-fixed on the event id, so it happens whether
-      // or not the author meant it. Say so where the id is chosen rather than leaving a prop that ships
-      // "silent" and looks broken.
-      if (isInteractiveAmbientEvent(
-        authoredAmbientEvent(prop.ambientSound, prop.ambientSoundFile, store.mdoc.hitGatedSounds))) {
-        tip(detail(emitterSection, 'point · hit-gated', 'ambient trigger'),
-          'Interactive ambient class — silent until the rider hits THIS prop, then on for the rest of the run.',
-          'The class is events 16 cars / 28 fire hydrants / 57 police cars. Every other event plays on '
-          + 'listener proximity alone; membership is fixed in the engine, so the id alone decides it.');
-        // A prop nothing can hit can never arm, so this combination ships permanently silent.
-        const contact = prop.nativeCollision;
-        if (contact && (contact.playerCollision === false || contact.mode === NATIVE_COLLISION_MODE.none))
-          note(emitterSection, 'No player contact, so this hit-gated loop can never arm and stays silent. '
-            + 'Give the prop a collision shape with Player contact on, or pick a non-gated event.');
-      }
-      // Shape first: it decides whether the next control is one radius or three half-extents, and an
-      // ellipsoid is the reason those two readings can't be collapsed into a single "size" row.
-      const ellipsoid = !!prop.ambientHalfExtents;
-      const shapeState = { kind: ellipsoid ? 'ellipsoid' : 'sphere' };
-      tip(emitterSection.add(shapeState, 'kind', {
-        'point · sphere (type 0)': 'sphere',
-        'axis-aligned ellipsoid (type 1)': 'ellipsoid',
-      }).name('ambient shape').onChange((kind: string) => {
-        // Switching seeds the new form from the old one's size, so the region a prop already had does not
-        // jump when its shape changes — a sphere becomes the ellipsoid that contains it, and back.
-        if (kind === 'ellipsoid') {
-          const r = prop.ambientRadius ?? AUTHORED_AMBIENT_DEFAULT_M;
-          prop.ambientHalfExtents = [r, r, r];
-        } else {
-          const [x = AUTHORED_AMBIENT_DEFAULT_M, y = x, z = x] = prop.ambientHalfExtents ?? [];
-          prop.ambientRadius = Math.max(x, y, z);
-          delete prop.ambientHalfExtents;
-        }
-        scheduleRebuild();
-        rebuildTools();
-      }), 'The listener region this loop is heard inside: one radius, or a half-extent per axis.',
-      'Sphere is native ExternalSound type 0; ellipsoid is type 1 — how retail covers a long highway or a '
-        + 'wide fan of grandstand. Type 2 directional regions stay read-only: their angular gate has no '
-        + 'settled meaning yet, so Slopesmith will not author one it cannot reproduce.');
-      if (ellipsoid) {
-        const extents = prop.ambientHalfExtents ?? [
-          AUTHORED_AMBIENT_DEFAULT_M, AUTHORED_AMBIENT_DEFAULT_M, AUTHORED_AMBIENT_DEFAULT_M];
-        (['x', 'y', 'z'] as const).forEach((label, axis) => {
-          const state = { m: extents[axis] };
-          tip(emitterSection.add(state, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
-            .name(`half-extent ${label} (m)`).onChange((m: number) => {
-              const next: V3 = [...(prop.ambientHalfExtents ?? extents)] as V3;
-              next[axis] = m;
-              prop.ambientHalfExtents = next;
-              scheduleRebuild();
-            }), `Half-extent along editor ${label.toUpperCase()} — prop to region boundary on that axis.`,
-            'The export reorders these into the native axis order, so what the cyan outline shows is the '
-            + 'volume that ships.');
-        });
-      } else {
-        const ambientRadius = { m: typeof prop.ambientRadius === 'number' ? prop.ambientRadius : AUTHORED_AMBIENT_DEFAULT_M };
-        tip(emitterSection.add(ambientRadius, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
-          .name('ambient radius (m)').onChange((m: number) => {
-            if (Math.abs(m - AUTHORED_AMBIENT_DEFAULT_M) < 1e-9) delete prop.ambientRadius; else prop.ambientRadius = m;
-            scheduleRebuild();
-          }), 'Maximum audible distance, previewed as a cyan wire sphere in the viewport.',
-          'Retail stores this radius in centimetres; Unity receives metres.');
-      }
-      const falloffState = { curve: String(prop.ambientFalloff ?? AUTHORED_AMBIENT_DEFAULT_CURVE) };
-      tip(emitterSection.add(falloffState, 'curve', Object.fromEntries(
-        [0, 1, 2, 3, 4, 5].map(c => [`curve ${c} · ${externalSoundFalloffLabel(c)}`, String(c)]),
-      )).name('ambient falloff').onChange((value: string) => {
-        const curve = Number(value);
-        if (curve === AUTHORED_AMBIENT_DEFAULT_CURVE) delete prop.ambientFalloff; else prop.ambientFalloff = curve;
-        scheduleRebuild();
-      }), 'How gain falls from full volume at the emitter to silence at the region boundary.',
-      'The six exact curves the retail runtime evaluates. Linear (2) is what the confirmed retail crowd '
-        + 'emitters use and stays the default.');
-      const ambientPath = prop.ambientSoundFile
-        ? soundFilepath(prop.level, undefined, prop.ambientSoundFile)
-        : typeof prop.ambientSound === 'number' ? externalSoundSource(prop.level, prop.ambientSound) : null;
-      if (prop.ambientSoundFile || typeof prop.ambientSound === 'number') addSoundFilepath(emitterSection, ambientPath);
-      addSoundActions(emitterSection, {
-        browse: () => browsePropSound(prop, 'ambientSound'),
-        browseName: '🔊 browse emitter events…',
-        browseTitle: 'Browse the ExternalSounds events — River, Snowmachine, the crowd loops — and hear each first.',
-        load: () => void loadPropSound(prop, 'ambientSoundFile', 'ambient loop'),
-        loadName: '⤒ load ambient wav…',
-        loadTitle: 'Upload and assign a custom positional loop. The current upload cap is 10 seconds.',
-        play: ambientPath ? () => {
-          const key = `${loopOwner ?? ''}:ambient`;
-          if (prop.ambientSoundFile) auditionCustomSoundLoop(key, prop.ambientSoundFile);
-          else auditionExternalSoundLoop(key, prop.level, prop.ambientSound ?? -1);
-        } : null,
-        loopKey: `${loopOwner ?? ''}:ambient`,
-        playTitle: 'Hold the loop to hear how it carries — it stops when you stop it or deselect the prop. '
-          + 'Placed ambience is otherwise silent outside Test.',
-      });
-      // Self-lit is retail's own per-prop lighting setting, and the only one the shipped data justifies
-      // authoring by hand: everything else about a prop's lighting (key magnitude, direction) is derived
-      // from the sun and the ground under it. Ungated, because a placed reference sign wants it exactly as
-      // much as a custom one — retail ships 3–12% of each level's props this way (docs/032 · lighting).
-      const lightingSection = editSection('props-authored-lighting', 'Lighting', false);
-      const litState = { self: prop.fullBright === true };
-      tip(lightingSection.add(litState, 'self').name('self-lit (ignores sun)').onChange((on: boolean) => {
-        if (on) prop.fullBright = true; else delete prop.fullBright;
-        scheduleRebuild();
-      }), 'Ship this placement full-bright — the sun never shades it.',
-      'How retail lights sign faces, LCD screens, jumbotrons and lamp heads. Off = lit by the authored sun '
-        + 'like the snow under it.');
-      const contactSection = editSection('props-authored-contact', 'Contact & collision', false);
-      addCollisionOverlayToggle(contactSection);
-      const collisionEffect = authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision');
-      const rollerEffect = !!store.mdoc.effects && authoredEffectBindings(store.mdoc.effects, [prop])
-        .some(binding => binding.circumstance === 'collision'
-          && binding.graph.nodes.some(node => node.semanticType === 'property.roller'));
-      const hitSound = typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
-      const profile = placedPropCollisionProfile(prop, collisionEffect, hitSound);
-      const donorData = profile.physicsSource ? propLevels.get(profile.physicsSource.level) : undefined;
-      const missingLoadedBody = !!profile.physicsSource && !!donorData
-        && !donorData.physicsBodies?.has(profile.physicsSource.body);
-      const effectiveState = profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && missingLoadedBody
-        ? 'none' : collisionProfileContactState(profile);
-      const effectiveSolid = effectiveState === 'solid';
-
-      // Defaults are materialized on placement, but these remain the independent spec fields recovered from
-      // ObjectProperties. Attachments never override them: incompatible effect/sound combinations warn below.
-      const editProfile = (change: (value: NativeCollisionProfile) => void) => {
-        const value = editableCollisionProfile(prop, collisionEffect, hitSound);
-        change(value);
-        scheduleRebuild();
-        rebuildTools();
+      // The behaviour sections are shared with the held prop's panel (docs/069): same controls, bound here to
+      // this placement, whose edits re-render the scene.
+      const host: BehaviourHost = {
+        target: prop, level: prop.level, key: 'props-authored', changed: scheduleRebuild, placement: prop,
       };
-      const shape = { mode: profile.mode };
-      tip(contactSection.add(shape, 'mode', COLLISION_SHAPE_OPTIONS)
-        .name('collision shape').onChange((mode: number) => editProfile(value => { value.mode = Number(mode) as 0 | 1 | 2 | 3; })),
-      CONTACT_HELP.shape, `${CONTACT_MORE.shape} An authored mesh proxy is generated from this placement.`);
-      const gates = { contact: profile.playerCollision, response: profile.playerBounce };
-      tip(contactSection.add(gates, 'contact').name('player contact').onChange((on: boolean) =>
-        editProfile(value => { value.playerCollision = on; })), CONTACT_HELP.contact, CONTACT_MORE.contact);
-      tip(contactSection.add(gates, 'response').name('player bounce').onChange((on: boolean) =>
-        editProfile(value => { value.playerBounce = on; })), CONTACT_HELP.bounceGate);
-      const mass = { responseMass: profile.responseMass };
-      tip(contactSection.add(mass, 'responseMass').min(0).name('collision response mass').onFinishChange((raw: number) =>
-        editProfile(value => { value.responseMass = Number.isFinite(raw) ? Math.max(0, raw) : 0; })),
-      CONTACT_HELP.responseMass, CONTACT_MORE.responseMass);
-      const bounce = { amount: profile.bounceAmount };
-      tip(contactSection.add(bounce, 'amount', 0, 1, 0.01).name('bounce amount').onFinishChange((raw: number) =>
-        editProfile(value => { value.bounceAmount = Number.isFinite(raw) ? Math.max(0, raw) : 0; })),
-      CONTACT_HELP.bounceAmount, CONTACT_MORE.bounceAmount);
-      const surfaceState = { surface: typeof prop.surface === 'number' ? prop.surface : -1 };
-      tip(contactSection.add(surfaceState, 'surface', Object.fromEntries(SURFACE_AUTHOR_OPTIONS.map(o => [o.name, o.type])))
-        .name('ride surface').onChange((surface: number) => {
-          if (surface < 0) delete prop.surface; else prop.surface = Math.trunc(surface);
-          scheduleRebuild(); rebuildTools();
-        }), CONTACT_HELP.surface, CONTACT_MORE.surface);
-
-      const donor = {
-        level: profile.physicsSource?.level ?? prop.level,
-        body: profile.physicsSource?.body ?? -1,
-      };
-      tip(contactSection.add(donor, 'body').step(1).name('physics body index').onFinishChange((raw: number) => {
-        const body = Number.isFinite(raw) ? Math.trunc(raw) : -1;
-        editProfile(value => {
-          if (body < 0) delete value.physicsSource;
-          else value.physicsSource = { level: String(donor.level).trim() || prop.level, body };
-        });
-      }), CONTACT_HELP.physicsBody, CONTACT_MORE.physicsBody);
-      tip(contactSection.add(donor, 'level').name('physics source level').onFinishChange((raw: string) => {
-        const level = String(raw).trim() || prop.level;
-        editProfile(value => {
-          if (value.physicsSource) value.physicsSource = { level, body: value.physicsSource.body };
-        });
-      }), `${CONTACT_HELP.physicsLevel} Set a body index first.`, CONTACT_MORE.physicsLevel);
-
-      tip(detail(contactSection,
-        `${placedPropContactLabel(effectiveState)} · ${effectiveShapeLabel(profile)}${rollerEffect ? ' · Roller requested' : ''}`,
-        'effective collision result'), CONTACT_HELP.result);
-
-      // Detected conflicts live directly under the effective result so the author never has to infer whether
-      // a setting will be ignored. warningBanner is the shared yellow diagnostic presentation.
-      if ((collisionEffect || hitSound) && effectiveState === 'none')
-        warningBanner(contactSection, 'Collision warning: the attached effect or hit sound cannot fire because the current shape/contact settings produce no eligible contact.');
-      if (profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && !profile.physicsSource)
-        warningBanner(contactSection, 'Collision warning: physics-body spheres are selected without a physics body, so there is no contact shape.');
-      if (missingLoadedBody)
-        warningBanner(contactSection, `Collision warning: body ${profile.physicsSource!.body} was not found in the loaded ${profile.physicsSource!.level} physics pool.`);
-      if (profile.mode === NATIVE_COLLISION_MODE.none && profile.playerCollision)
-        warningBanner(contactSection, 'Collision warning: Player contact is enabled, but “none” supplies no shape.');
-      if (profile.mode !== NATIVE_COLLISION_MODE.none && !profile.playerCollision)
-        warningBanner(contactSection, 'Collision warning: the selected shape is ignored while Player contact is off.');
-      if (profile.playerBounce && profile.responseMass === 0)
-        warningBanner(contactSection, 'Response warning: PlayerBounce is enabled, but response mass is exactly 0, so contact remains ride-through.');
-      if (!profile.playerBounce && profile.responseMass !== 0)
-        warningBanner(contactSection, 'Response warning: response mass is stored, but PlayerBounce-off suppresses physical rider response. Contact effects/sounds remain eligible.');
-      if (!effectiveSolid && typeof prop.surface === 'number' && prop.surface >= 0)
-        warningBanner(contactSection, 'Contact warning: ride surface is ignored because the current settings do not produce a solid response.');
-      if (!profile.playerBounce && profile.bounceAmount !== 0)
-        warningBanner(contactSection, 'Response warning: bounce amount is stored but ignored while PlayerBounce is off.');
-      if (prop.effectTrigger && effectiveSolid)
-        warningBanner(contactSection, 'Trigger warning: this effect trigger has a solid response and will physically block or deflect the rider.');
-      if (rollerEffect && !profile.physicsSource)
-        warningBanner(contactSection, 'PS2 ISO warning: Roller previews and Unity movement work, but this custom ISO prop has no native sphere-tree body/inertia and will remain static in PCSX2.');
-      // a group's component list rides the preview card above (propPreview.show with its def)
-      const placeAction = tip(gui.add({ place: () => { if (prop.group) void armGroupById(prop.level, prop.group, {
-        nativeCollision: structuredClone(profile),
-        ...(typeof prop.surface === 'number' ? { surface: prop.surface } : {}),
-        ...(prop.modePresence === 'showoff' ? { modePresence: 'showoff' as const } : {}),
-      }); else void armProp(prop.level, prop.model, prop.name, {
-        nativeCollision: structuredClone(profile),
-        ...(typeof prop.surface === 'number' ? { surface: prop.surface } : {}),
-        ...(prop.modePresence === 'showoff' ? { modePresence: 'showoff' as const } : {}),
-      }); } }, 'place')
+      const modeSection = addModeSection(host);
+      const impactSection = addImpactSection(host);
+      const emitterSection = addEmitterSection(host);
+      const lightingSection = addLightingSection(host);
+      const { contactSection, profile } = addContactSection(host);
+      // ＋ place copies EVERYTHING this placement carries — its sounds and self-lighting as well as its contact.
+      // Read when clicked, not when the panel was built: some edits (mode layer, self-lit) do not rebuild it.
+      // A legacy placement with no stored profile copies the one inferred for it above.
+      const copied = () => ({ ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision ?? profile) });
+      // a group's component list rides the preview card above
+      const placeAction = tip(gui.add({ place: () => {
+        if (prop.group) void armGroupById(prop.level, prop.group, { behaviour: copied() });
+        else void armProp(prop.level, prop.model, prop.name, { behaviour: copied() });
+      } }, 'place')
         .name(def ? '＋ place group' : '＋ place prop'),
       `Put a copy of this ${def ? 'group' : 'prop'} on the cursor, then move over the terrain and click to place it.`);
       actionRows.push(placeAction.domElement);
+      // The author's own model can take this placement's settings as its defaults (docs/069): tune one on the
+      // mountain, then every new one starts that way.
+      if (ownGeometry(prop.level) && !prop.group) {
+        const saveDefaults = tip(gui.add({ save: async () => {
+          try {
+            await saveModelDefaults(prop.level, prop.model, copied());
+          } catch (e) { toast(`Saving defaults failed — ${e instanceof Error ? e.message : e}`, 'err'); return; }
+          toast(`Saved — every new ${shortPropName(prop.name)} starts with this one’s settings.`, 'ok');
+        } }, 'save').name('⤓ save as model defaults'),
+        'Make this placement’s settings the model’s defaults — every new placement of it starts with them.',
+        'Contact, surface, mode layer, hit and ambient sound, self-lighting. Other placements keep their own '
+          + 'settings until you apply the defaults to them from the held prop’s panel.');
+        actionRows.push(saveDefaults.domElement);
+      }
       // ⧉ revise prop sits directly under ＋ place prop and means ONE thing whatever is selected: put a v2 of
       // this prop in your library and point this placement at it. What differs is only which library it can
       // land in — a tiled prop forks as a tiled prop, everything else lands textured, keeping its UVs.
@@ -922,13 +1109,12 @@ export function createPropTools(ctx: ToolsContext) {
     if (ref) {
       const actionRows: HTMLElement[] = [];
       const sourceProfile = collisionProfileFromSourceInstance(ref.level, ref);
-      const sourceDefaults = {
-        nativeCollision: sourceProfile,
-        ...(typeof ref.surface === 'number' && ref.surface >= 0 ? { surface: ref.surface } : {}),
-        ...(ref.ltgState === 2 ? { modePresence: 'showoff' as const } : {}),
-      };
-      const placeAction = tip(gui.add({ place: () => { void armProp(ref.level, ref.model, ref.name, sourceDefaults); } }, 'place').name('＋ place prop'),
-        'Put a copy on the cursor with this instance’s exact collision facts as editable defaults.');
+      // An instance pick copies THAT instance (contact, surface, hit sound, self-lighting, mode layer); a
+      // model-only pick has no instance, so it holds the model's defaults (docs/069).
+      const placeAction = tip(gui.add({ place: () => {
+        void armProp(ref.level, ref.model, ref.name, ref.sourceIndex !== undefined ? { sourceIndex: ref.sourceIndex } : {});
+      } }, 'place').name('＋ place prop'),
+        'Put a copy on the cursor with this instance’s exact settings as editable defaults.');
       actionRows.push(placeAction.domElement);
       // Revise reaches a reference prop from HERE as well as from a placement of one. Copying a shipped prop
       // used to mean placing it first, which is backwards: revising IS the copy, so the thing you are looking
@@ -1090,7 +1276,10 @@ export function createPropTools(ctx: ToolsContext) {
       if (!hasEffectNavigation) actionRows.push(addDeselect().domElement);
       modeSection.domElement.before(...actionRows);
       modeSection.domElement.after(contactSection.domElement, materialSection.domElement);
+      return;
     }
+    // Nothing selected, something in hand: what the next click will stamp, and the model's defaults (docs/069).
+    if (store.armedProp) buildHeldPropTools(store.armedProp);
   }
 
   /** Tools for a box-selected SET of props: the list (click a row = identify, its ✕ = drop from the set), the

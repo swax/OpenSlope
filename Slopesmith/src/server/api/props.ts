@@ -1,7 +1,7 @@
 import { readLevelGroups } from '../routes/groups';
 import {
   cloneImportedProp, deleteImportedProp, importedPropsPayload, renameImportedProp, replaceImportedProp,
-  saveImportedProp, updateImportedPropMaterials,
+  saveImportedProp, updateImportedPropDefaults, updateImportedPropMaterials,
 } from '../routes/imported-props';
 import {
   levelsWithProps, nativeArtSource, readLevelProps, readLevelPropsJsonWithCacheInfo, readMaterialTables,
@@ -159,6 +159,11 @@ export const propRoutes: Record<string, ApiHandler> = {
   // the body carries material rows only and can never arrive with a different mesh (docs/032).
   '/api/custom-prop-materials': manageProp(async (id, _q, body) =>
     updateImportedPropMaterials(id, await body())),
+
+  // A model's DEFAULTS (docs/069): what every new placement of it starts with. Behaviour fields only, sanitized
+  // server-side; a body of null clears them.
+  '/api/custom-prop-defaults': manageProp(async (id, _q, body) =>
+    updateImportedPropDefaults(id, await body())),
 
   '/api/custom-prop-delete': manageProp(async id => ({ deleted: await deleteImportedProp(id) })),
 

@@ -315,6 +315,9 @@ export interface AuthoredModel {
   frames?: string[];
   /** Bake a collider for placements on export (like solid rails); absent = ghost geometry. */
   solid?: boolean;
+  /** What every new placement of this model starts with (docs/069): contact, surface, sounds, self-lighting.
+   *  Copied onto a placement when it is stamped; absent = the standard starting point for authored art. */
+  defaults?: PropBehaviour;
 }
 
 /**
@@ -557,6 +560,17 @@ export interface PlacedProp {
    *  (object handling — the prop is an obstacle, not a surface). */
   surface?: number;
 }
+
+/**
+ * How a prop BEHAVES, as opposed to where it stands: the placement fields a model's defaults hand every new
+ * placement of it (docs/069) — contact and collision, ride surface, mode presence, impact and ambient sound,
+ * self-lighting. The same field names as `PlacedProp`, so one inspector edits a placement or a model's defaults.
+ */
+export type PropBehaviour = Pick<PlacedProp,
+  | 'nativeCollision' | 'surface' | 'modePresence'
+  | 'collisionSound' | 'collisionSoundFile'
+  | 'ambientSound' | 'ambientSoundFile' | 'ambientRadius' | 'ambientFalloff' | 'ambientHalfExtents'
+  | 'fullBright'>;
 
 export type RaceMusicMode = 'retail-graph' | 'linear-loop';
 

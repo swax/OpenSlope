@@ -1,4 +1,5 @@
-import type { NativeCollisionProfile, PlacedProp, QuadMeshDoc } from '../../../core/doc/types';
+import type { PlacedProp, PropBehaviour, QuadMeshDoc } from '../../../core/doc/types';
+import type { ResolvedPropDefaults } from '../../../core/props/defaults';
 import type {
   BrushDir,
   BrushFalloff,
@@ -88,13 +89,17 @@ export type ToolsPanelDeps = {
   shortPropName: (n: string) => string;
   propBaseOffset: (level: string, model: number) => number;
   // arm
+  /** Pick up a prop: with `behaviour`, a copy of a placement's settings; with `sourceIndex`, a reference instance's
+   *  own facts; with neither, the model's defaults (docs/069). */
   armProp: (level: string, model: number, name: string,
-    contact?: { nativeCollision?: NativeCollisionProfile; sourceIndex?: number;
-      solid?: boolean; bounce?: number; surface?: number; modePresence?: 'showoff' }) => Promise<void>;
-  armGroupById: (level: string, id: string,
-    contact?: { nativeCollision?: NativeCollisionProfile; solid?: boolean; bounce?: number; surface?: number;
-      modePresence?: 'showoff' }) => Promise<void>;
+    from?: { behaviour?: PropBehaviour; sourceIndex?: number }) => Promise<void>;
+  armGroupById: (level: string, id: string, from?: { behaviour?: PropBehaviour }) => Promise<void>;
   deselectPropOrLight: () => void;
+  // prop defaults (docs/069)
+  propDefaults: (level: string, model: number) => ResolvedPropDefaults;
+  placementsOfModel: (level: string, model: number) => PlacedProp[];
+  saveModelDefaults: (level: string, model: number, behaviour: PropBehaviour | null) => Promise<boolean>;
+  applyBehaviourToPlaced: (level: string, model: number, behaviour: PropBehaviour) => number;
   /** Leave the rail / gem / light placement tools for the idle Prop Tools launcher they were entered from. */
   cancelPlacement: () => void;
   /** Free-light placement defaults — what the next hand-placed light drops as (main.ts owns the object). */

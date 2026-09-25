@@ -149,7 +149,8 @@ are both asserted (`test/prop-picking.test.ts`, `test/imported-props.test.ts`).
 of every model, each a **textured** 3/4 thumbnail rendered client-side by `app/props/thumb-renderer.ts` (one shared
 offscreen WebGLRenderer with its own tile loader; each render loads the model's tiles first, then snapshots;
 lazy via an IntersectionObserver + a serial queue so 600+ models stay cheap). Clicking a prop arms it and
-jumps to **Props mode** (a new `Mode`, alongside view/edit/paint/sculpt). **Right-clicking** one of the
+jumps to **Props mode** (a new `Mode`, alongside view/edit/paint/sculpt), holding the model's **defaults** —
+derived from a shipped level's instances, or saved on the author's own models ([069](069-prop-defaults.md)). **Right-clicking** one of the
 author's own models — the Custom view's authored cages and imported GLBs — raises rename / duplicate /
 replace / delete, the props answer to the Texture Library's tile menu
 ([032](032-imported-props.md#managing-a-model-right-click-in-the-prop-library)); an extracted level's models

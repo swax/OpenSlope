@@ -50,7 +50,7 @@ const PROJECT_ASSET_MOUNTS = new Set([
   '/api/blender',
   '/api/textures', '/api/texture', '/api/texture-usage',
   '/api/custom-props', '/api/custom-prop-import', '/api/custom-prop-rename', '/api/custom-prop-clone',
-  '/api/custom-prop-replace', '/api/custom-prop-materials', '/api/custom-prop-delete',
+  '/api/custom-prop-replace', '/api/custom-prop-materials', '/api/custom-prop-defaults', '/api/custom-prop-delete',
   '/api/texture-upload', '/api/texture-rename', '/api/texture-clone', '/api/texture-replace', '/api/texture-delete',
   '/api/custom-music', '/api/custom-music-file',
   '/api/custom-sounds', '/api/custom-sound', '/api/sound-upload',
@@ -281,6 +281,7 @@ const ROUTE_ACCESS: Record<string, Access> = {
   '/api/custom-prop-clone': at('editor'),
   '/api/custom-prop-replace': at('editor'),
   '/api/custom-prop-materials': at('editor'),
+  '/api/custom-prop-defaults': at('editor'),
   '/api/custom-prop-delete': at('editor'),
   '/api/character-import': at('editor'),
 
