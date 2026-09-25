@@ -2,7 +2,7 @@
 
 A prop picked from the library arrives already set up the way that model behaves: tree canopies are
 ride-through and rustle, trunks are solid and thud, signs are self-lit, Showoff pickups sit on the Showoff
-layer. These per-model settings are **prop defaults**.
+layer, crash bags get knocked away. These per-model settings are **prop defaults**.
 
 The editor calls them defaults rather than templates because "template" already means an effect template in
 the Effects editor.
@@ -82,8 +82,9 @@ art starts solid, your own art starts decorative and silent.
   the model's starting point.
 - **Copying rather than picking** holds the copied settings, not the model's defaults, and the panel says so:
   - middle-click a placed prop, or its **＋ place prop**, copies everything the placement carries, now
-    including its sounds and self-lighting;
-  - middle-click a reference prop, or its inspector's **＋ place prop**, copies that one instance.
+    including its sounds and self-lighting, and shares its effect;
+  - middle-click a reference prop, or its inspector's **＋ place prop**, copies that one instance, its effect
+    included when that effect is portable.
 - **The home placement** a newly built tiled model leaves behind also starts from its defaults.
 
 ## Groups
@@ -123,12 +124,49 @@ Mode presence always edits the whole group.
 - **Project transfer** carries WAVs named per member, and on a model's saved defaults, and renames them when
   they land under a different name.
 
+## Effects
+
+A shipped model also hands new placements its **effect**: a GARI crash bag arrives knockable, a fence flexes when
+hit, a warning sign flips its texture, a jumbotron scrolls, a path marker breaks into pieces, a river scrolls and
+resets the rider. Effects are graphs rather than placement fields, so this is its own channel beside the
+behaviour (`core/props/effect-defaults.ts`).
+
+**Where they come from.** A retail instance names an effect slot, and in practice the slot is per model the way its
+behaviour row is: in GARI and ELYSIUM, 533 of the 547 placed models that carry an effect have most copies on one
+identical effect. `referenceEffectDefaults` runs the same whole-effect vote over a model's visible copies:
+- copies with no effect vote too, so a billboard of which 7 of 43 play a movie defaults to none;
+- hidden copies and junk and reset twins do not vote;
+- a tie is no default.
+
+The server derives them with the props payload: a table of the level's portable effects (`effects`), each
+model's default as an index with its count (`fx`), and each copy's own effect (instance `fx`).
+
+**Only effects that act on the prop alone.** Every node must be one of `DEFAULT_EFFECT_KINDS`, in the persistent,
+collision or trigger column, and name no other instance, graph, function or spline:
+- **In:** knock (Roller), fence flex, texture flip, UV scroll, break into pieces (mesh throw) and rider reset,
+  plus the debounce, wait and tombstone nodes that sequence them.
+- **Level wiring stays out:** ELYSIUM's glass halfpipe panes that break their neighbours, GARI's LCD logos that
+  switch other screens.
+- **Not yet, pending a portability check:** sounds, particle emitters, crowds and gems. Their payloads index
+  the source level's sound bank and particle tables.
+
+**Placing.** The held prop's **Effect** section names the effect, how many copies carry it and whether it is
+the picked instance's own. Its **attach on place** switch places without it. **↺ use model defaults** brings
+it back.
+- **One shared slot per effect.** `attachEffectTemplateToProp` gives every placement of one effect the same
+  slot, marked `extensions.slopesmith.effectDefault`, as retail instances share one. So retuning a crash bag's
+  mass in Effects mode retunes every crash bag placed from the library. A slot whose graph was deleted is
+  rebuilt on the next placement.
+- **A placement that already carries an effect is left alone.**
+- **Copying a placement** (middle-click, or **＋ place prop**) shares the copied placement's effect slot.
+- **Groups get no effect default.** Until an effect can attach to one member, it attaches to the whole group,
+  and Test moves and hides that as one prop while the ISO gives every member its own copy of the slot. A copied
+  group still shares its source's effect.
+
 ## Not yet
 
-- **Effects.** Roller, self-break, cracked surfaces and emit-on-contact behaviour are effect graphs, not
-  placement fields. Mapping a reference model's effect signature onto the matching effect template and
-  attaching it at placement (through the hook imported props already use) is the next step. Placed props with
-  a Roller effect also need to actually roll in Test.
+- **More effect kinds, and member effects.** Sounds, particles, crowds and gems wait on their portability check
+  (see Effects). Effects that attach to one group member wait on Test hosts per member.
 - **The HATEOAS API.** It assigns whole `o/prop/<id>` registers, so it applies no defaults. Filling in fields
   an agent did not send would change what an assignment means. An agent can still send `memberBehaviour`.
 - **A peer's replayed hit on a group member** plays the group's own hit sound rather than the member's. The

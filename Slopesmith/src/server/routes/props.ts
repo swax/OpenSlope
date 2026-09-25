@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { mapsRoot, workspaceConfig } from '../workspace-config';
 import { runInWorker } from '../worker-pool';
 import type { EffectFunction, EffectGraph, EffectNode, EffectsDocument } from '../../core/effects/document';
+import { rollerNodeMass } from '../../core/effects/authoring';
+import { referenceEffectDefaults } from '../../core/props/effect-defaults';
 import {
   combinePropAlphaModes, propAlphaMode,
   type PropAlphaMode, type PropModelAnimation, type PropModelCurve, type PropModelRotation, type PropsPayload,
@@ -323,20 +325,11 @@ export function rollerInstanceMasses(document: EffectsDocument,
   const out = new Map<number, number>();
   const graphs = new Map(document.graphs.map(graph => [graph.id, graph]));
   const slots = new Map(document.slots.map((slot, index) => [slot.originalIndex ?? index, slot]));
-  const record = (value: unknown): Record<string, unknown> | null =>
-    typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
-  const rollerMass = (node: EffectNode): number | null => {
-    if (node.semanticType !== 'property.roller') return null;
-    const type0 = record(node.payload.type0);
-    const roller = record(type0?.type0Sub0);
-    const mass = roller?.U0;
-    return typeof mass === 'number' && Number.isFinite(mass) && mass > 0 ? mass : null;
-  };
   const graphMass = (id: string | null | undefined): number | null => {
     const graph = id ? graphs.get(id) : null;
     if (!graph) return null;
     for (const node of graph.nodes) {
-      const mass = rollerMass(node);
+      const mass = rollerNodeMass(node);
       if (mass !== null) return mass;
     }
     return null;
@@ -677,6 +670,11 @@ export async function buildLevelPropsUncached(level: string): Promise<PropsPaylo
   ]);
   if (!instJson) throw new Error(`no Instances.json for level "${lvl}"`);
   const rollerMasses = readRollerInstanceMasses(effectsDocument, instJson.Instances);
+  // The effect each model hands a new placement, and each copy's own (docs/069 · Effects), indexed as Instances.json.
+  const effectDefaults = referenceEffectDefaults(lvl, effectsDocument, instJson.Instances.map(instance => ({
+    model: instance.ModelID, visible: instance.Visable !== false, name: String(instance.InstanceName ?? ''),
+    ...(Number.isInteger(instance.EffectSlotIndex) ? { slot: instance.EffectSlotIndex! } : {}),
+  })));
 
   // only models that are actually placed need geometry sent
   const used = new Set<number>();
@@ -686,11 +684,16 @@ export async function buildLevelPropsUncached(level: string): Promise<PropsPaylo
     readLevelMaterials(lvl),
   ]);
 
+  const modelEffect = (id: number) => {
+    const effect = effectDefaults.byModel.get(id);
+    return effect ? { fx: { t: effect.template, n: effect.matching, of: effect.total } } : {};
+  };
   const models: PropsPayload['models'] = [...geoms].map(([id, g]) => ({
     id,
     name: g.name,
     ...(g.rotation ? { rotation: g.rotation } : {}),
     ...(g.animation ? { animation: g.animation } : {}),
+    ...modelEffect(id),
     subs: g.subs.map(s => ({
       mat: s.mat,
       pos: Buffer.from(new Float32Array(s.positions).buffer).toString('base64'),
@@ -849,12 +852,14 @@ export async function buildLevelPropsUncached(level: string): Promise<PropsPaylo
         // the rare rideable prop's surface type (ride feel + board-audio family, [Trailmap: 120-objects])
         ...(typeof instance.SurfaceType === 'number' && instance.SurfaceType >= 0 ? { st: instance.SurfaceType } : {}),
         ...(externalSounds.length ? { xs: externalSounds } : {}),
+        ...(effectDefaults.byInstance.has(sourceIndex) ? { fx: effectDefaults.byInstance.get(sourceIndex)! } : {}),
       };
     });
 
   const soundIndex = await readJsonOr<CollisionSoundIndex | null>(
     join(mapsRoot(), lvl, 'Audio', 'SoundIndex.json'), null);
-  return { level: lvl, ...(soundIndex ? { soundIndex } : {}), models, materials, crowdFrames, collisionMeshes, physicsBodies, instances };
+  return { level: lvl, ...(soundIndex ? { soundIndex } : {}), models, materials, crowdFrames, collisionMeshes, physicsBodies, instances,
+    ...(effectDefaults.templates.length ? { effects: effectDefaults.templates } : {}) };
 }
 
 /** Persist the expensive extracted OBJ/material/physics bake across dev-server and application restarts. The

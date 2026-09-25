@@ -2467,10 +2467,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    * limitation, not a property of the shove.
    */
   function shoveProp(object: RideObstacleObject, shove: NonNullable<RideObstacleHit['shove']>) {
-    if (object.kind !== 'reference' || !data) return;
-    const instance = data.instances.find(candidate => candidate.index === object.index);
-    if (!instance) return;
-    const host = referenceHost(data, instance);
+    const host = shoveHost(object);
+    if (!host) return;
     if (dynamicBodies.has(host.key)) return; // already in flight - a second hit must not re-seat it at its origin
     const { matrix, position, basis } = motionBasis(host);
     const sphere = hooks.objectSphere?.(host.object) ?? null;
@@ -2512,6 +2510,17 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       spinAxis: yAxis.clone(), spin: 0,
       rotation: new THREE.Quaternion(), age: 0, duration: 20, hideOnEnd: false,
     });
+  }
+
+  /** The host a shoved body flies as: the same one its Roller binding runs on, so the Roller's launch merges into
+   *  the flight instead of re-seating it. An authored group moves as one placement, whichever member was hit. */
+  function shoveHost(object: RideObstacleObject): RuntimeHost | null {
+    if (object.kind === 'reference') {
+      const instance = data?.instances.find(candidate => candidate.index === object.index);
+      return data && instance ? referenceHost(data, instance) : null;
+    }
+    const prop = authoredProps.find(candidate => candidate.id === object.id);
+    return prop ? authoredHost(authoredDocument ?? createEmptyEffectsDocument(''), prop) : null;
   }
 
   function propCollision(object: RideObstacleObject, position: THREE.Vector3, normal: THREE.Vector3,

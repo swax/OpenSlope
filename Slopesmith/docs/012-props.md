@@ -410,7 +410,10 @@ defaults to the conventional solid mesh profile; arbitrary authored/imported geo
 Copying a concrete source instance preserves its exact independent gates/values and its sphere-body donor when
 present. These are editable defaults, not restrictions. To make a prop move, add the collision effect template
 **Roller / knockable prop**: its semantic **Mass** drives Slopesmith's Roller preview and the Unity
-Rigidbody path, while the same graph compiles into an ISO. Per the collision spec, an arbitrary custom native
+Rigidbody path, while the same graph compiles into an ISO. In Test the rider knocks it the way a reference crash
+bag is knocked: the collider carries the Roller's mass (`authoredRollerMasses`, the same join a reference
+instance's `dynamicMass` comes from), so the ride trades momentum with it instead of bouncing off, and the body
+flies on its physics donor's inertia — translation-only when it has no donor. Per the collision spec, an arbitrary custom native
 prop still needs sphere-tree shape/inertia data before the game has a body to move; Roller does not invent that body.
 Every resolved impact, collision, or ambient sound ends with a read-only **filepath**, and each authored sound
 block then closes with the same three actions in the same order — **🔊 browse…**, **⤒ load custom wav…**,
