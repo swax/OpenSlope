@@ -7,6 +7,8 @@ import type { EditDoc } from '../core/doc/doc-edit';
 import { effectNodeSoundFile } from '../core/effects/authoring';
 import { parseTexRef, CUSTOM_TEX_LEVEL } from '../core/paint/textures';
 import { IMPORTED_PROP_LEVEL, type ImportedPropRecord } from '../core/props/imported';
+import { behaviourRecords } from '../core/props/defaults';
+import type { PropBehaviour } from '../core/doc/types';
 import {
   ensureDir, listDir, pathExists, readJsonOr, writeJsonAtomic,
 } from './fs-async';
@@ -163,11 +165,20 @@ function collectDocumentAssets(document: EditDoc, wanted: WantedAssets): void {
     if (name) wanted.textures.add(name);
   };
   for (const ref of Object.values(document.quadTex ?? {})) texture(ref);
-  for (const model of document.models ?? []) texture(model.texture);
+  // A placement names WAVs on itself and on each group member (docs/069); a model's saved defaults can too.
+  const sounds = (behaviour: PropBehaviour) => {
+    for (const record of behaviourRecords(behaviour)) {
+      if (record.collisionSoundFile) wanted.sounds.add(record.collisionSoundFile);
+      if (record.ambientSoundFile) wanted.sounds.add(record.ambientSoundFile);
+    }
+  };
+  for (const model of document.models ?? []) {
+    texture(model.texture);
+    if (model.defaults) sounds(model.defaults);
+  }
   for (const prop of document.props ?? []) {
     if (prop.level === IMPORTED_PROP_LEVEL) wanted.models.add(prop.model);
-    if (prop.collisionSoundFile) wanted.sounds.add(prop.collisionSoundFile);
-    if (prop.ambientSoundFile) wanted.sounds.add(prop.ambientSoundFile);
+    sounds(prop);
   }
   if (document.raceMusic) wanted.music.add(document.raceMusic);
   for (const owner of [...(document.effects?.graphs ?? []), ...(document.effects?.functions ?? [])]) {

@@ -3,7 +3,7 @@ import { textureRefUrl } from '../../net/asset-paths';
 import { authoredParticleTextures } from '../../../core/effects/particle-textures';
 import { renderLoadingManager } from '../render-assets';
 import { createParticleAtlasTexture } from './particle-atlas';
-import type { PlacedProp } from '../../../core/doc/types';
+import type { PlacedProp, PropBehaviour } from '../../../core/doc/types';
 import type { EffectGraph, EffectNode, EffectsDocument } from '../../../core/effects/document';
 import {
   ANIMATED_PROP_AUTO_RESET_SECONDS, BREAKABLE_RESPAWN_SECONDS, MOVABLE_PROP_RESPAWN_SECONDS,
@@ -49,6 +49,7 @@ import {
 } from '../../../core/reference/effects';
 import { placementQuat } from '../../../core/props/pose';
 import { placedPropContactState } from '../../../core/props/contact';
+import { groupMemberKey, groupMemberProp } from '../../../core/props/defaults';
 import { RAW_TO_EDITOR } from '../constants';
 import { createBoostArrowLayer, type BoostArrow } from './boost-arrows';
 import { createParticleBatches } from './particle-batches';
@@ -57,6 +58,7 @@ import type { RideEffectAction } from '../../ride/effect-actions';
 import type { BoostVolumeSpec } from '../../ride/boost-volumes';
 import type { CrackedSurfaceSpec } from '../../ride/cracked-surfaces';
 import type { RideObstacleHit, RideObstacleObject } from '../../ride/physics';
+import { obstacleHostKey } from '../../ride/obstacles';
 import type { RideShovedBodySample } from '../../ride/telemetry';
 import type { RaceMode } from '../../../core/doc/race';
 import {
@@ -868,18 +870,25 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function rebuildAuthoredCollisionSounds() {
     const sources = new Map<string, PropSoundSource>();
     let document = authoredDocument;
+    const source = (key: string, prop: PlacedProp): PropSoundSource => ({
+      key,
+      level: prop.level,
+      event: prop.collisionSound ?? -1,
+      contact: placedPropContactState(prop, false, true) === 'solid' ? 'solid' : 'through',
+      file: prop.collisionSoundFile,
+    });
+    const sounds = (prop: PropBehaviour) => typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
     for (const prop of authoredProps) {
-      if (!prop.id || (typeof prop.collisionSound !== 'number' && !prop.collisionSoundFile)) continue;
+      if (!prop.id) continue;
       // The host's document only feeds graph lookups the sound path never makes; a lazily created empty one
       // keeps sound-only props working on mountains that have no effects document yet.
-      document ??= createEmptyEffectsDocument('');
-      sources.set(prop.id, {
-        key: authoredHost(document, prop).key,
-        level: prop.level,
-        event: prop.collisionSound ?? -1,
-        contact: placedPropContactState(prop, false, true) === 'solid' ? 'solid' : 'through',
-        file: prop.collisionSoundFile,
-      });
+      const hostKey = () => authoredHost(document ??= createEmptyEffectsDocument(''), prop).key;
+      if (sounds(prop)) sources.set(prop.id, source(hostKey(), prop));
+      // A group member with behaviour of its own sounds by it, under its own debounce (docs/069).
+      for (const [model, member] of Object.entries(prop.memberBehaviour ?? {}))
+        if (sounds(member))
+          sources.set(groupMemberKey(prop.id, Number(model)),
+            source(`${hostKey()}#${model}`, groupMemberProp(prop, Number(model))));
     }
     preloadPropAudio(sources.values());
     propSound.setAuthoredSources(sources);
@@ -2206,8 +2215,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   /** Resolve only a host whose collision graph actually authors a Cracked node. This is also the trust boundary
    * for a peer event: an arbitrary collision key must not be allowed to drive property command 2. */
   function crackedSurfaceTarget(key: string): RuntimeHost | null {
+    const hostKey = obstacleHostKey(key); // a group member's pane cracks its placement
     for (const binding of [...playBindings('reference'), ...playBindings('authored')]) {
-      if (runtimeObjectKey(binding.host.object) !== key) continue;
+      if (runtimeObjectKey(binding.host.object) !== hostKey) continue;
       if (binding.circumstance !== 'collision') continue;
       if (binding.graph.nodes.some(node => crackedSurfaceSpec(node) !== null)) return binding.host;
     }
@@ -2219,7 +2229,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const host = crackedSurfaceTarget(key);
     if (!host) return null;
     const trigger = [...playBindings('reference'), ...playBindings('authored')].find(other =>
-      other.circumstance === 'trigger' && runtimeObjectKey(other.host.object) === key);
+      other.circumstance === 'trigger' && runtimeObjectKey(other.host.object) === obstacleHostKey(key));
     return { host, graph: trigger?.graph ?? null };
   }
 

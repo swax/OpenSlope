@@ -40,8 +40,9 @@ import { soundRangeMaterial, soundRangeObject } from './sound-ranges';
 import { clampEffectTriggerSize, isEffectTriggerProp } from '../../../core/effects/trigger-volume';
 import { NATIVE_COLLISION_MODE, nativeContactState } from '../../../core/collision/native';
 import { collisionProfileContactState, placedPropCollisionProfile, placedPropSolid } from '../../../core/props/contact';
+import { groupMemberKey, groupMemberProp } from '../../../core/props/defaults';
 import {
-  createCollisionOverlay, UNITY_COLLISION_OVERLAY_COLOR, type CollisionOverlayMeshPiece,
+  createCollisionOverlay, UNITY_COLLISION_OVERLAY_COLOR,
 } from './collision-overlay';
 import type { EffectPieceMotion } from './reference-effects';
 
@@ -496,95 +497,93 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     unityCollisionOverlay.clear();
   }
 
-  /** Draw the selected authored placement's configured contact shape using the same resources as Test mode. */
+  /** Draw the selected authored placement's configured contact shape using the same resources as Test mode.
+   *  A group whose members carry behaviour of their own (docs/069) draws each member's shape by its own profile,
+   *  exactly as Test collides with it. */
   function rebuildSelectedCollisionOverlay() {
     collisionOverlay.clear();
     unityCollisionOverlay.clear();
     if (selectedProp === null) return;
-    const prop = lastPlacedProps[selectedProp], root = placedPropMeshes[selectedProp];
-    if (!prop || !root) return;
+    const placed = lastPlacedProps[selectedProp], root = placedPropMeshes[selectedProp];
+    if (!placed || !root) return;
     const effects = lastPlacedArgs?.effects;
-    const collisionEffect = authoredPropHasEffectCircumstance(effects, prop.id, 'collision');
-    const hitSound = typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
-    const profile = placedPropCollisionProfile(prop, collisionEffect, hitSound);
-    const active = profile.playerCollision;
-    if (profile.mode === NATIVE_COLLISION_MODE.none) return;
-
     stage.worldRoot.updateWorldMatrix(true, false);
     root.updateWorldMatrix(true, true);
     const parentInverse = stage.worldRoot.matrixWorld.clone().invert();
     const relativeMatrix = (world: THREE.Matrix4) => parentInverse.clone().multiply(world);
-    const visualBounds = () => {
-      const box = new THREE.Box3();
-      root.traverse(object => {
-        if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)
-          || (object as THREE.Mesh & { isLineSegments2?: boolean }).isLineSegments2) return;
-        if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
-        if (!object.geometry.boundingBox) return;
-        object.updateWorldMatrix(true, false);
-        box.union(object.geometry.boundingBox.clone().applyMatrix4(relativeMatrix(object.matrixWorld)));
-      });
-      return box;
-    };
+    const members = new Set<number>();
+    if (placed.memberBehaviour) root.traverse(object => {
+      if (typeof object.userData.propMember === 'number') members.add(object.userData.propMember);
+    });
+    // Both overlays were cleared above, so every unit adds to them.
+    drawUnit(placed, undefined);
+    for (const model of members) drawUnit(groupMemberProp(placed, model), model);
 
-    if (profile.mode === NATIVE_COLLISION_MODE.triangleProxy) {
-      const pieces: CollisionOverlayMeshPiece[] = [];
-      root.traverse(object => {
+    /** The unit's render meshes, outlines and the empty-model stand-in excluded. */
+    function unitMeshes(member: number | undefined): THREE.Mesh[] {
+      const meshes: THREE.Mesh[] = [];
+      root!.traverse(object => {
         if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)
           || (object as THREE.Mesh & { isLineSegments2?: boolean }).isLineSegments2
-          || object.userData.propPlaceholder) return;
+          || object.userData.propPlaceholder || memberOf(object, root!) !== member) return;
         object.updateWorldMatrix(true, false);
-        pieces.push({ geometry: object.geometry, matrix: relativeMatrix(object.matrixWorld) });
+        meshes.push(object);
       });
-      collisionOverlay.showMeshes(pieces, active);
-      return;
+      return meshes;
     }
-    if (profile.mode === NATIVE_COLLISION_MODE.boundingBox) {
-      // The collider is the MODEL's own box turned with the placement, not the axis-aligned envelope of the
-      // turned result ([Trailmap: 130-mode2-oriented]). Drawing the envelope here was the picture that made a
-      // grazing prop contact look inexplicable — it shows a shape metres bigger than the thing that collides.
-      const local = new THREE.Box3();
-      let placement: THREE.Matrix4 | null = null;
-      root.traverse(object => {
-        if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)
-          || (object as THREE.Mesh & { isLineSegments2?: boolean }).isLineSegments2
-          || object.userData.propPlaceholder) return;
-        if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
-        if (!object.geometry.boundingBox) return;
-        object.updateWorldMatrix(true, false);
-        placement ??= relativeMatrix(object.matrixWorld);
-        local.union(object.geometry.boundingBox);
-      });
-      if (placement && !local.isEmpty()) {
-        collisionOverlay.showPrimitives({
-          boxes: [{ center: local.getCenter(new THREE.Vector3()).toArray() as V3,
-            size: local.getSize(new THREE.Vector3()).toArray() as V3 }],
-          capsules: [],
-        }, placement, active);
+
+    function drawUnit(prop: PlacedProp, member: number | undefined) {
+      const collisionEffect = authoredPropHasEffectCircumstance(effects, prop.id, 'collision');
+      const hitSound = typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
+      const profile = placedPropCollisionProfile(prop, collisionEffect, hitSound);
+      const active = profile.playerCollision;
+      if (profile.mode === NATIVE_COLLISION_MODE.none) return;
+      const meshes = unitMeshes(member);
+      if (!meshes.length) return;
+      const append = true;
+
+      if (profile.mode === NATIVE_COLLISION_MODE.triangleProxy) {
+        collisionOverlay.showMeshes(meshes.map(mesh => ({ geometry: mesh.geometry, matrix: relativeMatrix(mesh.matrixWorld) })),
+          active, append);
+        return;
       }
-      return;
-    }
-    if (profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && profile.physicsSource) {
-      const spheres = assets.physicsBody(profile.physicsSource.level, profile.physicsSource.body);
-      if (spheres?.length) {
-        let bodyMatrix: THREE.Matrix4 | null = null;
-        root.traverse(object => {
-          if (bodyMatrix || !(object instanceof THREE.Mesh)
-            || (object as THREE.Mesh & { isLineSegments2?: boolean }).isLineSegments2
-            || object.userData.propPlaceholder) return;
-          object.updateWorldMatrix(true, false);
-          bodyMatrix = relativeMatrix(object.matrixWorld);
-        });
-        if (bodyMatrix) collisionOverlay.showSpheres(spheres, bodyMatrix, active);
+      if (profile.mode === NATIVE_COLLISION_MODE.boundingBox) {
+        // The collider is the MODEL's own box turned with the placement, not the axis-aligned envelope of the
+        // turned result ([Trailmap: 130-mode2-oriented]). Drawing the envelope here was the picture that made a
+        // grazing prop contact look inexplicable — it shows a shape metres bigger than the thing that collides.
+        const local = new THREE.Box3();
+        let placement: THREE.Matrix4 | null = null;
+        for (const mesh of meshes) {
+          if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+          if (!mesh.geometry.boundingBox) continue;
+          placement ??= relativeMatrix(mesh.matrixWorld);
+          local.union(mesh.geometry.boundingBox);
+        }
+        if (placement && !local.isEmpty()) {
+          collisionOverlay.showPrimitives({
+            boxes: [{ center: local.getCenter(new THREE.Vector3()).toArray() as V3,
+              size: local.getSize(new THREE.Vector3()).toArray() as V3 }],
+            capsules: [],
+          }, placement, active, append);
+        }
+        return;
       }
-      if (active) {
-        // Unity represents this mode-3 placement with the baked visual bounds as an explicit proxy. Match its
-        // 20 cm minimum thickness in the editor overlay.
-        const box = visualBounds();
-        if (!box.isEmpty()) {
-          const center = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
-          size.set(Math.max(size.x, 0.2), Math.max(size.y, 0.2), Math.max(size.z, 0.2));
-          unityCollisionOverlay.showBox(new THREE.Box3().setFromCenterAndSize(center, size), true);
+      if (profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && profile.physicsSource) {
+        const spheres = assets.physicsBody(profile.physicsSource.level, profile.physicsSource.body);
+        if (spheres?.length) collisionOverlay.showSpheres(spheres, relativeMatrix(meshes[0].matrixWorld), active, append);
+        if (active) {
+          // Unity represents this mode-3 placement with the baked visual bounds as an explicit proxy. Match its
+          // 20 cm minimum thickness in the editor overlay.
+          const box = new THREE.Box3();
+          for (const mesh of meshes) {
+            if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+            if (mesh.geometry.boundingBox) box.union(mesh.geometry.boundingBox.clone().applyMatrix4(relativeMatrix(mesh.matrixWorld)));
+          }
+          if (!box.isEmpty()) {
+            const center = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+            size.set(Math.max(size.x, 0.2), Math.max(size.y, 0.2), Math.max(size.z, 0.2));
+            unityCollisionOverlay.showBox(new THREE.Box3().setFromCenterAndSize(center, size), true, append);
+          }
         }
       }
     }
@@ -795,6 +794,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         const child = new THREE.Group();
         child.matrixAutoUpdate = false;
         child.matrix.copy(assets.memberLocalMatrix(m));
+        // A group member with behaviour of its own (docs/069) shades and lights by it, not by the placement's.
+        const own = pp.memberBehaviour?.[String(m.model)];
+        const fullBright = (own ?? pp).fullBright === true;
+        if (own) {
+          child.userData.propMember = m.model;
+          child.userData[PROP_SHADE_TINT] = propContactTint(
+            collisionProfileContactState(placedPropCollisionProfile({ level: pp.level, ...own })), own.surface);
+        }
         for (const sub of subs) {
           tris += sub.geometry.index?.count ?? 0;
           const frames = worldEffect?.crowd ? sub.crowdFrames : sub.frames;
@@ -824,7 +831,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           // Self-lit wins over both: the surface emits, so neither the sun's key nor a neighbouring sign
           // light's tint has anything to add to it — which is what the shipped instances say too, since a
           // full-bright one carries no key at all.
-          if (pp.fullBright) mat = assets.propTex.fullBright(base);
+          if (fullBright) mat = assets.propTex.fullBright(base);
           else if (tint) {
             const c = assets.propTex.variant(base);
             c.color.copy(tint);
@@ -841,8 +848,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           // The SHARED material this submesh would wear unlit, so a re-light can re-pick its ground-light
           // bucket without rebuilding the scene. Null for a tinted billboard: that one owns its variant
           // privately, and re-lighting it means setting its own key scale rather than swapping materials.
-          mesh.userData.propGroundBase = tint || pp.fullBright ? null : base;
-          mesh.userData.propFullBright = !!pp.fullBright; // a re-light must leave a self-lit surface alone
+          mesh.userData.propGroundBase = tint || fullBright ? null : base;
+          mesh.userData.propFullBright = fullBright; // a re-light must leave a self-lit surface alone
           mesh.userData.propIndex = i; // a raycast hit resolves the placement straight off the mesh
           mesh.userData.propTex = texture ?? null; // this submesh's frame-zero texture file — the paint
           mesh.userData.propTexLevel = sub.level;  // the paint sampler reads both straight off a raycast hit
@@ -1297,10 +1304,41 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       return object.matrixWorld;
     };
     for (let i = 0; i < lastPlacedProps.length; i++) {
-      const prop = lastPlacedProps[i], root = placedPropMeshes[i];
+      const placed = lastPlacedProps[i], root = placedPropMeshes[i];
       if (!root) continue;
-      const id = prop.id ?? `prop:${i}`;
+      const id = placed.id ?? `prop:${i}`;
       if (runtimePropVisibility.get(id) === false) continue;
+      // A group whose members carry behaviour of their own (docs/069) collides per member — each with its own
+      // contact, under its own key so it debounces apart — so a solid trunk stands inside ride-through leaves.
+      // Every mesh no such member claims collides as the placement, as it always has.
+      const members = new Set<number>();
+      if (placed.memberBehaviour) root.traverse(object => {
+        if (typeof object.userData.propMember === 'number') members.add(object.userData.propMember);
+      });
+      pushPlacementColliders(placed, i, root, id, undefined);
+      for (const model of members) pushPlacementColliders(groupMemberProp(placed, model), i, root, id, model);
+    }
+    return out;
+
+    /** The render submeshes of placement `i` that `member` owns — every one when it is not a group member. */
+    function unitMeshes(root: THREE.Object3D, i: number, member: number | undefined): THREE.Mesh[] {
+      const meshes: THREE.Mesh[] = [];
+      root.traverse(object => {
+        // Selection outlines use LineSegments2, which inherits from Mesh, and the empty-model stand-in is not
+        // authored collision geometry. Only the authored render submeshes carry this placement index.
+        if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)) return;
+        if (object.userData.propPlaceholder || object.userData.propIndex !== i) return;
+        if (memberOf(object, root) !== member) return;
+        object.updateWorldMatrix(true, false);
+        meshes.push(object);
+      });
+      return meshes;
+    }
+
+    function pushPlacementColliders(prop: PlacedProp, i: number, root: THREE.Object3D, id: string,
+      member: number | undefined) {
+      const key = `authored:${member === undefined ? id : groupMemberKey(id, member)}`;
+      const object = { kind: 'authored' as const, id, ...(member === undefined ? {} : { member }) };
       const native = prop.nativeCollision;
       if (native) {
         const donor = native.physicsSource;
@@ -1310,9 +1348,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           mode: native.mode, responseMass: native.responseMass, hasTriangleProxy: native.mode === NATIVE_COLLISION_MODE.triangleProxy,
           hasPhysicsBody: !!spheres?.length,
         });
-        if (contact === 'none') continue;
+        if (contact === 'none') return;
         const common = {
-          key: `authored:${id}`, object: { kind: 'authored' as const, id },
+          key, object,
           solid: contact === 'solid',
           bounce: native.playerBounce ? native.bounceAmount : 0,
           playerBounce: native.playerBounce,
@@ -1322,62 +1360,48 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           dynamicMass: 0,
         };
         if (native.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && spheres?.length) {
-          let bodyObject: THREE.Object3D | null = null;
-          root.traverse(object => {
-            if (bodyObject || !(object instanceof THREE.Mesh) || object.userData.propPlaceholder
-              || object.userData.propIndex !== i) return;
-            object.updateWorldMatrix(true, false); bodyObject = object;
-          });
-          const body = bodyObject as THREE.Object3D | null;
+          const body = unitMeshes(root, i, member)[0];
           if (body) out.push({ ...common, spheres, matrixWorld: body.matrixWorld.clone(), liveMatrix: objectPose(body) });
-          continue;
+          return;
         }
         if (native.mode === NATIVE_COLLISION_MODE.boundingBox) {
           // A mode-2 collider is the MODEL's own local bounding box, held per model object and tested in the
           // placement's local frame — an oriented box tight to the art, not the instance's world AABB
           // [Trailmap: 130-mode2-oriented]. So this emits one box per mesh with its own geometry and world
           // matrix, exactly as the triangle-proxy branch below does, and the ride derives the local bounds.
-          root.traverse(object => {
-            if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)) return;
-            // Selection outlines use LineSegments2, which inherits from Mesh. Only the authored render
-            // submeshes carry this placement index; editor decoration must never become ride collision.
-            if (object.userData.propPlaceholder || object.userData.propIndex !== i) return;
-            object.updateWorldMatrix(true, false);
-            out.push({ ...common, geometry: object.geometry, nativeBox: true,
-              matrixWorld: object.matrixWorld.clone(), liveMatrix: objectPose(object) });
-          });
-          continue;
+          for (const mesh of unitMeshes(root, i, member))
+            out.push({ ...common, geometry: mesh.geometry, nativeBox: true,
+              matrixWorld: mesh.matrixWorld.clone(), liveMatrix: objectPose(mesh) });
+          return;
         }
         if (native.mode === NATIVE_COLLISION_MODE.triangleProxy) {
-          root.traverse(object => {
-            if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)) return;
-            if (object.userData.propPlaceholder || object.userData.propIndex !== i) return;
-            object.updateWorldMatrix(true, false);
-            out.push({ ...common, geometry: object.geometry, matrixWorld: object.matrixWorld.clone(),
-              liveMatrix: objectPose(object) });
-          });
+          for (const mesh of unitMeshes(root, i, member))
+            out.push({ ...common, geometry: mesh.geometry, matrixWorld: mesh.matrixWorld.clone(),
+              liveMatrix: objectPose(mesh) });
         }
-        continue;
+        return;
       }
       const trigger = isEffectTriggerProp(prop);
       const collisionEffect = authoredPropHasEffectCircumstance(effects, prop.id, 'collision');
       const hitSound = typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
       const solid = !trigger && placedPropSolid(prop);
-      if (!solid && !collisionEffect && !hitSound) continue;
-      root.traverse(object => {
-        if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)) return;
-        // The empty-model stand-in and editor-owned Mesh subclasses are not authored collision geometry.
-        if (object.userData.propPlaceholder || object.userData.propIndex !== i) return;
-        object.updateWorldMatrix(true, false);
+      if (!solid && !collisionEffect && !hitSound) return;
+      for (const mesh of unitMeshes(root, i, member)) {
         out.push({
-          key: `authored:${id}`, object: { kind: 'authored', id }, geometry: object.geometry,
-          matrixWorld: object.matrixWorld.clone(), solid, liveMatrix: objectPose(object),
+          key, object, geometry: mesh.geometry,
+          matrixWorld: mesh.matrixWorld.clone(), solid, liveMatrix: objectPose(mesh),
           bounce: solid ? (typeof prop.bounce === 'number' ? prop.bounce : 0.5) : 0,
           surface: solid && typeof prop.surface === 'number' ? prop.surface : -1,
         });
-      });
+      }
     }
-    return out;
+  }
+
+  /** Which group member (docs/069) renders `object`, when that member has behaviour of its own; else undefined. */
+  function memberOf(object: THREE.Object3D, root: THREE.Object3D): number | undefined {
+    for (let node: THREE.Object3D | null = object; node && node !== root; node = node.parent)
+      if (typeof node.userData.propMember === 'number') return node.userData.propMember;
+    return undefined;
   }
 
   stage.worldRoot.add(placedPropGroup); // authored placed props, data coords like the terrain

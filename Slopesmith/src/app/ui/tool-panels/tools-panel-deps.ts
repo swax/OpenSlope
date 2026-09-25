@@ -1,5 +1,5 @@
 import type { PlacedProp, PropBehaviour, QuadMeshDoc } from '../../../core/doc/types';
-import type { ResolvedPropDefaults } from '../../../core/props/defaults';
+import type { ResolvedPropDefaults, StampBehaviour } from '../../../core/props/defaults';
 import type {
   BrushDir,
   BrushFalloff,
@@ -97,6 +97,8 @@ export type ToolsPanelDeps = {
   deselectPropOrLight: () => void;
   // prop defaults (docs/069)
   propDefaults: (level: string, model: number) => ResolvedPropDefaults;
+  /** What a group picked from the library stamps: each member its own model's defaults. */
+  groupDefaults: (level: string, def: GroupDef) => StampBehaviour;
   placementsOfModel: (level: string, model: number) => PlacedProp[];
   saveModelDefaults: (level: string, model: number, behaviour: PropBehaviour | null) => Promise<boolean>;
   applyBehaviourToPlaced: (level: string, model: number, behaviour: PropBehaviour) => number;

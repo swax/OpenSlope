@@ -1,9 +1,21 @@
 import * as THREE from 'three';
 
-/** Stable authoring identity carried from a prop collider into the Play effects/audio runtime. */
+/** Stable authoring identity carried from a prop collider into the Play effects/audio runtime. `member` names the
+ *  model of a GROUP placement's member that has behaviour of its own (docs/069) — its own contact and hit sound. */
 export type RideObstacleObject =
   | { kind: 'reference'; index: number }
-  | { kind: 'authored'; id: string };
+  | { kind: 'authored'; id: string; member?: number };
+
+/**
+ * Whether retiring or restoring `key` covers the collider keyed `sourceKey`. A group member with behaviour of its
+ * own collides under `<placement key>#<model>`, so it debounces apart from its siblings — the trunk still thuds
+ * after the leaves rustle — while an effect that retires the placement still takes the whole group with it.
+ */
+export const obstacleKeyCovers = (sourceKey: string, key: string): boolean =>
+  sourceKey === key || sourceKey.startsWith(`${key}#`);
+
+/** The placement-level key a collider key belongs to — itself, unless it is a group member's. */
+export const obstacleHostKey = (sourceKey: string): string => sourceKey.replace(/#\d+$/, '');
 
 /** One native prop collision source. Triangle proxies are flattened into one world-space BVH at launch;
  * mode-3 bodies retain their packed local leaf spheres and affine transform so ray/sphere tests stay analytic

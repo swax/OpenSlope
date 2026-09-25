@@ -559,6 +559,11 @@ export interface PlacedProp {
    *  terrain family's ride feel and board audio (12 wood, 13 metal, … — surface-types.ts). Absent = -1
    *  (object handling — the prop is an obstacle, not a surface). */
   surface?: number;
+  /** A GROUP placement's behaviour per member (docs/069), keyed by the member's model id: a tree's trunk solid and
+   *  its leaves ride-through with a leaf sound. When present it holds an entry for every member, each a complete
+   *  behaviour; the mode layer stays the group's own `modePresence`. Absent (every group placed before this) =
+   *  every member behaves as the placement's own fields say. */
+  memberBehaviour?: Record<string, PropBehaviour>;
 }
 
 /**
@@ -570,7 +575,7 @@ export type PropBehaviour = Pick<PlacedProp,
   | 'nativeCollision' | 'surface' | 'modePresence'
   | 'collisionSound' | 'collisionSoundFile'
   | 'ambientSound' | 'ambientSoundFile' | 'ambientRadius' | 'ambientFalloff' | 'ambientHalfExtents'
-  | 'fullBright'>;
+  | 'fullBright' | 'memberBehaviour'>;
 
 export type RaceMusicMode = 'retail-graph' | 'linear-loop';
 

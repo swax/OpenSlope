@@ -1491,7 +1491,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   shortPropName: propOps.shortPropName, propBaseOffset: propOps.propBaseOffset,
   armProp: propOps.armProp, armGroupById: propOps.armGroupById,
   deselectPropOrLight: propOps.deselectPropOrLight,
-  propDefaults: propOps.propDefaults, placementsOfModel: propOps.placementsOfModel,
+  propDefaults: propOps.propDefaults, groupDefaults: propOps.groupDefaults, placementsOfModel: propOps.placementsOfModel,
   saveModelDefaults: propOps.saveModelDefaults, applyBehaviourToPlaced: propOps.applyBehaviourToPlaced,
   cancelPlacement: () => { viewport.setLightArmed(false); trickTools.cancelTrickTools(); },
   lightTool,

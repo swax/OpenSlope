@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { RideObstacleSource } from './obstacles';
+import { obstacleKeyCovers } from './obstacles';
 
 /**
  * The Cracked surface in the test ride ([Trailmap: 370-world-interaction, 230-level-ssf type 0 sub 14]).
@@ -306,14 +307,16 @@ export function createCrackedSurfaceRuntime(surfaces: readonly CrackedSurface[],
       charge(state, speed >= IMPACT_NORMAL_SPEED ? IMPACT_HIT_COST : CARRIED_HIT_COST);
     },
     restore(key) {
-      const state = states.get(key);
-      if (!state) return;
-      state.strength = state.spec.strength;
-      state.gate = 0;
-      state.life = state.spec.lifetimeSeconds > 0
-        ? state.spec.lifetimeSeconds : Number.POSITIVE_INFINITY;
-      state.cracked = false;
-      state.broken = false;
+      // A group placement's key covers its members' panes (obstacleKeyCovers).
+      for (const [stateKey, state] of states) {
+        if (!obstacleKeyCovers(stateKey, key)) continue;
+        state.strength = state.spec.strength;
+        state.gate = 0;
+        state.life = state.spec.lifetimeSeconds > 0
+          ? state.spec.lifetimeSeconds : Number.POSITIVE_INFINITY;
+        state.cracked = false;
+        state.broken = false;
+      }
     },
     isBroken(key) { return states.get(key)?.broken ?? false; },
     isCracked(key) { const s = states.get(key); return !!s && s.cracked && !s.broken; },

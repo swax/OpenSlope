@@ -3,8 +3,8 @@ import { AUTHORED_MODEL_LEVEL, authoredModelLevelProps, findModelByNumber } from
 import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
 import {
-  applyBehaviour, baselineBehaviour, instanceBehaviour, resolvePropDefaults, sanitizePropBehaviour, stampBehaviour,
-  type ResolvedPropDefaults,
+  applyBehaviour, groupMemberDefaults, instanceBehaviour, resolvePropDefaults, sameBehaviour, sanitizePropBehaviour,
+  stampBehaviour, type ResolvedPropDefaults, type StampBehaviour,
 } from '../../core/props/defaults';
 import { detachEffectFromProp } from '../../core/effects/authoring';
 import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
@@ -70,6 +70,18 @@ export function createPropOps(deps: PropOpsDeps) {
    *  derived from the level's placements for a shipped one, else the standard starting point (docs/069). */
   function propDefaults(level: string, model: number): ResolvedPropDefaults {
     return resolvePropDefaults(level, model, propLevels.get(level));
+  }
+
+  /**
+   * What a group picked from the library stamps (docs/069): each member its OWN model's defaults, so a tree
+   * arrives with a solid trunk under ride-through, rustling leaves. The placement's own fields are the leader's,
+   * for anything that reads the placement whole. Members that would all behave alike carry no per-member record.
+   */
+  function groupDefaults(level: string, def: GroupDef): StampBehaviour {
+    const members = groupMemberDefaults(level, def.props.map(m => m.model), propLevels.get(level));
+    const leader = propDefaults(level, def.props[0].model).behaviour;
+    const alike = Object.values(members).every(member => sameBehaviour(member, { ...leader, modePresence: undefined }));
+    return alike ? leader : { ...leader, memberBehaviour: members };
   }
 
   /** The existing single placements of one model — what "apply to placed" would change. Groups and effect
@@ -310,13 +322,10 @@ export function createPropOps(deps: PropOpsDeps) {
     } catch (e) { toast(`groups load failed: ${e}`, 'err'); return; }
     if (!def) { toast(`no group "${id}" in ${level}`, 'err'); return; }
     const leader = def.props[0];
-    // A group stamps ONE placement, so it has one behaviour for every member; per-member defaults (a solid
-    // trunk under ride-through leaves) need the group to carry behaviour per member, which it does not yet.
-    // Until then a group starts from the standard behaviour, as it always has, or from the placement copied.
     store.armedProp = { level, model: leader.model, name: def.name, group: def.id,
       ...(from.behaviour
         ? { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' as const }
-        : { behaviour: baselineBehaviour(level), from: 'defaults' as const }) };
+        : { behaviour: groupDefaults(level, def), from: 'defaults' as const }) };
     store.selectedProp = null;
     store.multiSel = [];
     store.selectedRefProp = null;
@@ -434,7 +443,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   return {
     modelDeclarations,
-    propDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
+    propDefaults, groupDefaults, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
     ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
     reloadImportedProps,

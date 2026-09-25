@@ -3,6 +3,8 @@ import type { EditDoc } from '../core/doc/doc-edit';
 import { effectNodeSoundFile } from '../core/effects/authoring';
 import { CUSTOM_TEX_LEVEL, parseTexRef } from '../core/paint/textures';
 import { IMPORTED_PROP_LEVEL, type ImportedPropRecord } from '../core/props/imported';
+import { behaviourRecords } from '../core/props/defaults';
+import type { PropBehaviour } from '../core/doc/types';
 import { listDir, mapLimit, readBytesOrNull, READ_CONCURRENCY } from './fs-async';
 import { createProject, finishProjectCreation, openProject, type ProjectSnapshot } from './projects';
 import { listImportedProps, saveImportedProp } from './routes/imported-props';
@@ -70,7 +72,7 @@ async function readAsset(kind: BundleAssetKind, name: string, model?: number): P
 
 /** Store one arriving asset under a name that is free here, and answer what it landed as. */
 async function writeAsset(kind: BundleAssetKind, name: string, bytes: Buffer,
-  textures: Map<string, string>): Promise<{ name: string; model?: number }> {
+  textures: Map<string, string>, sounds: Map<string, string>): Promise<{ name: string; model?: number }> {
   switch (kind) {
     case 'texture': return { name: await saveCustomTexture(name, bytes) };
     case 'sound': return { name: await saveCustomSound(name, bytes) };
@@ -95,7 +97,9 @@ async function writeAsset(kind: BundleAssetKind, name: string, bytes: Buffer,
           ...(frames ? { frames } : {}),
         };
       });
-      const { record: saved } = await saveImportedProp(name, { ...record, materials });
+      // Its saved defaults (docs/069) may name WAVs, which landed before any prop and may have been renamed.
+      const { record: saved } = await saveImportedProp(name, { ...record, materials,
+        ...(record.defaults ? { defaults: retargetSounds(record.defaults, sounds) } : {}) });
       return { name, model: saved.id };
     }
   }
@@ -124,9 +128,16 @@ async function referencedAssets(document: EditDoc): Promise<Array<Omit<BundleAss
 
   const sounds = new Set<string>();
   const models = new Set<number>();
+  // A placement names WAVs on itself and on each group member (docs/069); a model's saved defaults can too.
+  const addSounds = (behaviour: PropBehaviour) => {
+    for (const record of behaviourRecords(behaviour)) {
+      if (record.collisionSoundFile) sounds.add(record.collisionSoundFile);
+      if (record.ambientSoundFile) sounds.add(record.ambientSoundFile);
+    }
+  };
+  for (const model of document.models ?? []) if (model.defaults) addSounds(model.defaults);
   for (const prop of document.props ?? []) {
-    if (prop.collisionSoundFile) sounds.add(prop.collisionSoundFile);
-    if (prop.ambientSoundFile) sounds.add(prop.ambientSoundFile);
+    addSounds(prop);
     if (prop.level === IMPORTED_PROP_LEVEL) models.add(prop.model);
   }
 
@@ -138,6 +149,7 @@ async function referencedAssets(document: EditDoc): Promise<Array<Omit<BundleAss
         addTexture(material.tex);
         for (const frame of material.frames ?? []) addTexture(frame);
       }
+      if (record.defaults) addSounds(record.defaults);
     }
   }
 
@@ -252,6 +264,20 @@ export async function missingAssets(assets: readonly BundleAsset[]):
 }
 
 /** Move a document off the names it arrived under and onto the names its assets landed under here. */
+/** A behaviour with its renamed WAVs followed — its own fields and a group's per-member ones (docs/069). */
+function retargetSounds<T extends PropBehaviour>(behaviour: T, sounds: Map<string, string>): T {
+  const moved = (file: string | undefined) => file ? sounds.get(file.toLowerCase()) : undefined;
+  const out = { ...behaviour };
+  const hit = moved(out.collisionSoundFile), loop = moved(out.ambientSoundFile);
+  if (hit) out.collisionSoundFile = hit;
+  if (loop) out.ambientSoundFile = loop;
+  if (out.memberBehaviour) {
+    out.memberBehaviour = Object.fromEntries(Object.entries(out.memberBehaviour)
+      .map(([model, member]) => [model, retargetSounds(member, sounds)]));
+  }
+  return out;
+}
+
 function retargetDocument(document: EditDoc, moves: {
   textures: Map<string, string>; sounds: Map<string, string>; music: Map<string, string>;
   skies: Map<string, string>; models: Map<number, number>;
@@ -262,20 +288,20 @@ function retargetDocument(document: EditDoc, moves: {
     const moved = name && moves.textures.get(name.toLowerCase());
     return moved ? `${CUSTOM_TEX_LEVEL}/${moved}` : ref;
   };
+  const resound = <T extends PropBehaviour>(behaviour: T): T => retargetSounds(behaviour, moves.sounds);
   const next: EditDoc = { ...document };
   if (next.quadTex) {
     next.quadTex = Object.fromEntries(Object.entries(next.quadTex).map(([quad, ref]) => [quad, tile(ref)!]));
   }
-  if (next.models) next.models = next.models.map(model => ({ ...model, texture: tile(model.texture) }));
+  if (next.models) {
+    next.models = next.models.map(model => ({ ...model, texture: tile(model.texture),
+      ...(model.defaults ? { defaults: resound(model.defaults) } : {}) }));
+  }
   if (next.props) {
     next.props = next.props.map(prop => ({
-      ...prop,
+      ...resound(prop),
       ...(prop.level === IMPORTED_PROP_LEVEL && moves.models.has(prop.model)
         ? { model: moves.models.get(prop.model)! } : {}),
-      ...(prop.collisionSoundFile && moves.sounds.has(prop.collisionSoundFile.toLowerCase())
-        ? { collisionSoundFile: moves.sounds.get(prop.collisionSoundFile.toLowerCase())! } : {}),
-      ...(prop.ambientSoundFile && moves.sounds.has(prop.ambientSoundFile.toLowerCase())
-        ? { ambientSoundFile: moves.sounds.get(prop.ambientSoundFile.toLowerCase())! } : {}),
     }));
   }
   if (next.raceMusic && moves.music.has(next.raceMusic.toLowerCase())) {
@@ -352,7 +378,7 @@ export async function uploadProject(bundle: ProjectBundle, clientId?: string,
       for (const asset of assets.filter(entry => entry.kind === kind)) {
         const bytes = supplied.get(asset);
         if (!bytes) continue;
-        const landed = await writeAsset(asset.kind, asset.name, bytes, textures);
+        const landed = await writeAsset(asset.kind, asset.name, bytes, textures, sounds);
         record(asset, landed);
         stored.push({ kind: asset.kind, from: asset.name, to: landed.name });
       }

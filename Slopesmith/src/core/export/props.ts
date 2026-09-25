@@ -383,7 +383,7 @@ export function bakedPropClip(animation: PropModelAnimation, pose: Mat4):
  * A scrolled prop's textured submeshes emit the shipped levels' scroll-variant tag (`mat_<id>_scr<k>`), the
  * dialect MaterialBundle already resolves into a per-material scroll speed (docs/008).
  */
-export function bakePlacedProps(props: readonly PlacedProp[], geometryOf: GeometryLookup,
+export function bakePlacedProps(props: readonly (PlacedProp & { memberKey?: string })[], geometryOf: GeometryLookup,
                                 combiner: MaterialCombiner, vertexOffset = 0, uvOffset = 0,
                                 scrollIndexOf?: (prop: PlacedProp) => number | null):
                                 { obj: string; bakedGroups: BakedGroups; groups: BakedPropGroup[] } {
@@ -401,6 +401,8 @@ export function bakePlacedProps(props: readonly PlacedProp[], geometryOf: Geomet
     // A joined exact profile overrides that default on the canonical instance.
     const groupName = `${placedPropSolid(p) ? 'Prop' : 'PropGhost'}_${i}_${safeDataName(p.name)}`;
     if (p.id) (bakedGroups[p.id] ??= []).push(groupName);
+    // A group member is also its own join key (docs/069): its per-member tuning lands on this name alone.
+    if (p.memberKey) (bakedGroups[p.memberKey] ??= []).push(groupName);
     lines.push(`o ${groupName}`);
     const group: BakedPropGroup = { name: groupName, subs: [] };
     ({ vBase, vtBase } = emitPosedSubs(lines, group, mg.subs, placementMatrix(p),

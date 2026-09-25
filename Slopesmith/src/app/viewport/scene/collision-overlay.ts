@@ -57,7 +57,7 @@ export function createCollisionOverlay(parent: THREE.Object3D, options: Collisio
   unitBox.dispose();
   const unitSphere = new THREE.SphereGeometry(1, 12, 8);
   let ownedWireGeometries: THREE.BufferGeometry[] = [];
-  let sphereInstances: THREE.InstancedMesh | null = null;
+  let sphereInstances: THREE.InstancedMesh[] = [];
   let requestedVisible = true;
 
   function material(active: boolean) { return active ? lineMaterials.active : lineMaterials.inactive; }
@@ -66,12 +66,12 @@ export function createCollisionOverlay(parent: THREE.Object3D, options: Collisio
     group.clear();
     for (const geometry of ownedWireGeometries) geometry.dispose();
     ownedWireGeometries = [];
-    sphereInstances?.dispose();
-    sphereInstances = null;
+    for (const mesh of sphereInstances) mesh.dispose();
+    sphereInstances = [];
   }
 
-  function showMeshes(pieces: readonly CollisionOverlayMeshPiece[], active: boolean) {
-    clear();
+  function showMeshes(pieces: readonly CollisionOverlayMeshPiece[], active: boolean, append = false) {
+    if (!append) clear();
     for (const piece of pieces) {
       const wire = new THREE.WireframeGeometry(piece.geometry);
       ownedWireGeometries.push(wire);
@@ -84,8 +84,8 @@ export function createCollisionOverlay(parent: THREE.Object3D, options: Collisio
     }
   }
 
-  function showBox(box: THREE.Box3, active: boolean) {
-    clear();
+  function showBox(box: THREE.Box3, active: boolean, append = false) {
+    if (!append) clear();
     if (box.isEmpty()) return;
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
@@ -98,8 +98,8 @@ export function createCollisionOverlay(parent: THREE.Object3D, options: Collisio
   }
 
   /** Packed model-local x/y/z/r leaves, transformed into the overlay parent's local coordinate frame. */
-  function showSpheres(spheres: Float32Array, bodyMatrix: THREE.Matrix4, active: boolean) {
-    clear();
+  function showSpheres(spheres: Float32Array, bodyMatrix: THREE.Matrix4, active: boolean, append = false) {
+    if (!append) clear();
     const count = Math.floor(spheres.length / 4);
     if (!count) return;
     const mesh = new THREE.InstancedMesh(unitSphere, active ? sphereMaterials.active : sphereMaterials.inactive, count);
@@ -113,7 +113,7 @@ export function createCollisionOverlay(parent: THREE.Object3D, options: Collisio
     mesh.instanceMatrix.needsUpdate = true;
     mesh.renderOrder = 98;
     mesh.raycast = () => { /* display-only overlay */ };
-    sphereInstances = mesh;
+    sphereInstances.push(mesh);
     group.add(mesh);
   }
 
@@ -164,8 +164,8 @@ export function createCollisionOverlay(parent: THREE.Object3D, options: Collisio
   }
 
   /** Unity-export boxes/capsules, already instance-scaled, transformed from body space into the overlay parent. */
-  function showPrimitives(shape: BodyShape, bodyMatrix: THREE.Matrix4, active = true) {
-    clear();
+  function showPrimitives(shape: BodyShape, bodyMatrix: THREE.Matrix4, active = true, append = false) {
+    if (!append) clear();
     for (const box of shape.boxes) {
       const local = new THREE.Matrix4().compose(new THREE.Vector3(...box.center), new THREE.Quaternion(),
         new THREE.Vector3(...box.size));
