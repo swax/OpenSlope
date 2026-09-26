@@ -5,8 +5,10 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import type { Rail, V3 } from '../../../core/doc/types';
+import { parseTexRef } from '../../../core/paint/textures';
 import {
-  isMotionPath, railHasTube, railStartsOff, railStyle, RAIL_STYLE_ICE, RAIL_STYLE_METAL, RAIL_STYLE_WOOD, sampleRail,
+  isMotionPath, railHasTube, railStartsOff, railStyle, railTubeTexture, RAIL_STYLE_ICE, RAIL_STYLE_METAL,
+  RAIL_STYLE_WOOD, sampleRail, type RailSkins,
 } from '../../../core/rails/rails';
 import { railSupportPosts, sweepRail, RAIL_TUBE_RADIUS } from '../../../core/rails/rail-mesh';
 import type { PropAssets } from './prop-assets';
@@ -75,7 +77,8 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   const railMatMetal = new THREE.MeshLambertMaterial({ color: 0x93a9c4, emissive: 0x1a2330 });
   const railMatWood = new THREE.MeshLambertMaterial({ color: 0xb0824e, emissive: 0x2a1c0e });
   const railMatPost = new THREE.MeshLambertMaterial({ color: 0x9b9b9b, emissive: 0x1e1e1e }); // untextured grey, like the baked posts
-  let railMatSkin: THREE.MeshLambertMaterial | null = null; // the native red/white rail skin (setSkin)
+  let skins: RailSkins = {};                 // each material's default tube texture (setSkins)
+  const skinMats = new Map<string, THREE.MeshLambertMaterial>(); // one tube material per texture ref worn
   const railNodeMat = new THREE.MeshBasicMaterial({ color: 0xffcf6b });
   // Two kinds of spline guide, in two colours because they are two RELATIONSHIPS rather than two shapes.
   // Purple is Effects mode's own colour, worn by everything it owns outright — trigger boxes, fog, and a
@@ -216,14 +219,27 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     }
   }
 
-  /** Register the native rail skin (the donor level's red/white split tube texture, resolved by the host
-   *  from the shipped rail models' own material) and re-render: metal rails swap their flat colour for the
-   *  textured sweep — the exact tube the export bakes into Props.obj. */
-  function setSkin(skin: { level: string; tex: string }) {
-    railMatSkin?.dispose();
-    railMatSkin = new THREE.MeshLambertMaterial({
-      map: assets.propTex.texture(skin.level, skin.tex), side: THREE.DoubleSide });
+  /** Register each material's default tube texture (resolved by the host off shipped models — the metal
+   *  default is the game's own red/white rail) and re-render: a tube with no texture of its own swaps its flat
+   *  colour for the textured sweep, the exact tube the export bakes into Props.obj. */
+  function setSkins(next: RailSkins) {
+    skins = next;
     setRails(rails, selectedRail, selectedNode);
+  }
+
+  /** The default texture per material, as last registered — what an unpicked tube wears. */
+  function getSkins(): RailSkins { return skins; }
+
+  /** The tube material for one texture ref, built on first use. Refs name immutable bytes (docs/038), so a
+   *  material never goes stale and is kept for the session like the prop layer's own. */
+  function skinMaterial(ref: string): THREE.MeshLambertMaterial {
+    let mat = skinMats.get(ref);
+    if (!mat) {
+      const { level, name } = parseTexRef(ref);
+      mat = new THREE.MeshLambertMaterial({ map: assets.propTex.texture(level, name), side: THREE.DoubleSide });
+      skinMats.set(ref, mat);
+    }
+    return mat;
   }
 
   /** Select rail `r` node `n`: seat the translate gizmo on its handle and tell the host (which shows the rail's
@@ -249,9 +265,10 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   }
 
   /** One rail's Group: the swept tube along its curve — the SAME sweep the export bakes (core/rails/rail-mesh), in
-   *  the native red/white skin once it registers (metal/ice; wood stays its flat tint), wearing whatever the shade
-   *  view asks for — plus, for the selected rail, an amber edge outline over that geometry and a pick bulb at
-   *  each node (the selected node white + larger). Built in data coords under railGroup. */
+   *  `railTubeTexture`'s answer (its own pick, else its material's default once that registers; a flat material
+   *  tint with neither), wearing whatever the shade view asks for — plus, for the selected rail, an amber edge
+   *  outline over that geometry and a pick bulb at each node (the selected node white + larger). Built in data
+   *  coords under railGroup. */
   function buildRailObject(rail: Rail, index: number, selNode: number | null, showNodes: boolean): THREE.Group {
     const g = new THREE.Group();
     const motionPath = isMotionPath(rail);
@@ -294,8 +311,9 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(swept.uvs, 2));
       geo.setIndex(swept.indices);
       geo.computeVertexNormals();
-      const wood = railStyle(rail) === RAIL_STYLE_WOOD;
-      const tube = new THREE.Mesh(geo, wood ? railMatWood : (railMatSkin ?? railMatMetal));
+      const texture = railTubeTexture(rail, skins);
+      const tube = new THREE.Mesh(geo, texture ? skinMaterial(texture)
+        : railStyle(rail) === RAIL_STYLE_WOOD ? railMatWood : railMatMetal);
       tube.userData.railIndex = index; // a raycast hit resolves the rail straight off the tube (nearest node picked)
       shadeRailGeometry(tube, rail.solid === true);
       g.add(tube);
@@ -383,7 +401,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
       return [...effectRailMaterials.values()].flatMap(materials =>
         [materials.on, materials.off, materials.selected, materials.selectedOff]);
     },
-    setArmed, setVisible, setMotionPathsVisible, setEffectRails, setShadeMode, setRails, setSkin,
+    setArmed, setVisible, setMotionPathsVisible, setEffectRails, setShadeMode, setRails, setSkins, getSkins,
     seatNode, seatRail, nearestNodeOnRail, clearSelection,
   };
 }

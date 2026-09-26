@@ -730,7 +730,7 @@ function renderMountainDetails() {
   // Screens resolve against the placements they are attached to, so they rebuild whenever either does.
   viewport.setScreens(store.mdoc.screens ?? [], store.mdoc.props, store.selectedScreen);
   if (store.mdoc.gems?.length || store.mdoc.rails?.some(railHasTube))
-    void trickTools.ensureTrickArt(); // native crystals + rail skin (a tubeless curve has no visible art)
+    void trickTools.ensureTrickArt(); // native crystals + default rail skins (a tubeless curve has no visible art)
 }
 
 /** A realized document edit must reach all three persistence layers. localStorage is only the recovery copy;

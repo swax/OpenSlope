@@ -113,7 +113,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
           ['gizmo', 'move / resize'], ['Del', 'remove authored'], ['Esc', 'deselect']])
       : store.currentMode === 'props'
         ? (store.armedProp
-          ? helpPanel('Props Mode — placing', [['LMB', 'place'], ['scroll', 'turn'], ['⇧scroll', 'resize'], ['MMB', 'select + arm prop'], ['Esc', 'put down']])
+          ? helpPanel('Props Mode — placing', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['MMB', 'select + arm prop'], ['Esc', 'put down']])
           : helpPanel('Props Mode — select', [['LMB', 'select'], ['drag', 'box-select many'], ['MMB', 'select + arm prop'],
             ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),
             ['Del', 'remove'], ['Esc', 'deselect']]))
@@ -140,7 +140,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
           ? (store.surgeryTool === 'patch'
             ? helpPanel('Edit Mode — create patch', [['LMB', 'place next corner'], ['repeat corner', 'close three corners as triangle'], ['⇧LMB', 'lock world axis'], ['Enter', 'finish + select created'], ['Esc', 'finish · keep unselected']])
             : store.surgeryTool === 'loopcut'
-            ? helpPanel('Edit Mode — loop cut', [['hover', 'an edge'], ['scroll', 'slide the cut'], ['LMB', 'cut']])
+            ? helpPanel('Edit Mode — loop cut', [['hover', 'an edge'], ['Alt+scroll', 'slide the cut'], ['LMB', 'cut']])
             : store.weldTool === 'edge-weld'
             ? helpPanel('Edit Mode — weld edges', [['LMB / ⇧LMB', 'select target edges'], ['double-click', 'select target loop'], ['Enter', 'commit'], ['Esc', 'cancel']])
             : store.weldTool === 'weld'

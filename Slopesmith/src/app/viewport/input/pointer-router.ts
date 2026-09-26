@@ -358,7 +358,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     stage.cb.onEndSculptGrab();
   }
 
-  // ---- wheel zoom (custom): the wheel routes to the camera controller, except over a placement ghost ----
+  // ---- wheel zoom (custom): the plain wheel always zooms; a modifier over a live ghost adjusts it ----
 
   function onWheel(e: WheelEvent) {
     e.preventDefault();
@@ -368,16 +368,17 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       return; // a test ride owns the camera; first person deliberately consumes the wheel without zooming
     }
     if (layers.cameraCtl.flying) { layers.cameraCtl.trimFlySpeed(e.deltaY); return; } // fly mode: the wheel trims speed
-    // loop-cut surgery: over a live ghost the wheel SLIDES the cut along the strip, like the placement wheel
-    // turns a prop — it doesn't zoom. With no live ghost the layer declines, so the wheel zooms as usual.
-    if (access.mode() === 'edit' && layers.surgery.onWheel(e)) return;
-    // props placement: over the ghost the wheel adjusts the pending drop, not the camera — turn the held prop
-    // (Shift = resize). Off the terrain (no ghost) it zooms as usual. Paint's brush turns on ← / → instead
-    // (shortcuts.ts), so the wheel always zooms there.
-    if (access.mode() === 'props' && layers.props.propArm && layers.props.propGhost?.visible) {
-      if (e.shiftKey) layers.props.pendingScale = Math.min(5, Math.max(0.1, layers.props.pendingScale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-      else { layers.props.pendingYaw = (layers.props.pendingYaw + (e.deltaY < 0 ? 15 : -15) + 360) % 360; layers.props.yawManual = true; }
-      layers.props.seatPropGhost();
+    // Alt+wheel adjusts whatever is about to be committed, so holding a tool never takes the camera's zoom away.
+    // Loop-cut surgery: Alt+wheel SLIDES the cut along the strip; with no live ghost the layer declines and it zooms.
+    if (e.altKey && access.mode() === 'edit' && layers.surgery.onWheel(e)) return;
+    // Props placement, over the ghost: Alt+wheel turns the held prop (← / → too, shortcuts.ts), Shift+wheel
+    // resizes it. Off the terrain (no ghost) both zoom as usual.
+    if ((e.altKey || e.shiftKey) && access.mode() === 'props' && layers.props.propArm && layers.props.propGhost?.visible) {
+      if (e.altKey) layers.props.turnPending(e.deltaY < 0 ? 15 : -15);
+      else {
+        layers.props.pendingScale = Math.min(5, Math.max(0.1, layers.props.pendingScale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+        layers.props.seatPropGhost();
+      }
       return;
     }
     layers.cameraCtl.wheelZoom(e);

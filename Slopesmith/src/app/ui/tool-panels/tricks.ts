@@ -1,9 +1,11 @@
 import { authoredSplineId, splineEffectUses } from '../../../core/effects/authoring';
+import type { Rail } from '../../../core/doc/types';
 import {
-  isMotionPath, railHasTube, railStyle, RAIL_MATERIAL_OPTIONS,
+  isMotionPath, railHasTube, railMaterialLabel, railStyle, railTubeTexture, RAIL_MATERIAL_OPTIONS,
 } from '../../../core/rails/rails';
+import { textureRefUrl } from '../../net/asset-paths';
 import { surfaceFor } from '../../ride/physics-math';
-import { note, tip } from '../components/gui';
+import { note, texturePreview, tip } from '../components/gui';
 import { toast } from '../components/toast';
 import { placementCancelButton, type ToolsContext } from './widgets';
 
@@ -79,8 +81,8 @@ function buildRailTools(ctx: ToolsContext) {
     // Two controls, because they answer two independent questions. The material is the GRIND SURFACE — the
     // native SplineStyle, which decides how the board sounds and slides (ride/board-audio, ride/physics
     // surfaceFor) — and it means exactly as much on a curve with no pipe as on one with, which is why "wood"
-    // and "no pipe" is not the contradiction it looks like: that pair is a log rail. It also tints the pipe
-    // when there is one, but the ride feel is the point.
+    // and "no pipe" is not the contradiction it looks like: that pair is a log rail. It also picks the pipe's
+    // default texture when there is one, but the ride feel is the point.
     tip(gui.add(rail, 'style', RAIL_MATERIAL_OPTIONS).name('material')
       .onChange(() => { scheduleRebuild(); rebuildTools(); }),
     'What the board rides: ice is fastest and slipperiest, metal close behind, wood slower and draggy.');
@@ -99,6 +101,7 @@ function buildRailTools(ctx: ToolsContext) {
       + `drag ${surface.drag.toFixed(2)}.`);
     // lil-gui binds to the property, so materialize the optional flags before offering the checkboxes
     if (tube) {
+      tubeTexture(ctx, rail);
       rail.solid = rail.solid ?? false;
       rail.supports = rail.supports ?? false;
       tip(gui.add(rail, 'solid').name('solid tube').onChange(() => { scheduleRebuild(); }), // rebuild = persist; the tube looks the same
@@ -129,6 +132,42 @@ function buildRailTools(ctx: ToolsContext) {
   }
   gui.add({ del: () => deleteSelectedRail() }, 'del').name(motionPath ? '✕ delete path' : '✕ delete rail');
   placementCancelButton(ctx);
+}
+
+/**
+ * The tube's texture, shown as the tile it wears. The material decides the DEFAULT — each borrowed off a
+ * shipped model (docs/014), metal's being the game's own red/white rail — and a pick here overrides it for this
+ * rail alone, surviving a later material change. A look only: the ride stays the material's.
+ */
+function tubeTexture(ctx: ToolsContext, rail: Rail) {
+  const { gui, store, viewport, library, scheduleRebuild, rebuildTools } = ctx;
+  const material = railMaterialLabel(railStyle(rail)).toLowerCase();
+  const worn = railTubeTexture(rail, viewport.railSkins);
+  const own = rail.texture !== undefined;
+  // Written through the rail's id at the moment of the pick: the picker answers later, by which time an undo
+  // may have swapped the document (and this `rail` object) out from under it.
+  const setTexture = (ref: string | undefined) => {
+    const target = store.mdoc.rails?.find(r => r.id === rail.id);
+    if (!target) return;
+    if (ref === undefined) delete target.texture; else target.texture = ref;
+    scheduleRebuild(); rebuildTools();
+  };
+  texturePreview(gui, {
+    label: 'tube texture',
+    src: worn ? textureRefUrl(worn) : null,
+    value: own ? worn ?? 'No texture — untextured clay'
+      : worn ? `${worn} — the ${material} default` : `No ${material} default — untextured clay`,
+    hint: 'Click to choose a tile from the Texture Library, or clear it back to clay.',
+    onOpen: () => library.openPick({
+      title: `Choose a tube texture — ${rail.name || 'rail'}`,
+      current: worn,
+      onPick: ref => setTexture(ref ?? ''),
+    }),
+  });
+  if (own) {
+    tip(gui.add({ reset: () => setTexture(undefined) }, 'reset').name(`↺ ${material} default`),
+      `Wear the texture every ${material} rail gets by default.`);
+  }
 }
 
 /** Resume laying points onto the selected rail (the Tools "add more points" button). */

@@ -1,4 +1,5 @@
 import { nextRailId, RAIL_STYLE_METAL } from '../../core/rails/rails';
+import type { NativeArt } from '../../core/export/provider';
 import type { LevelProps } from '../../core/reference/props';
 import type { Store } from '../state/store';
 import type { Mode, Viewport } from '../viewport/viewport';
@@ -11,8 +12,8 @@ import { freeScreen } from '../props/screens';
 /**
  * The trick tools (docs/014): rails + gems. Arming a tool drops into Props mode, where clicks place — a rail
  * grows node by node until Enter / Esc finishes it, gems drop one per click or a spaced row per drag; the
- * deletes retire the selection. The native trick art (the gem crystals + the metal rail skin) resolves off a
- * donor reference level. Owns the Add rail pipe / Add gem / Add light launchers docked under Prop Library.
+ * deletes retire the selection. The native trick art (the gem crystals + each rail material's default skin)
+ * resolves off shipped models. Owns the Add rail pipe / Add gem / Add light launchers docked under Prop Library.
  */
 
 export type TrickToolsDeps = {
@@ -35,36 +36,24 @@ export function createTrickTools(deps: TrickToolsDeps) {
   const { store, viewport, gemTool, propLibToggle, ensurePropLevel, toggleTricks, armLight, revealScreens, setMode, scheduleRebuild, rebuildTools, log } = deps;
 
   /**
-   * Resolve the trick layer's native art off a donor level and hand it to the viewport: the gem models
+   * Resolve the trick layer's native art and hand it to the viewport: each rail material's default tube skin
+   * (metal's is the red/white the shipped Mdl_Rail_Metal tubes bind) and the gem models
    * (Gem_TrickMultiplier_YellowX2 / OrangeX3 / RedX5, so placed gems + the Gem tool's ghost render the exact
-   * crystals the course ships with) and the rail skin (the texture the shipped Mdl_Rail_Metal tubes bind —
-   * the red/white split — resolved from the models' own material, so metal rails preview in the tube the
-   * export bakes). The donor is the first reference level that carries prop tables (data-derived, not named).
-   * Fetched once (rides the shared prop-payload cache); markers / tubes re-render when the geometry lands.
-   * A failed fetch clears the memo so a later placement retries.
+   * crystals the course ships with). Both come from `/api/props/native-art` — the answer the export bakes
+   * from, data derived off shipped models rather than named — so the preview and the shipped tube cannot
+   * disagree. Fetched once; tubes / markers re-render when the art lands. A failed fetch clears the memo so
+   * a later placement retries.
    */
   let trickArtReady: Promise<void> | null = null;
   function ensureTrickArt(): Promise<void> {
     return (trickArtReady ??= (async () => {
-      const donor = await firstPropLevel();
-      if (!donor) return;
-      const lp = await ensurePropLevel(donor);
-      const tiers = new Map<number, { level: string; model: number }>();
-      for (const [tier, tag] of [[2, 'YellowX2'], [3, 'OrangeX3'], [5, 'RedX5']] as const) {
-        const m = lp.models.find(mm => mm.name.startsWith('Gem_TrickMultiplier') && mm.name.includes(tag));
-        if (m) tiers.set(tier, { level: donor, model: m.id });
-      }
-      if (tiers.size) viewport.setGemModels(tiers);
-      const rail = lp.models.find(mm => /^Mdl_Rail_Metal/.test(mm.name));
-      const railTex = rail?.subs.map(s => lp.materials.get(s.mat)?.tex).find(t => t);
-      if (railTex) viewport.setRailSkin({ level: donor, tex: railTex });
+      const art = await fetchJson<NativeArt>('/api/props/native-art');
+      viewport.setRailSkins(art.railSkins ?? {}); // a server older than this client answers without them
+      if (store.selectedRail !== null) rebuildTools(); // the tube-texture swatch shows the default it now has
+      if (!art.gemLevel || !art.gemTiers.length) return;
+      await ensurePropLevel(art.gemLevel); // the crystals' geometry registers with the level's payload
+      viewport.setGemModels(new Map(art.gemTiers.map(t => [t.tier, { level: art.gemLevel, model: t.model }])));
     })().catch(e => { trickArtReady = null; log(`trick art: ${e}`); }));
-  }
-
-  /** The donor level for native trick art: the first reference level that carries prop tables. */
-  async function firstPropLevel(): Promise<string | null> {
-    try { return (await fetchJson<{ levels?: string[] }>('/api/props')).levels?.[0] ?? null; }
-    catch { return null; }
   }
 
   /** Standoff (m) a fresh rail floats above the terrain — a low grind-rail height you then tune per rail. */
@@ -82,7 +71,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
     viewport.setLightArmed(false);
     store.gemArmed = false; viewport.setGemArmed(false); // the Rail tool and the Gem tool are exclusive
     rails.push({ id: nextRailId(rails), kind: 'grind', nodes: [], height: DEFAULT_RAIL_HEIGHT, style: RAIL_STYLE_METAL });
-    void ensureTrickArt(); // metal tubes upgrade to the native red/white skin when the donor art lands
+    void ensureTrickArt(); // tubes upgrade to their material's default skin when the shipped art lands
     store.selectedRail = rails.length - 1;
     store.selectedNode = null;
     store.selectedProp = null;

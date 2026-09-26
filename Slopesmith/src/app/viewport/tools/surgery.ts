@@ -24,7 +24,7 @@ export interface MeshAccess {
 
 /**
  * Topology surgery on the authored quad net (docs/017), as a modal hover gesture: arm a tool, the terrain
- * edge under the cursor previews the operation (a gold cut curve + the vertices it would insert), the wheel
+ * edge under the cursor previews the operation (a gold cut curve + the vertices it would insert), Alt+wheel
  * slides the cut along its strip, and a click commits by handing the picked rail + fraction back to the host
  * (`onLoopCut`) to re-plan against the live doc and apply. The plan + geometry are pure (`core/mesh/mesh-ops`); this
  * layer owns only the ghost overlay (a group under `stage.worldRoot` in data coords, like the cage) and the
@@ -35,8 +35,8 @@ export function createSurgeryLayer(stage: Stage, mesh: MeshAccess) {
   const loopCutGroup = new THREE.Group();       // the cut ghost (docs/017), data coords like the cage
   let tool: SurgeryTool | null = null;
   let loopPreview: { quad: number; edge: [number, number] } | null = null; // last picked rail (re-planned on commit)
-  let loopPlan: LoopCutPlan | null = null;      // the current previewed cut (re-drawn as the wheel slides t)
-  let loopT = 0.5;                              // the cut fraction (0..1) the wheel slides along the strip
+  let loopPlan: LoopCutPlan | null = null;      // the current previewed cut (re-drawn as Alt+wheel slides t)
+  let loopT = 0.5;                              // the cut fraction (0..1) Alt+wheel slides along the strip
 
   /** Arm / disarm a surgery tool. Arming resets the cut fraction; either way the ghost clears until the next
    *  hover rebuilds it. The corner gizmo / marker / nub drop the gesture needs is the shell's (setSurgeryTool). */
@@ -89,8 +89,9 @@ export function createSurgeryLayer(stage: Stage, mesh: MeshAccess) {
     drawGhost(loopPlan);
   }
 
-  /** Wheel over a live ghost: slide the cut along its strip (fraction 0..1) and redraw, like the placement
-   *  wheel turns a prop. Returns false with no active plan so the shell's wheel falls through to camera zoom. */
+  /** Alt+wheel over a live ghost (the router checks Alt): slide the cut along its strip (fraction 0..1) and
+   *  redraw, like Alt+wheel turns a held prop. Returns false with no active plan so the wheel falls through to
+   *  camera zoom. */
   function onWheel(e: WheelEvent): boolean {
     if (tool !== 'loopcut' || !loopPlan) return false;
     loopT = Math.min(0.95, Math.max(0.05, loopT + (e.deltaY < 0 ? 0.05 : -0.05)));

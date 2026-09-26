@@ -15,7 +15,8 @@ import {
 import { NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode } from '../../core/collision/native';
 import type { V3 } from '../../core/doc/types';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
-import { CUSTOM_TEX_LEVEL } from '../../core/paint/textures';
+import { CUSTOM_TEX_LEVEL, makeTexRef } from '../../core/paint/textures';
+import type { RailMaterialKey, RailSkins } from '../../core/rails/rails';
 import type { LocalBox } from '../../core/lighting/sign-lights';
 import { buildMaterialCombiner, type MaterialCombiner, type SourceMaterial } from '../../core/export/materials';
 import { modelGeometryBox } from '../../core/export/props';
@@ -1032,22 +1033,53 @@ export async function createMaterialCombiner(): Promise<MaterialCombiner> {
 }
 
 /**
- * Which extracted level supplies the native art a from-scratch mountain borrows — the rail tube's skin and
- * the three gem tier crystals — and which of its models carry it.
+ * The shipped models each rail material borrows its default tube skin from (docs/014). Metal is the real
+ * thing — the game's own rail tubes, in their red/white split. Wood and ice have no shipped tube (retail lays
+ * those grinds bare, along a log or an ice ledge), so they borrow the nearest shipped surface instead: tree
+ * bark, because a wood rail rides as a log, and icicle ice.
+ */
+const RAIL_SKIN_MODELS: Record<RailMaterialKey, RegExp> = {
+  metal: /^Mdl_Rail_Metal/,
+  wood: /^Mdl_Tree\w*Trunk/i,
+  ice: /^Mdl_Icicle/i,
+};
+
+/**
+ * The native art a from-scratch mountain borrows: each rail material's default tube skin and the three gem
+ * tier crystals, and which extracted level supplies each.
  *
- * The donor is the first extracted level with prop tables, and both answers come off its `Models.json`: the
- * rail skin from the shipped `Mdl_Rail_Metal*` models' own MeshData (first textured binding wins — data
- * derived, no filename guess), the crystals from `Gem_TrickMultiplier_YellowX2 / OrangeX3 / RedX5` (the same
- * base mesh at three scales; the first model of each tier wins, since copies are identical geometry).
+ * Every answer comes off a level's own `Models.json`, data derived with no filename guess: a rail skin is the
+ * first textured MeshData binding of the first model matching `RAIL_SKIN_MODELS`, the crystals are
+ * `Gem_TrickMultiplier_YellowX2 / OrangeX3 / RedX5` (the same base mesh at three scales; the first model of each
+ * tier wins, since copies are identical geometry).
+ *
+ * Levels are searched by name, and each piece comes from the first level that actually SHIPS it. "The first
+ * level with prop tables" is not enough: a small level extracted beside the courses (a test track, a lobby)
+ * sorts ahead of them and carries none of it, and taking it silently turned every rail grey and every gem
+ * into a stand-in.
  */
 export async function nativeArtSource(): Promise<NativeArt> {
-  const level = (await levelsWithProps())[0] ?? '';
-  const modelsJson = await readJsonOr<ModelsJson | null>(
-    join(mapsRoot(), safeDataName(level), 'Models.json'), null);
-  const models = modelsJson?.Models ?? [];
+  const tables = await readMaterialTables();
+  const railSkins: RailSkins = {};
+  let gems: { level: string; tiers: NativeArt['gemTiers'] } | null = null;
+  const keys = Object.keys(RAIL_SKIN_MODELS) as RailMaterialKey[];
+  for (const level of await levelsWithProps()) {
+    const models = (await readJsonOr<ModelsJson | null>(
+      join(mapsRoot(), safeDataName(level), 'Models.json'), null))?.Models ?? [];
+    const materials = tables.get(safeDataName(level)) ?? [];
+    for (const key of keys) {
+      const tex = railSkins[key] ? null : modelTexture(models, materials, RAIL_SKIN_MODELS[key]);
+      if (tex) railSkins[key] = makeTexRef(level, tex);
+    }
+    const tiers = gemTiersOf(models);
+    if (tiers.length > (gems?.tiers.length ?? 0)) gems = { level, tiers };
+    if (gems?.tiers.length === 3 && keys.every(key => railSkins[key])) break;
+  }
+  return { gemLevel: gems?.level ?? '', gemTiers: gems?.tiers ?? [], railSkins };
+}
 
-  const railMaterial = railSkinMaterial(models);
-
+/** The gem tier crystals one level ships, by ModelID. */
+function gemTiersOf(models: readonly ModelsJsonModel[]): NativeArt['gemTiers'] {
   const gemTiers: NativeArt['gemTiers'] = [];
   models.forEach((m, id) => {
     const nm = m.ModelName ?? '';
@@ -1055,17 +1087,17 @@ export async function nativeArtSource(): Promise<NativeArt> {
     const tier = nm.includes('YellowX2') ? 2 : nm.includes('OrangeX3') ? 3 : nm.includes('RedX5') ? 5 : 0;
     if (tier && !gemTiers.some(t => t.tier === tier)) gemTiers.push({ tier, model: id });
   });
-
-  return { level, railMaterial, gemTiers };
+  return gemTiers;
 }
 
-/** The donor's rail-tube material: the first textured MeshData binding of its first `Mdl_Rail_Metal*` model.
- *  Null when the donor ships no rail-tube models, which bakes the tubes untextured. */
-function railSkinMaterial(models: readonly ModelsJsonModel[]): number | null {
+/** The texture file of the first textured MeshData binding on the first model whose name matches, or null. */
+function modelTexture(models: readonly ModelsJsonModel[], materials: readonly SsxMaterial[],
+  name: RegExp): string | null {
   for (const m of models) {
-    if (!/^Mdl_Rail_Metal/.test(m.ModelName ?? '')) continue;
+    if (!name.test(m.ModelName ?? '')) continue;
     for (const obj of m.ModelObjects ?? []) for (const md of obj?.MeshData ?? []) {
-      if (md && (md.MaterialID ?? -1) >= 0) return md.MaterialID!;
+      const tex = md && (md.MaterialID ?? -1) >= 0 ? materials[md.MaterialID!]?.TexturePath : undefined;
+      if (tex) return tex;
     }
   }
   return null;

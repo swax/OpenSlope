@@ -93,6 +93,28 @@ export function ensureRailIds(rails: Rail[] | undefined): void {
 /** The style a rail rides as (default metal), tolerating a doc saved before the style field existed. */
 export const railStyle = (r: Rail): number => r.style ?? RAIL_STYLE_METAL;
 
+export type RailMaterialKey = keyof typeof RAIL_MATERIAL_OPTIONS;
+
+/** The material key a grind style is offered under, or null for a style the material combo does not offer. */
+export const railMaterialKey = (style: number): RailMaterialKey | null =>
+  (Object.keys(RAIL_MATERIAL_OPTIONS) as RailMaterialKey[]).find(key => RAIL_MATERIAL_OPTIONS[key] === style) ?? null;
+
+/** The default tube texture per material, as "LEVEL/file.png" refs borrowed off shipped models (docs/014).
+ *  A material with no entry has no default and bakes untextured. */
+export type RailSkins = Partial<Record<RailMaterialKey, string>>;
+
+/**
+ * The texture a rail's tube wears — its own pick, else its material's default — or null for untextured.
+ *
+ * The one answer the viewport, the export bake and the Tools swatch all ask, so the tube you see is the tube
+ * that ships. An own pick of '' is an explicit "no texture", not an absent one.
+ */
+export function railTubeTexture(rail: Rail, skins: RailSkins): string | null {
+  if (rail.texture !== undefined) return rail.texture || null;
+  const key = railMaterialKey(railStyle(rail));
+  return (key && skins[key]) || null;
+}
+
 /**
  * Exact native SSF spline row fields. Animation-only routes match the retail train/gondola path records.
  *

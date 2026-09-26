@@ -487,6 +487,8 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       solid: { type: 'boolean', description: 'The baked tube collides.' },
       supports: { type: 'boolean', description: 'Bake a post under each node.' },
       startsOff: { type: 'boolean', description: 'Grindable only after a Rail-on effect.' },
+      texture: { type: 'string',
+        description: 'Tube texture "LEVEL/file.png"; absent = the material default, "" = untextured.' },
       name: { type: 'string' },
     },
     required: ['nodes', 'height'],

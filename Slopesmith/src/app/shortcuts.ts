@@ -14,7 +14,7 @@ import type { EffectsEditor } from './effects/editor';
  * The editor's global keyboard shortcuts: one window keydown listener routing undo / redo, the Edit-mode mesh
  * operations (hide, connected-select, copy / cut / paste, bridge, weld, extrude, rip, split selected patches,
  * show control cage, crease / smooth, dissolve, flip ridable side, the modal-tool Enters), 1–6 top-level view switching, the
- * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn, Delete across every mode's selection, and the layered Escape
+ * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, Delete across every mode's selection, and the layered Escape
  * (first put the held tool down, then clear the selection). Installed once
  * at compose time, after every service it routes to exists — so every dependency arrives direct. A live test
  * ride owns movement / ollie / respawn / Esc-to-exit (or release first-person / RMB capture); this layer retains P so it can pause and refresh the UI.
@@ -149,6 +149,12 @@ export function installShortcuts(deps: ShortcutDeps) {
         ? turnPaintTexture(dir, e.shiftKey)
         : turnModelTexture(dir, e.shiftKey);
       if (turned) e.preventDefault();
+      return;
+    }
+    // ← / → turn a held prop 15° (→ = clockwise from above, like the tile turn), the keyboard twin of Alt+wheel.
+    // Held, the key repeats into a steady spin. Nothing held declines, leaving the key to the browser.
+    if (!mod && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && store.currentMode === 'props') {
+      if (viewport.turnHeldProp(e.key === 'ArrowRight' ? 15 : -15)) e.preventDefault();
       return;
     }
     if (!mod && e.altKey && key === 'h' && store.currentMode === 'edit') {

@@ -168,6 +168,7 @@ scene.add(refSceneryGroup, refTrickGroup, sourceGroup);
 const cameraCtl: any = {
   activePointers: new Set<number>(), touchPts: new Map<number, { x: number; y: number }>(), twist: null,
   orbiting: false, flying: false, seatTargetAhead() {},
+  wheelZooms: 0, wheelZoom() { this.wheelZooms++; },
 };
 let pointerRayX = 0;
 const stage: any = {
@@ -345,10 +346,15 @@ check(pickedPlacedProp === 7, 'Props middle-click selects the model and arms pro
   const originalPlace = stage.cb.onPlaceProp;
   stage.cb.onPlaceProp = (pos: V3, yaw: number, scale: number) => { drops.push({ pos: [...pos], yaw, scale }); };
   dom.dispatch('pointermove', {});
+  const zoomsBefore = cameraCtl.wheelZooms;
   dom.dispatch('wheel', { deltaY: -1 });
+  check(cameraCtl.wheelZooms === zoomsBefore + 1 && held.pendingYaw === 30 && !held.yawManual,
+    'the plain wheel over a held prop still zooms the camera and leaves the pending turn alone');
+  dom.dispatch('wheel', { deltaY: -1, altKey: true });
   dom.dispatch('wheel', { deltaY: -1, shiftKey: true });
-  check(held.propGhost?.visible && held.pendingYaw === 45 && held.pendingScale === 1.1,
-    'the real prop preview follows the edited ground and preserves wheel rotation and scale');
+  check(held.propGhost?.visible && held.pendingYaw === 45 && held.pendingScale === 1.1
+    && cameraCtl.wheelZooms === zoomsBefore + 1,
+    'the real prop preview follows the edited ground and preserves Alt+wheel rotation and Shift+wheel scale');
   const previewPose = held.propGhost!.matrix.clone();
   dom.dispatch('pointerdown', {});
   dom.dispatch('pointerup', {});

@@ -11,7 +11,7 @@ const calls: string[] = [];
 const provider = {
   groupDefs: async () => new Map(), modelGeometry: async () => () => ({ subs: [] }),
   materialTables: async () => new Map(), importedProps: async () => ({ models: [], instances: [] }),
-  nativeArt: async () => ({ rail: null, gem: null }),
+  nativeArt: async () => ({ gemLevel: '', gemTiers: [], railSkins: {} }),
   referenceTexture: async (level: string,name: string) => { calls.push(level+'/'+name); return new Uint8Array([23,51,99]); },
   particleTexture: async () => { throw new Error('Custom fog requested native particle art'); },
   soundIndex: async () => null, environmentEffectSound: async () => new Uint8Array(),

@@ -110,7 +110,7 @@ not browser-only code. That is the difference between moving the export and fork
 | Prop OBJ bake | `/api/props`, which is the same `readModelGeometries` the server bakes from; the bake needs only `{positions, uvs, indices}` |
 | Material combiner | `/api/props/materials` — every level's whole `Materials[]`, the same table the server reads, so a `usemtl` slot and an authored model's tile inherit the same raw `UnknownInt18` either way |
 | Painted-tile + prop texture copies | The byte cache (`app/net/asset-bytes.ts`): a stored asset's name is its identity, so a URL is a permanent address and the PNG passes through **untouched** rather than being re-encoded from a decoded canvas |
-| Sign-light boxes, rail tubes, gem crystals | Derived from the prop payloads plus `/api/props/native-art`, which names the level supplying the rail skin and the tier crystals |
+| Sign-light boxes, rail tubes, gem crystals | Derived from the prop payloads plus `/api/props/native-art`, which names each rail material's default skin and the level supplying the tier crystals |
 | `Sounds/` | `/api/custom-sound` and `/api/effect-sound`, through the same cache |
 | `Skybox/` ring | `/api/skybox/ring` answers the resolved ring level, its `Skybox/` shell, and the complete Snowknife-measured `Ring.json` contract (dimensions, slots, spans, UV radius, and page sizes); `/api/skybox/page` serves a shipped page verbatim. `composeSkybox` (core) then writes the same folder for both providers |
 

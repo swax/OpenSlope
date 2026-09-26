@@ -392,6 +392,9 @@ export interface Rail {
   /** Bake a support post under each node point, from the tube down through the authored standoff into the
    *  ground. Posts are always solid, like the shipped levels' rail supports. */
   supports?: boolean;
+  /** The tube's texture, "LEVEL/file.png" (or "Custom/…"). Absent = its material's default skin, borrowed off a
+   *  shipped model (docs/014); '' = deliberately untextured. A look only — the ride is `style`'s. */
+  texture?: string;
   /** Optional label for the outliner / tooltip. */
   name?: string;
 }
