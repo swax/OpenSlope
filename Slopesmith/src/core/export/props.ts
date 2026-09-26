@@ -2,7 +2,7 @@ import type { AuthoredModel, PlacedProp, Rail, V3 } from '../doc/types';
 import { authoredModelFrames, modelNumber, tiledPropUV } from '../doc/models';
 import type { LocalBox } from '../lighting/sign-lights';
 import { railSupportPosts, sweepRail } from '../rails/rail-mesh';
-import { railHasTube, railStyle, RAIL_STYLE_WOOD } from '../rails/rails';
+import { railHasTube, railTubeTexture, type RailSkins } from '../rails/rails';
 import { effectTriggerWorldSize, isEffectTriggerProp } from '../effects/trigger-volume';
 import { placedPropSolid } from '../props/contact';
 import { placementQuat, rotateByPlacement } from '../props/pose';
@@ -622,9 +622,10 @@ export function bakeImportedProps(placements: readonly PlacedProp[], catalogue: 
 
 /**
  * Bake the authored rails' VISUAL tubes (docs/014): each rail's grind curve swept into the same low-poly tube
- * the viewport previews (core/rails/rail-mesh — one sweep, so what you see is what ships), skinned with the
- * donor's own rail material. Wood-style rails emit untextured (they read as clay, like the start gate). The
- * tube is decoration — the ridable grind is Splines.json.
+ * the viewport previews (core/rails/rail-mesh — one sweep, so what you see is what ships), skinned with
+ * `railTubeTexture`: the rail's own pick, else its material's default borrowed off a shipped model (`skins`).
+ * A rail with neither emits untextured (it reads as clay, like the start gate). The tube is decoration — the
+ * ridable grind is Splines.json.
  *
  * Which is why a rail can decline one. A motion path never had a tube, and a BARE grind rail is a rail that
  * ships its spline and leaves the drawing to whatever prop it was laid over; both fall out here and both
@@ -637,21 +638,26 @@ export function bakeImportedProps(placements: readonly PlacedProp[], catalogue: 
  * like the shipped levels' rail supports.
  */
 export function bakeRailTubes(rails: readonly Rail[], vertexOffset: number, uvOffset: number,
-                              combiner: MaterialCombiner, skin: { level: string; material: number | null }):
-                              { obj: string; tubes: number; posts: number; groups: BakedPropGroup[] } {
-  if (!rails.some(railHasTube)) return { obj: '', tubes: 0, posts: 0, groups: [] };
-  const skinSlot = skin.material !== null ? combiner.resolveSlot(skin.level, skin.material) : -1;
+                              combiner: MaterialCombiner, skins: RailSkins):
+                              { obj: string; tubes: number; posts: number; groups: BakedPropGroup[];
+                                textures: string[]; untextured: number } {
+  const none = { obj: '', tubes: 0, posts: 0, groups: [], textures: [], untextured: 0 };
+  if (!rails.some(railHasTube)) return none;
   const lines: string[] = ['# Slopesmith rail tubes'];
   let vBase = vertexOffset;
   let vtBase = uvOffset;
   let tubes = 0;
   let posts = 0;
+  let untextured = 0;
+  const textures = new Set<string>();
   const groups: BakedPropGroup[] = [];
   rails.forEach((rail, i) => {
     if (!railHasTube(rail)) return; // a motion path or a bare rail is spline data with nothing to draw
     const swept = sweepRail(rail);
     if (!swept) return; // a half-drawn rail ships no tube, mirroring its empty spline
-    const slot = railStyle(rail) === RAIL_STYLE_WOOD ? -1 : skinSlot;
+    const texture = railTubeTexture(rail, skins);
+    const slot = texture ? combiner.resolveTileSlot(texture) : -1; // the combiner dedupes a tile across rails
+    if (slot >= 0) textures.add(texture!); else untextured++;
     const groupName = `${rail.solid ? 'RailSolid' : 'Rail'}_${i}_${safeDataName(rail.name || 'Rail')}`;
     const material = slot >= 0 ? `mat_${slot}` : 'mat_untextured';
     lines.push(`o ${groupName}`);
@@ -694,8 +700,8 @@ export function bakeRailTubes(rails: readonly Rail[], vertexOffset: number, uvOf
       }
     }
   });
-  if (!tubes) return { obj: '', tubes: 0, posts: 0, groups: [] };
-  return { obj: '\n' + lines.join('\n') + '\n', tubes, posts, groups };
+  if (!tubes) return none;
+  return { obj: '\n' + lines.join('\n') + '\n', tubes, posts, groups, textures: [...textures], untextured };
 }
 
 /**

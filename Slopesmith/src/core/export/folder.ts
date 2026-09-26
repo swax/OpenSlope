@@ -641,16 +641,17 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // authored — a mountain with neither never asks which level ships a rail tube.
   let art: NativeArt | undefined;
   const nativeArt = async () => art ??= await provider.nativeArt();
-  // the authored rails' visual tubes: the same sweep the viewport previews, in the donor's red/white rail
-  // skin, appended as static props (the ridable grind is Splines.json — the tube is the decoration along it)
+  // the authored rails' visual tubes: the same sweep the viewport previews, each in its own texture or its
+  // material's default skin, appended as static props (the ridable grind is Splines.json — the tube is the
+  // decoration along it)
   if (doc.rails?.length) {
     const { obj: startObj, v, vt } = objCounts();
-    const skin = await nativeArt();
-    const tubes = bakeRailTubes(doc.rails, v, vt, combiner, { level: skin.level, material: skin.railMaterial });
+    const tubes = bakeRailTubes(doc.rails, v, vt, combiner, (await nativeArt()).railSkins);
     if (tubes.obj) {
       files.text['Props.obj'] = startObj + tubes.obj;
       propGroups.push(...tubes.groups);
-      logLines.push(`baked ${tubes.tubes} rail tube(s) into Props.obj (native red/white skin)`
+      const looks = [...tubes.textures, ...(tubes.untextured ? [`${tubes.untextured} untextured`] : [])];
+      logLines.push(`baked ${tubes.tubes} rail tube(s) into Props.obj (${looks.join(', ')})`
         + (tubes.posts ? ` + ${tubes.posts} support post(s)` : ''));
     }
   }
@@ -659,8 +660,8 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   if (doc.gems?.length) {
     const source = await nativeArt();
     const gemGeometry = await provider.modelGeometry(
-      source.gemTiers.map(t => ({ level: source.level, model: t.model })));
-    const gm = bakeGemModels(source.gemTiers, source.level, gemGeometry, combiner);
+      source.gemTiers.map(t => ({ level: source.gemLevel, model: t.model })));
+    const gm = bakeGemModels(source.gemTiers, source.gemLevel, gemGeometry, combiner);
     if (gm) {
       files.text['GemModels.obj'] = gm.obj;
       logLines.push(`wrote GemModels.obj (native tier crystal(s): ${gm.tiers.map(t => '×' + t).join(' ')})`);

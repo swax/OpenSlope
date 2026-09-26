@@ -50,8 +50,8 @@ free edges, and leaves existing patch identities and authored appearance intact.
 From a hovered edge, walk the quad strip through opposite edges (`SurfaceTopology.cellEdges` pairs
 (0,2)/(1,3) — the same walker as `faceLoop`) in both directions until the strip **closes**, reaches
 the **rim**, or reaches a **pole** (`edgeTouchesPole`). Insert one vertex on every crossed edge at
-fraction `t` (default 0.5; mouse wheel slides the ghost line along the strip like the placement
-wheel), split each crossed quad into two.
+fraction `t` (default 0.5; Alt+wheel slides the ghost line along the strip, as it turns a held
+prop — the plain wheel still zooms), split each crossed quad into two.
 
 - Terminating at a pole is **correct behaviour**, not failure — a loop in a poled mesh is a strip,
   not a global ring. The ghost shows both stop reasons (pole dot / rim tick) before commit.
@@ -151,7 +151,7 @@ Select an edge or edge run and press **X** to stage an extrusion. The placement 
 ## UI
 
 All ops live in the Edit tool as a "Surgery" group; each follows the placement-model conventions
-([012](012-props.md)): ghost preview first, wheel to adjust, click/Enter to commit, Esc to abandon.
+([012](012-props.md)): ghost preview first, Alt+wheel to adjust, click/Enter to commit, Esc to abandon.
 The cage overlay auto-enables while a surgery gesture is armed. Pole dots (3 orange / 5 violet, as in
 the reference view) render whenever the cage is on, so the consequences of a cut are visible
 immediately.

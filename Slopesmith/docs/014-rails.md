@@ -180,9 +180,10 @@ ground hit, floated by the rail's `height` (`onAppendRailNode`). **Enter** or **
 rail left under two nodes is discarded).
 
 - **`viewport.setRails(rails, selRail, selNode)`** builds the rail's **swept tube** (`core/rails/rail-mesh.ts`,
-  below) under `railGroup` in data coords — so rails ride the game-chirality flip with the terrain. Metal
-  rails wear the **native red/white skin** once `ensureTrickArt` resolves it (below); wood keeps its flat
-  tint. Node **pick bulbs** draw only for the selected rail, so idle courses stay uncluttered.
+  below) under `railGroup` in data coords — so rails ride the game-chirality flip with the terrain. Each
+  tube wears its **tube texture** (below) once `ensureTrickArt` resolves the defaults; until then, or with no
+  texture at all, a flat material tint. Node **pick bulbs** draw only for the selected rail, so idle courses
+  stay uncluttered.
 - **Picking** — while drawing, a terrain click only appends (the flow stays a straight chain). Otherwise a
   click resolves nearest-under-cursor among placed props / reference props / free-light bulbs / **rail node
   bulbs** / **rail tubes** / ground: a node bulb selects that node; a hit on a tube grabs the node nearest the
@@ -211,9 +212,9 @@ always, since they pack solid whatever the tube does. The tube is never itself a
 obstacle colour rather than a SurfaceType's.
 - **Tools** (`buildRailTools`) — while drawing, a hint + **finish**; once a node is selected, the rail's
   **height** (re-floats every node by the delta, so the rail keeps its shape as it moves up / down the slope),
-  **material** (metal / wood / ice), **rail pipe**, **starts off**, **add more points**, **delete this point**, and
-  **delete rail**. Unticking **rail pipe** takes the tube away and with it the **solid tube** / **support
-  posts** options, which configure geometry that is no longer there.
+  **material** (metal / wood / ice), **rail pipe**, **tube texture**, **starts off**, **add more points**,
+  **delete this point**, and **delete rail**. Unticking **rail pipe** takes the tube away and with it the
+  **tube texture** / **solid tube** / **support posts** options, which configure geometry that is no longer there.
   A rail some effect names says so here as a count, because nothing about the rail itself would: moving or
   deleting one that a toggle points at is otherwise silent until the export refuses the node.
 
@@ -238,15 +239,42 @@ length, independent of how far apart the authored nodes sit), pentagonal rings (
 ~15–25 raw units) with **parallel-transported** frames (no twist through bends), seam vertex duplicated so u
 wraps a clean 0..1, v ping-ponging exactly like the originals.
 
-- **Viewport** — `buildRailObject` turns the sweep into a `BufferGeometry`; `setRailSkin` (fed by
-  `ensureTrickArt`, which resolves the texture off the shipped rail models' own `MeshData` → `MaterialID` →
-  `TexturePath`, no filename guess) supplies the textured material.
-- **Export** — `buildRailTubes` (`server/routes/props.ts`) emits the same sweep as `o Rail_<i>_<name>` groups
-  appended to `Props.obj`, verts `toRaw`'d, `usemtl` through the shared **MaterialCombiner** (docs/012's
-  combined `Materials.json` + verbatim texture copy — the red/white tile lands as `p_<level>_0077.png`). It
-  rides the standard authored-props path into `props.glb`, textured in Unity with **no collider** — matching
-  the originals (`PlayerCollision: false`; grinding is the spline network's job). Wood-style rails emit
-  untextured (clay), like the start gate.
+- **Viewport** — `buildRailObject` turns the sweep into a `BufferGeometry` wearing a material per texture ref.
+- **Export** — `bakeRailTubes` (`core/export/props.ts`) emits the same sweep as `o Rail_<i>_<name>` groups
+  appended to `Props.obj`, verts `toRaw`'d, `usemtl` through the shared **MaterialCombiner**'s
+  `resolveTileSlot` (docs/012's combined `Materials.json` + verbatim texture copy — the red/white tile lands
+  as `p_<level>_0077.png`, a Custom pick as `p_Custom_<file>`). It rides the standard authored-props path into
+  `props.glb`, textured in Unity with **no collider** — matching the originals (`PlayerCollision: false`;
+  grinding is the spline network's job). A tube with no texture emits untextured (clay), like the start gate.
+  The export log lists the tiles the tubes wore and how many went untextured.
+
+### Tube texture
+
+What a tube wears is **`railTubeTexture(rail, skins)`** (`core/rails/rails.ts`), the one answer the viewport,
+the Tools swatch and the bake all ask: the rail's own **`Rail.texture`** ref when it has one (`''` = deliberately
+untextured), else its **material's default**. The material decides the default and nothing else about the look,
+so changing it swaps a default tube's skin but leaves a picked one alone — the ride stays the material's either
+way. The Tools **tube texture** swatch raises the Texture Library in pick mode (every level's bank, Custom art,
+and a "no texture" cell); **↺ <material> default** drops the pick.
+
+The defaults are **borrowed off shipped models**, data derived through their own `MeshData` → `MaterialID` →
+`TexturePath` with no filename guess (`RAIL_SKIN_MODELS`, `server/routes/props.ts`):
+
+| Material | Borrowed from | Why |
+| --- | --- | --- |
+| metal | `Mdl_Rail_Metal*` | the game's own rail tubes — the red/white split (GARI `0077`, ELYSIUM `0043`, one tile) |
+| wood | `Mdl_Tree*Trunk` | tree bark: retail has no wood tube, and a wood rail rides as a log |
+| ice | `Mdl_Icicle*` | icicle ice: retail's ice rails are bare curves too. Its source material is alpha-blended and the tile runs ~76–100 % opaque, so an ice tube ships faintly frosted while the editor draws it solid |
+
+`/api/props/native-art` (`nativeArtSource`) answers all three together with the gem crystals, **each off the
+first extracted level, by name, that ships it**; a material nothing ships has no default and bakes untextured.
+It used to be simply the first level with prop tables, which broke silently the day a small test track that
+sorts first (`AUTOTEST1`) was extracted: every rail went flat grey, every gem a stand-in, and the export baked
+the tubes untextured.
+
+Any tile maps the way the red/white does — u around the ring, v mirrored every ring interval (2.2 m) — which is
+what makes the candy bands and hides a bark tile's seams, but shows as flips on a tile with an obvious
+direction (text, arrows).
 
 ### Rail options: solid tube + support posts
 
@@ -274,8 +302,8 @@ baked into `pos.y`.
 - **`viewport.setGems(gems, selIdx)`** builds a spinning marker per gem under `gemGroup` (data coords, so
   they ride the chirality flip) — the **native tiered crystal** (`Gem_TrickMultiplier_YellowX2 / OrangeX3 /
   RedX5`: the SAME star mesh at scales 1.0 / 0.857 / 0.714 with flat colour tiles), so the editor shows the
-  exact model the ISO packer clones. `ensureTrickArt` (`app/main.ts`) resolves the three tier models off the
-  donor level by `ModelName` and hands them to `viewport.setGemModels`; until that geometry lands, a
+  exact model the ISO packer clones. `ensureTrickArt` (`app/tricks/operations.ts`) takes the three tier models
+  from `/api/props/native-art` and hands them to `viewport.setGemModels`; until that geometry lands, a
   **tier-tinted octahedron** stands in. The top-bar **Effects** toggle turns them with the cloned retail
   template's recovered `AnimObject` law (45 clip frames/second over its 60-frame full-turn curve); the selected
   gem is emissive-brightened + larger. `gemTier(value)` buckets a Value exactly like the ISO packer

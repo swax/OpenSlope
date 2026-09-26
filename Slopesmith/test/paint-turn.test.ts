@@ -61,10 +61,16 @@ const { installShortcuts } = await import('../src/app/shortcuts');
 
 const turns: [number, boolean][] = [];
 let turnable = true;
+const propTurns: number[] = [];
+let propHeld = false;
 const store = { currentMode: 'paint', paintBrush: null, selectedPaintCell: null, paintMultiSel: [] };
 let chatFocused = false;
+const viewport = {
+  riding: false,
+  turnHeldProp: (deg: number) => { if (!propHeld) return false; propTurns.push(deg); return true; },
+};
 installShortcuts({
-  store, viewport: { riding: false }, edit: {}, trickTools: {}, propOps: {}, sculptBrush: {},
+  store, viewport, edit: {}, trickTools: {}, propOps: {}, sculptBrush: {},
   turnPaintTexture: (dir: 1 | -1, flip: boolean) => { turns.push([dir, flip]); return turnable; },
   chatFocused: () => chatFocused,
   openChat: () => {},
@@ -103,6 +109,21 @@ const quiet = (label: string, key: string, extra: Record<string, unknown> = {}) 
 };
 store.currentMode = 'props';
 quiet('another mode does not turn a texture', 'ArrowRight');
+assert.equal(prevented, 0, 'Props with nothing held leaves the arrow to the browser');
+assert.equal(propTurns.length, 0);
+
+// Props mode: the same arrows turn a HELD prop 15° (→ = +15, clockwise from above), the keyboard twin of
+// Alt+wheel — and never a texture.
+propHeld = true;
+quiet('a held prop turns, not a texture', 'ArrowRight');
+assert.deepEqual(propTurns, [15], '→ turns the held prop +15°');
+assert.equal(prevented, 1, 'a handled prop turn is swallowed');
+press('ArrowLeft');
+assert.deepEqual(propTurns, [15, -15], '← turns it back');
+press('ArrowRight', { altKey: true });
+press('ArrowRight', { ctrlKey: true });
+assert.equal(propTurns.length, 2, 'a modified arrow is not the prop turn');
+propHeld = false;
 store.currentMode = 'paint';
 quiet('a text field keeps its caret keys', 'ArrowRight', { target: { matches: (s: string) => s.includes('input') } });
 chatFocused = true;

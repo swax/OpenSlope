@@ -132,14 +132,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   const multiHandleLast = new THREE.Vector3();      // the centre handle's data-space pos at the last gizmo report
 
   // Props placement mode: the armed model + a translucent ghost of it under the cursor, seated at the exact
-  // pose a click will commit. The wheel turns the ghost (Shift+wheel resizes); a click places and the tool
-  // stays armed (stamp more). Null = select mode.
+  // pose a click will commit. Alt+wheel or ← / → turns the ghost (Shift+wheel resizes) while the plain wheel
+  // keeps zooming; a click places and the tool stays armed (stamp more). Null = select mode.
   let propArm: PropArm | null = null;
   let propGhost: THREE.Group | null = null;         // the ghost meshes (under worldRoot, data coords)
   let propGhostHit: THREE.Vector3 | null = null;    // last terrain hit under the ghost (world coords)
-  let pendingYaw = 0;                               // ghost turn — random per arm / drop, wheel adjusts
+  let pendingYaw = 0;                               // ghost turn — random per arm / drop, turnPending adjusts
   let pendingScale = 1;                             // ghost size — Shift+wheel adjusts, kept across drops
-  let yawManual = false;                            // wheel touched: keep the yaw across drops (no re-roll)
+  let yawManual = false;                            // turned by hand: keep the yaw across drops (no re-roll)
 
   let propGhostMats: THREE.Material[] = [];         // translucent material clones, disposed on rebuild
   const propMoveHandle = new THREE.Object3D();      // scene-root gizmo anchor for the selected prop
@@ -173,8 +173,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   /**
    * Arm placement mode with a model (or put it down with null). While armed, a translucent ghost of the
    * model rides the cursor over the terrain — seated by `baseOffset`×scale like the real drop — and a click
-   * commits it at the ghost's exact pose (onPlaceProp). The turn starts random and re-rolls per drop until the
-   * wheel takes manual control; the size persists across drops. (The shell drops the read-only ref selection.)
+   * commits it at the ghost's exact pose (onPlaceProp). The turn starts random and re-rolls per drop until a
+   * hand turn (turnPending) takes manual control; the size persists across drops. (The shell drops the read-only ref selection.)
    */
   function setArmed(arm: PropArm | null) {
     const rearming = !!arm && (!propArm || propArm.level !== arm.level || propArm.model !== arm.model || propArm.group !== arm.group);
@@ -249,6 +249,17 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     if (!arm || !hit) { g.visible = false; return; }
     g.matrix.copy(placementPose({ pos: seatedDropPos(hit), yaw: pendingYaw, scale: pendingScale }));
     g.visible = true;
+  }
+
+  /** Turn the held prop's pending drop by `deg` (Alt+wheel, ← / →; + = clockwise seen from above, through
+   *  the world's chirality flip) and re-seat the ghost. A hand turn takes manual control, so the turn now holds
+   *  across drops instead of re-rolling. False when nothing is held. */
+  function turnPending(deg: number): boolean {
+    if (!propArm) return false;
+    pendingYaw = ((pendingYaw + deg) % 360 + 360) % 360;
+    yawManual = true;
+    seatPropGhost();
+    return true;
   }
 
   /** The seated data-space origin a drop at this terrain hit (world coords) commits: the click point with
@@ -1445,8 +1456,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     get pendingScale() { return pendingScale; },
     set pendingScale(v: number) { pendingScale = v; },
     get yawManual() { return yawManual; },
-    set yawManual(v: boolean) { yawManual = v; },
-    setArmed, seatPropGhost, seatedDropPos, updateGhost, setVisible, setShadeMode, placementPose, rideColliders,
+    setArmed, seatPropGhost, turnPending, seatedDropPos, updateGhost, setVisible, setShadeMode, placementPose, rideColliders,
     renderStats,
     /** Install the mountain's hit-gated claim order; the selected prop's region redraws against it. */
     setHitGatedSounds(claims: readonly string[] | undefined) { hitGatedClaims = claims ?? []; },

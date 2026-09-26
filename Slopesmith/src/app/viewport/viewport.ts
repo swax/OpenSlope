@@ -52,7 +52,7 @@ import {
 } from '../../core/reference/effects';
 import type { EffectNode, EffectsDocument } from '../../core/effects/document';
 import { authoredMotionPathIdFromSpline } from '../../core/effects/authoring';
-import { nativeSplineFields, railBezierSegments } from '../../core/rails/rails';
+import { nativeSplineFields, railBezierSegments, type RailSkins } from '../../core/rails/rails';
 import type { ParticleVolume } from '../../core/particles/volumes';
 import { runDiagnosticPhase, runDiagnosticPhaseAsync } from '../net/diagnostics';
 import type { SharedCameraView } from '../../core/session/screen-share';
@@ -3286,7 +3286,9 @@ export class Viewport {
 
   setRailArmed(on: boolean) { this.rails.setArmed(on); this.setArmedPlacement(on ? 'rail' : null); }
   setRails(rails: Rail[], selRail: number | null, selNode: number | null) { this.rails.setRails(rails, selRail, selNode); }
-  setRailSkin(skin: { level: string; tex: string }) { this.rails.setSkin(skin); }
+  setRailSkins(skins: RailSkins) { this.rails.setSkins(skins); }
+  /** Each rail material's default tube texture — what the Tools swatch shows for a rail without its own. */
+  get railSkins(): RailSkins { return this.rails.getSkins(); }
   /** Purple, non-grind spline guides belong to Effects mode rather than the Tricks visibility filter. */
   showEffectMotionPaths(on: boolean) { this.rails.setMotionPathsVisible(on); }
   /** Draw every grind rail's surface-coloured centreline while Effects mode is up — the curves its nodes bind to. Both
@@ -3358,13 +3360,17 @@ export class Viewport {
    * Arm placement mode with a model (or put it down with null). While armed, a translucent ghost of the
    * model rides the cursor over the terrain — seated by `baseOffset`×scale like the real drop — and a click
    * commits it at the ghost's exact pose (onPlaceProp). The turn starts random (an unscrolled scatter doesn't
-   * look stamped) and re-rolls per drop until the wheel takes manual control; the size persists across drops.
+   * look stamped) and re-rolls per drop until a hand turn takes manual control; the size persists across drops.
    */
   setPropArmed(arm: { level: string; model: number; baseOffset: number; group?: string } | null) {
     if (arm) this.refDecor.clearPropSelection(); // holding a prop leaves the read-only reference selection behind
     this.props.setArmed(arm);
     this.setArmedPlacement(arm ? 'prop' : null);
   }
+
+  /** ← / → while a prop is held: turn the pending drop by `deg` (+ = clockwise from above). False when
+   *  nothing is held, so the key stays the browser's. */
+  turnHeldProp(deg: number): boolean { return this.props.turnPending(deg); }
 
   /** Show / hide the authored placed props (the global props toggle drives this alongside the reference props). */
   setPlacedPropsVisible(on: boolean) { this.props.setVisible(on); }

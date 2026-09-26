@@ -137,8 +137,8 @@ free (the net-model migration passes the field through). The model geometry is *
 model, from which level.
 
 **The placement rotation** is those three angles, composed YXZ — `Ry(yaw) · Rx(pitch) · Rz(roll)` —
-resolved in one place, `core/props/pose.ts`. `yaw` is the angle placement authors (the wheel turns it, Tools
-names it "turn"), and `pitch` / `roll` are absent on a prop nobody tilted, so an upright placement resolves
+resolved in one place, `core/props/pose.ts`. `yaw` is the angle placement authors (Alt+wheel or ← / → turns it,
+Tools names it "turn"), and `pitch` / `roll` are absent on a prop nobody tilted, so an upright placement resolves
 to exactly `Ry(yaw)`. Everything that poses a prop reads the rotation from that resolver rather than
 building its own `cos`/`sin` pair off `yaw`: the viewport matrix, the OBJ bake, the canonical instance
 quaternion, sign lights, attached emitter frames and group members. That is what keeps a tilted prop from
@@ -170,10 +170,12 @@ puts the prop down.
 
 While **placing**, the cursor changes to the **Props box with a plus**, and a translucent textured **ghost** of
 the held model rides beneath it over the terrain at
-the exact pose a click commits — seated, at the pending turn / size. The **wheel** turns it (15° per notch),
-**Shift+wheel** resizes it (0.1–5×, kept across drops), and a **click** places it; the tool stays armed, so
-repeat clicks stamp more. The turn starts random and re-rolls per drop — a scatter of one model doesn't look
-stamped — until the wheel takes manual control, after which the turn holds across drops (fence lines). Every
+the exact pose a click commits — seated, at the pending turn / size. **Alt+wheel** or **← / →** turns it
+(15° per notch or press, → clockwise from above), **Shift+wheel** resizes it (0.1–5×, kept across drops), and
+a **click** places it; the tool stays armed, so repeat clicks stamp more. The plain wheel stays the camera's
+zoom throughout, so holding a prop never costs you the zoom while you line up a drop. The turn starts random
+and re-rolls per drop — a scatter of one model doesn't look stamped — until you turn it by hand, after which
+the turn holds across drops (fence lines). Every
 drop **seats the model's lowest point on the clicked terrain**, not its origin: origins sit anywhere in the
 mesh (some at the base, some at the centre), so `propBaseOffset` (the lowest vertex's height above the origin,
 `minRawZ/100`) × scale is subtracted from the click height. Resizing keeps that base on the ground (scaling is

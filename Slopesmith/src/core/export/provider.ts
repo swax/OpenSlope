@@ -7,6 +7,7 @@ import type { SourceMaterial } from './materials';
 import type { GeometryLookup } from './props';
 import type { DiscRecipePaths } from './disc';
 import type { CollisionSoundIndex } from '../effects/collision-sound';
+import type { RailSkins } from '../rails/rails';
 
 /**
  * Everything an export needs from outside the document.
@@ -82,13 +83,15 @@ export interface ModelRef {
   model: number;
 }
 
-/** The extracted level a from-scratch mountain borrows native rail/gem art from. */
+/** The shipped art a from-scratch mountain borrows for its rails and gems, each piece off whichever extracted
+ *  level ships it. */
 export interface NativeArt {
-  level: string;
-  /** MaterialID skinning the donor's rail tubes, read off its own rail models — null when it ships none. */
-  railMaterial: number | null;
-  /** The tier crystals (2 / 3 / 5) and the ModelIDs carrying them; empty when the donor has no gem models. */
+  /** The level the gem crystals come from; '' when no extracted level ships them. */
+  gemLevel: string;
+  /** The tier crystals (2 / 3 / 5) and the ModelIDs carrying them; empty when no level has gem models. */
   gemTiers: { tier: number; model: number }[];
+  /** Each rail material's default tube texture, read off a shipped model's own material. */
+  railSkins: RailSkins;
 }
 
 export interface StagedRaceMusic {

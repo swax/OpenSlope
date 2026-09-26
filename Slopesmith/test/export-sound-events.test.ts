@@ -34,7 +34,7 @@ const provider = {
   modelGeometry: async () => () => ({ subs: [] }),
   materialTables: async () => new Map(),
   importedProps: async () => ({ models: [], instances: [] }),
-  nativeArt: async () => ({ rail: null, gem: null }),
+  nativeArt: async () => ({ gemLevel: '', gemTiers: [], railSkins: {} }),
   referenceTexture: async () => new Uint8Array(),
   particleTexture: async () => new Uint8Array(),
   customSound: async () => new Uint8Array([0x52, 0x49, 0x46, 0x46]),
