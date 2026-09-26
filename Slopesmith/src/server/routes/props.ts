@@ -16,7 +16,7 @@ import { NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode } f
 import type { V3 } from '../../core/doc/types';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 import { CUSTOM_TEX_LEVEL, makeTexRef } from '../../core/paint/textures';
-import type { RailMaterialKey, RailSkins } from '../../core/rails/rails';
+import { RAIL_PIPE_MODEL, type RailMaterialKey, type RailSkins } from '../../core/rails/rails';
 import type { LocalBox } from '../../core/lighting/sign-lights';
 import { buildMaterialCombiner, type MaterialCombiner, type SourceMaterial } from '../../core/export/materials';
 import { modelGeometryBox } from '../../core/export/props';
@@ -1039,7 +1039,7 @@ export async function createMaterialCombiner(): Promise<MaterialCombiner> {
  * bark, because a wood rail rides as a log, and icicle ice.
  */
 const RAIL_SKIN_MODELS: Record<RailMaterialKey, RegExp> = {
-  metal: /^Mdl_Rail_Metal/,
+  metal: RAIL_PIPE_MODEL, // the retail pipe chunks themselves — the same models the Prop Library folds (docs/071)
   wood: /^Mdl_Tree\w*Trunk/i,
   ice: /^Mdl_Icicle/i,
 };

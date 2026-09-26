@@ -26,6 +26,8 @@ export type TrickToolsDeps = {
   armLight: () => void;
   /** Turn the Sources view on: video screens are drawn there, so one added while it is off is invisible. */
   revealScreens: () => void;
+  /** Start a blank sheet (docs/071): a textured surface laid along a path. */
+  addSheet: () => void;
   setMode: (m: Mode) => void;
   scheduleRebuild: () => void;
   rebuildTools: () => void;
@@ -33,7 +35,7 @@ export type TrickToolsDeps = {
 };
 
 export function createTrickTools(deps: TrickToolsDeps) {
-  const { store, viewport, gemTool, propLibToggle, ensurePropLevel, toggleTricks, armLight, revealScreens, setMode, scheduleRebuild, rebuildTools, log } = deps;
+  const { store, viewport, gemTool, propLibToggle, ensurePropLevel, toggleTricks, armLight, revealScreens, addSheet, setMode, scheduleRebuild, rebuildTools, log } = deps;
 
   /**
    * Resolve the trick layer's native art and hand it to the viewport: each rail material's default tube skin
@@ -56,13 +58,21 @@ export function createTrickTools(deps: TrickToolsDeps) {
     })().catch(e => { trickArtReady = null; log(`trick art: ${e}`); }));
   }
 
+  /** A trick tool taking over ends a prop line's draw and selection (docs/070), as it does a held prop's. */
+  function leavePropLine() {
+    store.lineDrawing = false; viewport.setLineDrawing(false);
+    store.selectedLine = null; store.selectedLineNode = null;
+  }
+
   /** Standoff (m) a fresh rail floats above the terrain — a low grind-rail height you then tune per rail. */
   const DEFAULT_RAIL_HEIGHT = 1.5;
 
   /** Start a new rail and arm the Rails tool (the top-bar 'Rails' button). Disarms any held prop / light, jumps
    *  to Props mode (which hosts the placement clicks), and drops an empty rail as the drawing target — each
-   *  click on the mountain then appends a node floated at the rail's height (docs/014). */
-  function armRail() {
+   *  click on the mountain then appends a node floated at the rail's height (docs/014). `texture` is a tube tile
+   *  to wear from the start — a level's rail pipes picked in the Prop Library (docs/071); the metal default
+   *  is left as the default rather than pinned. */
+  function armRail(opts: { texture?: string } = {}) {
     if (!store.tricksVisible) toggleTricks(); // must see the trick layer you're adding to
     discardUnfinishedRail();
     const rails = (store.mdoc.rails ??= []);
@@ -70,7 +80,10 @@ export function createTrickTools(deps: TrickToolsDeps) {
     viewport.setPropArmed(null);
     viewport.setLightArmed(false);
     store.gemArmed = false; viewport.setGemArmed(false); // the Rail tool and the Gem tool are exclusive
-    rails.push({ id: nextRailId(rails), kind: 'grind', nodes: [], height: DEFAULT_RAIL_HEIGHT, style: RAIL_STYLE_METAL });
+    leavePropLine();
+    const texture = opts.texture && opts.texture !== viewport.railSkins.metal ? opts.texture : undefined;
+    rails.push({ id: nextRailId(rails), kind: 'grind', nodes: [], height: DEFAULT_RAIL_HEIGHT, style: RAIL_STYLE_METAL,
+      ...(texture ? { texture } : {}) });
     void ensureTrickArt(); // tubes upgrade to their material's default skin when the shipped art lands
     store.selectedRail = rails.length - 1;
     store.selectedNode = null;
@@ -93,6 +106,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
     viewport.setLightArmed(false);
     discardUnfinishedRail();
     store.railDrawing = false; viewport.setRailArmed(false);
+    leavePropLine();
     store.selectedRail = null; store.selectedNode = null;
     store.selectedProp = null; store.selectedLight = null;
     store.multiSel = [];
@@ -239,9 +253,14 @@ export function createTrickTools(deps: TrickToolsDeps) {
     + 'A screen on a BOARD is better added with that prop selected: its inspector fits one to the board’s own '
     + 'face. Screens export as Billboards.json and play video in Unity / VRChat (docs/051).',
     () => addFreeScreen());
+  const addSheetBtn = propToolBtn(VIEW_ICON.addSheet, 'Add sheet',
+    'Add sheet — lay one textured surface along a path: a fence standing up, or a river lying flat. Click points on '
+    + 'the mountain; neighbouring pieces share their edges exactly, like the shipped fences. Give it a tile in its '
+    + 'panel — or pick a shipped sheet in the Prop Library to start from its look.',
+    () => addSheet());
   const addTrickRow = document.createElement('div');
   addTrickRow.className = 'sp-prop-launcher-stack';
-  addTrickRow.append(addRailBtn, addGemBtn, addLightBtn, addScreenBtn);
+  addTrickRow.append(addRailBtn, addGemBtn, addLightBtn, addScreenBtn, addSheetBtn);
   propLibToggle.appendChild(addTrickRow); // sits directly below the Prop Library button in the same persistent header
   /** Reflect the armed special-add tool on the Add rail pipe / gem / light buttons' pressed highlight. */
   function syncAddTrickBtns() {

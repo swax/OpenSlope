@@ -233,6 +233,13 @@ sweeps across the red/white split, so the tube reads as **alternating candy band
 band pair per ring interval (~1.5–2.5 m). There is **no reusable kit piece** (only the support posts are
 instanced), so a faithful custom rail is the same sweep + wiring generated along the authored curve.
 
+The **Prop Library** says so too. A shipped level's pipe chunks (`RAIL_PIPE_MODEL`, the same models the metal
+default skin is read off — GARI's 98, ELYSIUM's 99, each a separate model placed once) fold into ONE **Rail
+pipe** tile rather than a hundred near-identical swatches, and clicking it opens **Add rail pipe** wearing that
+level's tube tile (`mineRailPipes` in `core/rails/rails.ts`; the fold is shared with sheets, docs/071). A chunk
+held and stamped as a prop would only ever be one piece of somebody else's curve. The support posts are the
+exception, and stay ordinary props: one kit model instanced 78–116 times, not a chunk.
+
 `sweepRail(rail)` does that sweep ONCE for both consumers, so the tube you see is the tube that ships:
 the curve resampled to the shipped **ring cadence** (`RAIL_RING_SPACING` 2.2 m — which is also the band-pair
 length, independent of how far apart the authored nodes sit), pentagonal rings (radius 0.2 m — the shipped

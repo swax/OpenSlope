@@ -13,7 +13,7 @@ import { createXrContext } from './xr-context';
  *  routes through the one gizmo, and the kind tells the shell where a drag report should go. */
 export type GizmoKind =
   | 'corner' | 'corners' | 'controlpoints' | 'knot' | 'anchor' | 'handle' | 'cagehandle' | 'reference'
-  | 'prop' | 'props' | 'editmixed' | 'light' | 'railnode' | 'gem' | 'screen' | 'effect' | 'edgeextrusion';
+  | 'prop' | 'props' | 'editmixed' | 'light' | 'railnode' | 'linenode' | 'gem' | 'screen' | 'effect' | 'edgeextrusion';
 
 /**
  * The shared 3D substrate every viewport layer draws into: the renderer, scene, the active camera pair, the

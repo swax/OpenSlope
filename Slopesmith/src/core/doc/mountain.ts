@@ -19,6 +19,7 @@ import { surfaceHeightAt } from '../mesh/surface-height';
 import { parseEffectsDocument, type EffectsDocument } from '../effects/document';
 import { createEmptyEffectsDocument, ensurePlacedPropIds } from '../effects/authoring';
 import { ensureRailIds } from '../rails/rails';
+import { ensurePropLineIds } from '../props/prop-line';
 import { normalizeLabels } from './labels';
 import { normalizeParticleVolumes } from '../particles/volumes';
 import { normalizeRaceMusicArrangement } from '../music/arrangement';
@@ -1089,7 +1090,7 @@ export function buildMeshFromCourse(
     kind: 'mountain', version: 5, name, spacing: target,
     course: { ...line, knots: line.knots.map(k => ({ ...k, pos: [...k.pos] as V3 })) },
     baseSurface: meta.baseSurface ?? 1, props: meta.props, lights: meta.lights, rails: meta.rails,
-    gems: meta.gems, sun: meta.sun, skybox: meta.skybox, raceMusic: meta.raceMusic,
+    propLines: meta.propLines, gems: meta.gems, sun: meta.sun, skybox: meta.skybox, raceMusic: meta.raceMusic,
     raceMusicArrangement: meta.raceMusicArrangement,
     environmentBed: normalizeEnvironmentBed(meta.environmentBed),
     boardSound: meta.boardSound, laps: meta.laps,
@@ -1291,6 +1292,7 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
     ensureLightIds(doc.lights);
     ensureGemIds(doc.gems);
     ensureScreenIds(doc.screens);
+    ensurePropLineIds(doc.propLines);
     normalizeLabels(doc);
     // A dropped `edgeHandles` key raises nothing: the edge falls back to its Bessel default and the terrain
     // quietly changes shape (docs/039). Loading a stored mountain re-keys every one of them from an id to an
@@ -1317,6 +1319,8 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
     ensureGemIds(gems);
     const screens = d.screens as MountainMeta['screens'];
     ensureScreenIds(screens);
+    const propLines = d.propLines as MountainMeta['propLines'];
+    ensurePropLineIds(propLines);
     return {
       name: typeof d.name === 'string' ? d.name : 'MOUNTAIN01',
       course,
@@ -1326,6 +1330,7 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
       rails,
       gems,
       screens,
+      propLines,
       labels: d.labels as MountainMeta['labels'],
       sun: d.sun as MountainMeta['sun'],
       skybox: d.skybox as MountainMeta['skybox'],

@@ -120,6 +120,7 @@ effectDecoration.raycast = () => {};
 scene.add(effectDecoration);
 
 let selected: number | null = null;
+let lineSeat: { id: string; node: number | null } | null = null;
 let referenceSelected: 'scenery' | 'trick' | null = null;
 let selectedSource: string | null = null;
 let placed = 0;
@@ -127,6 +128,7 @@ let unavailable = 0;
 let meshComponentHit: any = null;
 const props: any = {
   placedPropGroup,
+  lastPlacedProps: [] as { id?: string; line?: string }[],
   propArm: null,
   selectedProp: null,
   multiSelProps: [],
@@ -136,6 +138,7 @@ const props: any = {
   propGhostHit: null,
   seatedDropPos: (point: THREE.Vector3) => [point.x, point.y, -point.z],
   seatPropGhost() {},
+  setLineHighlight() {},
   seatProp(index: number) { selected = index; },
   clearSelection() { selected = null; },
 };
@@ -215,6 +218,11 @@ const layers: any = {
   },
   lights: { freeLightGroup, lightArmed: false, clearSelection() {}, clearRigSource() {}, selectRigSource() {} },
   rails: { railGroup, railArmed: false, clearSelection() {} },
+  propLines: {
+    group: new THREE.Group(), drawing: false, lines: [] as { id: string }[],
+    clearSelection() {}, updateBand() {},
+    seatNode(id: string, node: number | null) { lineSeat = { id, node }; },
+  },
   gems: { gemGroup, gemArmed: false, gemLine: null, clearSelection() {} },
   screens: { clearSelection() {} },
   paint: { paintArm: null, cellAtPointer: () => 0, paintSelectAtPointer() {} },
@@ -270,6 +278,32 @@ dom.dispatch('pointerdown', {});
 dom.dispatch('pointerup', {});
 check(selected === 7, 'Props select mode routes a click to the authored prop');
 check(placed === 0, 'display-only effect decoration cannot turn a prop click into placement');
+
+// A prop line (docs/070): its members answer as the line, which is what lays them out.
+{
+  props.lastPlacedProps[7] = { id: 'line:0000:000', line: 'line:0000' };
+  layers.propLines.lines = [{ id: 'line:0000' }];
+  selected = null;
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  const seat = lineSeat as { id: string; node: number | null } | null; // assigned by the fake layer's callback
+  check(selected === null && seat?.id === 'line:0000' && seat.node === null,
+    'a click on a prop line\'s member selects the line, not the member');
+  layers.propLines.lines = [];
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(selected === 7, 'a member whose line is gone is an ordinary prop again');
+  const nodes: V3[] = [];
+  stage.cb.onAppendLineNode = (pos: V3) => { nodes.push(pos); };
+  layers.propLines.drawing = true;
+  selected = null;
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(nodes.length === 1 && selected === null && placed === 0,
+    'drawing a line: a click appends a node on the ground rather than selecting what is under it');
+  layers.propLines.drawing = false;
+  props.lastPlacedProps[7] = undefined;
+}
 
 placedPropGroup.visible = false;
 refSceneryGroup.visible = true;

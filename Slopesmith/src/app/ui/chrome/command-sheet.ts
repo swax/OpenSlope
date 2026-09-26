@@ -112,7 +112,16 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         ? helpPanel('Effects Mode — select', [['LMB', 'select'], ['Ctrl/Cmd+LMB', 'select many'],
           ['gizmo', 'move / resize'], ['Del', 'remove authored'], ['Esc', 'deselect']])
       : store.currentMode === 'props'
-        ? (store.armedProp
+        ? (store.lineDrawing
+          ? helpPanel('Props Mode — laying a path', [['LMB', 'add a point'], ['Enter / Esc', 'finish']])
+          : store.selectedLine !== null
+          ? (() => {
+            // a line and a sheet (docs/070 / 071) share the path gestures; only the noun differs
+            const noun = store.mdoc.propLines?.find(line => line.id === store.selectedLine)?.sheet ? 'sheet' : 'line';
+            return helpPanel(`Props Mode — ${noun}`, [['LMB point', 'select + move'], [`LMB ${noun === 'sheet' ? 'piece' : 'copy'}`, `select the ${noun}`],
+              ['Del', store.selectedLineNode !== null ? 'delete point' : `delete ${noun}`], ['Esc', 'deselect']]);
+          })()
+          : store.armedProp
           ? helpPanel('Props Mode — placing', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['MMB', 'select + arm prop'], ['Esc', 'put down']])
           : helpPanel('Props Mode — select', [['LMB', 'select'], ['drag', 'box-select many'], ['MMB', 'select + arm prop'],
             ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),

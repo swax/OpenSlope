@@ -5,6 +5,8 @@ import { propKindOf } from '../../core/props/kind';
 import { CUSTOM_TEX_LEVEL, makeTexRef } from '../../core/paint/textures';
 import { FAL_GENERATION_HEADER, type FalGenerationProvenance } from '../../core/paint/fal-models';
 import type { GroupDef } from '../../core/reference/groups';
+import { mineSheetFamilies, type SheetFamily } from '../../core/props/sheet-prop';
+import { mineRailPipes, type RailPipeFamily } from '../../core/rails/rails';
 import { fetchJson, postJson } from '../net/fetch-json';
 import { tooltip } from '../ui/components/tooltip';
 import { toast } from '../ui/components/toast';
@@ -36,6 +38,10 @@ export interface PropLibraryCallbacks {
   onPick(level: string, model: number, name: string): void;
   /** A group was chosen — arm the whole assembly for placement. */
   onPickGroup(level: string, id: string): void;
+  /** A sheet was chosen (docs/071) — start a new one with its look and behaviour. */
+  onPickSheet?(level: string, family: SheetFamily): void;
+  /** A level's rail pipes were chosen — open the rail tool wearing their tube tile. */
+  onPickRail?(level: string, family: RailPipeFamily): void;
   /** The panel was shown / hidden — re-place overlays that sit above it. */
   onHeightChange?(): void;
   /** The panel's ✕ was pressed — the host hides it and remembers it as closed. */
@@ -109,6 +115,9 @@ const css = `
 @media (max-width: 760px) { .pl-tiles { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); } }
 `;
 
+/** Pieces a shipped level cut one thing into, shown as ONE library tile (docs/071): a sheet, or its rail pipes. */
+type Fold = { kind: 'sheet'; family: SheetFamily } | { kind: 'rail'; family: RailPipeFamily };
+
 /** Short display name: drop the "Mdl_" prefix and the trailing "_<n>" instance suffix authors used. */
 function shortName(name: string): string {
   return name.replace(/^Mdl_/, '').replace(/_\d+$/, '');
@@ -141,6 +150,7 @@ export class PropLibrary {
   private fileInput = document.createElement('input'); // hidden picker behind the Custom view's + tile
   private importing = false;
   private groupList: GroupDef[] | null = null; // the level's mined group defs (null while loading)
+  private folds = new Map<LevelProps, Fold[]>(); // each level's sheets and rail pipes, found once (docs/071)
   private filter = '';
   private kwFilter: string | null = MISC_KW; // active keyword chip (a KW_CHIPS.kw or MISC_KW); null = all shown. Misc by default
   private chipEls = new Map<string, HTMLButtonElement>(); // keyword → its header chip button (to toggle .on)
@@ -260,7 +270,7 @@ export class PropLibrary {
   /** How much the author has of their own: authored models plus imported GLBs, the two the Custom view mixes. */
   private async countCustomModels(): Promise<void> {
     const count = async (level: string, load: () => Promise<LevelProps>) => {
-      try { return (await load()).models.length; } catch { return 0; }
+      try { return (await load()).models.filter(model => !model.line).length; } catch { return 0; } // a sheet's pieces are not the author's models
     };
     this.customModels = await count(AUTHORED_MODEL_LEVEL, () => this.cb.loadLevel(AUTHORED_MODEL_LEVEL))
       + (this.cb.importedProps ? await count(IMPORTED_PROP_LEVEL, () => this.cb.importedProps!()) : 0);
@@ -365,7 +375,7 @@ export class PropLibrary {
   private entries(): { lp: LevelProps; model: LevelProps['models'][number] }[] {
     const out: { lp: LevelProps; model: LevelProps['models'][number] }[] = [];
     for (const lp of [this.props, this.imported]) {
-      if (lp) for (const model of lp.models) out.push({ lp, model });
+      if (lp) for (const model of lp.models) if (!model.line) out.push({ lp, model }); // a sheet's pieces are the sheet's
     }
     return out;
   }
@@ -436,8 +446,101 @@ export class PropLibrary {
       grid.appendChild(this.addSwatch()); // import lives first, like the Custom texture level's + tile
       grid.appendChild(this.genSwatch());
     }
-    for (const e of shown) grid.appendChild(this.swatch(e.lp, e.model));
+    // A shipped level's pieces-of-one-thing fold into ONE tile each, where the first of their pieces would be: a
+    // fence cut into 332 pieces is one thing to pick, not 332 near-identical swatches (docs/071), and neither are
+    // the 98 chunks its rail pipes were swept into — which open the rail tool rather than holding a chunk.
+    const foldOf = this.foldsByModel();
+    const folded = new Set<Fold>();
+    for (const e of shown) {
+      const fold = e.lp === this.props ? foldOf.get(e.model.id) : undefined;
+      if (!fold) { grid.appendChild(this.swatch(e.lp, e.model)); continue; }
+      if (folded.has(fold)) continue;
+      folded.add(fold);
+      grid.appendChild(fold.kind === 'sheet' ? this.sheetSwatch(e.lp, fold.family) : this.railSwatch(e.lp, fold.family));
+    }
+    if (folded.size) {
+      const pieces = [...folded].reduce((n, fold) => n + fold.family.models.length, 0);
+      const sheets = [...folded].filter(fold => fold.kind === 'sheet').length;
+      this.countEl.textContent = `${shown.length - pieces + folded.size} props`
+        + (sheets ? ` · ${sheets} sheet${sheets === 1 ? '' : 's'}` : '')
+        + (folded.size > sheets ? ' · rail pipes' : '');
+    }
     this.body.appendChild(grid);
+  }
+
+  /** The current level's folds, keyed by each of their models. None for the author's own two libraries. */
+  private foldsByModel(): Map<number, Fold> {
+    const out = new Map<number, Fold>();
+    const lp = this.props;
+    if (!lp || this.isOwnGeometry(lp.level)) return out;
+    let folds = this.folds.get(lp);
+    if (!folds) {
+      const rail = mineRailPipes(lp);
+      folds = [
+        ...(rail ? [{ kind: 'rail' as const, family: rail }] : []),
+        ...mineSheetFamilies(lp).map(family => ({ kind: 'sheet' as const, family })),
+      ];
+      this.folds.set(lp, folds);
+    }
+    for (const fold of folds) for (const model of fold.family.models) if (!out.has(model)) out.set(model, fold);
+    return out;
+  }
+
+  /**
+   * One tile for a level's rail pipes: the swept chunks retail cut its grind-rail tubes into, each placed once
+   * with its curve baked in. None of them is anything to place again — the tile opens Add rail pipe wearing this
+   * level's tube tile instead, so the pipe is swept along whatever curve is drawn.
+   */
+  private railSwatch(lp: LevelProps, family: RailPipeFamily): HTMLElement {
+    const level = lp.level;
+    const el = document.createElement('div');
+    el.className = 'pl-tile';
+    el.dataset.model = String(family.models[0]); // the lazy-thumb pump renders one chunk
+    el.dataset.level = level;
+    const thumb = document.createElement('div');
+    thumb.className = 'pl-thumb';
+    const badge = document.createElement('span');
+    badge.className = 'pl-badge';
+    badge.textContent = `⟋${family.pieces}`;
+    const name = document.createElement('span');
+    name.className = 'pl-name';
+    name.textContent = 'Rail pipe';
+    el.append(thumb, badge, name);
+    tooltip(el, `${family.key} — ${level}’s grind-rail pipes, swept into ${family.pieces} pieces · click to lay a `
+      + 'rail pipe with this tube tile');
+    const cached = this.thumbCache.get(`${level}:${family.models[0]}`);
+    if (cached) thumb.style.backgroundImage = `url(${cached})`;
+    else this.io.observe(el);
+    el.onclick = () => { this.selModel = null; this.highlight(level, null); this.cb.onPickRail?.(level, family); };
+    return el;
+  }
+
+  /**
+   * One tile for a whole sheet (docs/071): its first piece's thumbnail, a sheet glyph with the piece count, and a
+   * click that starts a new sheet with its look and behaviour rather than holding one misshapen piece.
+   */
+  private sheetSwatch(lp: LevelProps, family: SheetFamily): HTMLElement {
+    const level = lp.level;
+    const el = document.createElement('div');
+    el.className = 'pl-tile';
+    el.dataset.model = String(family.representative.model); // the lazy-thumb pump renders this piece
+    el.dataset.level = level;
+    const thumb = document.createElement('div');
+    thumb.className = 'pl-thumb';
+    const badge = document.createElement('span');
+    badge.className = 'pl-badge';
+    badge.textContent = `▭${family.pieces}`;
+    const name = document.createElement('span');
+    name.className = 'pl-name';
+    name.textContent = shortName(family.key);
+    el.append(thumb, badge, name);
+    tooltip(el, `${family.key} — a ${family.lie ? 'lying' : 'standing'} sheet, cut into ${family.pieces} pieces in `
+      + `${level} · click to lay a new one along a path`);
+    const cached = this.thumbCache.get(`${level}:${family.representative.model}`);
+    if (cached) thumb.style.backgroundImage = `url(${cached})`;
+    else this.io.observe(el);
+    el.onclick = () => { this.selModel = null; this.highlight(level, null); this.cb.onPickSheet?.(level, family); };
+    return el;
   }
 
   /** The Custom view's ＋ tile: load one or more GLB files as placeable props (docs/032). */

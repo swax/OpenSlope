@@ -18,6 +18,8 @@ export type ScenePick =
   | { target: 'rail'; source: 'authored'; hit: THREE.Intersection; railIndex: number; railNode?: number }
   /** A shipped level's grind curve, by its stable `Splines.json` row — the only place that rail exists. */
   | { target: 'rail'; source: 'reference'; hit: THREE.Intersection; splineIndex: number }
+  /** A prop line's node bulb (docs/070) — only the selected line shows them. */
+  | { target: 'lineNode'; source: 'authored'; hit: THREE.Intersection; lineId: string; node: number }
   | { target: 'gem'; source: 'authored'; hit: THREE.Intersection; gemIndex: number }
   /** A video screen's panel/movie marker, by its position in the authored or reference screen table. */
   | { target: 'screen'; source: ScenePickSource; hit: THREE.Intersection; screenIndex: number }
@@ -33,6 +35,8 @@ export interface ScenePickQuery {
   /** Batched light-bulb / speaker markers exposed by the Sources view toggle. */
   sources?: boolean;
   rails?: boolean;
+  /** The selected prop line's node bulbs. */
+  lines?: boolean;
   gems?: boolean;
   screens?: boolean;
   /** Movie-marker-only screen query, used with Sources icons so it remains clickable through scenery. */
@@ -57,6 +61,8 @@ export interface ScenePickingAccess {
   railRoots(): readonly THREE.Object3D[];
   /** The loaded reference's drawn grind splines, pickable wherever the authored rails are. */
   referenceRailRoots?(): readonly THREE.Object3D[];
+  /** The selected prop line's node bulbs (docs/070). */
+  lineRoots?(): readonly THREE.Object3D[];
   gemRoots(): readonly THREE.Object3D[];
   /** Authored and reference video-screen panels and movie-marker clouds. */
   screenRoots?(): readonly THREE.Object3D[];
@@ -185,6 +191,15 @@ export function createScenePicking(stage: Stage, access: ScenePickingAccess) {
       if (refHit) consider({
         target: 'rail', source: 'reference', hit: refHit,
         splineIndex: refHit.object.userData.refSplineIndex as number,
+      });
+    }
+
+    if (query.lines) {
+      const hit = firstHit(access.lineRoots?.() ?? [], true,
+        candidate => typeof candidate.object.userData.lineId === 'string' && Number.isInteger(candidate.object.userData.lineNode));
+      if (hit) consider({
+        target: 'lineNode', source: 'authored', hit,
+        lineId: hit.object.userData.lineId as string, node: hit.object.userData.lineNode as number,
       });
     }
 

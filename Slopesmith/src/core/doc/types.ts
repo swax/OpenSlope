@@ -176,6 +176,10 @@ export interface MountainMeta {
    *  Exported as Billboards.json, the same contract `snowknife billboards` writes for an extracted course
    *  (docs/051). Absent in docs saved before screens. */
   screens?: Screen[];
+  /** PROP LINES — a path laid on the ground that owns a row of placements of one model: a fence, a line of
+   *  lamps (docs/070). The members are ordinary `props` entries tagged with the line's id; this is the path
+   *  and the settings they are laid out from. Absent in docs saved before prop lines. */
+  propLines?: PropLine[];
 }
 
 /**
@@ -318,6 +322,9 @@ export interface AuthoredModel {
   /** What every new placement of this model starts with (docs/069): contact, surface, sounds, self-lighting.
    *  Copied onto a placement when it is stamped; absent = the standard starting point for authored art. */
   defaults?: PropBehaviour;
+  /** The SHEET (`PropLine.id`) this model is one piece of (docs/071). The sheet generates and rebuilds it, so
+   *  it is not offered in the Prop Library or for editing on its own. Absent = the author's own model. */
+  line?: string;
 }
 
 /**
@@ -447,6 +454,67 @@ export interface Screen {
   height: number;
 }
 
+/** What every member of a prop line copies: a placement minus its identity and its pose — the model (or
+ *  group), its label memberships and its behaviour (docs/070). */
+export type PropLineTemplate =
+  Omit<PlacedProp, 'id' | 'pos' | 'yaw' | 'pitch' | 'roll' | 'scale' | 'line' | 'effectTrigger'>;
+
+/**
+ * A PROP LINE (docs/070): a path laid on the ground that owns a row of placements of one model — a fence, a
+ * line of lamps, a row of cones.
+ *
+ * The members are real `PlacedProp`s in the document's `props`, tagged with this line's id, so everything that
+ * reads placements (the viewport, Test, the export, the ISO) handles them as it handles any other. This record
+ * is what they are laid out FROM: change the path or a setting and the members are thrown away and laid out
+ * again (`core/props/prop-line.ts`). An edit to one member by hand lasts only until the next re-layout.
+ */
+export interface PropLine {
+  /** Stable authoring identity (`line:NNNN`); each member's id is derived from it (`lineMemberId`). */
+  id?: string;
+  /** Optional label for the outliner / tooltip. */
+  name?: string;
+  /** Path points in editor/data space (m, Y-up), on the ground they were laid on. The path is the
+   *  Catmull-Rom curve through them, the same curve a rail uses (`core/rails/rails.ts`). */
+  nodes: V3[];
+  /** What every member copies. */
+  template: PropLineTemplate;
+  /** Metres between member centres, measured straight rather than along the curve. Absent = the model's own
+   *  length along the line, so panels butt end to end. The layout nudges it so a whole number fits. */
+  spacing?: number;
+  /** `span` (default): one member centred on each straight step between joints, turned along it — a fence
+   *  panel. `joint`: one member standing at every joint, both ends included — a lamp, a post, a cone. */
+  place?: 'span' | 'joint';
+  /** Extra turn about vertical, degrees, on top of lining the model's long side up with the path. */
+  turn?: number;
+  /** Tilt each member to follow the ground between its ends (a raked fence). Off = upright, seated so no end
+   *  floats. */
+  rake?: boolean;
+  /** Uniform scale every member is placed at. */
+  scale: number;
+  /** Present = a SHEET (docs/071): each span is filled by a generated textured quad — a one-quad tiled model
+   *  the line owns — instead of a copy of the template's model. `spacing` is then the span length. */
+  sheet?: PropSheet;
+}
+
+/**
+ * A SHEET's own settings (docs/071): one continuous textured surface drawn along the line's path, standing up
+ * (a fence) or lying flat (a river), cut into one piece per span the way the shipped levels store theirs.
+ */
+export interface PropSheet {
+  /** Lie flat along the ground (a river). Absent = stand up from it (a fence). */
+  lie?: boolean;
+  /** Standing: metres from the ground to the top edge. Lying: metres across. */
+  size: number;
+  /** Lying: metres the surface floats above the ground at each joint. Absent = the default lift. */
+  lift?: number;
+  /** The tile every piece wears ("LEVEL/NNNN.png"). Absent = untextured clay. */
+  texture?: string;
+  /** Wear the tile through the native alpha pass (`AuthoredModel.blend`). */
+  blend?: boolean;
+  /** The tile's D4 turn on every piece (`AuthoredModel.orient`). */
+  orient?: { rot: number; mirror: boolean };
+}
+
 /**
  * Complete collision profile for an authored placement [Trailmap: 130-collision-data]. New placements receive
  * inferred defaults, but every field remains independently editable and packs unchanged. This is also the exact
@@ -519,6 +587,9 @@ export interface PlacedProp {
    *  models and the group's lights DERIVE from the def (mined per level via /api/groups) at render /
    *  export time, so they follow the one placement. Absent = a plain single prop. */
   group?: string;
+  /** The PROP LINE (`PropLine.id`) this placement is a member of (docs/070). The line lays its members out,
+   *  so selecting one selects the line, and a re-layout replaces them. Absent = placed on its own. */
+  line?: string;
   /** ADL collision-sound EVENT id (`Sounds.CollisonSound`) played as a positional one-shot when the rider
    *  hits the prop [Trailmap: 420-audio-runtime]. An event id, not a bank slot — resolved through
    *  core/effects/collision-sound.ts against the prop's source-level course bank. Absent = silent. */

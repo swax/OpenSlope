@@ -364,6 +364,8 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       lights: { type: 'array', description: 'Free-standing lights — see /api/schemas/AuthoredLight.' },
       rails: { type: 'array', description: 'Grind rails / motion paths — see /api/schemas/Rail.' },
       gems: { type: 'array', description: 'Pickups — see /api/schemas/Gem.' },
+      propLines: { type: 'array', description: 'Prop lines — a path that owns a row of placements (docs/070). '
+        + 'Its members are ordinary props carrying `line` = the line id; editing the line lays them out again.' },
       sun: { description: 'The directional sun — see /api/schemas/SunLight.' },
       skybox: { description: 'The backdrop — see /api/schemas/SkyboxDoc.' },
       effects: { description: 'Portable SSF effect graph — see /api/schemas/EffectsDocument.' },

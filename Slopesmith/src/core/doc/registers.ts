@@ -18,7 +18,7 @@ import { readVertex, writeVertex } from '../mesh/primitives';
  * | Vertex position                         | `v/<vertex id>`        | xyz                |
  * | Edge handle                             | `h/<from id>><to id>`  | offset             |
  * | Quad attributes, one register per field | `q/<quad id>/<field>`  | paint/tex/…        |
- * | Props, lights, rails, gems, models, volumes, screens, effects | `o/<family>/<id>` | the whole object |
+ * | Props, lights, rails, gems, models, volumes, screens, prop lines, effects | `o/<family>/<id>` | the whole object |
  * | Course path                             | `course`               | every knot         |
  * | Globals — name, sun, skybox, music, …   | `g/<field>`            | the field's value  |
  *
@@ -60,7 +60,7 @@ export type QuadField = 'paint' | 'tex' | 'orient' | 'lock' | 'twist' | 'labels'
 
 /** The object families whose members are each one whole register. */
 export type ObjectFamily =
-  'prop' | 'light' | 'rail' | 'gem' | 'model' | 'volume' | 'screen' | 'label' | 'effect' | 'effect-node';
+  'prop' | 'light' | 'rail' | 'gem' | 'model' | 'volume' | 'screen' | 'prop-line' | 'label' | 'effect' | 'effect-node';
 
 const VERTEX_PREFIX = 'v/';
 const HANDLE_PREFIX = 'h/';
@@ -118,7 +118,7 @@ const STRUCTURAL: ReadonlySet<string> = new Set([
 /** The fields that decompose into registers of their own rather than being held whole as one global. */
 const DECOMPOSED: ReadonlySet<string> = new Set([
   'edgeHandles', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels',
-  'course', 'props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'labels', 'effects',
+  'course', 'props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'labels', 'effects',
 ]);
 
 /** The per-quad channel behind each attribute field, in the order a quad's registers are emitted. */
@@ -239,6 +239,7 @@ function emitObjects(doc: QuadMeshDoc, emit: Emit, only?: ObjectFamily): void {
   list('model', doc.models, model => keyable('a model', model.id));
   list('volume', doc.particleVolumes, volume => keyable('a particle volume', volume.id));
   list('screen', doc.screens, screen => keyable('a screen', screen.id));
+  list('prop-line', doc.propLines, line => keyable('a prop line', line.id));
   list('label', doc.labels, label => keyable('a label', label.id));
   emitEffects(doc.effects, emit, only);
 }
@@ -320,7 +321,7 @@ const chunkRange = (section: string): [number, number] => {
 };
 
 const families: ReadonlySet<string> =
-  new Set<ObjectFamily>(['prop', 'light', 'rail', 'gem', 'model', 'volume', 'screen', 'label', 'effect', 'effect-node']);
+  new Set<ObjectFamily>(['prop', 'light', 'rail', 'gem', 'model', 'volume', 'screen', 'prop-line', 'label', 'effect', 'effect-node']);
 
 /**
  * Which section hashes a register — vertices and quads by the chunk their index falls in, a crease by the
@@ -575,7 +576,7 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
     const family = key.slice(OBJECT_PREFIX.length, cut) as ObjectFamily;
     const id = key.slice(cut + 1);
     if (!id) return 'refused';
-    const list = <T>(field: 'props' | 'lights' | 'rails' | 'gems' | 'models' | 'particleVolumes' | 'screens' | 'labels') => ({
+    const list = <T>(field: 'props' | 'lights' | 'rails' | 'gems' | 'models' | 'particleVolumes' | 'screens' | 'propLines' | 'labels') => ({
       read: () => record[field] as T[] | undefined,
       make: () => (record[field] ??= []) as T[],
     });
@@ -607,6 +608,10 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
       case 'screen': {
         const held = list<{ id?: string }>('screens');
         return byIdentity(held.read, held.make, screen => screen.id, id);
+      }
+      case 'prop-line': {
+        const held = list<{ id?: string }>('propLines');
+        return byIdentity(held.read, held.make, line => line.id, id);
       }
       case 'label': {
         const held = list<{ id: string }>('labels');
@@ -677,7 +682,7 @@ export function registerShell(doc: QuadMeshDoc): QuadMeshDoc {
   for (const channel of ['edgeHandles', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels']) {
     if (channel in record) record[channel] = {};
   }
-  for (const family of ['props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'labels']) {
+  for (const family of ['props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'labels']) {
     if (family in record) record[family] = [];
   }
   // The effects document's presence is itself carried by a register, so it goes with the rest of them.

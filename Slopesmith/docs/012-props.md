@@ -175,7 +175,8 @@ the exact pose a click commits — seated, at the pending turn / size. **Alt+whe
 a **click** places it; the tool stays armed, so repeat clicks stamp more. The plain wheel stays the camera's
 zoom throughout, so holding a prop never costs you the zoom while you line up a drop. The turn starts random
 and re-rolls per drop — a scatter of one model doesn't look stamped — until you turn it by hand, after which
-the turn holds across drops (fence lines). Every
+the turn holds across drops. For a real fence line, **⟿ lay as a line** in the held prop's panel lays the prop
+along a drawn path instead ([070](070-prop-lines.md)). Every
 drop **seats the model's lowest point on the clicked terrain**, not its origin: origins sit anywhere in the
 mesh (some at the base, some at the centre), so `propBaseOffset` (the lowest vertex's height above the origin,
 `minRawZ/100`) × scale is subtracted from the click height. Resizing keeps that base on the ground (scaling is

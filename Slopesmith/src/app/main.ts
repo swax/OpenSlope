@@ -13,6 +13,7 @@ import { describeApplied, drainBlenderPushes, openBlenderGuide } from './props/b
 import { PropLibrary } from './props/library';
 import { PropPreview } from './props/preview';
 import { createPropOps } from './props/operations';
+import { createPropLineOps } from './props/lines';
 import { createTrickTools } from './tricks/operations';
 import { Palette } from './paint/palette';
 import { tooltip } from './ui/components/tooltip';
@@ -166,6 +167,7 @@ const viewportCallbacks = createViewportCallbacks({
   palette: () => palette,
   library: () => library,
   propOps: () => propOps,
+  propLines: () => propLines,
   play: () => play,
   coursePath: () => coursePath(),
   scheduleRebuild: () => scheduleRebuild(),
@@ -371,6 +373,9 @@ const propLib = new PropLibrary({
     ? Promise.resolve([]) : propOps.ensureGroupDefs(level),
   onPick: (level, model, name) => void propOps.armProp(level, model, name),
   onPickGroup: (level, id) => void propOps.armGroupById(level, id),
+  onPickSheet: (level, family) => propLines.pickSheet(level, family), // docs/071
+  // a level's rail pipes are chunks swept along its own curves: the tile opens the rail tool in their tube tile
+  onPickRail: (_level, family) => trickTools.armRail({ texture: family.texture ?? undefined }),
   // the Custom view also lists imported GLB props, loaded through its + tile (docs/032)
   importedProps: () => propOps.ensurePropLevel(IMPORTED_PROP_LEVEL),
   onImported: () => propOps.reloadImportedProps(),
@@ -726,6 +731,7 @@ function renderMountainObjects() {
 function renderMountainDetails() {
   viewport.setFreeLights(store.mdoc.lights ?? [], store.selectedLight);
   viewport.setRails(store.mdoc.rails ?? [], store.selectedRail, store.selectedNode);
+  viewport.setPropLines(propLines.displayLines(), store.selectedLine, store.selectedLineNode); // docs/070
   viewport.setGems(store.mdoc.gems ?? [], store.selectedGem);
   // Screens resolve against the placements they are attached to, so they rebuild whenever either does.
   viewport.setScreens(store.mdoc.screens ?? [], store.mdoc.props, store.selectedScreen);
@@ -865,6 +871,10 @@ function restoreDoc(json: string) {
   store.selectedNode = null;
   store.railDrawing = false;
   viewport.setRailArmed(false);
+  store.selectedLine = null;
+  store.selectedLineNode = null;
+  store.lineDrawing = false;
+  viewport.setLineDrawing(false);
   store.selectedGem = null;
   store.gemArmed = false;
   viewport.setGemArmed(false);
@@ -1036,6 +1046,13 @@ const propOps = createPropOps({
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
 });
+// Prop lines (docs/070): a path that owns a row of placements. The ops live in props/lines.ts; the members are
+// ordinary placements, so everything below that reads props handles them unchanged.
+const propLines = createPropLineOps({
+  store, viewport, propOps, groupDefIdx, setPropLibWanted, scheduleRebuild,
+  rebuildTools: () => rebuildTools(),
+  updateCmdSheet: () => updateCmdSheet(),
+});
 const effects = createEffectsEditor({
   store, viewport, scheduleRebuild, goToProp, goToRail,
   loadPropLevel: propOps.ensurePropLevel,
@@ -1101,6 +1118,7 @@ function armLight() {
   viewport.setPropArmed(null);
   trickTools.discardUnfinishedRail(); // arming a light cancels rail drawing — and drops a rail with no points
   store.railDrawing = false; viewport.setRailArmed(false);
+  propLines.leaveLine(); // …and a prop line's
   store.gemArmed = false; viewport.setGemArmed(false); store.trickTool = null; // …and leaves the trick tools
   viewport.setLightArmed(true);
   store.selectedLight = null;
@@ -1149,6 +1167,7 @@ const trickTools = createTrickTools({
   store, viewport, gemTool, propLibToggle,
   ensurePropLevel: propOps.ensurePropLevel,
   toggleTricks, armLight, revealScreens, setMode,
+  addSheet: () => propLines.startBlankSheet(), // docs/071
   scheduleRebuild,
   rebuildTools: () => rebuildTools(),
   log,
@@ -1501,6 +1520,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   deleteSelectedLight, deleteSelectedScreen, revealScreens,
   deleteSelectedGem: trickTools.deleteSelectedGem, deleteSelectedRail: trickTools.deleteSelectedRail,
   deleteSelectedRailNode: trickTools.deleteSelectedRailNode, finishRail: trickTools.finishRail,
+  propLines,
   modelEdit: {
     create: () => createModelFlow(),
     enter: (id, atIndex) => enterModelEdit(id, atIndex),
@@ -1743,8 +1763,9 @@ function setMode(m: Mode) {
   if (m !== 'edit' && store.weldTool) { store.weldTool = null; store.weldSource = []; store.weldEdgeSource = []; viewport.setWeldTool(false); } // the weld gesture is Edit-only too
   if (m !== 'edit') clearCreateEdge();
   if (m !== 'edit' && store.modelEditId) exitModelEdit(false); // model editing is an Edit-mode session; other modes see the mountain
-  if (m !== 'props') { // the trick tools (rails + gems) and the screens live in Props mode
+  if (m !== 'props') { // the trick tools (rails + gems), prop lines and the screens live in Props mode
     store.railDrawing = false; viewport.setRailArmed(false); store.selectedRail = null; store.selectedNode = null;
+    store.lineDrawing = false; viewport.setLineDrawing(false); store.selectedLine = null; store.selectedLineNode = null;
     store.gemArmed = false; viewport.setGemArmed(false); store.selectedGem = null; store.trickTool = null;
     store.selectedScreen = null;
     store.selectedRefScreen = null;
@@ -2169,6 +2190,10 @@ async function loadMountain() {
     store.selectedNode = null;
     store.railDrawing = false;
     viewport.setRailArmed(false);
+    store.selectedLine = null;
+    store.selectedLineNode = null;
+    store.lineDrawing = false;
+    viewport.setLineDrawing(false);
     store.selectedGem = null;
     store.gemArmed = false;
     viewport.setGemArmed(false);
@@ -2215,7 +2240,7 @@ async function loadMountain() {
 
 // keyboard — the global shortcut listener (shortcuts.ts); everything it routes to exists by now
 installShortcuts({
-  store, viewport, edit, trickTools, propOps, sculptBrush: brush,
+  store, viewport, edit, trickTools, propOps, propLines, sculptBrush: brush,
   undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot,
   cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile,
   turnPaintTexture,

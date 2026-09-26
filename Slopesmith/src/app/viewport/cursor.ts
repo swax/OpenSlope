@@ -49,11 +49,13 @@ export const LIGHT_PLACEMENT_CURSOR = placementCursor(BULB_ICON_BODY);
 
 /** Which tool, if any, is currently held over the viewport. At most one is ever armed at a time — arming any
  *  of them disarms the others — so this is a choice rather than a set of flags to resolve. */
-export type ArmedPlacement = 'prop' | 'rail' | 'gem' | 'light' | null;
+export type ArmedPlacement = 'prop' | 'rail' | 'line' | 'gem' | 'light' | null;
 
 const PLACEMENT_CURSOR: Record<Exclude<ArmedPlacement, null>, string> = {
   prop: PROP_PLACEMENT_CURSOR,
   rail: RAIL_PLACEMENT_CURSOR,
+  // A prop line is laid with the rail's click-a-chain-of-points gesture, so it wears the rail's cursor.
+  line: RAIL_PLACEMENT_CURSOR,
   gem: GEM_PLACEMENT_CURSOR,
   light: LIGHT_PLACEMENT_CURSOR,
 };

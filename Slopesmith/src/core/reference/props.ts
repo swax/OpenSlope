@@ -168,6 +168,8 @@ export interface PropModel {
   /** The effect an extracted level's model hands every new placement (docs/069 · Effects): which of the level's
    *  `effects` its visible copies most often carry, and how many do. Absent when that is none, or not portable. */
   effect?: PropEffectDefault;
+  /** A piece of a SHEET (docs/071): generated and owned by that sheet, so the Prop Library leaves it out. */
+  line?: string;
 }
 
 /** One placement of a model in the level: a raw-space transform + which model it draws. */

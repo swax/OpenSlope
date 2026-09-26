@@ -184,7 +184,7 @@ const plural = (count: number, one: string, many = `${one}s`): string =>
 /** What each object family is called when it is being counted. */
 const FAMILY_NOUN: Record<ObjectFamily, string> = {
   prop: 'prop', light: 'light', rail: 'rail', gem: 'gem', model: 'model',
-  volume: 'particle volume', screen: 'video screen', label: 'label', effect: 'effect',
+  volume: 'particle volume', screen: 'video screen', 'prop-line': 'prop line', label: 'label', effect: 'effect',
   'effect-node': 'effect node',
 };
 

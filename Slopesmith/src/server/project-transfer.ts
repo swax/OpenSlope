@@ -125,6 +125,7 @@ async function referencedAssets(document: EditDoc): Promise<Array<Omit<BundleAss
 
   for (const ref of Object.values(document.quadTex ?? {})) addTexture(ref);
   for (const model of document.models ?? []) addTexture(model.texture);
+  for (const line of document.propLines ?? []) addTexture(line.sheet?.texture); // a sheet's tile (docs/071)
 
   const sounds = new Set<string>();
   const models = new Set<number>();
@@ -139,6 +140,11 @@ async function referencedAssets(document: EditDoc): Promise<Array<Omit<BundleAss
   for (const prop of document.props ?? []) {
     addSounds(prop);
     if (prop.level === IMPORTED_PROP_LEVEL) models.add(prop.model);
+  }
+  // A prop line's template is what its members are laid out from again (docs/070), so it names what they name.
+  for (const line of document.propLines ?? []) {
+    addSounds(line.template);
+    if (line.template.level === IMPORTED_PROP_LEVEL) models.add(line.template.model);
   }
 
   if (models.size) {
@@ -303,6 +309,14 @@ function retargetDocument(document: EditDoc, moves: {
       ...(prop.level === IMPORTED_PROP_LEVEL && moves.models.has(prop.model)
         ? { model: moves.models.get(prop.model)! } : {}),
     }));
+  }
+  // …and a prop line's template the same way, or its next re-layout would put the old names back (docs/070).
+  if (next.propLines) {
+    next.propLines = next.propLines.map(line => ({ ...line, template: {
+      ...resound(line.template),
+      ...(line.template.level === IMPORTED_PROP_LEVEL && moves.models.has(line.template.model)
+        ? { model: moves.models.get(line.template.model)! } : {}),
+    }, ...(line.sheet ? { sheet: { ...line.sheet, texture: tile(line.sheet.texture) } } : {}) }));
   }
   if (next.raceMusic && moves.music.has(next.raceMusic.toLowerCase())) {
     next.raceMusic = moves.music.get(next.raceMusic.toLowerCase())!;

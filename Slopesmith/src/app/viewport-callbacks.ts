@@ -12,15 +12,13 @@ import type { EditSession } from './edit/session';
 import type { Palette } from './paint/palette';
 import type { TextureLibrary } from './paint/library';
 import type { PropOps } from './props/operations';
+import type { PropLineOps } from './props/lines';
 import type { Play } from './ride/play';
 import type { SceneSel } from './ui/chrome/scene-panel';
 import { toast } from './ui/components/toast';
 import type { RotationSnapStep, SnapStep, Viewport, ViewportCallbacks } from './viewport/viewport';
 import { shortcutForMode } from './mode-shortcuts';
-import {
-  attachEffectTemplateToProp, attachEffectToProp, attachModelEffectsToProp, createEmptyEffectsDocument,
-  nextPlacedPropId,
-} from '../core/effects/authoring';
+import { nextPlacedPropId } from '../core/effects/authoring';
 import { nextGemId, nextLightId } from '../core/doc/ids';
 import type { RigLight } from '../core/reference/lights';
 import { placedPropCollisionProfile } from '../core/props/contact';
@@ -66,6 +64,7 @@ export type ViewportWiringDeps = {
   palette: () => Palette;
   library: () => TextureLibrary;
   propOps: () => PropOps;
+  propLines: () => PropLineOps;
   play: () => Play;
   coursePath: () => CoursePath;
   scheduleRebuild: () => void;
@@ -84,7 +83,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     store, edit, brush, gemTool, lightTool,
     toggleViewGrid, setViewGridStep, toggleSnap, setSnapStep, setRotationSnapStep,
     selectPaintCell, rangeSelectPaintCells, clearPaintSelection,
-    viewport, palette, library, propOps, play, coursePath,
+    viewport, palette, library, propOps, propLines, play, coursePath,
     scheduleRebuild, rebuildTools, updateCmdSheet, refreshSelection,
     getSceneSel, selectScene, showReferenceLightDetails, persistRef, sendRideEvent,
   } = deps;
@@ -101,6 +100,11 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
   const clearScreenState = () => {
     store.selectedScreen = null;
     store.selectedRefScreen = null;
+  };
+  /** Something else was selected: a prop line (docs/070) lets go, as a rail does. */
+  const clearLineState = () => {
+    store.selectedLine = null;
+    store.selectedLineNode = null;
   };
 
   /** A fresh hand-placed free light, dropped at whatever the Add light panel is preset to. A spot also needs
@@ -263,27 +267,8 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         ...(store.armedProp.group ? { group: store.armedProp.group } : {}),
       };
       props.push(applyBehaviour(placed, store.armedProp.behaviour));
-      // The held effect (docs/069 · Effects): a shipped model's portable one, attached through the slot every
-      // placement of it shares, or the copied placement's own slot. Before the declared effects below, so a copy
-      // of an imported prop shares its source's effect rather than growing a slot of its own.
-      const held = store.armedProp.effect;
-      if (held && !store.armedProp.effectOff) {
-        const effects = (store.mdoc.effects ??= createEmptyEffectsDocument(store.mdoc.name));
-        if (held.kind === 'template')
-          attachEffectTemplateToProp(effects, id, held.template, propOps().shortPropName(store.armedProp.name));
-        else if (effects.slots.some(slot => slot.id === held.slot))
-          attachEffectToProp(effects, id, held.slot, held.circumstance);
-      }
-      // A model that declared its own effects gets them attached here, so stamping a snow gun down gives
-      // you one that is already throwing snow rather than one waiting to be wired up. Emitters and
-      // scrolling surfaces both become ordinary nodes in an ordinary persistent graph, which the Effects
-      // editor owns from that moment: retune or delete it, and the next stamp is unaffected because this
-      // only ever fires for a prop with no attachment yet.
-      const declared = propOps().modelDeclarations(store.armedProp.level, store.armedProp.model);
-      if (declared.emitters.length || declared.scrolls.length || declared.clip) {
-        const effects = (store.mdoc.effects ??= createEmptyEffectsDocument(store.mdoc.name));
-        attachModelEffectsToProp(effects, id, declared);
-      }
+      // …then the held effect and whatever the model declared for itself (docs/069 · Effects).
+      propOps().stampHeldEffects(id, store.armedProp);
       scheduleRebuild();
     },
     onSelectProp(i: number | null) {
@@ -293,6 +278,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (i !== null) {
         store.selectedLight = null; store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
         clearScreenState();
+        clearLineState();
         clearReferenceLight();
       }
       if (store.currentMode === 'props') rebuildTools();
@@ -322,7 +308,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       store.multiSel = indices;
       if (indices.length) {
         store.selectedProp = null; store.selectedLight = null; store.selectedRail = null; store.selectedNode = null;
-        store.selectedGem = null; clearScreenState(); clearReferenceLight();
+        store.selectedGem = null; clearScreenState(); clearLineState(); clearReferenceLight();
       }
       viewport().setPlacedPropSelection(store.selectedProp, indices);
       if (store.currentMode === 'props') rebuildTools();
@@ -371,6 +357,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedProp = null; store.multiSel = []; store.selectedLight = null;
         store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
         clearScreenState();
+        clearLineState();
         clearReferenceLight();
       }
       store.selectedRefProp = selected
@@ -391,6 +378,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedProp = null; store.multiSel = []; store.selectedLight = null; store.selectedRefProp = null;
         store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
         clearScreenState();
+        clearLineState();
       }
       store.selectedRefLight = selected ? { level: level!, light: light! } : null;
       showReferenceLightDetails(level, light);
@@ -402,6 +390,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedProp = null; store.multiSel = []; store.selectedRefProp = null;
         store.selectedLight = null; store.selectedRail = null; store.selectedNode = null;
         store.selectedGem = null; store.selectedScreen = null;
+        clearLineState();
         clearReferenceLight();
       }
       store.selectedRefScreen = selected ? { level: level!, screen: screen! } : null;
@@ -469,7 +458,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     },
     onSelectLight(id: string | null) {
       store.selectedLight = id;
-      if (id !== null) { store.selectedProp = null; store.multiSel = []; clearScreenState(); clearReferenceLight(); }
+      if (id !== null) { store.selectedProp = null; store.multiSel = []; clearScreenState(); clearLineState(); clearReferenceLight(); }
       scheduleRebuild();
       if (store.currentMode === 'props') rebuildTools();
     },
@@ -492,6 +481,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (rail !== null) {
         store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.railDrawing = false;
         clearScreenState();
+        clearLineState();
         clearReferenceLight();
       } // picking a node stops drawing
       scheduleRebuild();
@@ -502,6 +492,21 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (r?.nodes[node]) r.nodes[node] = pos;
       scheduleRebuild();
     },
+    onAppendLineNode(pos: V3) { propLines().appendNode(pos); },
+    onSelectLineNode(line: string | null, node: number | null) {
+      store.selectedLine = line;
+      store.selectedLineNode = node;
+      if (line !== null) {
+        store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.selectedRefProp = null;
+        store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
+        store.railDrawing = false; viewport().setRailArmed(false);
+        clearScreenState();
+        clearReferenceLight();
+      } else if (store.lineDrawing) propLines().finishLine(); // an empty-space click with a line half-drawn ends it
+      scheduleRebuild();
+      if (store.currentMode === 'props') { rebuildTools(); updateCmdSheet(); }
+    },
+    onMoveLineNode(line: string, node: number, pos: V3) { propLines().moveNode(line, node, pos); },
     onPlaceGem(pos: V3) {
       const gems = (store.mdoc.gems ??= []);
       const placed: Gem = { id: nextGemId(gems), pos, value: gemTool.value };
@@ -536,6 +541,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.selectedRail = null;
         store.selectedNode = null; store.railDrawing = false; viewport().setRailArmed(false); store.trickTool = 'gem';
         clearScreenState();
+        clearLineState();
         clearReferenceLight();
       }
       scheduleRebuild();
@@ -552,6 +558,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (id !== null) {
         store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.selectedRail = null;
         store.selectedNode = null; store.selectedGem = null; store.railDrawing = false;
+        clearLineState();
         clearReferenceLight();
       }
       scheduleRebuild();
