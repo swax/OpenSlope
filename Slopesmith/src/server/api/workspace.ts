@@ -339,6 +339,7 @@ function documentReport(value: unknown): Record<string, unknown> {
       props: document.props?.length ?? 0, lights: document.lights?.length ?? 0,
       rails: document.rails?.length ?? 0, gems: document.gems?.length ?? 0,
       models: document.models?.length ?? 0, screens: document.screens?.length ?? 0,
+      propLines: document.propLines?.length ?? 0,
       particleVolumes: document.particleVolumes?.length ?? 0, labels: document.labels?.length ?? 0,
     },
     problems,

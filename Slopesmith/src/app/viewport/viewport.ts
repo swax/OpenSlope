@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { MeshBVH } from 'three-mesh-bvh';
-import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type V3 } from '../../core/doc/types';
+import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type PropLine, type V3 } from '../../core/doc/types';
 import { meshAdjacency, meshCageEdges, meshFromDoc, quadControlPoints, docEdgeHandles, INTERIOR_CP, type MeshAdjacency, type EdgeHandle } from '../../core/mesh/topology';
 import { meshEdgeSegments } from '../../core/mesh/selection';
 import { findTJunctions } from '../../core/mesh/t-junctions';
@@ -63,6 +63,7 @@ export type { GizmoFrame, GizmoMode, MeshSelectionState, Mode, RotationSnapStep,
 import { TOUCH_NONE, REF_LOAD_OFFSET_X, CAGE_EDGE_SEG, CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, LOOP_RENDER_ORDER, LIVE_EDIT_FILL_COLOR, LIVE_EDIT_FILL_OPACITY, CTRL_CAGE_COLOR, SURFACE_POLY_OFFSET } from './constants';
 import { Stage, type GizmoKind } from './stage';
 import { createRailsLayer, type RailsLayer } from './scene/rails';
+import { createPropLinesLayer, type PropLinesLayer } from './scene/prop-lines';
 import { createCourseMarkersLayer, ANCHOR_HANDLE_LIFT, type CourseMarkersLayer } from './scene/course-markers';
 import { createPeersLayer, type PeerMarks, type PeersLayer } from './scene/peers';
 import {
@@ -184,6 +185,7 @@ export class Viewport {
   private rotationSnapStepValue: RotationSnapStep = 15;
   readonly assets = createPropAssets(); // shared prop-model geometry / group-def / outline caches (props + gems + reference)
   readonly rails: RailsLayer;
+  readonly propLines: PropLinesLayer;
   readonly createEdge: CreateEdgeLayer;
   private createEdgePreviewListener: (() => void) | null = null;
   readonly gems: GemsLayer;
@@ -553,6 +555,7 @@ export class Viewport {
     this.stage.onGizmoChange = () => this.onGizmoChange();
 
     this.rails = createRailsLayer(this.stage, this.assets); // grind rails (docs/014); adds its own groups to the stage
+    this.propLines = createPropLinesLayer(this.stage); // a prop line's path + node handles (docs/070)
     this.courseMarkers = createCourseMarkersLayer(this.stage); // start gate / spawn points / finish line (course guide)
     this.peers = createPeersLayer(this.stage); // everybody else, in their own colours (docs/039)
     this.remotePlayers = createRemotePlayersLayer(this.stage);
@@ -928,6 +931,7 @@ export class Viewport {
       lightRoots: () => [this.lights.freeLightGroup],
       sourceRoots: () => [this.lights.authoredLightsGroup, ...this.refDecor.sourcePickGroups],
       railRoots: () => [this.rails.railGroup],
+      lineRoots: () => [this.propLines.group],
       referenceRailRoots: () => [this.refDecor.railSplineGroup],
       gemRoots: () => [this.gems.gemGroup],
       screenRoots: () => [this.screens.group, this.screens.referenceGroup],
@@ -1044,6 +1048,7 @@ export class Viewport {
       tubeTool: this.tubeTool, trailTool: this.trailTool, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
       edgeExtrusion: this.edgeExtrusion, createEdge: this.createEdge, bridgePreview: this.bridgePreview,
       gems: this.gems, screens: this.screens, props: this.props, lights: this.lights, rails: this.rails,
+      propLines: this.propLines,
       refDecor: this.refDecor,
       paint: this.paint,
     }, {
@@ -1746,7 +1751,7 @@ export class Viewport {
     if (m !== 'props') {
       this.props.clearSelection(); this.refDecor.clearPropSelection(); this.refDecor.clearSourceSelection();
       this.lights.clearSelection(); this.lights.clearRigSource(); this.rails.clearSelection(); this.gems.clearSelection();
-      this.screens.clearSelection();
+      this.screens.clearSelection(); this.propLines.clearSelection();
     }
     if (m !== 'paint') this.refDecor.clearSurfaceInspection(); // the inspected-submesh marker is Paint's
     // terrain editing (corners / handles / knots / loop trace) is Edit's; keep a reference-move gizmo alive
@@ -1806,6 +1811,7 @@ export class Viewport {
   private placementStillArmed(kind: Exclude<ArmedPlacement, null>): boolean {
     return kind === 'prop' ? !!this.props.propArm
       : kind === 'rail' ? this.rails.railArmed
+      : kind === 'line' ? this.propLines.drawing
         : kind === 'gem' ? this.gems.gemArmed
           : this.lights.lightPlacing;
   }
@@ -2490,6 +2496,7 @@ export class Viewport {
     }
     else if (this.gizmoKind === 'light' && this.lights.selectedLight !== null) this.cb.onMoveLight?.(this.lights.selectedLight, p);
     else if (this.gizmoKind === 'railnode' && this.rails.selectedRail !== null && this.rails.selectedNode !== null) this.cb.onMoveRailNode?.(this.rails.selectedRail, this.rails.selectedNode, p);
+    else if (this.gizmoKind === 'linenode' && this.propLines.selectedLine !== null && this.propLines.selectedNode !== null) this.cb.onMoveLineNode?.(this.propLines.selectedLine, this.propLines.selectedNode, p);
     else if (this.gizmoKind === 'gem' && this.gems.selectedGem !== null) this.cb.onMoveGem?.(this.gems.selectedGem, p);
     else if (this.gizmoKind === 'screen' && this.screens.selectedScreen !== null) this.cb.onMoveScreen?.(this.screens.selectedScreen, p);
     else if (this.gizmoKind === 'effect') this.cb.onMoveEffect?.(p);
@@ -3281,6 +3288,27 @@ export class Viewport {
   }
   get lightPlacing(): boolean { return this.lights.lightPlacing; }
   setFreeLights(lights: AuthoredLight[], selectedId: string | null) { this.lights.setFreeLights(lights, selectedId); }
+
+  // ---- prop lines (docs/070): the path + node handles in PropLinesLayer; the members are placed props ----
+
+  /** Arm / disarm drawing a prop line: while armed, a Props-mode ground click appends a node (onAppendLineNode). */
+  setLineDrawing(on: boolean) { this.propLines.setDrawing(on); this.setArmedPlacement(on ? 'line' : null); }
+  get lineDrawing(): boolean { return this.propLines.drawing; }
+  /** Show the selected line's path, node bulbs and node gizmo (nothing for an idle mountain's lines). */
+  setPropLines(lines: readonly PropLine[], selLine: string | null, selNode: number | null) {
+    this.propLines.setLines(lines, selLine, selNode);
+    this.props.setLineHighlight(selLine); // the members wear the selection outline with the line
+  }
+
+  /**
+   * The authored terrain's height under a data-space (x, z), searched from a little above `nearY` down — the
+   * ground a prop line seats its members on. The same cached ride tree the effect bodies bounce on, so laying
+   * out a long fence costs a few hundred tree queries, not a few hundred mountain-wide raycasts. Null off the
+   * terrain.
+   */
+  groundHeightAt(x: number, z: number, nearY: number): number | null {
+    return this.effectGroundAt('authored', new THREE.Vector3(x, nearY, -z))?.y ?? null;
+  }
 
   // ---- authored grind rails (docs/014): mechanics in RailsLayer (this.rails); shell keeps selection ----
 

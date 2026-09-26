@@ -6,7 +6,10 @@ import {
   applyBehaviour, groupMemberDefaults, instanceBehaviour, resolvePropDefaults, sameBehaviour, sanitizePropBehaviour,
   stampBehaviour, type ResolvedPropDefaults, type StampBehaviour,
 } from '../../core/props/defaults';
-import { detachEffectFromProp, effectAttachments } from '../../core/effects/authoring';
+import {
+  attachEffectTemplateToProp, attachEffectToProp, attachModelEffectsToProp, createEmptyEffectsDocument,
+  detachEffectFromProp, effectAttachments,
+} from '../../core/effects/authoring';
 import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
 import type { UvScrollEffect } from '../../core/effects/world-effects';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../../core/lighting/sign-lights';
@@ -116,10 +119,11 @@ export function createPropOps(deps: PropOpsDeps) {
   }
 
   /** The existing single placements of one model — what "apply to placed" would change. Groups and effect
-   *  triggers are not placements OF a model in that sense. */
+   *  triggers are not placements OF a model in that sense, and a prop line's members take their settings from
+   *  the line, which would put its own back at the next re-layout (docs/070). */
   function placementsOfModel(level: string, model: number): PlacedProp[] {
     return (store.mdoc.props ?? []).filter(p => p.level === level && p.model === model
-      && !p.group && !isEffectTriggerProp(p));
+      && !p.group && !p.line && !isEffectTriggerProp(p));
   }
 
   /**
@@ -322,12 +326,57 @@ export function createPropOps(deps: PropOpsDeps) {
     if (rebuild) scheduleRebuild();
   }
 
+  /**
+   * Give a freshly stamped placement what the held prop carries beyond its own fields (docs/069 · Effects): the
+   * held effect — a shipped model's portable one, through the slot every placement of it shares, or a copied
+   * placement's own slot — and then whatever effects the model declared for itself, so a snow gun goes down
+   * already throwing snow. One path for a single drop and for a prop line's members (docs/070).
+   */
+  function stampHeldEffects(id: string, armed: Pick<ArmedProp, 'level' | 'model' | 'name' | 'effect' | 'effectOff'>) {
+    // Before the declared effects, so a copy of an imported prop shares its source's effect rather than growing
+    // a slot of its own.
+    const held = armed.effect;
+    if (held && !armed.effectOff) {
+      const effects = (store.mdoc.effects ??= createEmptyEffectsDocument(store.mdoc.name));
+      if (held.kind === 'template') attachEffectTemplateToProp(effects, id, held.template, shortPropName(armed.name));
+      else if (effects.slots.some(slot => slot.id === held.slot)) attachEffectToProp(effects, id, held.slot, held.circumstance);
+    }
+    // Emitters and scrolling surfaces become ordinary nodes in an ordinary graph the Effects editor then owns;
+    // this only fires for a prop with no attachment yet, so retuning or deleting it never touches the next stamp.
+    const declared = modelDeclarations(armed.level, armed.model);
+    if (declared.emitters.length || declared.scrolls.length || declared.clip) {
+      const effects = (store.mdoc.effects ??= createEmptyEffectsDocument(store.mdoc.name));
+      attachModelEffectsToProp(effects, id, declared);
+    }
+  }
+
+  /** While set, the next prop picked up — from the Library, or middle-clicked in the world — is handed here
+   *  instead of being held: a prop line swapping its model (docs/070). One-shot; answers whether it took it. */
+  let pickInterceptor: ((armed: ArmedProp) => boolean) | null = null;
+  function interceptNextPick(take: ((armed: ArmedProp) => boolean) | null) { pickInterceptor = take; }
+  /** Offer a pick to the interceptor first; true when it took the pick and nothing should be held. */
+  function intercepted(armed: ArmedProp): boolean {
+    const take = pickInterceptor;
+    if (!take) return false;
+    pickInterceptor = null;
+    return take(armed);
+  }
+
+  /** Leave prop-line drawing and drop a line selection (docs/070): holding something new ends both. */
+  function leavePropLine() {
+    store.lineDrawing = false; viewport.setLineDrawing(false);
+    store.selectedLine = null; store.selectedLineNode = null;
+  }
+
   /** Pick up a prop (from the Library, or middle-clicking a reference / placed prop): arm placement mode, drop
    *  any placed-prop selection (so the preview shows what you're now holding), and jump to Props mode. The
    *  viewport shows it as a ghost under the cursor; a click drops it, Esc puts it down. */
   async function armProp(level: string, model: number, name: string, from: ArmFrom = {}) {
     try { await ensurePropLevel(level); } catch (e) { toast(`props load failed: ${e}`, 'err'); return; }
-    store.armedProp = { level, model, name, ...armBehaviour(level, model, from) };
+    const armed: ArmedProp = { level, model, name, ...armBehaviour(level, model, from) };
+    if (intercepted(armed)) return;
+    store.armedProp = armed;
+    leavePropLine();
     store.selectedProp = null; // holding a new prop deselects any placed one (the gizmo releases on the next rebuild)
     store.multiSel = [];       // …and any box selection
     // …and a picked reference instance, whose inspector would otherwise sit where the held prop's panel belongs
@@ -339,7 +388,7 @@ export function createPropOps(deps: PropOpsDeps) {
     viewport.setPropArmed({ level, model, baseOffset: propBaseOffset(level, model) });
     if (store.currentMode !== 'props') setMode('props'); else { scheduleRebuild(); rebuildTools(); updateCmdSheet(); }
     propLib.highlight(level, model);
-    toast(`${shortPropName(name)} — click to place · scroll turns it · Esc puts it down`, 'info');
+    toast(`${shortPropName(name)} — click to place · Alt+scroll or ← → turns it · Esc puts it down`, 'info');
   }
 
   /** Pick up a GROUP (from the Library's Groups section, or middle-clicking a placed group): arm the whole
@@ -355,11 +404,14 @@ export function createPropOps(deps: PropOpsDeps) {
     const leader = def.props[0];
     // A group gets no effect default: until an effect can attach to one member, it would attach to the whole
     // group, which Test plays as one prop and the ISO as one copy per member. A copied group keeps its own.
-    store.armedProp = { level, model: leader.model, name: def.name, group: def.id,
+    const armed: ArmedProp = { level, model: leader.model, name: def.name, group: def.id,
       ...(from.behaviour
         ? { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' as const,
           ...withEffect(placementEffect(from.placementId)) }
         : { behaviour: groupDefaults(level, def), from: 'defaults' as const }) };
+    if (intercepted(armed)) return;
+    store.armedProp = armed;
+    leavePropLine();
     store.selectedProp = null;
     store.multiSel = [];
     store.selectedRefProp = null;
@@ -372,7 +424,7 @@ export function createPropOps(deps: PropOpsDeps) {
     propLib.highlight(level, null); // a group isn't a single model tile
     const bits = [`${def.props.length} prop${def.props.length > 1 ? 's' : ''}`];
     if (def.lights.length) bits.push(`${def.lights.length} light${def.lights.length > 1 ? 's' : ''}`);
-    toast(`${def.name} (${bits.join(' + ')}) — click to place · scroll turns it · Esc puts it down`, 'info');
+    toast(`${def.name} (${bits.join(' + ')}) — click to place · Alt+scroll or ← → turns it · Esc puts it down`, 'info');
   }
 
   /** Put the held prop down (Esc in placement mode): back to select mode, where clicks grab placed props. */
@@ -390,8 +442,10 @@ export function createPropOps(deps: PropOpsDeps) {
   function deselectPropOrLight() {
     const selected = store.selectedProp !== null || store.multiSel.length > 0 || store.selectedRefProp !== null
       || store.selectedLight !== null || store.selectedRefLight !== null || store.selectedScreen !== null
-      || store.selectedRefScreen !== null;
+      || store.selectedRefScreen !== null || store.selectedLine !== null;
     if (!selected) return;
+    leavePropLine();
+    pickInterceptor = null; // a pending "swap prop" belonged to the line being let go
     store.selectedProp = null;
     store.multiSel = [];
     store.selectedRefProp = null;
@@ -478,6 +532,7 @@ export function createPropOps(deps: PropOpsDeps) {
   return {
     modelDeclarations,
     propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
+    stampHeldEffects, interceptNextPick,
     shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
     ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
     reloadImportedProps,

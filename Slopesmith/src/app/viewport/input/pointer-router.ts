@@ -32,6 +32,7 @@ import type { ScreensLayer } from '../scene/screens';
 import type { PropsLayer } from '../scene/props';
 import type { LightsLayer } from '../scene/lights';
 import type { RailsLayer } from '../scene/rails';
+import type { PropLinesLayer } from '../scene/prop-lines';
 import type { ReferenceDecor } from '../scene/reference-decor';
 import type { PaintLayer } from '../mesh/paint';
 import {
@@ -63,6 +64,7 @@ export interface RouterLayers {
   props: PropsLayer;
   lights: LightsLayer;
   rails: RailsLayer;
+  propLines: PropLinesLayer;
   refDecor: ReferenceDecor;
   paint: PaintLayer;
 }
@@ -414,6 +416,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     const v = new THREE.Vector3();
     const out: number[] = [];
     for (let i = 0; i < layers.props.lastPlacedProps.length; i++) {
+      if (lineOwning(i)) continue; // a line's members move with the line, never on their own (docs/070)
       const p = layers.props.lastPlacedProps[i].pos;
       v.set(p[0], p[1], -p[2]).project(stage.camera); // data pos; on-screen position is Z-flipped like the corners
       if (v.z < -1 || v.z > 1) continue; // behind the camera / beyond the far plane
@@ -453,6 +456,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.refDecor.clearSourceSelection();
     layers.lights.clearRigSource();
     layers.rails.clearSelection();
+    dropLineSelection();
     layers.gems.clearSelection();
     layers.screens.clearSelection();
     layers.lights.seatLight(i);
@@ -469,6 +473,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.lights.clearSelection();
     layers.lights.clearRigSource();
     layers.rails.clearSelection();
+    dropLineSelection();
     layers.gems.clearSelection();
     layers.screens.clearSelection();
     if (source === 'authored' && kind === 'light') layers.lights.selectRigSource(index);
@@ -525,6 +530,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.lights.clearRigSource();
     layers.gems.clearSelection();
     layers.screens.clearSelection();
+    dropLineSelection();
     if (n === null) layers.rails.seatRail(r); else layers.rails.seatNode(r, n);
   }
 
@@ -539,6 +545,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.lights.clearSelection();
     layers.lights.clearRigSource();
     layers.rails.clearSelection();
+    dropLineSelection();
     layers.screens.clearSelection();
     layers.gems.seatGem(i);
   }
@@ -554,6 +561,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.lights.clearSelection();
     layers.lights.clearRigSource();
     layers.rails.clearSelection();
+    dropLineSelection();
     layers.gems.clearSelection();
     if (source === 'authored') layers.screens.seatScreen(i);
     else layers.screens.seatReferenceScreen(i);
@@ -626,6 +634,14 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (hit && rail) stage.cb.onAppendRailNode?.(access.snapPoint([hit.point.x, hit.point.y + rail.height, -hit.point.z]));
       return;
     }
+    // prop-line drawing (docs/070): the same chain of clicks, each appending a node on the ground itself —
+    // the layout seats the members, so the path carries no standoff of its own
+    if (layers.propLines.drawing) {
+      if (rejectUnsupportedMeshPick(hit => hit.kind === 'surface' && hit.source === 'authored')) return;
+      const hit = stage.groundHit();
+      if (hit) stage.cb.onAppendLineNode?.(access.snapPoint([hit.x, hit.y, -hit.z]));
+      return;
+    }
 
     // Placement mode owns LMB until Esc puts the held prop down; scene-object selection resumes afterward.
     if (layers.props.propArm) {
@@ -651,6 +667,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (sourcePick?.target === 'source') {
       selectSourceMarker(sourcePick.source, sourcePick.sourceKind, sourcePick.sourceIndex); return;
     }
+    // A prop line's node bulbs draw on top of everything, like the source icons, and for the same reason win the
+    // click on top: a node sits at a joint between two members, inside the very fence it lays out (docs/070).
+    const linePick = layers.scenePicking.pick({ lines: true });
+    if (linePick?.target === 'lineNode') { selectLineNode(linePick.lineId, linePick.node); return; }
     const pick = layers.scenePicking.pick({
       props: 'standard', lights: true, rails: true, gems: true, screens: true,
       surfaces: true, surfaceEpsilon: 1e-3,
@@ -662,7 +682,12 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // makes an attached screen editable at all (the board behind it would otherwise always be nearer).
     if (pick?.target === 'screen') { selectScreen(pick.source, pick.screenIndex); return; }
     if (pick?.target === 'light') { selectLight(pick.lightIndex); return; }
-    if (pick?.target === 'prop' && pick.source === 'authored') { selectProp(pick.propIndex); return; }
+    if (pick?.target === 'prop' && pick.source === 'authored') {
+      // a line's member answers as its line: the line lays it out, so the line is what there is to edit
+      const line = lineOwning(pick.propIndex);
+      if (line) selectLineNode(line, null); else selectProp(pick.propIndex);
+      return;
+    }
     if (pick?.target === 'prop' && pick.source === 'reference') {
       selectReferenceProp(pick.instance, pick.instanceId); return;
     }
@@ -691,11 +716,13 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.lights.clearSelection();
     layers.lights.clearRigSource();
     layers.rails.clearSelection();
+    dropLineSelection();
     layers.gems.clearSelection();
     layers.screens.clearSelection();
     stage.cb.onSelectProp?.(null);
     stage.cb.onSelectLight?.(null);
     stage.cb.onSelectRailNode?.(null, null);
+    stage.cb.onSelectLineNode?.(null, null);
     stage.cb.onSelectGem?.(null);
     stage.cb.onSelectScreen?.(null);
   }
@@ -731,7 +758,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         return;
       }
       if (pick.target !== 'prop') {
-        stage.cb.onClickTargetUnavailable?.(pick.target === 'source' ? 'light' : pick.target, pick.source);
+        // (a prop line's bulbs are not queried here; its node would read as the props it lays out)
+        stage.cb.onClickTargetUnavailable?.(pick.target === 'source' ? 'light'
+          : pick.target === 'lineNode' ? 'prop' : pick.target, pick.source);
         return;
       }
       if (pick.source === 'authored') {
@@ -747,6 +776,39 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     stage.cb.onClearEffectSelection?.();
   }
 
+  /** Let go of a prop line's selection: its node handles, and its members' outline (docs/070). */
+  function dropLineSelection() {
+    layers.propLines.clearSelection();
+    layers.props.setLineHighlight(null);
+  }
+
+  /**
+   * The prop line that owns placed prop `i`, if it has one that still exists (docs/070). A member is laid out
+   * by its line, so a click on it selects the line, and box selection passes it by. A member whose line is
+   * gone is an ordinary prop again.
+   */
+  function lineOwning(i: number): string | null {
+    const id = layers.props.lastPlacedProps[i]?.line;
+    return id && layers.propLines.lines.some(line => line.id === id) ? id : null;
+  }
+
+  /** Select prop line `id` — at node `n`, or with null as the whole line (a click on one of its members). */
+  function selectLineNode(id: string, n: number | null) {
+    stage.cb.onSelectKnot(null);
+    layers.selection.placeCornerMarker(null);
+    layers.refDecor.clearSurfaceInspection();
+    host.clearRefSelection();
+    layers.props.clearSelection();
+    layers.refDecor.clearPropSelection();
+    layers.refDecor.clearSourceSelection();
+    layers.lights.clearSelection();
+    layers.lights.clearRigSource();
+    layers.rails.clearSelection();
+    layers.gems.clearSelection();
+    layers.screens.clearSelection();
+    layers.propLines.seatNode(id, n);
+  }
+
   /** Select placed prop `i`: clear the other scene-object selections, then seat the gizmo on it. */
   function selectProp(i: number) {
     stage.cb.onSelectKnot(null);
@@ -758,6 +820,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.lights.clearSelection(); // a prop and a light can't both be selected
     layers.lights.clearRigSource();
     layers.rails.clearSelection();
+    dropLineSelection();
     layers.gems.clearSelection();
     layers.screens.clearSelection();
     layers.props.seatProp(i);
@@ -779,6 +842,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.lights.clearSelection();
     layers.lights.clearRigSource();
     layers.rails.clearSelection();
+    dropLineSelection();
     layers.gems.clearSelection();
     layers.screens.clearSelection();
     layers.refDecor.selectPropInstance(im, instanceId); // seat the read-only outline + notify the host
@@ -1504,6 +1568,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'props') {
       if (layers.props.propArm) { stage.castAt(e); layers.props.updateGhost(); } // the held prop's ghost rides the hover
       else if (layers.gems.gemArmed && !layers.gems.gemLine) { stage.castAt(e); layers.gems.updateGemGhost(); } // so does the gem tool's crystal
+      else if (layers.propLines.drawing) { // …and a line being drawn stretches a band to where the next node would land
+        stage.castAt(e);
+        const hit = stage.groundHit();
+        layers.propLines.updateBand(hit ? access.snapPoint([hit.x, hit.y, -hit.z]) : null);
+      }
       return;
     }
     if (access.mode() === 'paint' && layers.paint.paintArm) {

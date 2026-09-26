@@ -486,6 +486,12 @@ export interface ViewportCallbacks {
   onSelectRailNode?(rail: number | null, node: number | null): void;
   /** A rail node was dragged to a new data-space position. */
   onMoveRailNode?(rail: number, node: number, pos: V3): void;
+  /** Prop-line drawing (docs/070): a terrain click appends a node at this snapped data-space ground point. */
+  onAppendLineNode?(pos: V3): void;
+  /** A prop line was selected — a node of it, or the line alone (node null) — or cleared with null/null. */
+  onSelectLineNode?(line: string | null, node: number | null): void;
+  /** A prop-line node was dragged to a new data-space position. */
+  onMoveLineNode?(line: string, node: number, pos: V3): void;
   /** A shipped level's grind curve was clicked in Effects mode, by its stable `Splines.json` row. */
   onSelectReferenceSpline?(originalIndex: number): void;
   /** Gem tool: a click dropped one gem at this final height-adjusted, snapped data-space point. */

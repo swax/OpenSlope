@@ -234,11 +234,11 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     return store.currentMode === 'props'
       && store.selectedProp === null && store.selectedRefProp === null && store.multiSel.length === 0
       && store.selectedLight === null && store.selectedRefLight === null
-      && store.selectedRail === null && store.selectedGem === null
+      && store.selectedRail === null && store.selectedGem === null && store.selectedLine === null
       && store.selectedScreen === null && store.selectedRefScreen === null
       // A HELD tool has replaced the launcher with its own panel, and its cancel is the way back — leaving the
       // Prop Library toggle above it would offer a second exit that puts nothing down.
-      && !store.railDrawing && !store.gemArmed && !viewport.lightPlacing;
+      && !store.railDrawing && !store.lineDrawing && !store.gemArmed && !viewport.lightPlacing;
   }
 
   function buildMixedEditSelectionTools() {
@@ -330,7 +330,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if (store.currentMode === 'props') {
       // Routed off what is actually in hand rather than off `trickTool`, which outlives the object it named —
       // deleting the last rail used to leave the panel in a Tricks branch with nothing to draw.
-      if (store.railDrawing || store.selectedRail !== null || store.selectedGem !== null || store.gemArmed) buildTrickTools(ctx);
+      if (store.lineDrawing || store.selectedLine !== null) propTools.buildLineTools(); // a prop line (docs/070)
+      else if (store.railDrawing || store.selectedRail !== null || store.selectedGem !== null || store.gemArmed) buildTrickTools(ctx);
       else if (store.selectedLight !== null || store.selectedRefLight !== null) propTools.buildLightTools();
       else if (viewport.lightPlacing) propTools.buildLightPlacementTools(); // a held light presets before the click
       else propTools.buildPropTools();

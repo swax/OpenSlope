@@ -3,6 +3,7 @@ import type { Store } from './state/store';
 import { quadIndices, vertexNames } from './state/mesh-names';
 import type { EditSession } from './edit/session';
 import type { PropOps } from './props/operations';
+import type { PropLineOps } from './props/lines';
 import type { TrickTools } from './tricks/operations';
 import type { Viewport } from './viewport/viewport';
 import type { BrushOp } from '../core/doc/mountain';
@@ -14,7 +15,7 @@ import type { EffectsEditor } from './effects/editor';
  * The editor's global keyboard shortcuts: one window keydown listener routing undo / redo, the Edit-mode mesh
  * operations (hide, connected-select, copy / cut / paste, bridge, weld, extrude, rip, split selected patches,
  * show control cage, crease / smooth, dissolve, flip ridable side, the modal-tool Enters), 1–6 top-level view switching, the
- * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, Delete across every mode's selection, and the layered Escape
+ * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, a prop line's Enter / Esc / Delete, Delete across every mode's selection, and the layered Escape
  * (first put the held tool down, then clear the selection). Installed once
  * at compose time, after every service it routes to exists — so every dependency arrives direct. A live test
  * ride owns movement / ollie / respawn / Esc-to-exit (or release first-person / RMB capture); this layer retains P so it can pause and refresh the UI.
@@ -32,6 +33,7 @@ export type ShortcutDeps = {
   edit: EditSession;
   trickTools: TrickTools;
   propOps: PropOps;
+  propLines: PropLineOps;
   sculptBrush: { op: BrushOp; radius: number };
   // history
   undo: () => void;
@@ -70,7 +72,7 @@ export type ShortcutDeps = {
 /** Install the window keydown listener. */
 export function installShortcuts(deps: ShortcutDeps) {
   const {
-    store, viewport, edit, trickTools, propOps, sculptBrush,
+    store, viewport, edit, trickTools, propOps, propLines, sculptBrush,
     undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot,
     cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile, turnPaintTexture,
     turnModelTexture, disarmBrush, stopWatch,
@@ -184,6 +186,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       if (e.key === 'Escape') { e.preventDefault(); cancelBridge(); return; }
     }
     if (e.key === 'Enter' && store.railDrawing) { e.preventDefault(); trickTools.finishRail(); return; } // Enter finishes the rail being laid
+    if (e.key === 'Enter' && store.lineDrawing) { e.preventDefault(); propLines.finishLine(); return; } // …and the prop line (docs/070)
     if (e.key === 'Enter' && viewport.edgeExtrusionStaged) { e.preventDefault(); commitEdgeExtrusion(); return; }
     if (!mod && !e.altKey && key === 'f' && viewport.edgeExtrusionStaged && viewport.edgeExtrusionSideFlippable) {
       e.preventDefault(); flipEdgeExtrusionSide(); return;
@@ -263,6 +266,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       if (store.currentMode === 'effects') { if (effects.deleteSelection()) e.preventDefault(); }
       else if (store.currentMode === 'props' && store.multiSel.length) propOps.deleteMultiSelProps();
       else if (store.currentMode === 'props' && (store.railDrawing || store.selectedRail !== null)) { if (store.selectedNode !== null) trickTools.deleteSelectedRailNode(); else trickTools.deleteSelectedRail(); }
+      else if (store.currentMode === 'props' && store.selectedLine !== null) { if (store.selectedLineNode !== null) propLines.deleteSelectedNode(); else propLines.deleteSelectedLine(); }
       else if (store.currentMode === 'props' && store.selectedGem !== null) trickTools.deleteSelectedGem();
       else if (store.currentMode === 'props' && store.selectedScreen !== null) deleteSelectedScreen();
       else if (store.currentMode === 'props' && store.selectedLight !== null) deleteSelectedLight();
@@ -282,6 +286,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       // because in VR a board is something you are riding INSIDE the session, and Esc ends the outer thing.
       if (viewport.xrPlaying) { viewport.stopXrPlay(); return; }
       if (store.railDrawing) { trickTools.finishRail(); return; } // Esc finishes the rail (as the placement toast says)
+      if (store.lineDrawing) { propLines.finishLine(); return; } // …and a prop line being drawn
       if (store.createEdgeTool) { finishCreateEdge(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'tube') { cancelCreateTube(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'trail') { cancelCreateTrail(); return; }
@@ -308,7 +313,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       if (store.currentMode === 'paint' && store.paintBrush) { disarmBrush(); return; }
       if (store.currentMode === 'props' && (store.selectedProp !== null || store.multiSel.length > 0
         || store.selectedRefProp !== null || store.selectedLight !== null || store.selectedRefLight !== null
-        || store.selectedScreen !== null || store.selectedRefScreen !== null)) {
+        || store.selectedScreen !== null || store.selectedRefScreen !== null || store.selectedLine !== null)) {
         propOps.deselectPropOrLight(); return;
       }
       store.selected = null;

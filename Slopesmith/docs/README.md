@@ -60,6 +60,9 @@ Start with the [authoring index](authoring/README.md) for the editor prerequisit
 - [032 — Imported Props (textured props)](032-imported-props.md) — their own UV layout, across many materials.
 - [069 — Prop Defaults](069-prop-defaults.md) — how a model's placements start out: derived from a shipped
   level's instances, or saved on your own props.
+- [070 — Prop Lines](070-prop-lines.md) — a fence or a row of lamps: a path that lays one prop out along it.
+- [071 — Sheet Props](071-sheet-props.md) — one textured surface along a path, standing (a fence) or lying (a
+  river), cut into a piece per span the way the shipped levels store theirs.
 - [033 — Generated Textures](033-generate-texture.md)
 - [046 — Blender Bridge](046-blender-bridge.md) — the round trip out to Blender and back onto the same model.
 - [047 — Light Glints](047-light-glints.md) — the halo/star sparkle a glow light draws, ported from Unity.

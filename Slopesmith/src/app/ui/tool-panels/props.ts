@@ -1,4 +1,6 @@
-import { detail, iconAction, note, tip, warningBanner } from '../components/gui';
+import { detail, iconAction, note, texturePreview, tip, warningBanner } from '../components/gui';
+import { textureRefUrl } from '../../net/asset-paths';
+import { sheetSpan, SHEET_DEFAULT_LIFT } from '../../../core/props/sheet-prop';
 import { MODE_ICON } from '../components/icons';
 import { toast } from '../components/toast';
 import {
@@ -11,7 +13,9 @@ import {
 import { openSoundLibrary } from '../../effects/sound-library';
 import { AUTHORED_MODEL_LEVEL, modelIdFromNumber } from '../../../core/doc/models';
 import { SURFACE_AUTHOR_OPTIONS, surfaceTypeLabel } from '../../../core/reference/surface-types';
-import type { NativeCollisionProfile, PlacedProp, PropBehaviour, Screen, V3 } from '../../../core/doc/types';
+import type {
+  NativeCollisionProfile, PlacedProp, PropBehaviour, PropLine, PropSheet, Screen, V3,
+} from '../../../core/doc/types';
 import type { ArmedProp } from '../../state/store';
 import {
   applyBehaviour, baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
@@ -1027,6 +1031,13 @@ export function createPropTools(ctx: ToolsContext) {
     };
 
     const actionRows: HTMLElement[] = [];
+    // A fence, a row of lamps: the same prop down a path rather than one click at a time (docs/070).
+    const lay = tip(gui.add({ lay: () => ctx.propLines.startLine() }, 'lay').name('⟿ lay as a line'),
+      'Lay this prop along a path — a fence, a row of lamps.',
+      'Click points on the mountain the way a rail is drawn. Copies follow the path, turned along it and seated on '
+        + 'the ground, and lay themselves out again whenever the path or a setting changes. The settings below are '
+        + 'what every copy carries.');
+    actionRows.push(lay.domElement);
     if (resolved.savable && !armed.group) {
       const save = tip(gui.add({ save: async () => {
         try {
@@ -1062,7 +1073,7 @@ export function createPropTools(ctx: ToolsContext) {
       } }, 'apply').name(`⇉ apply to ${placedCount} placed`),
       `Give every ${name} already on the mountain these settings.`,
       'Placements copy their settings when stamped rather than following the model, so changing defaults never '
-        + 'changes existing props by itself — this is the explicit way. Groups keep their own.');
+        + 'changes existing props by itself — this is the explicit way. Groups and prop lines keep their own.');
       actionRows.push(apply.domElement);
     }
 
@@ -1421,6 +1432,186 @@ export function createPropTools(ctx: ToolsContext) {
     if (store.armedProp) buildHeldPropTools(store.armedProp);
   }
 
+  /**
+   * A PROP LINE's panel (docs/070): how the line lays its members out, the path actions, and — through the same
+   * behaviour sections a placement has, bound to the line's template — what every member carries. Any change
+   * lays the line out again, so a setting always describes every member at once.
+   *
+   * Sliders re-lay the line as they move but redraw the panel only when they settle: a redraw rebuilds the
+   * slider being dragged.
+   */
+  /**
+   * A SHEET's own controls (docs/071): stand up or lie flat, how tall or how wide, how long each piece is, and the
+   * tile every piece wears. The tile is written through the sheet's id at the moment it is picked: the picker
+   * answers later, by which time an undo may have swapped the document out from under this panel.
+   */
+  function addSheetControls(section: ReturnType<typeof editSection>, line: PropLine & { id: string }, sheet: PropSheet,
+    pieces: number, changed: () => void, settled: () => void) {
+    tip(detail(section, `${pieces} piece${pieces === 1 ? '' : 's'}`, 'pieces'),
+      'One tiled model per span, each placed once — the way the shipped levels cut their fences and rivers.');
+    const facing = { facing: sheet.lie ? 'lie' : 'stand' };
+    tip(section.add(facing, 'facing', { 'stand up — a fence': 'stand', 'lie flat — a river': 'lie' })
+      .name('orientation').onChange((value: string) => {
+        if (value === 'lie') sheet.lie = true; else delete sheet.lie;
+        settled();
+      }), 'Stand the sheet up along the path, or lay it flat along the ground.');
+    tip(section.add(sheet, 'size', 0.25, sheet.lie ? 80 : 20, 0.05).name(sheet.lie ? 'width (m)' : 'height (m)')
+      .onChange(changed).onFinishChange(settled),
+    sheet.lie ? 'How wide the sheet is across the path.' : 'How high the top edge stands above the ground.');
+    const span = {
+      get span() { return sheetSpan(line); },
+      set span(value: number) { line.spacing = Math.max(0.5, value); },
+    };
+    tip(section.add(span, 'span', 0.5, 60, 0.05).name('span (m)').onChange(changed).onFinishChange(settled),
+      'The straight length of each piece. The sheet nudges it so a whole number lands on the last point.',
+      'Each piece wears the tile once, so the span also sets how stretched the texture looks.');
+    if (sheet.lie) {
+      const lift = {
+        get lift() { return sheet.lift ?? SHEET_DEFAULT_LIFT; },
+        set lift(value: number) { sheet.lift = Math.max(0, value); },
+      };
+      tip(section.add(lift, 'lift', 0, 3, 0.01).name('lift (m)').onChange(changed).onFinishChange(settled),
+        'How far the surface floats above the ground at each point.');
+    }
+    const setSheet = (edit: (target: PropSheet) => void) => {
+      const target = ctx.propLines.lineById(line.id);
+      if (!target?.sheet) return;
+      edit(target.sheet);
+      ctx.propLines.changed(target);
+      rebuildTools();
+    };
+    texturePreview(section, {
+      label: 'tile',
+      src: sheet.texture ? textureRefUrl(sheet.texture) : null,
+      value: sheet.texture ?? 'No texture — untextured clay',
+      hint: 'Click to choose the tile every piece wears from the Texture Library, or clear it back to clay.',
+      onOpen: () => library.openPick({
+        title: `Choose a tile — ${line.template.name}`,
+        current: sheet.texture ?? null,
+        onPick: ref => setSheet(target => { if (ref) target.texture = ref; else delete target.texture; }),
+      }),
+    });
+    tip(section.add({ turn: () => setSheet(target => {
+      const orient = target.orient ?? { rot: 0, mirror: false };
+      target.orient = { rot: (orient.rot + 1) % 4, mirror: orient.mirror };
+    }) }, 'turn').name('↻ turn tile'), 'Turn the tile a quarter on every piece.');
+    const blend = { get blend() { return sheet.blend === true; }, set blend(on: boolean) { if (on) sheet.blend = true; else delete sheet.blend; } };
+    tip(section.add(blend, 'blend').name('see-through').onChange(settled),
+      'Draw the tile through the alpha pass, for glass or water. Holes in a chain-link tile are cut either way.');
+  }
+
+  function buildLineTools() {
+    const { propLines } = ctx;
+    updatePropPreview();
+    const line = propLines.selected();
+    if (!line) return;
+    const template = line.template;
+    const name = shortPropName(template.name);
+    const members = (store.mdoc.props ?? []).filter(p => p.line === line.id);
+    const def = template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : undefined;
+    const changed = () => propLines.changed(line);
+    const settled = () => { propLines.changed(line); rebuildTools(); };
+
+    const sheet = line.sheet;
+    const noun = sheet ? 'sheet' : 'line';
+    const lineSection = editSection(sheet ? 'props-sheet' : 'props-line', sheet ? 'Sheet' : 'Line', true);
+    if (store.lineDrawing) {
+      note(lineSection, line.nodes.length < 2
+        ? sheet ? 'Click the mountain to lay the sheet\'s path — it fills in from the second point.'
+          : `Click the mountain to lay the path — ${name} follows it from the second point.`
+        : 'Keep clicking to extend the path. Enter or Esc finishes.');
+    }
+    if (sheet && line.nodes.length >= 2) addSheetControls(lineSection, line, sheet, members.length, changed, settled);
+    else if (line.nodes.length >= 2) {
+      tip(detail(lineSection, members.length ? `${members.length} × ${name}` : `${name} — model still loading`, 'members'),
+        'How many copies the line lays out. Change the spacing or the path and it lays them out again.');
+      const place = { place: line.place ?? 'span' };
+      tip(lineSection.add(place, 'place', { 'between points — a fence': 'span', 'at every point — posts, lamps': 'joint' })
+        .name('place').onChange((value: string) => {
+          if (value === 'joint') line.place = 'joint'; else delete line.place;
+          settled();
+        }),
+      'Between points: one copy on each step, spanning it. At every point: one standing at each step\'s ends.');
+      const modelLength = propLines.nominalSpacing({ ...line, spacing: undefined });
+      const spacing = {
+        get spacing() { return line.spacing ?? modelLength ?? 2; },
+        set spacing(value: number) { line.spacing = Math.max(0.25, value); },
+      };
+      tip(lineSection.add(spacing, 'spacing', 0.25, 50, 0.05).name('spacing (m)').onChange(changed).onFinishChange(settled),
+        'Metres between copies, measured straight. The line nudges it so a whole number fits.',
+        line.spacing === undefined
+          ? 'Following the model\'s own length, so copies meet end to end — and grow or shrink a few percent '
+            + 'together to fit exactly.'
+          : 'Set by hand: copies keep their size and only the gaps change.');
+      if (line.spacing !== undefined && modelLength !== null) {
+        tip(lineSection.add({ reset: () => { delete line.spacing; settled(); } }, 'reset')
+          .name(`↺ model length (${modelLength.toFixed(2)} m)`),
+        'Space copies by the model\'s own length again, so they meet end to end.');
+      }
+      const turn = {
+        get turn() { return line.turn ?? 0; },
+        set turn(v: number) { const t = ((v % 360) + 360) % 360; if (t) line.turn = t; else delete line.turn; },
+      };
+      tip(lineSection.add(turn, 'turn', 0, 360, 1).name('turn (°)').onChange(changed).onFinishChange(settled),
+        'Turn every copy about vertical, on top of lining its long side up with the path.');
+      tip(lineSection.add({ quarter: () => { turn.turn = turn.turn + 90; settled(); } }, 'quarter').name('↻ quarter turn'),
+        'Turn every copy 90° — for a model whose run is along its short side.');
+      tip(lineSection.add({ flip: () => { turn.turn = turn.turn + 180; settled(); } }, 'flip').name('⇄ flip side'),
+        'Turn every copy round to face the other side of the line.');
+      if (line.place !== 'joint') {
+        const rake = { get rake() { return line.rake === true; }, set rake(on: boolean) { if (on) line.rake = true; else delete line.rake; } };
+        tip(lineSection.add(rake, 'rake').name('follow slope').onChange(settled),
+          'Tilt each copy along the ground between its ends. Off: copies stand upright, seated so no end floats.');
+      }
+      tip(lineSection.add(line, 'scale', 0.1, 5, 0.05).name('size ×').onChange(changed).onFinishChange(settled),
+        'Scale every copy. With the spacing following the model, the copies stay end to end.');
+    }
+
+    if (store.lineDrawing) {
+      tip(gui.add({ done: () => propLines.finishLine() }, 'done').name(`✔ finish ${noun}`),
+        `Stop adding points. A ${noun} with fewer than two points is discarded.`);
+    } else {
+      tip(gui.add({ more: () => propLines.resumeLine() }, 'more').name('✚ add more points'),
+        `Carry on clicking points onto the end of the ${noun}.`);
+      if (store.selectedLineNode !== null) {
+        tip(gui.add({ del: () => propLines.deleteSelectedNode() }, 'del').name('✕ delete this point'),
+          `Remove the selected point. A ${noun} left with one point is removed.`);
+      }
+    }
+    if (line.nodes.length >= 2) {
+      if (!sheet) {
+        tip(gui.add({ swap: () => propLines.swapProp() }, 'swap').name('⇄ swap prop…'),
+          'Pick a prop in the Prop Library — or middle-click one in the world — and the line lays that out instead.');
+      }
+      tip(gui.add({ free: () => propLines.breakLine() }, 'free').name('⇥ break into props'),
+        sheet ? 'Leave the pieces exactly where they are as your own tiled props, and remove the sheet.'
+          : 'Leave the copies exactly where they are as ordinary props, and remove the line.',
+        sheet ? 'For the one piece that needs a different shape. Each lands in your Prop Library as a tiled prop you '
+            + 'can edit; a sheet rebuilds its pieces whenever it changes, so an edit to one only lasts on its own.'
+          : 'For the one copy that needs to be different. A line lays its copies out again whenever it changes, so '
+            + 'an edit to one copy only lasts while it is on its own.');
+    }
+    tip(gui.add({ del: () => propLines.deleteSelectedLine() }, 'del').name(`✕ delete ${noun}`),
+      sheet ? 'Remove the sheet and every piece of it.' : 'Remove the line and every copy it laid out.');
+    addDeselect();
+
+    if (line.nodes.length < 2) return;
+    // What every copy carries, bound to the line's template: an edit lays the line out again, so it reaches all
+    // of them. The first copy stands in as the placement for the diagnostics that read one (effects, collider).
+    const host: BehaviourHost = {
+      target: template, level: template.level, key: 'props-line', changed,
+      ...(members[0] ? { placement: members[0] } : {}),
+    };
+    const memberSection = def && def.props.length > 1
+      ? addMemberSection(host, def, { ...template, pos: [0, 0, 0], yaw: 0, scale: 1 }, `line:${line.id}`) : null;
+    const behaviourHost = memberSection?.host ?? host;
+    addModeSection(host);
+    addContactSection(behaviourHost);
+    addLightingSection(behaviourHost);
+    addImpactSection(behaviourHost);
+    addEmitterSection(behaviourHost);
+  }
+
   /** Tools for a box-selected SET of props: the list (click a row = identify, its ✕ = drop from the set), the
    *  one gizmo at the set's centre moves them together, and delete removes them all (also the Delete key). */
   function buildMultiPropTools() {
@@ -1499,6 +1690,16 @@ export function createPropTools(ctx: ToolsContext) {
     // rather than making you open its effect to find out which of twenty identical panes you are holding.
     if (sel) propPreview.show(sel.level, sel.model, shortPropName(sel.name), propLevels.get(sel.level), defOfPlaced(sel),
       sel.id ?? `#${store.selectedProp}`);
+    // a prop line shows the model it lays out, named by the line (docs/070)
+    else if (store.selectedLine !== null && ctx.propLines.selected()) {
+      const { template, sheet } = ctx.propLines.selected()!;
+      // a sheet's template names no model of its own: its first piece is what it looks like (docs/071)
+      const first = sheet ? (store.mdoc.props ?? []).find(p => p.line === store.selectedLine) : undefined;
+      if (sheet && !first) propPreview.hide();
+      else propPreview.show(template.level, first?.model ?? template.model, shortPropName(template.name),
+        propLevels.get(template.level), template.group ? groupDefIdx.get(`${template.level}:${template.group}`) ?? null : null,
+        store.selectedLine);
+    }
     // the armed prop is on the cursor, not in the document — it has no placement identity to show yet
     else if (store.armedProp) propPreview.show(store.armedProp.level, store.armedProp.model, shortPropName(store.armedProp.name), propLevels.get(store.armedProp.level), store.armedProp.group ? groupDefIdx.get(`${store.armedProp.level}:${store.armedProp.group}`) : null);
     // A reference pick's number is its native Instances[] row — the exact value Effects mode labels "Prop
@@ -1517,5 +1718,5 @@ export function createPropTools(ctx: ToolsContext) {
       && !store.gemArmed && !viewport.lightPlacing; // mirrors the panel routing: a held tool owns the toolbox
   }
 
-  return { buildPropTools, buildLightTools, buildLightPlacementTools, updatePropPreview };
+  return { buildPropTools, buildLineTools, buildLightTools, buildLightPlacementTools, updatePropPreview };
 }

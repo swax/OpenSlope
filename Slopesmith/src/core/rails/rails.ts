@@ -1,4 +1,6 @@
 import type { Rail, V3 } from '../doc/types';
+import type { LevelProps } from '../reference/props';
+import { resolveTerrainTexRef } from '../paint/textures';
 
 /**
  * Course-spline geometry (docs/014). Grind rails and Effects motion paths share the SAME uniform Catmull-Rom
@@ -88,6 +90,49 @@ export function ensureRailIds(rails: Rail[] | undefined): void {
       used.add(rail.id);
     }
   }
+}
+
+/**
+ * How the shipped levels name their rail PIPES. Each is one bespoke swept chunk of tube, placed exactly once
+ * with the curve baked into its vertices (GARI ships 98, ELYSIUM 99, each a separate model) — the pipe half of a
+ * rail, cut per chunk on export the way a sheet is (docs/071). The server reads the metal default skin off the
+ * same models (`nativeArtSource`).
+ */
+export const RAIL_PIPE_MODEL = /^Mdl_Rail_Metal/;
+
+/** A level's rail pipes, as the Prop Library folds them into one entry that opens the rail tool. */
+export interface RailPipeFamily {
+  /** The pieces' shared base name. */
+  key: string;
+  /** Every pipe model, placed or not, so the library can fold them all. */
+  models: number[];
+  /** How many placed pieces the level holds. */
+  pieces: number;
+  /** The tile the pipes wear, as a "LEVEL/file.png" ref. */
+  texture: string | null;
+}
+
+/**
+ * The rail pipes a shipped level was cut into, or null when it has none. Named like the retail pipes AND nearly
+ * all placed exactly once — an instanced kit piece that happened to share the name would not be a pipe chunk.
+ * (Wood and ice rails ship no pipe: retail rides them along logs and icicles that are ordinary props.)
+ */
+export function mineRailPipes(lp: Pick<LevelProps, 'level' | 'models' | 'instances' | 'materials'>): RailPipeFamily | null {
+  const models = lp.models.filter(model => !model.line && RAIL_PIPE_MODEL.test(model.name));
+  if (models.length < 2) return null;
+  const placements = new Map<number, number>();
+  for (const instance of lp.instances) {
+    if (instance.visible !== false) placements.set(instance.model, (placements.get(instance.model) ?? 0) + 1);
+  }
+  const placed = models.filter(model => placements.get(model.id));
+  if (!placed.length || placed.filter(model => placements.get(model.id) === 1).length < placed.length * 0.75) return null;
+  const material = lp.materials.get(placed[0].subs[0]?.mat ?? -1);
+  return {
+    key: placed[0].name.replace(/_\d+$/, ''),
+    models: models.map(model => model.id),
+    pieces: placed.length,
+    texture: material?.tex ? resolveTerrainTexRef(lp.level, material.tex) : null,
+  };
 }
 
 /** The style a rail rides as (default metal), tolerating a doc saved before the style field existed. */

@@ -137,6 +137,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   let propArm: PropArm | null = null;
   let propGhost: THREE.Group | null = null;         // the ghost meshes (under worldRoot, data coords)
   let propGhostHit: THREE.Vector3 | null = null;    // last terrain hit under the ghost (world coords)
+  let highlightedLine: string | null = null;        // the selected prop line, whose members wear the outline
   let pendingYaw = 0;                               // ghost turn — random per arm / drop, turnPending adjusts
   let pendingScale = 1;                             // ghost size — Shift+wheel adjusts, kept across drops
   let yawManual = false;                            // turned by hand: keep the yaw across drops (no re-roll)
@@ -673,6 +674,13 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     selectedProp = selIdx !== null && selIdx >= 0 && selIdx < lastPlacedProps.length ? selIdx : null;
     multiSelProps = [...new Set(multiSel.filter(i => i >= 0 && i < lastPlacedProps.length && i !== selectedProp))];
     for (const i of multiSelProps) decorateSelection(i, false);
+    // A selected prop line's members wear the selection outline too — the line is what the click selected —
+    // but carry no gizmo of their own: the line moves them by its nodes (docs/070).
+    if (highlightedLine !== null) {
+      lastPlacedProps.forEach((pp, i) => {
+        if (pp.line === highlightedLine && i !== selectedProp && !multiSelProps.includes(i)) decorateSelection(i, false);
+      });
+    }
     if (selectedProp !== null) {
       decorateSelection(selectedProp, true);
       showAuthoredSoundRange(lastPlacedProps[selectedProp]);
@@ -946,6 +954,13 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   function seatProp(i: number) {
     setSelection(i);
     stage.cb.onSelectProp?.(i);
+  }
+
+  /** Outline every member of prop line `id` as selected, or none with null (docs/070). */
+  function setLineHighlight(id: string | null) {
+    if (id === highlightedLine) return; // setPlacedProps re-applies it on every rebuild
+    highlightedLine = id;
+    setSelection(selectedProp, multiSelProps);
   }
 
   /** Drop any placed-prop selection (single or multi): hide the handle and release the gizmo if it was on it. */
@@ -1460,7 +1475,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     renderStats,
     /** Install the mountain's hit-gated claim order; the selected prop's region redraws against it. */
     setHitGatedSounds(claims: readonly string[] | undefined) { hitGatedClaims = claims ?? []; },
-    setPlacedProps, setSelection, seatProp, clearSelection, flashProp, showEffectProps, setCollisionOverlayVisible,
+    setPlacedProps, setSelection, setLineHighlight, seatProp, clearSelection, flashProp, showEffectProps, setCollisionOverlayVisible,
     setRuntimePropVisible, setRuntimePropWorldMatrix, runtimePropPieceIds, setRuntimePropPieceMotions,
     resetRuntimeProps,
     controlRuntimePropProperty, resetRuntimePropEffects, propHasPulseProperty, propHasTriggerableCombo,

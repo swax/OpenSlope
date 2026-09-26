@@ -252,6 +252,9 @@ export type Store = {
   selectedRail: number | null;        // index into mdoc.rails of the rail being edited (its nodes show)
   selectedNode: number | null;        // node within selectedRail carrying the move gizmo
   railDrawing: boolean;               // the Rails tool is laying a rail: ground clicks append nodes
+  selectedLine: string | null;        // id (`line:NNNN`) of the selected prop line (docs/070) — its path + nodes show
+  selectedLineNode: number | null;    // node within selectedLine carrying the move gizmo
+  lineDrawing: boolean;               // a prop line is being laid: ground clicks append nodes
   selectedGem: string | null;         // id (`gem:NNNN`) of the selected gem, for the same reason
   selectedScreen: string | null;      // id (`screen:NNNN`) of the selected video screen (docs/051)
   gemArmed: boolean;                  // the Gem tool is active: click drops a gem, drag lays a row
@@ -456,6 +459,9 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     selectedRail: null,
     selectedNode: null,
     railDrawing: false,
+    selectedLine: null,
+    selectedLineNode: null,
+    lineDrawing: false,
     selectedGem: null,
     selectedScreen: null,
     gemArmed: false,

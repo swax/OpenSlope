@@ -42,6 +42,8 @@ export const GEM_ICON_BODY = '<path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M
 export const BULB_ICON_BODY = '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>';
 /** A billboard panel on its post — the video-screen family (docs/051). */
 export const SCREEN_ICON_BODY = '<rect x="3" y="4" width="18" height="11" rx="1"/><path d="M12 15v6M9 21h6"/>';
+/** A fence panel between two posts, chain-link diamond across it — the sheet family (docs/071). */
+export const SHEET_ICON_BODY = '<path d="M4 3v18M20 3v18M4 6h16M4 18h16"/><path d="m4 6 8 6 8-6M4 18l8-6 8 6"/>';
 
 /** Shared paint-brush glyph for Paint mode and its armed viewport cursor.
  *  [lucide] shares elements with Lucide v0.100.0 `paintbrush`; the rest is adapted. */
@@ -122,6 +124,7 @@ export const VIEW_ICON = {
   addGem: svg(withPlus(GEM_ICON_BODY)),       // faceted gem, + badge (add gem)
   addLight: svg(withPlus(BULB_ICON_BODY)),    // light bulb, + badge (add light)
   addScreen: svg(withPlus(SCREEN_ICON_BODY)), // billboard panel, + badge (add video screen)
+  addSheet: svg(withPlus(SHEET_ICON_BODY)),   // fence panel, + badge (add sheet — docs/071)
   tricks: svg('<path d="M12 2l2.6 6.6L21 9.3l-5 4.3L17.5 21 12 17.3 6.5 21 8 13.6l-5-4.3 6.4-.7z"/>'), // star — the trick layer
   effects: svg('<path d="M3 8c2.2-2 4.3-2 6.5 0s4.3 2 6.5 0 4.3-2 5 0"/><path d="M3 13c2.2-2 4.3-2 6.5 0s4.3 2 6.5 0 4.3-2 5 0"/><path d="M3 18c2.2-2 4.3-2 6.5 0s4.3 2 6.5 0 4.3-2 5 0"/>'), // moving world/material effects
 };

@@ -14,6 +14,7 @@ import type { EditSession } from '../../edit/session';
 import type { Palette } from '../../paint/palette';
 import type { TextureLibrary } from '../../paint/library';
 import type { PropLibrary } from '../../props/library';
+import type { PropLineOps } from '../../props/lines';
 import type { PropPreview } from '../../props/preview';
 import type { Play } from '../../ride/play';
 import type { HeldEffect, Store } from '../../state/store';
@@ -156,6 +157,8 @@ export type ToolsPanelDeps = {
   deleteSelectedRail: () => void;
   deleteSelectedRailNode: () => void;
   finishRail: () => void;
+  /** Prop lines (docs/070): draw, lay out, edit and delete the line a row of placements hangs off. */
+  propLines: PropLineOps;
   effects: EffectsEditor;
   /** Jump to Effects mode; the mode switch carries the current Props selection to its effect host. A native
    * reference caller can ask to follow its first resolved Run edge directly to the receiving prop/effect. */
