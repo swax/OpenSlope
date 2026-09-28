@@ -987,6 +987,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // desktop camera: RMB = orbit around the cursor's surface hit; Alt+RMB = fly look + WASD.
     if (e.pointerType !== 'touch') {
       if (e.button === 2) {
+        // A headset owns the camera: the wrist palette's right-click (docs/068) has no orbit or fly to start.
+        if (layers.rideCtl.xrPresenting) return;
         if (e.altKey) { layers.cameraCtl.startFly(e); return; } // Alt+RMB: fly look + WASD
         layers.cameraCtl.startOrbit(e); return;
       }

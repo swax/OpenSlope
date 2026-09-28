@@ -1198,9 +1198,10 @@ export function createSelectionLayer(
   }
 
   /** Hold the selected-corner marker dot + the cage handle spheres at a constant few px on screen, re-scaled
-   *  every frame — the point twin of scaleHandleNubs (the tangent nubs). */
+   *  every frame — the point twin of scaleHandleNubs (the tangent nubs). In a headset the dot takes the move
+   *  gizmo's centre handle's size instead (Stage.pointMarkerRadius). */
   function scaleEditMarkers() {
-    if (cornerMarker.visible) cornerMarker.scale.setScalar(Math.max(1e-4, CTRL_CORNER_SEL_PX * stage.worldPerPixel(cornerMarker.position)));
+    if (cornerMarker.visible) cornerMarker.scale.setScalar(Math.max(1e-4, stage.pointMarkerRadius(cornerMarker.position, CTRL_CORNER_SEL_PX)));
     for (const m of cageHandleMeshes) m.scale.setScalar(Math.max(1e-4, HANDLE_NUB_PX * stage.worldPerPixel(m.position)));
   }
 

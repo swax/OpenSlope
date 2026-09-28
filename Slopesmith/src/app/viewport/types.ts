@@ -246,6 +246,11 @@ export interface ViewportCallbacks {
   onRideControlContextChange?(): void;
   /** A local human rider started a transient world interaction that peers on this map should also see. */
   onRideEvent?(event: RideEvent): void;
+  /** The headset's stick clicks while EDIT is on (docs/068): the editor's own undo / redo, as Ctrl+Z / Ctrl+Y. */
+  onUndo?(): void;
+  onRedo?(): void;
+  /** The headset's mixed reality became available, turned on or off, or ended with the session (docs/068). */
+  onXrMixedRealityChange?(on: boolean): void;
   /** Upper-right orthographic controls: toggle the persisted XYZ reference-grid preference. */
   onToggleViewGrid?(): void;
   /** Upper-right Grid resolution menu: change the persisted drafting-grid spacing. */

@@ -169,6 +169,7 @@ export class PropLibrary {
   constructor(private cb: PropLibraryCallbacks) {
     installStyles('prop-library', css);
 
+    this.el.id = 'prop-library'; // followed by the headset's wrist EDIT palette (docs/068)
     this.el.className = 'pl-pal';
     const head = document.createElement('div');
     head.className = 'pl-head';

@@ -11,6 +11,19 @@
   position: fixed; top: var(--bar-h); bottom: 0; right: 0; width: var(--side-w); z-index: 20;
   display: flex; flex-direction: column; pointer-events: none;
 }
+/* While a headset wears the toolbox on its wrist EDIT palette (docs/068) the dock is clamped to a palette's height:
+   a window-tall dock would be half a metre on the arm, and the clamp makes the toolbox's own scrollbar the one the
+   right stick drives. The desktop mirror shows the same shorter dock for the duration. */
+body.os-xr-editing #dock-right { bottom: auto; height: min(calc(100% - var(--bar-h)), 720px); }
+/* The bottom libraries (Texture in Paint, Prop in Props) likewise stand beside the toolbox on the palette instead
+   of spanning the window, which would be a metre and a half of strip on the wrist. On the page they sit at the
+   bottom just left of the dock. Their headers wrap, so the ✕ is never scrolled off sideways where the stick,
+   which only scrolls up and down, could not bring it back. */
+body.os-xr-editing .sp-pal, body.os-xr-editing .pl-pal {
+  left: auto; right: calc(var(--side-w) + 8px); width: 480px; height: 400px;
+  border: 1px solid #2c3e50; border-bottom: 0; border-radius: 8px 8px 0 0;
+}
+body.os-xr-editing .sp-head, body.os-xr-editing .pl-head { flex-wrap: wrap; overflow-x: visible; }
 /* Only rendered panel surfaces intercept the viewport. When a panel is collapsed to its header, the empty
    remainder of the dock becomes transparent and clickable, revealing any corner gizmo seated behind it. */
 #dock-right > * { pointer-events: auto; }

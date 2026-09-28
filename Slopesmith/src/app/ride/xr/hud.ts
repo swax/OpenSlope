@@ -34,16 +34,18 @@ const W = 512, PERF_H = 752, COMPACT_H = 486;
 const PERF_W = 0.48;
 /** A compact 18 cm wrist computer: large enough to read in a headset, but no longer a dashboard on the arm. */
 const COMPACT_W = 0.18;
-export type XrHudAction = 'calibrate' | 'restart' | 'stats' | 'view' | 'controls' | 'exit';
-export type XrControlsMode = 'ride' | 'foot';
-/** Four broad rows on the compact watch. Gaps remain after the invisible hit padding, so actions cannot overlap. */
+export type XrHudAction = 'calibrate' | 'restart' | 'stats' | 'view' | 'controls' | 'edit' | 'exit';
+export type XrControlsMode = 'ride' | 'foot' | 'edit';
+/** Four broad rows on the compact watch. Gaps remain after the invisible hit padding, so actions cannot overlap.
+ *  EDIT opens the wrist palette of real editor panels (docs/068); like T-POSE it is an on-foot action. */
 const WATCH_BUTTONS: ReadonlyArray<{ action: XrHudAction; x: number; y: number; w: number; h: number }> = [
   { action: 'calibrate', x: 18, y: 108, w: 476, h: 52 },
   { action: 'restart', x: 18, y: 172, w: 232, h: 52 },
   { action: 'exit', x: 262, y: 172, w: 232, h: 52 },
   { action: 'stats', x: 18, y: 236, w: 232, h: 52 },
   { action: 'view', x: 262, y: 236, w: 232, h: 52 },
-  { action: 'controls', x: 18, y: 300, w: 476, h: 52 },
+  { action: 'controls', x: 18, y: 300, w: 232, h: 52 },
+  { action: 'edit', x: 262, y: 300, w: 232, h: 52 },
 ];
 const CONTROLS_BACK_BUTTON = { action: 'controls' as const, x: 18, y: 424, w: 476, h: 44 };
 /** Invisible acquisition margin: visible buttons stay tidy while controller aim remains forgiving. */
@@ -85,6 +87,20 @@ export interface XrControllerDiagramLabels {
 /** State-aware copy for the wrist help diagram. This deliberately mirrors `input.ts`; keeping it pure makes a
  * changed binding fail a headless test before stale instructions reach a headset. */
 export function xrControllerDiagramLabels(mode: XrControlsMode): XrControllerDiagramLabels {
+  // EDIT (docs/068, `stepEdit`): the right hand is the editor's mouse; left trigger, left X and right B are unbound.
+  if (mode === 'edit') return {
+    left: [
+      { control: 'GRIP', action: 'DRAG MAP · BOTH ZOOM / TURN' },
+      { control: 'STICK', action: 'FLY · CLICK UNDO' },
+      { control: 'Y', action: 'SHOW / HIDE MENU' },
+    ],
+    right: [
+      { control: 'TRIGGER', action: 'CLICK' },
+      { control: 'GRIP', action: 'DRAG MAP · BOTH ZOOM / TURN' },
+      { control: 'STICK', action: 'TURN · RISE · CLICK REDO' },
+      { control: 'A', action: 'RIGHT CLICK' },
+    ],
+  };
   return {
     left: mode === 'ride' ? [
       { control: 'TRIGGER', action: 'DISMOUNT' },
@@ -115,6 +131,14 @@ export const XR_BOARD_CONTROL_NOTES = [
   'On board, B follows deck nose; holding it is a jetpack — even on ground.',
   'Airborne grip removes board; grip behind your head summons.',
   'Holding it: trigger re-equips; release grip throws.',
+] as const;
+
+export const XR_EDIT_CONTROL_NOTES = [
+  'One grip drags the map with that hand, up and down too.',
+  'Both grips: pull apart to zoom in, twist to turn the map.',
+  'Holding a gizmo handle, push or pull the hand for depth.',
+  'Over the palette, the right stick scrolls it.',
+  'Y hides the watch and palette; the laser keeps working.',
 ] as const;
 
 /** What the profiler block draws. The broad phases come from the shared ride profiler so the wrist and the
@@ -210,7 +234,7 @@ export function createXrHud(label: string, showPerf = true) {
   function draw(now: number, state: XrHudState | null, stats: XrHudPerf | null,
                 calibration: XrHudCalibration | null = null, statsEnabled = false, thirdPerson = false,
                 run: RideRunStatus | null = null, controlsOpen = false,
-                controlsMode: XrControlsMode = state ? 'ride' : 'foot', carrying = false) {
+                controlsMode: XrControlsMode = state ? 'ride' : 'foot', carrying = false, editOpen = false) {
     if (now < nextPaint) return;
     nextPaint = now + 1000 / REPAINT_HZ;
 
@@ -292,7 +316,7 @@ export function createXrHud(label: string, showPerf = true) {
       }
     }
 
-    if (!showPerf && calibration) drawWatchMenu(ctx, calibration, !state, statsEnabled, thirdPerson);
+    if (!showPerf && calibration) drawWatchMenu(ctx, calibration, !state, statsEnabled, thirdPerson, editOpen);
     // The dots are the BOARD run's energy, not Superman fuel. Hide them off-board, where boost is unlimited,
     // even if an airborne grab is retaining the run clock and score for a catch.
     if (!showPerf && state && run?.phase === 'running') drawBoostMeter(ctx, run.boostMeter);
@@ -465,14 +489,15 @@ function drawPerf(ctx: CanvasRenderingContext2D, s: XrHudPerf) {
 }
 
 function drawWatchMenu(ctx: CanvasRenderingContext2D, calibration: XrHudCalibration, onFoot: boolean,
-                       statsEnabled: boolean, thirdPerson: boolean) {
+                       statsEnabled: boolean, thirdPerson: boolean, editOpen: boolean) {
   for (const button of WATCH_BUTTONS) {
     const enabled = button.action === 'restart' || button.action === 'stats' || button.action === 'view'
       || button.action === 'controls' || button.action === 'exit' || onFoot;
     const calibrating = button.action === 'calibrate' && calibration.phase === 'countdown';
     const saved = button.action === 'calibrate' && calibration.phase === 'saved';
     const error = button.action === 'calibrate' && calibration.phase === 'error';
-    const active = (button.action === 'stats' && statsEnabled) || (button.action === 'view' && thirdPerson);
+    const active = (button.action === 'stats' && statsEnabled) || (button.action === 'view' && thirdPerson)
+      || (button.action === 'edit' && editOpen);
     const danger = button.action === 'exit';
     ctx.fillStyle = !enabled ? 'rgba(110,125,140,0.12)'
       : error || danger ? 'rgba(238,91,91,0.25)'
@@ -488,7 +513,8 @@ function drawWatchMenu(ctx: CanvasRenderingContext2D, calibration: XrHudCalibrat
       : button.action === 'restart' ? 'RESTART'
           : button.action === 'stats' ? `VR STATS ${statsEnabled ? 'ON' : 'OFF'}`
             : button.action === 'view' ? `3RD PERSON ${thirdPerson ? 'ON' : 'OFF'}`
-              : button.action === 'controls' ? 'CONTROLS' : 'EXIT VR';
+              : button.action === 'controls' ? 'CONTROLS'
+                : button.action === 'edit' ? `EDIT ${editOpen ? 'ON' : 'OFF'}` : 'EXIT VR';
     if (button.action === 'calibrate') {
       if (calibrating) title = String(calibration.count ?? 3);
       else if (saved && calibration.standingHeight) title = `${calibration.standingHeight.toFixed(2)} M`;
@@ -509,7 +535,8 @@ function drawControlsPage(ctx: CanvasRenderingContext2D, mode: XrControlsMode, c
   ctx.fillStyle = '#8fd7ff';
   ctx.font = '700 17px system-ui, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(mode === 'ride' ? 'RIDING' : carrying ? 'ON FOOT · HOLDING BOARD' : 'ON FOOT', W - 26, 76);
+  ctx.fillText(mode === 'ride' ? 'RIDING' : mode === 'edit' ? 'EDITING'
+    : carrying ? 'ON FOOT · HOLDING BOARD' : 'ON FOOT', W - 26, 76);
   ctx.textAlign = 'left';
 
   const labels = xrControllerDiagramLabels(mode);
@@ -518,12 +545,13 @@ function drawControlsPage(ctx: CanvasRenderingContext2D, mode: XrControlsMode, c
 
   ctx.fillStyle = '#66839e';
   ctx.font = '800 14px system-ui, sans-serif';
-  ctx.fillText('FLIGHT & BOARD', 26, 300);
+  ctx.fillText(mode === 'edit' ? 'EDIT FLIGHT' : 'FLIGHT & BOARD', 26, 300);
   ctx.textAlign = 'right';
-  ctx.fillText(mode === 'ride' ? 'X RESPAWN · MENU RESTART' : 'X SPAWN BOARD · MENU RESTART', W - 26, 300);
+  ctx.fillText(mode === 'ride' ? 'X RESPAWN · MENU RESTART' : mode === 'edit' ? 'MENU EDIT TO LEAVE'
+    : 'X SPAWN BOARD · MENU RESTART', W - 26, 300);
   ctx.textAlign = 'left';
   ctx.font = '600 14px system-ui, sans-serif';
-  XR_BOARD_CONTROL_NOTES.forEach((note, index) => {
+  (mode === 'edit' ? XR_EDIT_CONTROL_NOTES : XR_BOARD_CONTROL_NOTES).forEach((note, index) => {
     ctx.fillStyle = index < 3 ? '#dcecff' : '#9fb6cc';
     ctx.fillText(`• ${note}`, 26, 326 + index * 21);
   });

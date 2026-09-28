@@ -71,6 +71,9 @@ export type ViewportWiringDeps = {
   rebuildTools: () => void;
   updateCmdSheet: () => void;
   refreshSelection: () => void;
+  undo: () => void;
+  redo: () => void;
+  xrMixedRealityChanged: (on: boolean) => void;
   getSceneSel: () => SceneSel;
   selectScene: (kind: SceneSel) => void;
   showReferenceLightDetails: (level: string | null, light: RigLight | null) => void;
@@ -84,7 +87,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     toggleViewGrid, setViewGridStep, toggleSnap, setSnapStep, setRotationSnapStep,
     selectPaintCell, rangeSelectPaintCells, clearPaintSelection,
     viewport, palette, library, propOps, propLines, play, coursePath,
-    scheduleRebuild, rebuildTools, updateCmdSheet, refreshSelection,
+    scheduleRebuild, rebuildTools, updateCmdSheet, refreshSelection, undo, redo, xrMixedRealityChanged,
     getSceneSel, selectScene, showReferenceLightDetails, persistRef, sendRideEvent,
   } = deps;
   const { resetGizmoMode } = edit;
@@ -121,6 +124,9 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     ...edit.viewportCallbacks,
     onRideControlContextChange() { updateCmdSheet(); },
     onRideEvent(event) { sendRideEvent(event); },
+    onUndo() { undo(); },
+    onRedo() { redo(); },
+    onXrMixedRealityChange(on) { xrMixedRealityChanged(on); },
     onToggleViewGrid() { toggleViewGrid(); },
     onSetViewGridStep(step) { setViewGridStep(step); },
     onToggleSnap() { toggleSnap(); },

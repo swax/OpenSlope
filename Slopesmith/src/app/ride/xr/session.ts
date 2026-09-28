@@ -8,12 +8,21 @@ import type { CharacterHandCurl } from '../character-rig';
 import type { RideState } from '../physics';
 import { createXrHud, type XrHudAction, type XrHudCalibration, type XrHudPerf } from './hud';
 import {
+  createXrEditPalette, XR_EDIT_PALETTE_DROP, XR_EDIT_PALETTE_POSITION, XR_EDIT_PALETTE_TILT, type XrEditPalette,
+} from './edit-palette';
+import { createXrWorldPointer, type XrWorldPointer, type XrWorldPointerDeps } from './world-pointer';
+import {
+  solveOneHandGrab, solveTwoHandGrab, turnRigAbout, type OneHandGrab, type RigPose, type TwoHandGrab,
+} from './world-grab';
+import { beginHandGrab, handGrabPoint, handTranslateTarget, type GizmoAxis, type HandGrab } from './hand-drag';
+import { installScaledRigCullFix } from './scaled-camera';
+import {
   createRidePerf, estimatedRidePacingMs, measuredRideCpuMs, recordRideFrameTimings, unmeasuredRideFrameMs,
   type RideFrameTimingSample, type RidePerf,
 } from '../perf';
 import {
-  controllerFingerCurls, footControls, grabControls, readPads, rideControls, smoothTurnRadians, viewToggleHeld,
-  wristMenuToggleHeld,
+  controllerFingerCurls, footControls, grabControls, readPads, rideControls, shapeAxis, smoothTurnRadians,
+  viewToggleHeld, wristMenuToggleHeld,
   type XrPads, type XrRideControls,
 } from './input';
 import { trackedFingerCurls, type TrackedHand } from './hand-curl';
@@ -95,6 +104,19 @@ const PERF_LOG_MS = 2000;
 const RATE_WARMUP_FRAMES = 30;
 /** The rates a headset is actually built around, for snapping a measured cadence onto one of them. */
 const KNOWN_DISPLAY_RATES = [60, 72, 80, 90, 96, 100, 120, 144];
+/** How far the right ray reaches for the watch, at life size (the watch grows with an edit-flight player). */
+const WATCH_REACH = 1.5;
+/** Edit flight (docs/068): full left-stick speed at life size, m/s. A bigger player flies proportionally faster. */
+const XR_EDIT_FLY_SPEED = 6;
+/** Where the world mouse puts its cursor when the ray meets no surface, at life size. */
+const WORLD_POINTER_FAR = 1000;
+/** The world cursor's apparent size: its radius as a fraction of its distance from the eyes (~0.35° across). */
+const WORLD_CURSOR_ANGLE = 0.003;
+/** Leaving edit flight looks this far above and below the eyes for the topmost surface to stand on. */
+const LAND_PROBE = 20000;
+
+/** Who took a right-hand button's press while EDIT is open. */
+type EditTarget = 'watch' | 'palette' | 'world' | null;
 
 /**
  * The display rate implied by the fastest frame a session managed, snapped to a real headset rate. Used only
@@ -205,6 +227,14 @@ export interface XrPlayDeps {
   setFlightBoostAudio(active: boolean, dt: number): void;
   /** The session ended — headset off, system menu, or Stop. The host restores the editor. */
   onExit(): void;
+  /** The editor the wrist EDIT palette's right-hand mouse drives (docs/068): its canvas, its pick camera, and the
+   *  editable surface under a world ray. Without it EDIT still shows the palette, but the hand edits nothing. */
+  editor?: XrWorldPointerDeps;
+  /** The editor's undo / redo: left and right stick clicks while EDIT is on. */
+  undo?(): void;
+  redo?(): void;
+  /** Mixed reality became available, turned on or off, or went with the session (`setMixedReality`). */
+  onMixedRealityChange?(on: boolean): void;
 }
 
 /** Whether this browser can present at all; false everywhere without a headset runtime. */
@@ -230,10 +260,45 @@ export function createXrPlay(deps: XrPlayDeps) {
   const profiler = createXrHud(deps.label, true);
   let statsEnabled = deps.showStats;
   let controlsOpen = false;
+  /** The wrist EDIT palette (docs/068): built on first use, so a session that never edits pays nothing for it. */
+  let palette: XrEditPalette | null = null;
+  let editOpen = false;
+  /** The right hand's aim this frame, shared by the palette and the world mouse. */
+  const editRay = new THREE.Ray();
+  /** Where the right ray met the palette this frame, for the shared pointer beam. */
+  let palettePoint: THREE.Vector3 | null = null;
+  /** Edit flight: the rig's own pose while EDIT is open, in place of the walker's. */
+  const editPose: RigPose = { x: 0, y: 0, z: 0, yaw: 0, scale: 1 };
+  let editGrab: TwoHandGrab | null = null;
+  /** One grip held alone: the map dragged with that hand. */
+  let panGrab: { side: 'left' | 'right'; grab: OneHandGrab } | null = null;
+  /** Which surface took each right-hand button's press, so its release goes to the same one. */
+  const editOwner: { left: EditTarget; right: EditTarget } = { left: null, right: null };
+  /** The right hand as the editor's mouse on the mountain; null when the host supplied no editor to drive. */
+  let worldPointer: XrWorldPointer | null = null;
+  const worldCursor = createWorldCursor();
+  let worldCursorShown = false;
+  /** The move gizmo's translate while the trigger holds it: the hand drives it in depth too (hand-drag.ts). */
+  let handGrab: HandGrab | null = null;
+  const handGrabAt = new THREE.Vector3(), handDelta = new THREE.Vector3(), handTarget = new THREE.Vector3();
+  const handAnchor = new THREE.Vector3(), handLast = new THREE.Vector3(), handFrame = new THREE.Quaternion();
+  const grabA = new THREE.Vector3(), grabB = new THREE.Vector3(), flyRight = new THREE.Vector3();
+  const landFrom = new THREE.Vector3(), landTo = new THREE.Vector3();
+  let cameraFarHome = deps.camera.far;
+  /** Undoes the scaled-rig cull correction installed for the session (scaled-camera.ts). */
+  let restoreCullFix: (() => void) | null = null;
+  // The body during edit flight, posed in the rig's frame (updateEditAvatar).
+  const rigInverse = new THREE.Matrix4(), rigTurnInverse = new THREE.Quaternion();
+  const editFeet = new THREE.Vector3(), editFacing = new THREE.Vector3(), editStill = new THREE.Vector3();
+  const editHandA: RiderHandTarget = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+  const editHandB: RiderHandTarget = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
   /** Left Y hides the complete wrist watch until the next Y edge. Starts visible on every headset session. */
   let watchVisible = true;
 
   let session: XRSession | null = null;
+  /** Mixed reality (docs/068): whether this runtime offers `immersive-ar` at all, whether the session presenting
+   *  is one, and whether a swap between the two is under way (`setMixedReality`). */
+  let arSupported = false, mixedReality = false, swapping = false;
   let cameraHome: THREE.Object3D | null = null;
   let cameraNearHome: number | null = null;
   let ride: XrBoardRide | null = null;
@@ -331,7 +396,7 @@ export function createXrPlay(deps: XrPlayDeps) {
    * while A jumps in either locomotion state. An edge read only inside one branch would see a button still held
    * from the other as a fresh press — step off with the trigger down and you would step straight back on.
    */
-  const held = { trigger: false, rightTrigger: false, a: false, x: false, view: false, menu: false };
+  const held = { trigger: false, rightTrigger: false, a: false, x: false, view: false, menu: false, leftStick: false };
   /** The grips, tracked beside the rest for the same reason and kept apart only so `edge` stays a flat lookup. */
   const heldGrab = { left: false, right: false };
   let seatYawRead = 0;
@@ -387,29 +452,14 @@ export function createXrPlay(deps: XrPlayDeps) {
    */
   async function enter(): Promise<boolean> {
     if (session || !navigator.xr) return false;
-    let requested: XRSession;
-    try {
-      requested = await navigator.xr.requestSession('immersive-vr', {
-        // `local-floor` is what puts the rig origin at the rider's FEET, so the walker's ground contact and the
-        // board's deck are both real heights rather than guesses about how tall the wearer is.
-        //
-        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'],
-      });
-    } catch (error) {
-      console.warn('[Slopesmith XR] Session request failed:', error);
-      return false;
-    }
-    session = requested;
+    const requested = await requestXr('immersive-vr');
+    if (!requested) return false;
     controlsOpen = false;
     watchVisible = true;
     held.menu = false;
     hud.invalidate();
-    nativeRenderScale = xrNativeRenderScale(requested);
-    // Native scale is useful context but not a ceiling: several runtimes accept supersampling above it. Hand
-    // Three the user's full request and let the measured viewport decide whether it was actually capped.
-    appliedRenderScale = deps.renderScale;
-    session.addEventListener('end', onSessionEnd);
     cameraNearHome = deps.camera.near;
+    cameraFarHome = deps.camera.far;
     setXrNearPlane();
 
     deps.scene.add(rig);
@@ -419,11 +469,60 @@ export function createXrPlay(deps: XrPlayDeps) {
     deps.scene.add(heldBoardBoostTrail.mesh);
     deps.scene.add(footRider.group);
     deps.scene.add(watchPointer.object);
+    deps.scene.add(worldCursor);
     deps.scene.add(boardActionGuides.left.object, boardActionGuides.right.object);
     if (statsEnabled) viewRig.add(profiler.object); // full profiler follows the presented headset, not avatar IK
     // Avoid one frame at the rig origin before a wrist space has supplied its first tracked transform.
     hud.object.visible = false;
 
+    if (!await present(requested)) { teardownScene(); return false; }
+    // Asked only now the headset is up: an await before the request would have spent the click's activation.
+    void navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+      if (!session || supported === arSupported) return;
+      arSupported = supported;
+      deps.onMixedRealityChange?.(mixedReality);
+    }).catch(() => {});
+    thirdPerson = false;
+    applyViewMode();
+    window.addEventListener('keydown', onViewKey, true);
+    viewKeyAttached = true;
+    // Start on foot at the gate, with the board parked where the ride would have dropped it.
+    rigFwd.set(deps.heading.x, 0, deps.heading.z);
+    if (rigFwd.lengthSq() < 1e-6) rigFwd.set(0, 0, 1);
+    rigFwd.normalize();
+    parkBoardAt(deps.spawn, rigFwd);
+    resetOnFoot();
+    // Do this only after requestSession/setSession have succeeded: building a TestRide before those awaits can
+    // consume the click's transient user activation and make WebXR reject the request. The opening transition
+    // is also the least disruptive place to pay the one unavoidable synchronous collision/BVH build.
+    retainedRide = deps.prepareRide?.(gaze) ?? null;
+    return true;
+  }
+
+  /** Ask for a headset session of `mode`. Null when refused; the caller must still hold the user's activation. */
+  async function requestXr(mode: XRSessionMode): Promise<XRSession | null> {
+    try {
+      return await navigator.xr!.requestSession(mode, {
+        // `local-floor` is what puts the rig origin at the rider's FEET, so the walker's ground contact and the
+        // board's deck are both real heights rather than guesses about how tall the wearer is.
+        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'],
+      });
+    } catch (error) {
+      console.warn(`[Slopesmith XR] ${mode} session request failed:`, error);
+      return null;
+    }
+  }
+
+  /** Hand a granted session to three and the frame loop: the part of entering VR that belongs to one session,
+   *  and so is repeated when mixed reality swaps it (`setMixedReality`). On failure the session is ended and
+   *  false returned; the caller decides what that means. */
+  async function present(requested: XRSession): Promise<boolean> {
+    session = requested;
+    nativeRenderScale = xrNativeRenderScale(requested);
+    // Native scale is useful context but not a ceiling: several runtimes accept supersampling above it. Hand
+    // Three the user's full request and let the measured viewport decide whether it was actually capped.
+    appliedRenderScale = deps.renderScale;
+    requested.addEventListener('end', onSessionEnd);
     const xr = deps.renderer.xr;
     xr.enabled = true;
     // Before `setSession`, because that is when the layer — and with it the eye buffer's size — is made.
@@ -446,38 +545,60 @@ export function createXrPlay(deps: XrPlayDeps) {
       antialiasApplied = antialias.applied;
       const restoreLayers = deps.layerMode === 'webgl' ? maskXrLayersForThree() : null;
       try {
-        await xr.setSession(session);
+        await xr.setSession(requested);
       } finally {
         // Restore browser capabilities before failure cleanup can await session.end() or notify listeners.
         restoreLayers?.();
         antialias.restore();
       }
       layerOverrideApplied = !!restoreLayers && xrLayerKind(xr.getBaseLayer()) === 'webgl';
+      // Edit flight scales the rig, which three's stereo cull does not account for (scaled-camera.ts).
+      restoreCullFix = installScaledRigCullFix(xr);
     } catch (error) {
       console.error('[Slopesmith XR] Initialization failed:', error);
       session = null;
       requested.removeEventListener('end', onSessionEnd);
       await requested.end().catch(() => {});
-      teardownScene();
       return false;
     }
-
-    void requestBestFrameRate(session);
-    thirdPerson = false;
-    applyViewMode();
-    window.addEventListener('keydown', onViewKey, true);
-    viewKeyAttached = true;
-    // Start on foot at the gate, with the board parked where the ride would have dropped it.
-    rigFwd.set(deps.heading.x, 0, deps.heading.z);
-    if (rigFwd.lengthSq() < 1e-6) rigFwd.set(0, 0, 1);
-    rigFwd.normalize();
-    parkBoardAt(deps.spawn, rigFwd);
-    resetOnFoot();
-    // Do this only after requestSession/setSession have succeeded: building a TestRide before those awaits can
-    // consume the click's transient user activation and make WebXR reject the request. The opening transition
-    // is also the least disruptive place to pay the one unavoidable synchronous collision/BVH build.
-    retainedRide = deps.prepareRide?.(gaze) ?? null;
+    void requestBestFrameRate(requested);
     return true;
+  }
+
+  /**
+   * Mixed reality on or off (docs/068). In an `immersive-ar` session the Quest's passthrough cameras fill
+   * whatever the frame leaves transparent, and three clears transparent there behind a plain-colour background
+   * — the editor's own, once the skybox is off. So the mountain stands in the room.
+   *
+   * A session's mode is fixed when it is requested, so this ends the one presenting and asks for the other. The
+   * rig, the edit state and the palette carry across untouched; only the session under them changes, which the
+   * headset shows as a moment of its own transition. Like any request it needs the user activation of the press
+   * that asked for it. If the new mode is refused, the old one is asked for again, and only if that is refused
+   * too does VR end, as it would from the watch.
+   */
+  async function setMixedReality(on: boolean): Promise<boolean> {
+    const current = session;
+    if (!current || swapping || on === mixedReality) return on === mixedReality;
+    if (on && !arSupported) return false;
+    swapping = true;
+    let landed: boolean | null = null; // true: in the new mode; false: back in the old; null: nothing presents
+    try {
+      const ended = new Promise<void>(resolve => current.addEventListener('end', () => resolve(), { once: true }));
+      current.end().catch(() => {});
+      await ended;
+      const next = await requestXr(on ? 'immersive-ar' : 'immersive-vr');
+      if (next && await present(next)) landed = true;
+      else {
+        const back = await requestXr(mixedReality ? 'immersive-ar' : 'immersive-vr');
+        if (back && await present(back)) landed = false;
+      }
+    } finally {
+      swapping = false;
+    }
+    if (landed === null) { leaveXr(); return false; }
+    if (landed) mixedReality = on;
+    deps.onMixedRealityChange?.(mixedReality);
+    return landed;
   }
 
   /**
@@ -508,16 +629,31 @@ export function createXrPlay(deps: XrPlayDeps) {
   function onSessionEnd() {
     session?.removeEventListener('end', onSessionEnd);
     session = null;
+    restoreCullFix?.();
+    restoreCullFix = null;
+    // A mixed-reality swap ends this session on purpose; the next one takes over the same rig.
+    if (swapping) return;
+    leaveXr();
+  }
+
+  /** Out of the headset for good: put everything away and hand the editor back. */
+  function leaveXr() {
     if (ride) { ride = null; deps.stopRide(); }
     offBoardRun = null;
     boardGrab.clear(); // whatever was in a hand is not in a hand any more; there is no hand
     wristsTracked = false;
+    const hadMixed = mixedReality || arSupported;
+    mixedReality = arSupported = false;
     teardownScene();
+    if (hadMixed) deps.onMixedRealityChange?.(false);
     deps.onExit();
   }
 
   /** Take the rig, the board and the camera back out of the scene. Shared by a clean end and a refused start. */
   function teardownScene() {
+    setEditOpen(false, false);
+    restoreCullFix?.();
+    restoreCullFix = null;
     if (viewKeyAttached) {
       window.removeEventListener('keydown', onViewKey, true);
       viewKeyAttached = false;
@@ -528,6 +664,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     heldBoardBoostTrail.mesh.removeFromParent();
     footRider.group.removeFromParent();
     watchPointer.object.removeFromParent();
+    worldCursor.removeFromParent();
     boardActionGuides.left.hide();
     boardActionGuides.right.hide();
     boardActionGuides.left.object.removeFromParent();
@@ -560,6 +697,10 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (session) { exit(); return; }
     hud.dispose();
     profiler.dispose();
+    palette?.dispose();
+    palette = null;
+    worldCursor.geometry.dispose();
+    (worldCursor.material as THREE.Material).dispose();
     parked.dispose();
     heldBoardBoostTrail.dispose();
     footRider.dispose();
@@ -587,7 +728,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     // Optical joints win where they exist; a controller hand falls back to its grip and trigger.
     handA.curl = hands.fingerCurls('left') ?? controllerFingerCurls(pads.left);
     handB.curl = hands.fingerCurls('right') ?? controllerFingerCurls(pads.right);
-    hands.updateControllers(pads, !!ride);
+    hands.updateControllers(pads, !!ride, editOpen && !ride);
     const trigger = !!pads.left?.trigger || !!pads.right?.trigger;
     const pressTrigger = trigger && !held.trigger;
     const rightTrigger = !!pads.right?.trigger;
@@ -596,6 +737,8 @@ export function createXrPlay(deps: XrPlayDeps) {
     const pressX = !!pads.left?.a && !held.x;
     const viewHeld = viewToggleHeld(pads);
     const pressView = viewHeld && !held.view;
+    const leftStickHeld = !!pads.left?.stickPressed;
+    const pressLeftStick = leftStickHeld && !held.leftStick;
     const menuHeld = wristMenuToggleHeld(pads);
     const pressMenu = menuHeld && !held.menu;
     // The grip's two edges are both meaningful and they are not the same event: closing a hand takes the deck,
@@ -612,8 +755,13 @@ export function createXrPlay(deps: XrPlayDeps) {
     held.a = !!pads.right?.a;
     held.x = !!pads.left?.a;
     held.view = viewHeld;
+    held.leftStick = leftStickHeld;
     held.menu = menuHeld;
-    if (pressView) toggleView();
+    // EDIT gives the stick clicks to the editor's history (docs/068): left undoes, right redoes. The view toggle
+    // the right click otherwise owns waits for the palette to close.
+    const editing = editOpen && !ride;
+    if (pressView) { if (editing) deps.redo?.(); else toggleView(); }
+    if (pressLeftStick && editing) deps.undo?.();
     if (pressMenu) {
       watchVisible = !watchVisible;
       // Hide immediately, before this frame can acquire a stale watch action. Showing is placed against the
@@ -633,12 +781,20 @@ export function createXrPlay(deps: XrPlayDeps) {
       hud.invalidate();
     }
     if (watchAction === 'restart') {
+      setEditOpen(false, false); // the gate reset puts the walker back itself
       restartAtGate();
       deps.setFlightBoostAudio(false, dt);
       deps.stepFootContact?.(footContactFrom, walker.position(), walker.velocity(), footFrameDt);
       return;
     }
     if (watchAction === 'calibrate') startCalibration(performance.now());
+    if (watchAction === 'edit') setEditOpen(!editOpen);
+    // EDIT is the whole frame while it is open: flight instead of the walker, the right hand as the editor's mouse.
+    if (editOpen && !ride) {
+      stepEdit(pads, footFrameDt, pressRightTrigger, pressA);
+      deps.setFlightBoostAudio(false, dt);
+      return;
+    }
     if (calibrationRun) {
       // Stand still while the three-second capture is live; no trigger edge from clicking the watch may also
       // mount the board, and stick drift must not walk the floor out from beneath the T-pose.
@@ -725,6 +881,12 @@ export function createXrPlay(deps: XrPlayDeps) {
       setRigYaw();
       scratch.set(seatHeadAnchor.x, 0, seatHeadAnchor.z).applyQuaternion(rig.quaternion);
       rig.position.sub(scratch);
+    } else if (editOpen) {
+      // Edit flight owns the rig outright (docs/068): its position, heading and the player's size.
+      rig.position.set(editPose.x, editPose.y, editPose.z);
+      rig.scale.setScalar(editPose.scale);
+      setRigYaw();
+      setXrFarPlane(editPose.scale);
     } else {
       // The walker has already advanced by this frame's accepted physical head delta. Canceling the current
       // local offset here therefore does NOT erase room-scale motion: it leaves the rig origin stable while the
@@ -739,6 +901,13 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (statsEnabled) placeReadout(profiler.object);
     if (watchVisible) hands.placeWatch(hud.object);
     else hud.object.visible = false;
+    // The palette is an on-foot tool: a mode switch mid-run is not something it should be able to reach.
+    if (ride && editOpen) setEditOpen(false, false);
+    if (palette && editOpen) {
+      // Left Y puts the palette away with the watch that owns its EDIT button.
+      if (watchVisible && hands.placePalette(palette.object, palette.height)) palette.tick(performance.now());
+      else palette.object.visible = false;
+    }
     updateWatchPointer();
     // After the rig has moved, so the hands are read at this frame's seat rather than the last one's, and the
     // arms do not trail the board down the hill.
@@ -754,13 +923,15 @@ export function createXrPlay(deps: XrPlayDeps) {
       footRider.group.visible = false;
       ride.setXrHead(headWorld, headQuat);
       ride.setXrHands(tracked ? handA : null, tracked ? handB : null);
-    } else updateFootRider(tracked);
+    } else if (editOpen) updateEditAvatar(tracked);
+    else updateFootRider(tracked);
     paintHud(performance.now());
   }
 
   /** Right-controller pointer against an enabled canvas-space action on the left-wrist watch. */
   function watchActionHit(): { hit: THREE.Intersection<THREE.Object3D>; action: XrHudAction } | null {
     if (!hud.object.visible || !hands.presentationAimRay('right', watchRaycaster.ray)) return null;
+    watchRaycaster.far = WATCH_REACH * rig.scale.x; // the watch grows with an edit-flight player
     hud.object.updateWorldMatrix(true, false);
     const hit = watchRaycaster.intersectObject(hud.object, false)[0];
     const action = hit?.uv ? hud.actionAt(hit.uv, controlsOpen) : null;
@@ -769,6 +940,8 @@ export function createXrPlay(deps: XrPlayDeps) {
   }
 
   function watchActionEnabled(action: XrHudAction): boolean {
+    // A T-pose measures a life-size body standing on the floor, which an edit-flight player is not.
+    if (action === 'calibrate' && editOpen) return false;
     return action === 'restart' || action === 'stats' || action === 'view' || action === 'controls'
       || action === 'exit'
       || (!ride && !calibrationRun);
@@ -791,8 +964,223 @@ export function createXrPlay(deps: XrPlayDeps) {
    * will press without leaving a permanent laser floating through play. */
   function updateWatchPointer() {
     const target = watchActionHit();
-    if (target) watchPointer.show(watchRaycaster.ray.origin, target.hit.point);
+    const scale = rig.scale.x;
+    if (target) watchPointer.show(watchRaycaster.ray.origin, target.hit.point, scale);
+    else if (palettePoint && hands.presentationAimRay('right', editRay)) watchPointer.show(editRay.origin, palettePoint, scale);
     else watchPointer.hide();
+    if (worldCursorShown) {
+      // A constant apparent size: a dot ~0.35° across wherever on the mountain the hand is pointing.
+      worldCursor.scale.setScalar(Math.max(1e-3, headWorld.distanceTo(worldCursor.position) * WORLD_CURSOR_ANGLE));
+      worldCursor.visible = true;
+    } else worldCursor.visible = false;
+  }
+
+  /** Open or put away the wrist EDIT palette (docs/068) and, with it, edit flight. `land` puts the walker back on
+   *  the snow under the eyes; a session ending, or a gate restart that places the walker itself, skips that. */
+  function setEditOpen(on: boolean, land = true) {
+    if (on === editOpen) return;
+    editOpen = on;
+    palettePoint = null;
+    if (on) {
+      (palette ??= createXrEditPalette()).setOpen(true);
+      beginEditFlight();
+    } else {
+      if (palette) {
+        palette.setOpen(false);
+        palette.object.removeFromParent();
+      }
+      endEditFlight(land);
+    }
+    hud.invalidate();
+  }
+
+  /** Take the rig off the walker where it stands: same place, same heading, life size. */
+  function beginEditFlight() {
+    rig.updateMatrixWorld(true);
+    editPose.x = rig.position.x; editPose.y = rig.position.y; editPose.z = rig.position.z;
+    editPose.yaw = viewerYaw(rigFwd);
+    editPose.scale = 1;
+    editGrab = null;
+    panGrab = null;
+    editOwner.left = editOwner.right = null;
+    if (boardGrab.held) releaseBoard(); // a deck in hand would not grow with the hand that holds it
+    footRiderPlaced = false; // the body is posed in the rig's frame from here (updateEditAvatar): start it afresh
+    if (deps.editor) worldPointer ??= createXrWorldPointer(deps.editor);
+    hands.setLaser(true);
+  }
+
+  /** Back to life size with the eyes where they are, then (if `land`) onto the topmost surface beneath them. */
+  function endEditFlight(land: boolean) {
+    worldPointer?.reset();
+    editGrab = null;
+    panGrab = null;
+    handGrab = null;
+    editOwner.left = editOwner.right = null;
+    worldCursorShown = false;
+    worldCursor.visible = false;
+    hands.setLaser(false);
+    if (land && session) {
+      resolveHeadWorld();
+      landFrom.set(headWorld.x, headWorld.y + LAND_PROBE, headWorld.z);
+      landTo.set(headWorld.x, headWorld.y - LAND_PROBE, headWorld.z);
+      const ground = deps.groundCast(landFrom, landTo);
+      // Found ground: stand on it. None (off the edge of the mountain): drop from here and let the walker fall.
+      if (ground) walker.placeAt(scratch.set(headWorld.x, ground.y, headWorld.z));
+      else walker.placeAt(scratch.set(headWorld.x, headWorld.y - FALLBACK_EYE_HEIGHT, headWorld.z), scratchB.set(0, 0, 0));
+      // A landing is a placement, not a walk: the foot-contact sweep (glass that cracks underfoot) starts here.
+      footContactFrom.copy(walker.position());
+    }
+    // The body goes back to being posed directly in the world at life size.
+    footRiderPlaced = false;
+    footRider.group.position.set(0, 0, 0);
+    footRider.group.quaternion.identity();
+    footRider.group.scale.setScalar(1);
+    footRider.group.updateMatrixWorld(true);
+    rig.scale.setScalar(1);
+    setXrFarPlane(1);
+    pendingTrackedRoomMove.set(0, 0, 0);
+  }
+
+  /**
+   * The body during edit flight (docs/068): posed at LIFE SIZE in the rig's own frame, then carried by the rig, so
+   * it grows, turns and flies with the player — feet a standing height under the head, arms on the tracked hands.
+   *
+   * The skinned character writes its bones' WORLD matrices from the solved landmarks, so the solve must run with
+   * the rider group at identity (its frame then IS the rig frame the targets are given in); the rig's transform goes
+   * on the group only afterwards, and scales the finished pose as one piece.
+   */
+  function updateEditAvatar(handsTracked: boolean) {
+    const group = footRider.group;
+    group.position.set(0, 0, 0);
+    group.quaternion.identity();
+    group.scale.setScalar(1);
+    group.updateMatrixWorld(true);
+    rig.updateMatrixWorld(true);
+    rigInverse.copy(rig.matrixWorld).invert();
+    rigTurnInverse.copy(rig.quaternion).invert();
+    // Feet on the calibrated floor of the play space, under the head: where they would be standing in the room.
+    editFeet.set(headLocal.x, -eyeLift, headLocal.z);
+    footAnkleA.copy(parked.ankleFront).add(editFeet);
+    footAnkleB.copy(parked.ankleRear).add(editFeet);
+    headsetBodyFacing(headLocalQuat, editFacing.lengthSq() > 1e-8 ? editFacing : VIEW_FORWARD, scratchB);
+    editFacing.copy(scratchB);
+    const toRig = (from: RiderHandTarget, to: RiderHandTarget) => {
+      to.position.copy(from.position).applyMatrix4(rigInverse);
+      to.quaternion.copy(rigTurnInverse).multiply(from.quaternion);
+      to.source = from.source;
+      to.handedness = from.handedness;
+      to.curl = from.curl;
+      return to;
+    };
+    const input = {
+      ankleFront: footAnkleA, ankleRear: footAnkleB,
+      deckUp: WORLD_UP, soleUp: WORLD_UP, bank: 0,
+      vel: editStill.set(0, 0, 0), accel: editStill, grounded: true, dt: footFrameDt,
+      crouch: 0, lean: 0,
+      locomotion: { phase: 0, weight: 0, facing: editFacing, flying: false },
+      handTargets: handsTracked ? { a: toRig(handA, editHandA), b: toRig(handB, editHandB) } : null,
+      headTarget: { position: headLocal, quaternion: headLocalQuat, exactPosition: true },
+    };
+    if (footRiderPlaced) footRider.pose(input);
+    else { footRider.reset(input); footRiderPlaced = true; }
+    group.position.copy(rig.position);
+    group.quaternion.copy(rig.quaternion);
+    group.scale.copy(rig.scale);
+    group.updateMatrixWorld(true);
+    group.visible = true;
+  }
+
+  /**
+   * One frame of EDIT (docs/068). No walker, gravity or collisions: the left stick flies where the head looks, the
+   * right stick turns and rises, and both grips together size, turn and drag the map (`world-grab.ts`). The right
+   * hand is the editor's mouse — trigger is the left button, A the right — over the watch, then the palette, then
+   * the mountain; each button stays with whichever of those took its press until it is released.
+   */
+  function stepEdit(pads: XrPads, dt: number, pressTrigger: boolean, pressA: boolean) {
+    const trigger = !!pads.right?.trigger, a = !!pads.right?.a;
+    // Left Y hides the watch and palette to clear the view; the hand keeps working on the mountain regardless.
+    const aimed = hands.presentationAimRay('right', editRay);
+    const onWatch = aimed && !!watchActionHit();
+    const paletteAim = aimed && !onWatch && !!palette?.object.visible ? editRay : null;
+    const overPalette = !!paletteAim && !!palette?.hits(paletteAim);
+    const target: EditTarget = onWatch ? 'watch' : overPalette ? 'palette' : 'world';
+    if (pressTrigger) editOwner.left = target;
+    if (pressA) editOwner.right = target;
+    const panel = palette?.update(paletteAim, editOwner.left === 'palette' && trigger,
+      editOwner.right === 'palette' && a, overPalette ? pads.right?.y ?? 0 : 0, dt);
+    palettePoint = panel?.point ?? null;
+    const worldAim = aimed && !onWatch && (!overPalette || !!worldPointer?.pressed);
+    worldPointer?.update(worldAim ? editRay : null, editOwner.left === 'world' && trigger,
+      editOwner.right === 'world' && a, WORLD_POINTER_FAR * editPose.scale, !!handGrab);
+    stepHandGrab(aimed);
+    // While the hand holds a translate, the dot marks the point it holds, out along the laser.
+    worldCursorShown = !!handGrab || (!!worldPointer?.onCanvas && !overPalette && !onWatch);
+    if (worldCursorShown) worldCursor.position.copy(handGrab ? handGrabAt : worldPointer!.point);
+    if (!trigger) editOwner.left = null;
+    if (!a) editOwner.right = null;
+
+    // Both grips zoom, turn and drag the map (world-grab.ts); one grip drags it with that hand. Either starts
+    // afresh from the current pose whenever the hands in play change, so adding or letting go of a hand never
+    // jumps the map.
+    const grips = grabControls(pads);
+    const oneHand = grips.left !== grips.right ? (grips.left ? 'left' : 'right') : null;
+    if (grips.left && grips.right && hands.rigLocalPosition('left', grabA) && hands.rigLocalPosition('right', grabB)) {
+      panGrab = null;
+      if (!editGrab) editGrab = { pose: { ...editPose }, a: grabA.clone(), b: grabB.clone() };
+      else Object.assign(editPose, solveTwoHandGrab(editGrab, grabA, grabB));
+    } else if (oneHand && hands.rigLocalPosition(oneHand, grabA)) {
+      editGrab = null;
+      if (panGrab?.side !== oneHand) panGrab = { side: oneHand, grab: { pose: { ...editPose }, hand: grabA.clone() } };
+      else Object.assign(editPose, solveOneHandGrab(panGrab.grab, grabA));
+    } else {
+      editGrab = null;
+      panGrab = null;
+      const controls = footControls(pads);
+      const rise = overPalette ? 0 : shapeAxis(-(pads.right?.y ?? 0));
+      flyRight.crossVectors(headFwd, WORLD_UP);
+      if (flyRight.lengthSq() < 1e-8) flyRight.set(Math.cos(editPose.yaw), 0, -Math.sin(editPose.yaw));
+      flyRight.normalize();
+      const step = XR_EDIT_FLY_SPEED * editPose.scale * dt;
+      editPose.x += (headFwd.x * controls.moveY + flyRight.x * controls.moveX) * step;
+      editPose.y += (headFwd.y * controls.moveY + rise) * step;
+      editPose.z += (headFwd.z * controls.moveY + flyRight.z * controls.moveX) * step;
+      const turn = overPalette ? 0 : smoothTurnRadians(controls.turn, dt);
+      if (turn) Object.assign(editPose, turnRigAbout(editPose, headWorld, turn));
+    }
+    rigFwd.set(-Math.sin(editPose.yaw), 0, -Math.cos(editPose.yaw));
+  }
+
+  /**
+   * A trigger press that picked up a move-gizmo handle (a prop, a point, any translate) hands the drag to the hand
+   * (hand-drag.ts): from the next frame the pointer sends no moves, and the anchor follows the grabbed point along
+   * the laser, pushed out or pulled in with the hand, masked to the handle and snapped as the gizmo would. The
+   * release still reaches the gizmo as a pointerup, so the drag ends and commits as a mouse drag does.
+   */
+  function stepHandGrab(aimed: boolean) {
+    const drag = editOwner.left === 'world' ? deps.editor?.translateDrag?.() ?? null : null;
+    if (!drag) { handGrab = null; return; }
+    if (!aimed) return; // a controller that lost tracking leaves the held thing where it is
+    if (!handGrab) {
+      drag.anchor.updateWorldMatrix(true, false);
+      handGrab = beginHandGrab(editRay, drag.anchor.getWorldPosition(handAnchor),
+        drag.anchor.getWorldQuaternion(handFrame));
+      handGrabPoint(handGrab, editRay, editPose.scale, handGrabAt);
+      handTarget.copy(handGrab.anchor);
+      return;
+    }
+    handGrabPoint(handGrab, editRay, editPose.scale, handGrabAt);
+    handDelta.copy(handGrabAt).sub(handGrab.origin).addScaledVector(handGrab.dir, -handGrab.distance);
+    handLast.copy(handTarget);
+    handTranslateTarget(handGrab, handDelta, drag.axis as GizmoAxis, drag.space, drag.snap, handTarget);
+    // Report only a move, as a mouse does: every report rebuilds, and a still hand should cost nothing.
+    if (handTarget.distanceToSquared(handLast) > 1e-12) deps.editor?.driveTranslate?.(handTarget);
+  }
+
+  /** The XR far plane is in the RIG's units, so a shrunken player would see the mountain clipped at a few hundred
+   *  metres. Pushed out while small; a giant's far plane grows with it for free. */
+  function setXrFarPlane(scale: number) {
+    const far = cameraFarHome * Math.max(1, 1 / scale);
+    if (deps.camera.far !== far) deps.camera.far = far;
   }
 
   function startCalibration(now: number) {
@@ -1564,13 +1952,13 @@ export function createXrPlay(deps: XrPlayDeps) {
         grinding: st.railIdx >= 0, boosting: ride.boostActive(), charge: st.charging ? st.charge : 0,
       };
       hud.draw(now, state, null, calibrationHud(now), statsEnabled, thirdPerson, run,
-        controlsOpen, 'ride', false);
+        controlsOpen, 'ride', false, editOpen);
       if (statsEnabled) profiler.draw(now, state, stats);
       return;
     }
     setHudHint(footHint());
     hud.draw(now, null, null, calibrationHud(now), statsEnabled, thirdPerson, run,
-      controlsOpen, 'foot', !!boardGrab.held);
+      controlsOpen, editOpen ? 'edit' : 'foot', !!boardGrab.held, editOpen);
     if (statsEnabled) profiler.draw(now, null, stats);
   }
 
@@ -1582,6 +1970,7 @@ export function createXrPlay(deps: XrPlayDeps) {
    * or a walk up to a board lying on the snow.
    */
   function footHint(): string {
+    if (editOpen) return 'L-stick fly · R-stick ↕ rise · grip drag · 2 grips zoom/turn';
     if (calibrationRun) return 'Hold still · arms straight out';
     if (boardGrab.held) return 'Trigger ride it · grip let go · other grip pass';
     const reachable = deckInHandReach(), aimed = aimedAtDeck();
@@ -1636,7 +2025,7 @@ export function createXrPlay(deps: XrPlayDeps) {
   }
 
   function updateBoardActionGuides() {
-    if (ride || boardGrab.held || calibrationRun || !parked.group.visible) {
+    if (ride || editOpen || boardGrab.held || calibrationRun || !parked.group.visible) {
       for (const hand of GRAB_HANDS) boardActionGuides[hand].hide();
       return;
     }
@@ -1653,7 +2042,15 @@ export function createXrPlay(deps: XrPlayDeps) {
   }
 
   return {
-    get presenting() { return !!session; },
+    /** A headset session is up — or being swapped for its mixed-reality twin, which the host must not mistake
+     *  for leaving VR. */
+    get presenting() { return !!session || swapping; },
+    /** EDIT is open (docs/068): the player is a free-flying editor rather than a rider on the mountain. */
+    get editing() { return (!!session || swapping) && editOpen; },
+    /** Mixed reality can be switched on: the headset's runtime offers passthrough (`immersive-ar`). */
+    get mixedRealityAvailable() { return arSupported && (!!session || swapping); },
+    get mixedReality() { return mixedReality; },
+    setMixedReality,
     get riding() { return !!ride; },
     get diagnosticsEnabled() { return statsEnabled; },
     /** The effects world follows the local participant, not the optional board beneath them. These references
@@ -1782,13 +2179,16 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     const hand = renderer.xr.getHand(index);
     const visual = createVirtualController();
     grip.add(visual.group);
+    // Every slot carries an edit laser; only the one currently holding the RIGHT hand shows it (updateControllers).
+    const laser = createEditLaser();
+    controller.add(laser);
     viewRig.add(controller, grip, hand);
     // Three owns a persistent input-source -> controller-slot table. `XRSession.inputSources`, by contrast, is
     // only the runtime's current enumeration and may return the same sources in another order after a controller
     // reconnects. Record the source on the slot's own connection event so wrist ownership can never drift away
     // from the pose that Three is actually writing into this controller/grip/hand trio.
     const slot = {
-      controller, grip, hand, visual,
+      controller, grip, hand, visual, laser,
       source: null as XRInputSource | null,
       handedness: 'none' as XRHandedness,
     };
@@ -1807,6 +2207,7 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     return Object.assign(slot, { onConnected, onDisconnected });
   });
   const aimRotation = new THREE.Quaternion();
+  let laserOn = false;
   const rawHandRotation = new THREE.Quaternion();
   const savedHandOffset = new THREE.Quaternion();
   const bodyPoseMatrix = new THREE.Matrix4(), bodyPoseScale = new THREE.Vector3();
@@ -1854,16 +2255,31 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     target.quaternion.multiply(savedHandOffset).normalize();
   };
   return {
-    updateControllers(pads: XrPads, riding: boolean) {
+    updateControllers(pads: XrPads, riding: boolean, editing: boolean) {
       for (let index = 0; index < tracked.length; index++) {
         const slot = tracked[index];
         const handedness = slot.handedness === 'left' || slot.handedness === 'right'
           ? slot.handedness : index === 0 ? 'left' : 'right';
         slot.visual.setHandedness(handedness);
         slot.visual.setBoardAction(riding);
+        slot.visual.setEditAction(editing);
         slot.visual.setInput(pads[handedness]);
         slot.visual.group.visible = sourceAt(index) === 'grip';
+        slot.laser.visible = laserOn && handedness === 'right';
       }
+    },
+    /** Show the right hand's short edit laser (docs/068). */
+    setLaser(on: boolean) {
+      laserOn = on;
+      for (const slot of tracked) if (!on) slot.laser.visible = false;
+    },
+    /** A hand's position in RIG-local space — the tracking space, before the rig's position, yaw and size. */
+    rigLocalPosition(handedness: 'left' | 'right', out: THREE.Vector3): boolean {
+      const object = node(indexFor(handedness, handedness === 'left' ? 0 : 1));
+      if (!object) return false;
+      object.getWorldPosition(out);
+      rig.worldToLocal(out);
+      return true;
     },
     /** Body-space target ray for avatar gameplay (mounting/boost), unaffected by a presentation-only view boom. */
     aimRay(handedness: 'left' | 'right', ray: THREE.Ray): boolean {
@@ -1899,6 +2315,19 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
       if (object.parent !== wrist) wrist.add(object);
       object.position.set(0, 0.045, 0.015);
       object.rotation.set(-Math.PI / 2, 0, 0);
+      object.visible = true;
+      return true;
+    },
+    /** Hang the EDIT palette (docs/068) off the same wrist, out ahead of and inboard of the watch, leaning away
+     * from the eyes like a held palette so the right controller can reach every panel. `height` is the palette's
+     * laid-out height: it hangs a fixed share of that below the seat. */
+    placePalette(object: THREE.Object3D, height: number): boolean {
+      const wrist = node(indexFor('left', 0));
+      if (!wrist) { object.visible = false; return false; }
+      if (object.parent !== wrist) wrist.add(object);
+      object.position.set(...XR_EDIT_PALETTE_POSITION);
+      object.position.y -= height * XR_EDIT_PALETTE_DROP;
+      object.rotation.set(XR_EDIT_PALETTE_TILT, 0, 0);
       object.visible = true;
       return true;
     },
@@ -1953,10 +2382,12 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
       }) as [PlayerTransform | null, PlayerTransform | null];
     },
     dispose() {
-      for (const { controller, grip, hand, visual, onConnected, onDisconnected } of tracked) {
+      for (const { controller, grip, hand, visual, laser, onConnected, onDisconnected } of tracked) {
         controller.removeEventListener('connected', onConnected);
         controller.removeEventListener('disconnected', onDisconnected);
         visual.dispose();
+        laser.geometry.dispose();
+        (laser.material as THREE.Material).dispose();
         controller.removeFromParent(); grip.removeFromParent(); hand.removeFromParent();
       }
     },
@@ -2210,14 +2641,19 @@ export function createVirtualController() {
     A: [[0, 1, 0.5, 0], [0.5, 0, 1, 1], [0.2, 0.58, 0.8, 0.58]],
     B: [[0, 0, 0, 1], [0, 0, 0.68, 0], [0.68, 0, 0.92, 0.18], [0.92, 0.18, 0.68, 0.48],
       [0.68, 0.48, 0, 0.48], [0.68, 0.48, 0.96, 0.7], [0.96, 0.7, 0.68, 1], [0.68, 1, 0, 1]],
+    C: [[1, 0.18, 0.78, 0], [0.78, 0, 0.18, 0], [0.18, 0, 0, 0.2], [0, 0.2, 0, 0.8],
+      [0, 0.8, 0.18, 1], [0.18, 1, 0.78, 1], [0.78, 1, 1, 0.82]],
     D: [[0, 0, 0, 1], [0, 0, 0.66, 0], [0.66, 0, 1, 0.28], [1, 0.28, 1, 0.72],
       [1, 0.72, 0.66, 1], [0.66, 1, 0, 1]],
     E: [[1, 0, 0, 0], [0, 0, 0, 1], [0, 0.5, 0.78, 0.5], [0, 1, 1, 1]],
+    F: [[1, 0, 0, 0], [0, 0, 0, 1], [0, 0.5, 0.78, 0.5]],
     G: [[1, 0.18, 0.78, 0], [0.78, 0, 0.18, 0], [0.18, 0, 0, 0.2], [0, 0.2, 0, 0.8],
       [0, 0.8, 0.18, 1], [0.18, 1, 0.78, 1], [0.78, 1, 1, 0.8], [1, 0.8, 1, 0.56],
       [1, 0.56, 0.54, 0.56]],
     I: [[0, 0, 1, 0], [0.5, 0, 0.5, 1], [0, 1, 1, 1]],
     J: [[0, 0, 1, 0], [0.72, 0, 0.72, 0.78], [0.72, 0.78, 0.5, 1], [0.5, 1, 0.12, 0.82]],
+    K: [[0, 0, 0, 1], [1, 0, 0, 0.6], [0.3, 0.42, 1, 1]],
+    L: [[0, 0, 0, 1], [0, 1, 1, 1]],
     M: [[0, 1, 0, 0], [0, 0, 0.5, 0.55], [0.5, 0.55, 1, 0], [1, 0, 1, 1]],
     N: [[0, 1, 0, 0], [0, 0, 1, 1], [1, 1, 1, 0]],
     O: [[0.18, 0, 0.82, 0], [0.82, 0, 1, 0.2], [1, 0.2, 1, 0.8], [1, 0.8, 0.82, 1],
@@ -2234,7 +2670,10 @@ export function createVirtualController() {
       [0.18, 1, 0, 0.88]],
     T: [[0, 0, 1, 0], [0.5, 0, 0.5, 1]],
     U: [[0, 0, 0, 0.78], [0, 0.78, 0.22, 1], [0.22, 1, 0.78, 1], [0.78, 1, 1, 0.78], [1, 0.78, 1, 0]],
-    W: [[0, 0, 0.18, 1], [0.18, 1, 0.5, 0.55], [0.5, 0.55, 0.82, 1], [0.82, 1, 1, 0]],
+    V: [[0, 0, 0.5, 1], [0.5, 1, 1, 0]],
+    W:[[0, 0, 0.18, 1], [0.18, 1, 0.5, 0.55], [0.5, 0.55, 0.82, 1], [0.82, 1, 1, 0]],
+    Y: [[0, 0, 0.5, 0.5], [1, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 1]],
+    '/': [[0, 1, 1, 0]],
   };
   const actionMaterial = new THREE.LineBasicMaterial({
     color: 0xc9dfef, transparent: true, opacity: 0.9, depthTest: true, depthWrite: false,
@@ -2254,6 +2693,8 @@ export function createVirtualController() {
     const vertices: number[] = [];
     let cursor = -total / 2;
     for (const letter of text) {
+      // A letter the font lacks would print as a silent gap in the word; fail where the label is made instead.
+      if (letter !== ' ' && !surfaceFont[letter]) throw new Error(`controller surface font has no '${letter}'`);
       for (const [x1, y1, x2, y2] of surfaceFont[letter] ?? []) {
         const u1 = cursor + x1 * width, u2 = cursor + x2 * width;
         const v1 = (y1 - 0.5) * height, v2 = (y2 - 0.5) * height;
@@ -2266,7 +2707,7 @@ export function createVirtualController() {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     const lines = new THREE.LineSegments(geometry, ink);
-    lines.name = `xr-controller.action-${text.toLowerCase().replaceAll(' ', '-')}`;
+    lines.name = `xr-controller.action-${text.toLowerCase().replace(/[^a-z]+/g, '-')}`;
     lines.userData.surfaceLabel = text;
     lines.position.set(x, y, z);
     lines.renderOrder = 31;
@@ -2291,15 +2732,58 @@ export function createVirtualController() {
     equip: surfaceText('EQUIP', 0, -0.0053, 0.0025, trigger, 0, 'trigger', controlActionMaterial),
     unequip: surfaceText('UNEQUIP', 0, -0.0053, 0.0024, trigger, 0, 'trigger', controlActionMaterial),
     grabBoard: surfaceText('GRAB BOARD', -0.0023, 0, 0.0024, gripPad, 0, 'grip', controlActionMaterial),
+    // EDIT (docs/068): the right hand is the editor's mouse, the sticks fly, and both grips handle the world.
+    // R CLICK sits 2 mm further in than JUMP so its extra length stays on the flat of the plate.
+    click: surfaceText('CLICK', 0, -0.0053, 0.0025, trigger, 0, 'trigger', controlActionMaterial),
+    rightClick: surfaceText('R CLICK', -0.0190, +0.0085),
+    fly: surfaceText('FLY', CONTROLS.stick.u, -0.0180),
+    turnRise: surfaceText('TURN/RISE', CONTROLS.stick.u, -0.0180, 0.0020),
+    grabWorld: surfaceText('GRAB WORLD', -0.0023, 0, 0.0024, gripPad, 0, 'grip', controlActionMaterial),
+    // The stick CLICKS are the editor's history, so the word is printed on the cap that is pressed: it tilts and
+    // sinks with the physical stick.
+    undo: surfaceText('UNDO', 0, 0, 0.0016, stick, 0.0054),
+    redo: surfaceText('REDO', 0, 0, 0.0016, stick, 0.0054),
   };
-  // Built right-handed and on foot: the right stick LOOKs; the left-hand and riding legends wait for their state.
-  actionLabels.steer.visible = actionLabels.move.visible = actionLabels.reset.visible = actionLabels.spawn.visible
-    = actionLabels.menu.visible = actionLabels.unequip.visible = false;
+  const deckActions = [actionLabels.jump, actionLabels.boost, actionLabels.steer, actionLabels.move,
+    actionLabels.look, actionLabels.reset, actionLabels.spawn, actionLabels.menu, actionLabels.rightClick,
+    actionLabels.fly, actionLabels.turnRise, actionLabels.undo, actionLabels.redo];
+  const triggerActions = [actionLabels.equip, actionLabels.unequip, actionLabels.click];
+  const gripActions = [actionLabels.grabBoard, actionLabels.grabWorld];
   // This text is seen from the trigger's exposed -Z face, so its reading direction is opposite the deck labels.
-  actionLabels.equip.scale.x = actionLabels.unequip.scale.x = -1;
+  for (const label of triggerActions) label.scale.x = -1;
 
   let rightHanded = true;
   let boardRiding = false;
+  let editing = false;
+  /** Print only what each control does in the current state. Editing wins over riding: it is an on-foot mode,
+   *  and mounting turns it off. */
+  const showActions = () => {
+    const right = rightHanded, left = !rightHanded;
+    const ride = boardRiding && !editing, foot = !boardRiding && !editing;
+    // Right A/B jump and boost; editing, A is the right mouse button and B does nothing.
+    actionLabels.jump.visible = actionLabels.boost.visible = right && !editing;
+    actionLabels.rightClick.visible = right && editing;
+    // Left Y is always the wrist menu; X recovers riding, spawns on foot, and does nothing editing.
+    actionLabels.menu.visible = left;
+    actionLabels.reset.visible = left && ride;
+    actionLabels.spawn.visible = left && foot;
+    // The sticks change job with the state: left STEERs a board, MOVEs a walker and FLYs an editor; right LOOKs
+    // on foot, turns and rises editing, and does nothing riding.
+    actionLabels.steer.visible = left && ride;
+    actionLabels.move.visible = left && foot;
+    actionLabels.fly.visible = left && editing;
+    actionLabels.look.visible = right && foot;
+    actionLabels.turnRise.visible = right && editing;
+    actionLabels.undo.visible = left && editing;
+    actionLabels.redo.visible = right && editing;
+    // Either trigger mounts and dismounts; editing, only the right one does anything, and it is the left click.
+    actionLabels.equip.visible = foot;
+    actionLabels.unequip.visible = ride;
+    actionLabels.click.visible = right && editing;
+    actionLabels.grabBoard.visible = !editing;
+    actionLabels.grabWorld.visible = editing;
+  };
+  showActions();
   group.visible = false;
   return {
     group,
@@ -2312,33 +2796,26 @@ export function createVirtualController() {
       labels.A.scale.x = labels.B.scale.x = labels.X.scale.x = labels.Y.scale.x = mirror.scale.x;
       labels.A.visible = labels.B.visible = wantRight;
       labels.X.visible = labels.Y.visible = !wantRight;
-      actionLabels.jump.scale.x = actionLabels.boost.scale.x = actionLabels.steer.scale.x
-        = actionLabels.move.scale.x = actionLabels.look.scale.x
-        = actionLabels.reset.scale.x = actionLabels.spawn.scale.x = actionLabels.menu.scale.x = mirror.scale.x;
-      actionLabels.equip.scale.x = actionLabels.unequip.scale.x = -mirror.scale.x;
+      for (const label of deckActions) label.scale.x = mirror.scale.x;
+      for (const label of triggerActions) label.scale.x = -mirror.scale.x;
       // The grip print lies in Y/Z, so viewing the left controller from its mirrored outside reverses local Z.
-      actionLabels.grabBoard.scale.z = mirror.scale.x;
-      actionLabels.jump.visible = actionLabels.boost.visible = wantRight;
-      actionLabels.menu.visible = !wantRight;
-      actionLabels.reset.visible = !wantRight && boardRiding;
-      actionLabels.spawn.visible = !wantRight && !boardRiding;
-      actionLabels.steer.visible = !wantRight && boardRiding;
-      actionLabels.move.visible = !wantRight && !boardRiding;
-      actionLabels.look.visible = wantRight && !boardRiding;
+      for (const label of gripActions) label.scale.z = mirror.scale.x;
+      showActions();
       // Both face buttons are live on both hands: right A/B and left X/Y.
       button.material = activeMaterial;
       buttonUpper.material = activeUpperMaterial;
     },
     setBoardAction(riding: boolean) {
+      if (riding === boardRiding) return;
       boardRiding = riding;
-      actionLabels.equip.visible = !riding;
-      actionLabels.unequip.visible = riding;
-      actionLabels.reset.visible = !rightHanded && riding;
-      actionLabels.spawn.visible = !rightHanded && !riding;
-      // The sticks change job with the state: left STEERs a board and MOVEs a walker; right LOOKs on foot only.
-      actionLabels.steer.visible = !rightHanded && riding;
-      actionLabels.move.visible = !rightHanded && !riding;
-      actionLabels.look.visible = rightHanded && !riding;
+      showActions();
+    },
+    /** EDIT (docs/068) reprints the controls: trigger CLICK, A R CLICK, sticks FLY and TURN/RISE with UNDO and
+     *  REDO on their caps, grips GRAB WORLD. */
+    setEditAction(on: boolean) {
+      if (on === editing) return;
+      editing = on;
+      showActions();
     },
     setInput(hand: XrPads['left']) {
       const triggerValue = hand?.triggerValue ?? 0, squeeze = hand?.squeezeValue ?? 0;
@@ -2403,11 +2880,13 @@ function createWatchPointer() {
   object.add(line, dot);
   return {
     object,
-    show(from: THREE.Vector3, to: THREE.Vector3) {
+    /** `scale` is the player's size (edit flight grows the watch and palette), so the dot keeps its look. */
+    show(from: THREE.Vector3, to: THREE.Vector3, scale = 1) {
       positions[0] = from.x; positions[1] = from.y; positions[2] = from.z;
       positions[3] = to.x; positions[4] = to.y; positions[5] = to.z;
       position.needsUpdate = true;
       dot.position.copy(to);
+      dot.scale.setScalar(scale);
       object.visible = true;
     },
     hide() { object.visible = false; },
@@ -2416,6 +2895,40 @@ function createWatchPointer() {
       geometry.dispose(); material.dispose(); dotGeometry.dispose(); dotMaterial.dispose();
     },
   };
+}
+
+/** The world mouse's cursor (docs/068): a small dot where the right hand's ray meets the mountain. It is drawn over
+ * everything, because the point it marks is exactly what the eye's pick ray passes through. */
+function createWorldCursor(): THREE.Mesh {
+  const cursor = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false }),
+  );
+  cursor.name = 'xr-world-cursor';
+  cursor.renderOrder = 42;
+  cursor.frustumCulled = false;
+  cursor.raycast = () => {};
+  cursor.visible = false;
+  return cursor;
+}
+
+/** The right hand's short edit laser (docs/068): a translucent stub along the aim ray, in the controller's own
+ * space so it follows the hand for free and grows with the player. Short on purpose — the cursor dot, not a beam
+ * across the view, marks what it is pointing at. */
+const EDIT_LASER_LENGTH = 0.3, EDIT_LASER_RADIUS = 0.0018;
+function createEditLaser(): THREE.Mesh {
+  const geometry = new THREE.CylinderGeometry(EDIT_LASER_RADIUS * 0.4, EDIT_LASER_RADIUS, EDIT_LASER_LENGTH, 8, 1, true);
+  // A cylinder runs along +Y; lay it along the aim space's −Z, starting at the controller.
+  geometry.rotateX(-Math.PI / 2);
+  geometry.translate(0, 0, -EDIT_LASER_LENGTH / 2);
+  const laser = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+    color: 0x8fd7ff, transparent: true, opacity: 0.35, depthWrite: false, toneMapped: false,
+  }));
+  laser.name = 'xr-edit-laser';
+  laser.renderOrder = 39;
+  laser.raycast = () => {};
+  laser.visible = false;
+  return laser;
 }
 
 /** A short-lived controller-to-board tether. A narrow shader-dashed tube stays visibly thicker than WebGL's

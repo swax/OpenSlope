@@ -144,6 +144,7 @@ export class TextureLibrary {
   constructor(private cb: PaletteCallbacks) {
     installStyles('texture-library', css);
 
+    this.el.id = 'texture-library'; // followed by the headset's wrist EDIT palette (docs/068)
     this.el.className = 'sp-pal';
     const head = document.createElement('div');
     head.className = 'sp-head';
