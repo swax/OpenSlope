@@ -10,6 +10,7 @@ import type { CreateEdgeEndpoint, MeshSelectionState, Mode, RefPropSurfaceDetail
 import type { Stage } from '../stage';
 import { vertexName } from '../../state/mesh-names';
 import { constrainPlacement } from './placement-constraint';
+import { placementTakesSurface } from './placement';
 import { dataToScene, sceneToData } from '../coordinates';
 import type { CageHandleId, SelectionLayer } from '../mesh/selection';
 import type { MeshComponentHit, MeshPicking } from './mesh-picking';
@@ -480,18 +481,26 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     else if (source === 'reference') layers.refDecor.selectSource(kind, index);
   }
 
+  /** Last modifiers the Create Edge ghost was resolved with, so a Ctrl / Shift press re-seats it in place. */
+  let createEdgeMods = { axisLocked: false, stick: false };
+
   /** Resolve the next edge endpoint: an existing corner wins, then any authored edge curve, then terrain,
-   *  then a screen-facing free-space plane through the chain's previous endpoint (or the camera target). */
-  function createEdgePlacement(axisLocked = false): CreateEdgeEndpoint | null {
-    const cid = layers.picking.pickCorner();
+   *  then a screen-facing free-space plane through the chain's previous endpoint (or the camera target). Past
+   *  the first point existing geometry only takes it under Ctrl: in a busy map the nearest corner or edge is
+   *  almost always under the cursor, and the chain's own depth carries on. A provisional surface cut keeps
+   *  sticking — it can only continue across an edge or end on a point. */
+  function createEdgePlacement(axisLocked = createEdgeMods.axisLocked, stick = createEdgeMods.stick): CreateEdgeEndpoint | null {
+    const start = layers.createEdge.start;
+    const sticks = placementTakesSurface(start, { onSurface: stick || layers.createEdge.cutting });
+    const cid = sticks ? layers.picking.pickCorner() : null;
     const cp = cid !== null ? layers.picking.cornerPos(cid) : null;
     let endpoint: CreateEdgeEndpoint | null = cp ? { pos: cp, vertex: cid } : null;
-    const authoredEdge = !endpoint ? layers.picking.pickAnyEdgeAt() : null;
+    const authoredEdge = sticks && !endpoint ? layers.picking.pickAnyEdgeAt() : null;
     if (authoredEdge && access.net()) {
       const closest = layers.picking.curveScreenClosest(authoredEdge[0], authoredEdge[1]);
       endpoint = { pos: closest.pos, vertex: null, edge: authoredEdge, t: Math.min(0.999, Math.max(0.001, closest.t)) };
     }
-    const hit = !endpoint ? stage.pickSurface(access.terrain()) : null; // per pointer move — accelerated
+    const hit = sticks && !endpoint ? stage.pickSurface(access.terrain()) : null; // per pointer move — accelerated
     if (hit) {
       const preview = access.preview();
       const quad = hit.faceIndex != null && preview ? Math.floor(hit.faceIndex / preview.facesPerCell) : null;
@@ -501,7 +510,6 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         endpoint = { pos: closest.pos, vertex: null, edge, t: Math.min(0.999, Math.max(0.001, closest.t)) };
       } else endpoint = { pos: access.snapPoint(sceneToData(hit.point)), vertex: null };
     }
-    const start = layers.createEdge.start;
     if (!endpoint) {
       const point = stage.screenPlanePoint(start ? dataToScene(start) : undefined);
       endpoint = point ? { pos: access.snapPoint(sceneToData(point)), vertex: null } : null;
@@ -511,9 +519,21 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   }
 
   /** Commit the endpoint resolved by the same path that drives the hover ghost. */
-  function createEdgeClick(axisLocked = false) {
-    const endpoint = createEdgePlacement(axisLocked);
+  function createEdgeClick(axisLocked = false, stick = false) {
+    createEdgeMods = { axisLocked, stick };
+    const endpoint = createEdgePlacement(axisLocked, stick);
     if (endpoint) stage.cb.onCreateEdgePoint?.(endpoint);
+  }
+
+  /** Re-seat the Create Edge ghost under the same pointer with new modifiers (a Ctrl / Shift press or release). */
+  function refreshCreateEdgeGhost(axisLocked: boolean, stick: boolean) {
+    if (access.mode() !== 'edit' || !layers.createEdge.armed) return;
+    if (axisLocked === createEdgeMods.axisLocked && stick === createEdgeMods.stick) return;
+    createEdgeMods = { axisLocked, stick };
+    if (!pointerAt) return; // off the canvas: the next move resolves with these modifiers
+    const endpoint = createEdgePlacement();
+    layers.createEdge.showGhost(endpoint?.pos ?? null, endpoint?.vertex != null || endpoint?.edge != null);
+    access.createEdgePreviewChanged();
   }
 
   /** Select rail `r` node `n`: clear the other scene-object selections, then seat the gizmo on the node
@@ -977,7 +997,14 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // a press on a gizmo handle is the gizmo's to drive (it set .axis on the preceding hover) - defer to
     // it. But not when hover-gating disabled the gizmo because the cursor is over a tangent nub: nubs
     // win over the corner's gizmo handles underneath them, so let the press fall through to the nub.
-    if (stage.gizmo.enabled && stage.gizmo.axis) return;
+    if (stage.gizmo.enabled && stage.gizmo.axis) {
+      if (!ctrlPicksPastGizmo(e)) return;
+      // Ctrl/Cmd-click adds or drops a control point and is never a drag, and a selected point's neighbours sit
+      // right under its arrows — so over a point the press passes the gizmo by. This capture listener runs
+      // before the gizmo's own, which finds it disabled; it is back as soon as this press is dispatched.
+      stage.gizmo.enabled = false;
+      setTimeout(() => { stage.gizmo.enabled = true; });
+    }
     const touch = e.pointerType === 'touch';
     stage.castAt(e);
 
@@ -1045,11 +1072,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // stays armed for another. The click IS the commit — no corner select / box-select deferral.
     if (access.mode() === 'edit' && layers.surgery.onCommit()) return;
     // Create Tube: collect its two axis endpoints; the panel controls derive a live quad shell from them.
-    if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(e.shiftKey); return; }
+    if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
     // Create Trail: each click extends the centre spline; Enter commits the generated two-patch ribbon.
     if (access.mode() === 'edit' && layers.trailTool.active) { layers.trailTool.onCommit(e.shiftKey); return; }
     // Create patch: collect four terrain / free-space / existing-vertex corners, then append and disarm.
-    if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(e.shiftKey); return; }
+    if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
     // target-weld gesture (docs/023 S4): a left click picks the FROM vertex, the next the INTO survivor, then
     // fuses via onWeld. The click IS the pick — no corner select / box-select deferral.
     if (access.mode() === 'edit' && layers.weldTool.active && layers.weldTool.onCommit()) return;
@@ -1077,9 +1104,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // Clipboard-paste touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.clipboardPlacement.active) { layers.clipboardPlacement.onCommit(); return; }
     // Create patch touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(shift); return; }
+    if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(shift, ctrl); return; }
     // Create Tube touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(shift); return; }
+    if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(shift, ctrl); return; }
     // Create Trail touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.trailTool.active) { layers.trailTool.onCommit(shift); return; }
     // target-weld gesture (docs/023 S4): a touch tap reaches here (mouse is handled in pointerDown); pick FROM / INTO.
@@ -1093,7 +1120,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       return;
     }
 
-    if (access.mode() === 'edit' && layers.createEdge.armed) { createEdgeClick(shift); return; }
+    if (access.mode() === 'edit' && layers.createEdge.armed) { createEdgeClick(shift, ctrl); return; }
 
     let filteredNoticeSent = false;
     const filteredEditPick = (kind: MeshComponentHit['kind'], source: MeshComponentHit['source']) => {
@@ -1220,12 +1247,12 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       const pointFiltered = source ? filteredEditPick('vertex', source) : false;
       if (!pointFiltered && source === 'authored' && authoredPoint) {
         if ((shift || ctrl) && layers.selection.referenceMeshSelectionActive()) return;
-        // Shift remains an in-family range/add gesture. Ctrl is the cross-family toggle and may add this
-        // floating control point beside selected edges, patches, or props.
+        // Shift is the in-family range: the block of the control lattice from the anchor to this point. Ctrl is
+        // the cross-family toggle and may add this floating control point beside selected edges, patches, or props.
         if (shift && (sel.edgeSel.length || sel.cellSel.length)) return;
         stage.cb.onSelectKnot(null);
         layers.selection.clearRefLoops();
-        stage.cb.onSelectControlPoints?.([authoredPoint], ctrl ? 'toggle' : shift ? 'add' : 'replace');
+        stage.cb.onSelectControlPoints?.([authoredPoint], ctrl ? 'toggle' : shift ? 'range' : 'replace');
         return;
       }
       if (!pointFiltered && source === 'reference' && referencePoint) {
@@ -1234,7 +1261,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         stage.detachGizmo();
         layers.selection.placeCornerMarker(null);
         stage.cb.onSelectCorner(null);
-        layers.selection.selectReferenceControlPoints([referencePoint], ctrl ? 'toggle' : shift ? 'add' : 'replace');
+        layers.selection.selectReferenceControlPoints([referencePoint], ctrl ? 'toggle' : shift ? 'range' : 'replace');
         return;
       }
     }
@@ -1281,10 +1308,14 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         // spanned to the anchor across the quad grid — both build the group selection (the host seats the
         // centroid gizmo), matching the edge modifiers. A plain click single-selects: seat the translate gizmo
         // + tangent handles on just this one.
+        // With control cages pinned a Shift range runs over the whole control lattice, so the handles and
+        // interiors between the two corners come too (the host falls back to the corner block when none show).
         const mixedControlSelection = layers.selection.controlPointSel.some(id => id.kind !== 'vertex');
         const doc = access.meshDoc(), picked = doc ? vertexName(doc, ci) : null;
         if (ctrl && mixedControlSelection && picked !== null) { stage.cb.onSelectControlPoints?.([{ kind: 'vertex', vertex: picked }], 'toggle'); return; }
-        if (shift && mixedControlSelection && picked !== null) { stage.cb.onSelectControlPoints?.([{ kind: 'vertex', vertex: picked }], 'add'); return; }
+        if (shift && (mixedControlSelection || layers.cage.subCage) && picked !== null) {
+          stage.cb.onSelectControlPoints?.([{ kind: 'vertex', vertex: picked }], 'range'); return;
+        }
         if (ctrl) { stage.cb.onToggleCorner?.(ci); return; }
         if (shift) { stage.cb.onRangeSelectCorner?.(ci); return; }
         layers.selection.placeCornerMarker(ci); // seat the invisible gizmo anchor on the corner
@@ -1551,7 +1582,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // Create Edge: preview the next endpoint and segment, reusing the exact host vertex under a snap.
     if (access.mode() === 'edit' && layers.createEdge.armed) {
       stage.castAt(e);
-      const endpoint = createEdgePlacement(e.shiftKey);
+      createEdgeMods = { axisLocked: e.shiftKey, stick: e.ctrlKey || e.metaKey };
+      const endpoint = createEdgePlacement();
       layers.createEdge.showGhost(endpoint?.pos ?? null, endpoint?.vertex != null || endpoint?.edge != null);
       access.createEdgePreviewChanged();
       return;
@@ -1597,6 +1629,15 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (!others.length) { stage.gizmo.enabled = true; return; }
     stage.castAt(e);
     stage.gizmo.enabled = stage.ray.intersectObjects(others, false).length === 0;
+  }
+
+  /** A Ctrl/Cmd press in Edit's point editing that lands on a control point — a corner, or a dot of a pinned
+   *  control cage — rather than on the gizmo drawn over it. */
+  function ctrlPicksPastGizmo(e: PointerEvent): boolean {
+    if (!(e.ctrlKey || e.metaKey) || access.mode() !== 'edit' || !access.isMountain() || !layers.cage.cage
+      || layers.transforms.mode !== 'move') return false;
+    stage.castAt(e);
+    return layers.picking.pickSubCagePoint() !== null || layers.picking.pickCorner() !== null;
   }
 
   function pointerUp(e: PointerEvent) {
@@ -1829,6 +1870,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   return {
     cancelSelectionDrag,
     createEdgePlacement,
+    refreshCreateEdgeGhost,
     /** Where the pointer is over the canvas, or null once it has left it. */
     get pointerAt() { return pointerAt; },
     /** Sculpt brush footprint radius (world units); the ring overlay tracks it live. */

@@ -214,6 +214,15 @@ sweepable run, sweeping a fall line for a doc that carries none). Branching woul
   move / slide and bulk crease/smooth all apply unchanged). The anchor cell persists for re-ranging; a
   corner pick, box-select, Esc, or empty-space click drops the cell set. The Tools note counts both
   (`N cells selected` above the corner-block line).
+  **Pinned control cages (G)** show every bicubic control point — corners, tangent handles, interiors — and
+  take the same grammar: **Ctrl-click** toggles a point, and **shift-click** takes the rectangular block of the
+  control lattice from the last clicked point (`meshControlPointBlock`: the quads between the two, laid flat as
+  one (3n+1)×(3m+1) net, each quad's frame taken from its neighbour so corner order never matters), keeping
+  only the points a cage shows. Every pink cage segment whose two ends are both selected draws in the selection
+  yellow on top (`meshCageSegmentsBetween`), so a range reads as the stretch of cage it covers, and follows a
+  gizmo drag live. Between two corners with no handle showing it is the corner block above. A
+  Ctrl press over a point passes the selected point's gizmo by, since its neighbours sit under the arrows; a
+  plain or Shift press there still drags. Reference cages range the same way, read-only.
 - **Paint** — unchanged (surface = ride feel, texture = real tiles), keyed per patch.
 - **Cage** — a toggle that draws the control net (corner lattice; handles shown for the selection),
   so you can see what you are pushing. Editor-only.

@@ -20,14 +20,15 @@ import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import {
   applyMeshDelete, applySurfaceCut, meshContext, planEdgeExtrusion, validateSurfaceCutPath,
 } from '../src/core/mesh/ops';
-import { setMeshControlPoints, meshControlPoints, controlPointKey } from '../src/core/mesh/control-points';
+import { setMeshControlPoints, meshControlPoints, controlPointKey, type MeshControlPointId } from '../src/core/mesh/control-points';
 import {
-  INDEX_NAMING, resolveCellSelection, resolveEdgeSelection, resolveVertexSelection,
+  INDEX_NAMING, meshCageSegmentsBetween, meshControlPointBlock, resolveCellSelection, resolveEdgeSelection, resolveVertexSelection,
 } from '../src/core/mesh/selection';
 import { copyMeshVertices } from '../src/core/mesh/clipboard';
 import { liveQuadEdges } from '../src/core/mesh/primitives';
 import {
-  edgeIndex, quadIndex, quadName, quadNaming, vertexIndex, vertexName, vertexNames, vertexNaming,
+  controlPointIndex, controlPointName, edgeIndex, quadIndex, quadName, quadNaming, vertexIndex, vertexName, vertexNames,
+  vertexNaming,
 } from '../src/app/state/mesh-names';
 // Type-only, so importing it here pulls none of the editor's DOM-bound modules in ahead of the shim below.
 import type { EditViewportPort } from '../src/app/edit/session';
@@ -693,6 +694,129 @@ for (const reverse of [false, true]) {
   gemLayer.seatGem(1);
   check(picked.gem === 'gem:0002' && gemLayer.selectedGem === 'gem:0002',
     'gems: a pick reports the gem it landed on by name too');
+}
+
+// ---- 11. Shift ranges over a pinned control cage: the block of the bicubic control lattice --------------------
+{
+  // On a flat regular net every control point — corner, tangent handle, interior — sits on a SPACING/3 lattice,
+  // so its place in the flat net can be read straight off its position: an oracle that knows nothing about the
+  // quads' corner order, which is exactly what the range has to work out for itself.
+  const flatCorners: number[] = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) flatCorners.push(r * SPACING, 0, c * SPACING);
+  const flat = meshFromNet({ rows: ROWS, cols: COLS, spacing: SPACING, corners: flatCorners, paint: {} },
+    { name: 'LATTICE', course: starterCourse(), baseSurface: 1 });
+  const step = SPACING / 3;
+  const netAt = (p: V3): [number, number] => [Math.round(p[0] / step), Math.round(p[2] / step)];
+  const onNet = (doc: QuadMeshDoc) => meshControlPoints(doc).every(cp => Math.abs(cp.pos[1]) < 1e-9
+    && Math.abs(cp.pos[0] / step - Math.round(cp.pos[0] / step)) < 1e-6 && Math.abs(cp.pos[2] / step - Math.round(cp.pos[2] / step)) < 1e-6);
+  const oracle = (doc: QuadMeshDoc, a: V3, b: V3) => {
+    const [ar, ac] = netAt(a), [br, bc] = netAt(b);
+    return meshControlPoints(doc).filter(cp => {
+      const [r, c] = netAt(cp.pos);
+      return r >= Math.min(ar, br) && r <= Math.max(ar, br) && c >= Math.min(ac, bc) && c <= Math.max(ac, bc);
+    }).map(cp => controlPointKey(cp.id)).sort().join(' ');
+  };
+  const block = (doc: QuadMeshDoc, a: MeshControlPointId, b: MeshControlPointId) => {
+    const { mesh, adj } = meshContext(doc);
+    const got = meshControlPointBlock(mesh, adj, controlPointIndex(doc, a)!, controlPointIndex(doc, b)!);
+    return got && got.map(id => controlPointKey(controlPointName(doc, id)!)).sort().join(' ');
+  };
+  // Pairs of every kind — corner, handle, interior — drawn by a fixed LCG so a failure replays.
+  const pairs = (doc: QuadMeshDoc, n: number) => {
+    const points = meshControlPoints(doc);
+    let seed = 7;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) % points.length;
+    return Array.from({ length: n }, () => [points[next()], points[next()]] as const);
+  };
+  const agrees = (doc: QuadMeshDoc) => pairs(doc, 80).filter(([a, b]) => block(doc, a.id, b.id) !== oracle(doc, a.pos, b.pos));
+
+  check(onNet(flat), 'lattice range: the flat net\'s control points sit on the SPACING/3 lattice, so the oracle holds');
+  const misses = agrees(flat);
+  check(!misses.length, 'lattice range: the block between any two cage points is the rectangle of the flat net they bound',
+    misses.slice(0, 2).map(([a, b]) => `${controlPointKey(a.id)} → ${controlPointKey(b.id)}`).join('; '));
+  const points = meshControlPoints(flat), byNet = new Map(points.map(cp => [netAt(cp.pos).join(), cp]));
+  const at = (r: number, c: number) => byNet.get(`${r},${c}`)!;
+  check(block(flat, at(0, 1).id, at(0, 2).id)?.split(' ').length === 2,
+    'lattice range: the two handles of one edge are a range of two');
+  check(block(flat, at(0, 0).id, at(3, 3).id)?.split(' ').length === 16,
+    'lattice range: corner to opposite corner of one patch is its whole 4×4 net');
+
+  // The highlight: the pink cage segments joining two selected points — a 5×5 block across four patches is
+  // 5 rows and 5 columns of 4 segments each, the ones on shared patch borders counted once.
+  {
+    const { mesh, adj } = meshContext(flat);
+    const five = meshControlPointBlock(mesh, adj, controlPointIndex(flat, at(0, 1).id)!, controlPointIndex(flat, at(4, 5).id)!)!;
+    const segments = meshCageSegmentsBetween(mesh, five);
+    const index = (r: number, c: number) => controlPointKey(controlPointIndex(flat, at(r, c).id)!);
+    const lengths = segments.map(([a, b]) => {
+      const pa = meshControlPoints(flat).find(cp => controlPointKey(controlPointIndex(flat, cp.id)!) === controlPointKey(a))!.pos;
+      const pb = meshControlPoints(flat).find(cp => controlPointKey(controlPointIndex(flat, cp.id)!) === controlPointKey(b))!.pos;
+      return Math.hypot(pa[0] - pb[0], pa[2] - pb[2]);
+    });
+    check(segments.length === 40 && lengths.every(l => Math.abs(l - step) < 1e-6),
+      'cage highlight: a 5×5 block lights its 40 lattice segments, each one step long, each once', `${segments.length}`);
+    const scattered = [index(0, 1), index(4, 5)].map(k => five.find(id => controlPointKey(id) === k)!);
+    check(!meshCageSegmentsBetween(mesh, scattered).length, 'cage highlight: two points with none between them light nothing');
+  }
+
+  // Quads whose corners are listed from another corner, or mirrored, lay out the same way: each quad's frame
+  // comes from its neighbour, never from its own A-B-C-D.
+  const turned = structuredClone(flat);
+  turned.quads = turned.quads.map((q, k) => {
+    const [A, B, C, D] = q;
+    return k % 3 === 0 ? [B, D, A, C] : k % 3 === 1 ? [A, C, B, D] : q;
+  });
+  const turnedMisses = onNet(turned) ? agrees(turned) : [];
+  check(onNet(turned) && !turnedMisses.length, 'lattice range: quads turned or mirrored in their corner order still lay flat as one net',
+    turnedMisses.slice(0, 2).map(([a, b]) => `${controlPointKey(a.id)} → ${controlPointKey(b.id)}`).join('; '));
+
+  // A hole in the rectangle leaves no clean block: null, so the caller keeps its selection.
+  const holed = structuredClone(flat), hole = CELL_COLS * 2 + 1;
+  holed.quads = holed.quads.filter((_, q) => q !== hole);
+  holed.quadIds = holed.quadIds.filter((_, q) => q !== hole);
+  const holedAt = (r: number, c: number) => meshControlPoints(holed).find(cp => netAt(cp.pos).join() === `${r},${c}`)!;
+  check(block(holed, holedAt(4, 1).id, holedAt(8, 8).id) === null,
+    'lattice range: a hole inside the rectangle traces no block');
+  check(block(holed, holedAt(0, 1).id, holedAt(4, 2).id)?.split(' ').length === 10,
+    'lattice range: and a range clear of the hole is unaffected');
+
+  // ---- the Edit session: Shift-click ranges from the last clicked point ----
+  const names = (ids: readonly MeshControlPointId[]) => ids.map(controlPointKey).sort().join(' ');
+  const { store, session, viewport } = editor(structuredClone(flat));
+  const cb = session.viewportCallbacks;
+  const live = (r: number, c: number) => meshControlPoints(store.mdoc).find(cp => netAt(cp.pos).join() === `${r},${c}`)!;
+  cb.onSelectControlPoints?.([live(0, 1).id], 'replace');
+  cb.onSelectControlPoints?.([live(4, 5).id], 'range');
+  check(names(store.controlSel) === oracle(store.mdoc, live(0, 1).pos, live(4, 5).pos) && store.controlSel.length === 25,
+    'session: Shift-click takes every point of the 5×5 block from the clicked handle to the interior');
+  cb.onSelectControlPoints?.([live(1, 0).id], 'range');
+  check(store.controlSel.length === 27, 'session: the anchor stays, so a second Shift-click ranges from it again (and unions)',
+    `${store.controlSel.length}`);
+
+  cb.onSelectControlPoints?.([live(0, 1).id], 'replace');
+  cb.onSelectControlPoints?.([live(3, 4).id], 'toggle');
+  cb.onSelectControlPoints?.([live(4, 5).id], 'range');
+  check(store.controlSel.length === 5, 'session: a Ctrl-click moves the anchor, and the range runs from there',
+    `${store.controlSel.length}`);
+
+  viewport.controlPointVisible = id => id.kind !== 'twist';
+  cb.onSelectControlPoints?.([live(0, 1).id], 'replace');
+  cb.onSelectControlPoints?.([live(4, 5).id], 'range');
+  check(store.controlSel.length === 14 && store.controlSel.every(id => id.kind !== 'twist' || controlPointKey(id) === controlPointKey(live(4, 5).id)),
+    'session: only what the cage shows joins — the 12 hidden interiors stay out (the clicked one aside)', `${store.controlSel.length}`);
+
+  // With no handle showing between two corners the range is the corner block it always was.
+  viewport.controlPointVisible = () => false;
+  cb.onSelectCorner(vertexIndex(store.mdoc, (live(0, 0).id as { vertex: string }).vertex));
+  cb.onSelectControlPoints?.([live(6, 6).id], 'range');
+  check(store.regionSel.length === 9 && store.controlSel.every(id => id.kind === 'vertex'),
+    'session: corner to corner with no cage showing between is the plain corner block', `${store.regionSel.length}`);
+  // …and with the cage pinned it takes the handles and interiors too, ranging from the clicked corner.
+  viewport.controlPointVisible = undefined;
+  cb.onSelectCorner(vertexIndex(store.mdoc, (live(0, 0).id as { vertex: string }).vertex));
+  cb.onSelectControlPoints?.([live(6, 6).id], 'range');
+  check(store.controlSel.length === 49, 'session: with the cage showing, corner to corner is the whole 7×7 block of the net',
+    `${store.controlSel.length}`);
 }
 
 console.log(failures ? '\nSELECTION: FAIL' : '\nSELECTION: PASS');

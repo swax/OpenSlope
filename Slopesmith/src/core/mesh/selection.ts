@@ -4,6 +4,7 @@ import { pushCubicEdge } from '../math/bezier';
 import { meshAdjacency, type QuadMesh, type EdgeHandle, type MeshAdjacency } from './topology';
 import { faceLoop, faceBlock, type SurfaceTopology } from './surface';
 import { canonicalEdge, readVertex, undirectedEdgeKey as ekey } from './primitives';
+import type { MeshControlPointId } from './control-point-types';
 
 /**
  * Topology-general SELECTION queries over an authored quad mesh — the same foundation the reference loader
@@ -317,6 +318,173 @@ export function resolveVertexSelection<Id>(
   const set = new Set(current);
   for (const v of block) { const id = naming.name(v); if (id !== null) set.add(id); }
   return { verts: [...set], anchor };
+}
+
+// A quad's own 4×4 control net, row along u (A→C) and column along v (A→B) — quadControlPoints' row-major order.
+type Lattice = [number, number];
+const CORNER_AT: Lattice[] = [[0, 0], [0, 3], [3, 0], [3, 3]];               // A B C D
+const cornerOf = (r: number, c: number) => (r === 3 ? 2 : 0) + (c === 3 ? 1 : 0);
+const onRim = (x: number) => x === 0 || x === 3;
+
+/** The control point at net position (r, c) of `quad`: a corner, the directed tangent handle of the edge it
+ *  sits on (owned by the nearer end), or the interior twist of the nearer corner. */
+function netPoint(quad: readonly number[], q: number, r: number, c: number): MeshControlPointId<number> {
+  if (onRim(r) && onRim(c)) return { kind: 'vertex', vertex: quad[cornerOf(r, c)] };
+  if (onRim(r)) return { kind: 'edge', from: quad[cornerOf(r, c === 1 ? 0 : 3)], to: quad[cornerOf(r, c === 1 ? 3 : 0)] };
+  if (onRim(c)) return { kind: 'edge', from: quad[cornerOf(r === 1 ? 0 : 3, c)], to: quad[cornerOf(r === 1 ? 3 : 0, c)] };
+  return { kind: 'twist', quad: q, corner: ((r === 2 ? 2 : 0) + (c === 2 ? 1 : 0)) as 0 | 1 | 2 | 3 };
+}
+
+const netKey = (id: MeshControlPointId<number>) =>
+  id.kind === 'vertex' ? `v${id.vertex}` : id.kind === 'edge' ? `e${id.from}>${id.to}` : `t${id.quad}:${id.corner}`;
+
+/**
+ * The segments of the pink control cage that join two of `ids` — a patch's 4×4 net of rows and columns, and a
+ * free edge's control polygon — so a selected run or block of control points can be drawn as the stretch of
+ * cage it is rather than a scatter of dots. Each segment once, however many patches share it.
+ */
+export function meshCageSegmentsBetween(mesh: QuadMesh, ids: readonly MeshControlPointId<number>[]):
+  [MeshControlPointId<number>, MeshControlPointId<number>][] {
+  if (ids.length < 2) return [];
+  const held = new Set(ids.map(netKey)), vertices = new Set<number>(), quads = new Set<number>();
+  for (const id of ids) {
+    if (id.kind === 'vertex') vertices.add(id.vertex);
+    else if (id.kind === 'edge') { vertices.add(id.from); vertices.add(id.to); }
+    else quads.add(id.quad);
+  }
+  const out: [MeshControlPointId<number>, MeshControlPointId<number>][] = [], seen = new Set<string>();
+  const join = (a: MeshControlPointId<number>, b: MeshControlPointId<number>) => {
+    const ka = netKey(a), kb = netKey(b), pair = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    if (ka === kb || !held.has(ka) || !held.has(kb) || seen.has(pair)) return;
+    seen.add(pair);
+    out.push([a, b]);
+  };
+  mesh.quads.forEach((quad, q) => {
+    if (!quads.has(q) && !quad.some(v => vertices.has(v))) return;   // only the patches the selection touches
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) join(netPoint(quad, q, r, c), netPoint(quad, q, r, c + 1));
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 3; r++) join(netPoint(quad, q, r, c), netPoint(quad, q, r + 1, c));
+  });
+  for (const [a, b] of mesh.freeEdges) {
+    if (!vertices.has(a) && !vertices.has(b)) continue;
+    const ab: MeshControlPointId<number> = { kind: 'edge', from: a, to: b }, ba: MeshControlPointId<number> = { kind: 'edge', from: b, to: a };
+    join({ kind: 'vertex', vertex: a }, ab); join(ab, ba); join(ba, { kind: 'vertex', vertex: b });
+  }
+  return out;
+}
+
+/** Where control point `id` sits in `quad`'s own net, or null when it isn't one of that quad's points. */
+function netPosition(quad: readonly number[], q: number, id: MeshControlPointId<number>): Lattice | null {
+  if (id.kind === 'twist') {
+    if (id.quad !== q) return null;
+    const [r, c] = CORNER_AT[id.corner];
+    return [r === 0 ? 1 : 2, c === 0 ? 1 : 2];
+  }
+  if (id.kind === 'vertex') {
+    const k = quad.indexOf(id.vertex);
+    return k < 0 ? null : CORNER_AT[k];
+  }
+  const f = quad.indexOf(id.from), t = quad.indexOf(id.to);
+  if (f < 0 || t < 0) return null;
+  const [fr, fc] = CORNER_AT[f], [tr, tc] = CORNER_AT[t];
+  if (fr !== tr && fc !== tc) return null;                     // a diagonal is no edge of this quad
+  return [fr + (tr - fr) / 3, fc + (tc - fc) / 3];
+}
+
+/**
+ * The rectangular BLOCK of control points between `a` and `b` on the bicubic control lattice — the shift-range
+ * twin of `meshVertexBlock` for a pinned control cage, where the tangent handles and interior twists show
+ * beside the corners. The quads spanning the two points (`faceBlock`) are laid flat as one (3n+1)×(3m+1) net
+ * of corners, handles and interiors, and every point inside the rectangle the two bound is returned: a row of
+ * handles along an edge loop, or a whole region of the net across the quads. Null when no clean block traces —
+ * a pole, a rim, a free edge or a wedge in the way — so the caller keeps its selection.
+ */
+export function meshControlPointBlock(mesh: QuadMesh, adj: MeshAdjacency,
+  a: MeshControlPointId<number>, b: MeshControlPointId<number>): MeshControlPointId<number>[] | null {
+  const owners = (id: MeshControlPointId<number>): number[] => {
+    if (id.kind === 'twist') return mesh.quads[id.quad] ? [id.quad] : [];
+    if (id.kind === 'edge') return adj.edgeQuads.get(ekey(id.from, id.to)) ?? [];
+    const out: number[] = [];
+    for (const n of adj.neighbors[id.vertex] ?? []) {
+      for (const q of adj.edgeQuads.get(ekey(id.vertex, n)) ?? []) if (!out.includes(q)) out.push(q);
+    }
+    return out;
+  };
+  let block: number[] | null = null;
+  for (const qa of owners(a)) for (const qb of owners(b)) {
+    const cells = faceBlock(mesh.topology, qa, qb);
+    if (cells && (!block || cells.length < block.length)) block = [qa, ...cells.filter(c => c !== qa)];
+  }
+  if (!block) return null;
+  const inBlock = new Set(block);
+  if (block.some(q => new Set(mesh.quads[q]).size !== 4)) return null; // a wedge has no clean 4×4 net
+
+  // Lay the block flat: each quad gets a frame — global = origin + r·R + c·C — taken from the neighbour it was
+  // reached through, and every corner must land where every other quad put it, or the block is no clean grid.
+  type Frame = { o: Lattice; r: Lattice; c: Lattice };
+  const frames = new Map<number, Frame>(), at = new Map<number, Lattice>();
+  const place = (f: Frame, [r, c]: Lattice): Lattice => [f.o[0] + r * f.r[0] + c * f.c[0], f.o[1] + r * f.r[1] + c * f.c[1]];
+  const seat = (q: number, f: Frame): boolean => {
+    frames.set(q, f);
+    for (let k = 0; k < 4; k++) {
+      const g = place(f, CORNER_AT[k]), was = at.get(mesh.quads[q][k]);
+      if (was && (was[0] !== g[0] || was[1] !== g[1])) return false;
+      at.set(mesh.quads[q][k], g);
+    }
+    return true;
+  };
+  seat(block[0], { o: [0, 0], r: [1, 0], c: [0, 1] });
+  const queue = [block[0]];
+  const SIDES: [number, number, number][] = [[0, 1, 2], [1, 3, 0], [3, 2, 1], [2, 0, 3]]; // p, q, p's other neighbour
+  while (queue.length) {
+    const q = queue.shift()!, quad = mesh.quads[q], f = frames.get(q)!;
+    for (const [pk, qk, ik] of SIDES) {
+      const p = quad[pk], s = quad[qk];
+      for (const n of adj.edgeQuads.get(ekey(p, s)) ?? []) {
+        if (n === q || !inBlock.has(n) || frames.has(n)) continue;
+        const nq = mesh.quads[n], np = nq.indexOf(p), ns = nq.indexOf(s);
+        // n's corner beside p that isn't s lies one cell further out, across the shared edge from q's interior
+        const nOut = [0, 1, 2, 3].find(k => k !== np && k !== ns && (CORNER_AT[k][0] === CORNER_AT[np][0] || CORNER_AT[k][1] === CORNER_AT[np][1]))!;
+        const gp = at.get(p)!, gs = at.get(s)!, gIn = place(f, CORNER_AT[ik]);
+        const gOut: Lattice = [2 * gp[0] - gIn[0], 2 * gp[1] - gIn[1]];
+        // the two local unit steps out of n's corner p, and where each lands in the flat net
+        const steps: [Lattice, Lattice][] = [[CORNER_AT[ns], gs], [CORNER_AT[nOut], gOut]];
+        const frame: Frame = { o: [0, 0], r: [0, 0], c: [0, 0] };
+        for (const [local, global] of steps) {
+          const dr = (local[0] - CORNER_AT[np][0]) / 3, dc = (local[1] - CORNER_AT[np][1]) / 3;
+          const d: Lattice = [(global[0] - gp[0]) / 3, (global[1] - gp[1]) / 3];
+          if (dr) frame.r = [d[0] * dr, d[1] * dr]; else frame.c = [d[0] * dc, d[1] * dc];
+        }
+        const [lr, lc] = CORNER_AT[np];
+        frame.o = [gp[0] - lr * frame.r[0] - lc * frame.c[0], gp[1] - lr * frame.r[1] - lc * frame.c[1]];
+        if (!seat(n, frame)) return null;                         // the block closes on itself (a ring): no flat net
+        queue.push(n);
+      }
+    }
+  }
+  if (frames.size !== block.length) return null;
+
+  const flat = (id: MeshControlPointId<number>): Lattice | null => {
+    for (const q of owners(id)) {
+      const f = frames.get(q), local = f && netPosition(mesh.quads[q], q, id);
+      if (f && local) return place(f, local);
+    }
+    return null;
+  };
+  const fa = flat(a), fb = flat(b);
+  if (!fa || !fb) return null;
+  const [r0, r1] = [Math.min(fa[0], fb[0]), Math.max(fa[0], fb[0])];
+  const [c0, c1] = [Math.min(fa[1], fb[1]), Math.max(fa[1], fb[1])];
+  const out = new Map<string, MeshControlPointId<number>>();
+  for (const q of block) {
+    const f = frames.get(q)!;
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+      const [gr, gc] = place(f, [r, c]);
+      if (gr < r0 || gr > r1 || gc < c0 || gc > c1) continue;
+      const id = netPoint(mesh.quads[q], q, r, c);
+      out.set(netKey(id), id);
+    }
+  }
+  return [...out.values()];
 }
 
 /** How a click changes an Edit-mode CELL (quad) selection — the surface-face member of the resolve family

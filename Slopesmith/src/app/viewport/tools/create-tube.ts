@@ -35,8 +35,8 @@ export function createTubeToolLayer(
     stage.worldRoot.add(object);
   }
 
-  function placement(axisLocked = false): PlacementEndpoint | null {
-    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points[0]?.pos ?? null, axisLocked);
+  function placement(axisLocked = false, onSurface = false): PlacementEndpoint | null {
+    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points[0]?.pos ?? null, { axisLocked, onSurface });
   }
 
   function redraw() {
@@ -80,14 +80,14 @@ export function createTubeToolLayer(
     if (!active) return false;
     if (points.length >= 2) return true;
     stage.castAt(event);
-    hover = points.length < 2 ? placement(event.shiftKey) : null;
+    hover = points.length < 2 ? placement(event.shiftKey, event.ctrlKey || event.metaKey) : null;
     redraw();
     return true;
   }
 
-  function onCommit(axisLocked = false) {
+  function onCommit(axisLocked = false, onSurface = false) {
     if (!active || points.length >= 2) return;
-    const endpoint = placement(axisLocked);
+    const endpoint = placement(axisLocked, onSurface);
     if (!endpoint) return;
     if (points[0] && Math.hypot(
       points[0].pos[0] - endpoint.pos[0], points[0].pos[1] - endpoint.pos[1], points[0].pos[2] - endpoint.pos[2],

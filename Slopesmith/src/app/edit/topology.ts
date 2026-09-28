@@ -227,6 +227,19 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     toast('click the two tube endpoints — hold Shift to lock the axis — adjust dimensions, then press Enter', 'info');
   }
 
+  /** Loop Cut (docs/017): hover an edge, the strip through it previews, Alt+scroll slides it, a click cuts —
+   *  and the tool stays armed for the next. Esc leaves it. */
+  function armLoopCut() {
+    if (!store.cageOn) { store.cageOn = true; applyCage(); persistUi(); }
+    exitRegion();
+    store.selectedCorner = null; store.selected = null;
+    store.surgeryTool = 'loopcut'; store.createPatchQuads = [];
+    store.weldTool = null; store.weldSource = []; store.weldEdgeSource = [];
+    view().setWeldTool(false); view().setSurgeryTool('loopcut');
+    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    toast('hover an edge to preview the loop · Alt+scroll slides it · click to cut · Esc to finish', 'info');
+  }
+
   function previewCreateTube() {
     const points = view().createTubePoints;
     if (points.length !== 2) { view().setLoftPreview(null); return null; }
@@ -478,7 +491,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
 
   return {
     bridgeCandidate, startBridge, addBridgeRail, reverseBridgeRail, removeBridgeRail, moveBridgeRail, cancelBridge, completeBridge,
-    createPatchesFromEdges, armCreateEdge, armCreatePatch, armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
+    createPatchesFromEdges, armCreateEdge, armCreatePatch, armLoopCut, armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
     armCreateTrail, previewCreateTrail, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
     finishCreatePatch, addCreateEdgePoint, finishCreateEdge, clearCreateEdge,
   };

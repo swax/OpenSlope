@@ -17,8 +17,9 @@
 import { deriveQuadMesh, meshCreaseVertices, meshResetShape, meshSetHandle, meshSetTwist, meshSmoothVertices, meshVertexCanSmooth, migrateMountain } from '../src/core/doc/mountain';
 import { meshFromDoc, quadControlPoints, INTERIOR_CP, buildQuadMesh, meshAdjacency, meshEdgeHandles, meshCageEdges } from '../src/core/mesh/topology';
 import { patchPoint, patchNormal, cubicPoint, splitCubic, splitPatchU, splitPatchV } from '../src/core/math/bezier';
+import { seedMeshIds } from '../src/core/doc/ids';
 import { add, cross, dot, len, norm, sub } from '../src/core/math/vec';
-import { planLoopCut, applyLoopCut, remapIds, locateVertex, hoveredEdge, meshContext, applyCellEdgeInsert, appendStandalonePatch, applyMeshDelete, checkManifold, ekey } from '../src/core/mesh/ops';
+import { planLoopCut, applyLoopCut, loopCutGeometry, remapIds, locateVertex, hoveredEdge, meshContext, applyCellEdgeInsert, appendStandalonePatch, applyMeshDelete, checkManifold, ekey } from '../src/core/mesh/ops';
 import { getVertex } from '../src/core/doc/doc-edit';
 import { serializeMountain } from '../src/core/doc/serialize';
 import { INDEX_NAMING, meshPoleIndices, meshPoles, meshEdgeLoop, meshEdgeSegments, resolveEdgeSelection, resolveVertexSelection, resolveCellSelection } from '../src/core/mesh/selection';
@@ -34,7 +35,7 @@ import { check, failures } from './check';
   const doc = freshGrid();
   const { mesh, adj } = meshContext(doc);
   const plan = planLoopCut(mesh, adj, 0, [0, 1]);
-  check(plan.poleStops.length === 0 && !plan.closed, 'column cut: no pole stop, not a ring');
+  check(plan.tStops.length === 0 && !plan.closed, 'column cut: no T-junction end, not a ring');
   check(plan.rimStops.length === 2, `column cut: runs rim to rim (2 rim stops, got ${plan.rimStops.length})`);
   check(plan.splits.length === cellRows, `column cut: splits one whole column (${cellRows}, got ${plan.splits.length})`);
   check(plan.cutEdges.length === cellRows + 1, `column cut: one cut edge per row boundary (${cellRows + 1}, got ${plan.cutEdges.length})`);
@@ -398,6 +399,68 @@ import { check, failures } from './check';
   }
   const wt = watertight(doc);
   check(wt.ok && !hasNaN(doc), 'compose: two cuts leave a watertight, finite mesh');
+}
+
+// ---- 6b. a cut runs straight through a pole's patches; a patch it can't cross ends it as a T-junction -------
+{
+  // A mesh of its own: fresh identity, none of the grid's per-quad channels.
+  const docOf = (vertices: number[], quads: number[][]): QuadMeshDoc => ({
+    ...freshGrid(), vertices, quads, ...seedMeshIds(0, vertices.length / 3, quads.length),
+    edgeHandles: undefined, quadTwist: undefined, quadPaint: undefined, quadTex: undefined, quadOrient: undefined,
+    quadLocked: undefined, quadLabels: undefined, tJunctions: undefined, freeEdges: undefined, tombstones: undefined,
+  });
+
+  // The corner of a cube: three patches round one valence-3 pole O. Entering a patch by one edge always leaves
+  // by the opposite one, so the strip across O–X runs through BOTH patches on that edge, pole or no pole.
+  //   O X Y Z XY YZ ZX
+  const corner = docOf([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10, 10, 10, 0, 0, 10, 10, 10, 0, 10],
+    [[0, 1, 2, 4], [0, 2, 3, 5], [0, 3, 1, 6]]);
+  const cc = meshContext(corner);
+  check(meshPoleIndices(cc.mesh).extra3.length === 1, 'pole cut: the cube corner has its one valence-3 pole');
+  const through = planLoopCut(cc.mesh, cc.adj, 0, [0, 1]);
+  check(through.splits.length === 2 && through.rimStops.length === 2 && !through.tStops.length,
+    'pole cut: the strip runs through both patches at the pole, rim to rim', JSON.stringify(through.splits.map(s => s.quad)));
+  const cutCorner = applyLoopCut(corner, through, 0.5);
+  check(cutCorner.ok && watertight(cutCorner.doc).ok && cutCorner.doc.quads.length === 5,
+    'pole cut: and commits — 5 patches, still watertight', cutCorner.ok ? '' : cutCorner.error);
+
+  // A square with a triangle (wedge) past its far edge: a triangle has no opposite edge to leave by, so the
+  // cut ends at its far corner and splits it in two — conforming, no hanging point.
+  //   0 1 2 3 apex
+  const wedged = docOf([0, 0, 0, 10, 0, 0, 0, 0, 10, 10, 0, 10, 5, 0, 20], [[0, 1, 2, 3], [2, 3, 4, 4]]);
+  const wc = meshContext(wedged);
+  const toWedge = planLoopCut(wc.mesh, wc.adj, 0, [0, 1]);
+  check(toWedge.splits.length === 1 && toWedge.rimStops.length === 1 && toWedge.wedgeEnds.length === 1 && !toWedge.tStops.length,
+    'wedge end: a strip meeting a triangle ends inside it', JSON.stringify(toWedge));
+  const ghost = loopCutGeometry(wc.mesh, meshContext(wedged).edgeHandle, toWedge, 0.3);
+  const lastPoint = ghost.line.slice(-3) as V3;
+  check(len(sub(lastPoint, getVertex(wedged, 4))) < 1e-9, 'wedge end: the ghost runs on into the triangle to its far corner');
+  const cutWedge = applyLoopCut(wedged, toWedge, 0.3);
+  check(cutWedge.ok, 'wedge end: the cut commits', cutWedge.ok ? '' : cutWedge.error);
+  if (cutWedge.ok) {
+    const out = cutWedge.doc;
+    const triangles = out.quads.filter(q => new Set(q).size === 3);
+    check(out.quads.length === 4 && triangles.length === 2 && triangles.every(q => q[2] === 4 && q[3] === 4)
+      && watertight(out).ok && !findTJunctions(out).length,
+      'wedge end: the square and the triangle each split in two, watertight, no T-junction', JSON.stringify(out.quads));
+  }
+
+  // Where the strip can't end inside what it meets (a seam of 3+ patches, the strip crossing itself, a second
+  // end in one triangle) the new point hangs on that patch's unsplit edge as a T-junction, exactly on its curve.
+  const hangingPlan = { ...toWedge, wedgeEnds: [], tStops: [toWedge.wedgeEnds[0].rail] };
+  const hung = applyLoopCut(wedged, hangingPlan, 0.3);
+  check(hung.ok, 'T end: a hanging end commits instead of refusing', hung.ok ? '' : hung.error);
+  if (hung.ok) {
+    const out = hung.doc;
+    const found = findTJunctions(out);
+    check(out.quads.length === 3 && out.quads[1].join() === '2,3,4,4' && found.length === 1,
+      'T end: the square splits, the triangle is untouched, and its edge carries one T-junction', `${found.length}`);
+    const { edgeHandle } = meshContext(out);
+    const host = cubicPoint(getVertex(out, 2), add(getVertex(out, 2), edgeHandle(2, 3)),
+      add(getVertex(out, 3), edgeHandle(3, 2)), getVertex(out, 3), 0.3);
+    const node = found[0] ? getVertex(out, found[0].vertex) : [NaN, NaN, NaN];
+    check(len(sub(host, node as V3)) < 1e-9, 'T end: the new point sits exactly on the triangle\'s unchanged edge curve');
+  }
 }
 
 // ---- 7. selection foundation: pole classification on the promoted grid --------------------

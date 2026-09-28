@@ -306,9 +306,10 @@ export interface ViewportCallbacks {
    *  quad's `quadTwist[corner]` to `pos − zeroTwistPos` (its offset off the Ferguson prediction) — the
    *  sub-cell relief the boundary handles can't reach. */
   onMoveTwist?(quad: number, corner: number, pos: V3): void;
-  /** Select any authored bicubic points through the global sub-cage point cloud. Shift adds, Ctrl-click
-   *  toggles, Ctrl-drag removes, and a box reports every corner, boundary tangent and interior point it encloses. */
-  onSelectControlPoints?(ids: MeshControlPointId[], mode: 'replace' | 'add' | 'remove' | 'toggle'): void;
+  /** Select any authored bicubic points through the global sub-cage point cloud. Ctrl-click toggles, Shift-click
+   *  takes the range of the control lattice from the anchor (`range`, one id), Ctrl-drag removes, and a box
+   *  reports every corner, boundary tangent and interior point it encloses. */
+  onSelectControlPoints?(ids: MeshControlPointId[], mode: 'replace' | 'add' | 'remove' | 'toggle' | 'range'): void;
   /** The centroid gizmo translated the selected authored control points as one exact batch. */
   onMoveControlPoints?(delta: V3): void;
   /** The centroid rotation gizmo placed a mixed authored control-point group at exact absolute targets. */

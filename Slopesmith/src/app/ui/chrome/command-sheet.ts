@@ -51,7 +51,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         ['drag', `box-select ${dragKinds}`],
       ],
       [['⇧LMB', 'extend range / block'], ['Ctrl+LMB', 'toggle item'],
-        ['⇧ drag', 'add boxed items'], ['Ctrl drag', 'remove boxed items'],
+        ['⇧ drag', 'add boxed items'], ['Ctrl drag', 'remove boxed items'], ['Ctrl+R', 'loop cut'],
         ...(store.hiddenVertices.length || store.hiddenEdges.length || store.hiddenQuads.length || store.refHiddenQuads.length
           ? [['Alt+H', 'show all hidden'] as [string, string]] : [])],
       );
@@ -140,16 +140,16 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         : store.currentMode === 'edit' && store.bridgeRails !== null
           ? helpPanel('Edit Mode — bridge', [['LMB / double-click', 'select candidate rail'], ['⇧LMB', 'extend candidate']])
         : store.currentMode === 'edit' && store.createEdgeTool
-          ? helpPanel('Edit Mode — create edge', [['LMB vertex', 'start / finish'], ['LMB edge point', 'start / finish on edge'], ['LMB terrain / space', 'place free point'], ['⇧LMB', 'axis-lock free edge']])
+          ? helpPanel('Edit Mode — create edge', [['LMB', 'start on a vertex, edge or surface'], ['LMB', 'next point at the chain depth'], ['Ctrl+LMB', 'stick to a vertex, edge or surface'], ['⇧LMB', 'axis-lock free edge'], ['Enter / Esc', 'finish']])
         : store.currentMode === 'edit' && store.surgeryTool === 'tube'
-          ? helpPanel('Edit Mode — create tube', [['LMB', 'place axis endpoint'], ['⇧LMB', 'lock world axis'], ['Enter', 'create + select patches'], ['Esc', 'cancel']])
+          ? helpPanel('Edit Mode — create tube', [['LMB', 'place axis endpoint'], ['Ctrl+LMB', 'second end on the surface'], ['⇧LMB', 'lock world axis'], ['Enter', 'create + select patches'], ['Esc', 'cancel']])
         : store.currentMode === 'edit' && store.surgeryTool === 'trail'
           ? helpPanel('Edit Mode — create trail', [['LMB', 'add spline knot'], ['⇧LMB', 'lock world axis'], ['Backspace', 'undo last knot'], ['Enter', 'create + select patches'], ['Esc', 'cancel']])
         : store.currentMode === 'edit' && cageActive()
           ? (store.surgeryTool === 'patch'
-            ? helpPanel('Edit Mode — create patch', [['LMB', 'place next corner'], ['repeat corner', 'close three corners as triangle'], ['⇧LMB', 'lock world axis'], ['Enter', 'finish + select created'], ['Esc', 'finish · keep unselected']])
+            ? helpPanel('Edit Mode — create patch', [['LMB', 'place next corner'], ['Ctrl+LMB', 'corner on the surface'], ['repeat corner', 'close three corners as triangle'], ['⇧LMB', 'lock world axis'], ['Enter', 'finish + select created'], ['Esc', 'finish · keep unselected']])
             : store.surgeryTool === 'loopcut'
-            ? helpPanel('Edit Mode — loop cut', [['hover', 'an edge'], ['Alt+scroll', 'slide the cut'], ['LMB', 'cut']])
+            ? helpPanel('Edit Mode — loop cut', [['hover', 'an edge'], ['Alt+scroll', 'slide the cut'], ['LMB', 'cut'], ['Esc', 'finish']])
             : store.weldTool === 'edge-weld'
             ? helpPanel('Edit Mode — weld edges', [['LMB / ⇧LMB', 'select target edges'], ['double-click', 'select target loop'], ['Enter', 'commit'], ['Esc', 'cancel']])
             : store.weldTool === 'weld'

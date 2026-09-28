@@ -21,6 +21,68 @@ export function levelPathFrame(tangent: V3, fallbackUp?: V3): PathFrame | null {
   return { x, y, z: norm(cross(x, y)) };
 }
 
+/** How far a path's level frame can be trusted along `tangent`: 1 while the path runs within ~53° of level,
+ * easing to 0 as it nears vertical (past ~81°). Level fixes the sideways axis by the path's heading, and a steep
+ * path's heading swings wildly with the slightest sideways bend — straight down it has none at all. */
+export function levelTrust(tangent: V3): number {
+  const l = len(tangent);
+  if (l < 1e-12) return 0;
+  const s = Math.min(1, Math.max(0, (Math.hypot(tangent[0], tangent[2]) / l - 0.15) / 0.45));
+  return s * s * (3 - 2 * s);
+}
+
+/** `previous` carried by the least rotation that takes its x onto `tangent`, so it turns only as much as the
+ * path does. Null for a zero tangent or one pointing straight back. */
+function carriedPathFrame(previous: PathFrame, tangent: V3): PathFrame | null {
+  if (len(tangent) < 1e-12) return null;
+  const x = norm(tangent), c = dot(previous.x, x);
+  if (c <= -1 + 1e-9) return null;
+  // Rodrigues with v = a × b, |v| = sin θ: R·y = y + v × y + v × (v × y) / (1 + cos θ)
+  const v = cross(previous.x, x), vy = cross(v, previous.y);
+  let y = add(add(previous.y, vy), mul(cross(v, vy), 1 / (1 + c)));
+  y = sub(y, mul(x, dot(y, x)));
+  if (len(y) < 1e-9) return levelPathFrame(x, previous.y);
+  y = norm(y);
+  return { x, y, z: norm(cross(x, y)) };
+}
+
+const wrapAngle = (a: number) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
+
+/**
+ * The frames a profile is swept through along tangents t₀…tₙ: carried station to station by the least rotation
+ * the path makes (so the profile turns only as much as the path does), and rolled toward each station's level
+ * frame by how far level can be trusted there (levelTrust). An ordinary climb or turn is fully level, exactly as
+ * levelPathFrame alone gives; a steep or vertical run, where level would spin the profile about the path, keeps
+ * the roll it was carried with. A start too steep for level takes its roll from the first station where level
+ * holds, so a sweep that sets off straight down doesn't swing round once it levels out. Null where a tangent is
+ * zero or turns straight back on the one before.
+ */
+export function sweepPathFrames(tangents: readonly V3[]): PathFrame[] | null {
+  if (!tangents.length) return [];
+  const start = levelPathFrame(tangents[0]);
+  if (!start) return null;
+  const carried = [start];
+  for (let i = 1; i < tangents.length; i++) {
+    const next = carriedPathFrame(carried[i - 1], tangents[i]);
+    if (!next) return null;
+    carried.push(next);
+  }
+  // Each station's roll from its carried frame onto level. Carried frames differ only by the path's own turning,
+  // so these rolls compare across stations.
+  const trust = tangents.map(levelTrust);
+  const toLevel = carried.map((frame, i) => {
+    const level = trust[i] > 0 ? levelPathFrame(frame.x, frame.y) : null;
+    return level ? Math.atan2(dot(level.y, frame.z), dot(level.y, frame.y)) : 0;
+  });
+  let anchor = 0;
+  for (let i = 1; i < tangents.length && trust[anchor] < 1; i++) if (trust[i] > trust[anchor]) anchor = i;
+  let roll = toLevel[anchor];
+  return carried.map((frame, i) => {
+    roll += trust[i] * wrapAngle(toLevel[i] - roll);
+    return rolledPathFrame(frame, roll);
+  });
+}
+
 /** `frame` turned by `roll` radians about its own x (the path): y swings toward z. Roll is what a path point's
  * rotation leaves once its tangent handles have carried the rest (QuadMeshDoc.vertexRoll). */
 export function rolledPathFrame(frame: PathFrame, roll: number): PathFrame {

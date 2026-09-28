@@ -20,7 +20,7 @@ export function createCreateTools(ctx: ToolsContext) {
   const { store, viewport, editSection, edit, cageActive, rebuildTools, updateCmdSheet, modelEdit } = ctx;
   const {
     armCreateEdge, armCreatePatch, finishCreatePatch, finishCreateEdge,
-    armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
+    armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube, armLoopCut,
     armCreateTrail, previewCreateTrail, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
   } = edit;
 
@@ -136,7 +136,7 @@ export function createCreateTools(ctx: ToolsContext) {
       : store.surgeryTool === 'patch' ? 'Create Patch' : store.surgeryTool === 'loopcut' ? 'Loop Cut'
       : store.modelEditId ? 'Add to Prop' : 'Create Terrain');
     if (store.surgeryTool === 'loopcut') {
-      note(g, 'hover a surface edge · scroll to position the cut · click to commit');
+      note(g, 'hover a surface edge · Alt+scroll slides the cut · click to cut · stays armed for the next');
       const actions = editSection('tool-actions', 'Actions');
       tip(actions.add({ cancel: () => {
         store.surgeryTool = null; viewport.setSurgeryTool(null); rebuildTools(); updateCmdSheet();
@@ -159,12 +159,15 @@ export function createCreateTools(ctx: ToolsContext) {
       createEdgeNextRow = tip(detail(g, '—', 'next'),
         'Length of the purple preview segment from the last placed endpoint to the cursor.');
       refreshCreateEdgeSummary();
-      if (store.createEdgeSurfacePath.length) {
+      if (store.createEdgeSurfacePath.length > 1) {
         note(g, 'provisional surface cut · continue to another edge or point · Esc discards it');
       } else {
-        note(g, 'start or end on any edge · Shift locks free edges to a world axis · Enter / Esc finishes',
-          'Only crossed patches are bisected; an endpoint inside a shared edge leaves the neighboring patch '
-          + 'untouched and intentionally remains a red T-junction.');
+        note(g, 'the first point sticks to a vertex, edge or the surface · after it, hold Ctrl to stick · Shift locks free edges to a world axis · Enter / Esc finishes',
+          'After the first point a free point stays at the chain depth, so nearby corners, edges and terrain behind '
+          + 'the cursor never pull it away; hold Ctrl to end on a vertex, cut to an edge or drop onto the surface. '
+          + 'A cut already across a patch keeps sticking, since only an edge or point can continue it. Only crossed '
+          + 'patches are bisected; an endpoint inside a shared edge leaves the neighboring patch untouched and '
+          + 'intentionally remains a red T-junction.');
       }
       const actions = editSection('tool-actions', 'Actions');
       actions.add({ done: finishCreateEdge }, 'done').name('✔ finish edge chain (Enter / Esc)');
@@ -205,12 +208,17 @@ export function createCreateTools(ctx: ToolsContext) {
       createPatchNextRow = tip(detail(g, '—', 'next'),
         'Straight-line distance from the last placed corner to the corner previewed under the cursor.');
       refreshCreatePatchSummary();
-      note(g, `each ${store.createPatchSides === 3 ? 'third' : 'fourth'} corner commits and starts another${store.createPatchSides === 4 ? ' · after three corners, click any one again to close a triangle' : ''} · Enter = finish + select all · Esc = finish without selecting`);
+      note(g, `each ${store.createPatchSides === 3 ? 'third' : 'fourth'} corner commits and starts another${store.createPatchSides === 4 ? ' · after three corners, click any one again to close a triangle' : ''} · Ctrl puts a corner on the surface · Enter = finish + select all · Esc = finish without selecting`);
     } else { // 'tube' or none — loop cut armed already returned above with its own panel
       tip(g.add({ patch: armCreatePatch }, 'patch').name('▱ create patch (P)'),
         'Create patches by clicking their corners in perimeter order.',
-        'Click terrain, empty space, or existing vertices to fill between them. In Quad mode, click any of '
+        'Click existing vertices, terrain, or empty space to fill between them — after the first corner a free '
+        + 'corner stays at the last corner\'s depth, and Ctrl puts it on the surface. In Quad mode, click any of '
         + 'the first three corners again to close them as a triangle. Shift locks the next side to a world axis.');
+      tip(g.add({ loop: armLoopCut }, 'loop').name('⫼ loop cut (Ctrl+R)'),
+        'Cut a new edge loop across a strip of patches: hover an edge, Alt+scroll to slide, click to cut.',
+        'The loop runs through opposite edges until it reaches the rim, closes into a ring, or meets a pole; '
+        + 'each crossed patch splits in two, and the new points sit on the curved edges so the shape holds.');
     }
   }
 
@@ -221,7 +229,7 @@ export function createCreateTools(ctx: ToolsContext) {
     createTubeLengthRow = detail(placement, '—', 'length');
     refreshCreateTubeSummary();
     note(placement, points.length < 2
-      ? 'click the first and second endpoints · Shift locks the tube axis to world X, Y, or Z'
+      ? 'click the first and second endpoints · Ctrl puts the second on the surface · Shift locks the tube axis to world X, Y, or Z'
       : 'adjust the elliptical cross-section, ring edges, and section length · Enter creates and selects the tube');
     const dimensions = editSection('tube-dimensions', 'Dimensions');
     const refresh = () => {

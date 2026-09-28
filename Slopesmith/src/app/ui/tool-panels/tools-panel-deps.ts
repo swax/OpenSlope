@@ -37,7 +37,7 @@ export type ToolsPanelDeps = {
     | 'ripEdges' | 'insertCellEdge' | 'resetCellShape' | 'creaseVertices' | 'smoothVertices' | 'createPatchesFromEdges'
     | 'startBridge' | 'addBridgeRail' | 'reverseBridgeRail' | 'removeBridgeRail' | 'moveBridgeRail'
     | 'completeBridge' | 'cancelBridge' | 'bridgeCandidate' | 'armCreateEdge' | 'armCreatePatch' | 'finishCreatePatch' | 'finishCreateEdge'
-    | 'armCreateTube' | 'previewCreateTube' | 'finishCreateTube' | 'cancelCreateTube'
+    | 'armCreateTube' | 'previewCreateTube' | 'finishCreateTube' | 'cancelCreateTube' | 'armLoopCut'
     | 'armCreateTrail' | 'previewCreateTrail' | 'undoCreateTrailPoint' | 'finishCreateTrail' | 'cancelCreateTrail'
     | 'beginEdgeExtrusion' | 'flipEdgeExtrusionSide' | 'commitEdgeExtrusion' | 'cancelEdgeExtrusion'
     | 'beginPointWeld' | 'cancelPointWeld' | 'commitPointWeld' | 'commitPointWeldTogether'

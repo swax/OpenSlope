@@ -63,14 +63,17 @@ const turns: [number, boolean][] = [];
 let turnable = true;
 const propTurns: number[] = [];
 let propHeld = false;
-const store = { currentMode: 'paint', paintBrush: null, selectedPaintCell: null, paintMultiSel: [] };
+const store = { currentMode: 'paint', paintBrush: null, selectedPaintCell: null, paintMultiSel: [],
+  bridgeRails: null, surgeryTool: null as string | null, weldTool: null, createEdgeTool: false };
 let chatFocused = false;
 const viewport = {
-  riding: false,
+  riding: false, pastePlacing: false, edgeExtrusionStaged: false,
   turnHeldProp: (deg: number) => { if (!propHeld) return false; propTurns.push(deg); return true; },
 };
+let loopCuts = 0;
+const edit = { armLoopCut: () => { loopCuts++; } };
 installShortcuts({
-  store, viewport, edit: {}, trickTools: {}, propOps: {}, sculptBrush: {},
+  store, viewport, edit, trickTools: {}, propOps: {}, sculptBrush: {},
   turnPaintTexture: (dir: 1 | -1, flip: boolean) => { turns.push([dir, flip]); return turnable; },
   chatFocused: () => chatFocused,
   openChat: () => {},
@@ -137,5 +140,24 @@ const settled = turns.length;
 press('ArrowRight');
 assert.equal(turns.length, settled + 1, 'the binding still works after the guarded presses');
 assert.deepEqual(turns.at(-1), [-1, false]);
+
+// ---- Ctrl+R: Loop Cut in Edit, and never the browser's reload there ----
+store.currentMode = 'edit';
+press('r', { ctrlKey: true });
+assert.equal(loopCuts, 1, 'Ctrl+R arms Loop Cut in Edit mode');
+assert.equal(prevented, 1, 'and is swallowed, so the page does not reload under the edit');
+press('R', { metaKey: true });
+assert.equal(loopCuts, 2, 'Cmd+R does the same');
+store.surgeryTool = 'patch';
+press('r', { ctrlKey: true });
+assert.equal(loopCuts, 2, 'another open tool keeps the keyboard — Loop Cut waits for it to finish');
+assert.equal(prevented, 1, 'but the reload is still swallowed while editing');
+store.surgeryTool = null;
+press('r', { ctrlKey: true, shiftKey: true });
+assert.equal(loopCuts, 2, 'Ctrl+Shift+R is not Loop Cut (it stays the hard reload)');
+store.currentMode = 'paint';
+press('r', { ctrlKey: true });
+assert.equal(loopCuts, 2, 'outside Edit, Ctrl+R is not Loop Cut');
+assert.equal(prevented, 0, 'and is left to the browser');
 
 console.log('PAINT TURN TESTS PASSED');

@@ -48,6 +48,9 @@ export const CAGE_TEAR_COLOR = 0xffe000;
 export const CAGE_INTERIOR_COLOR = 0x74acd6;
 /** Protected authored patch edges in the wires-only view. */
 export const CAGE_LOCKED_COLOR = 0xff3b30;
+/** A T-junction — a vertex left on another patch's unsplit edge: the diagnostic dot, and the loop-cut ghost's
+ *  marker where a cut will end as one. */
+export const T_JUNCTION_COLOR = 0xff2424;
 /** Creased seams, where two patches meet past CREASE_DEGREES (core/mesh/creases.ts), on both cages: the grid
  *  blue's own saturation (54%) and lightness (65%) turned to a purple hue (275 deg), so a crease reads as the
  *  same net with a different kind of seam rather than a louder line. */

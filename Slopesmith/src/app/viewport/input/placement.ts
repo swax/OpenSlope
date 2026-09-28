@@ -10,17 +10,35 @@ export interface PlacementResolver {
   pickVertex: () => PlacementEndpoint | null;
 }
 
-/** Shared placement fallback: vertex snap, terrain hit, then a screen-facing plane through the chain anchor. */
+export type PlacementOptions = {
+  /** Shift: hold the dominant world axis from the anchor. */
+  axisLocked?: boolean;
+  /** Ctrl: a follow-on point lands on the surface under the cursor instead of at the anchor's depth. */
+  onSurface?: boolean;
+  /** A tool drawn over the ground (Create Trail): every point takes the surface. */
+  followsGround?: boolean;
+  /** Lift a surface contact by this much, so a generated surface is not coplanar with the terrain it traces. */
+  surfaceLiftM?: number;
+};
+
+/** Whether the surface under the cursor may place this point. The first point of a chain has no other depth
+ *  to go on; after it, the anchor's depth carries the chain — a hill behind the cursor would otherwise pull
+ *  every point of a free-standing wall off to it — unless Ctrl asks for the surface or the tool follows it. */
+export const placementTakesSurface = (anchor: V3 | null, opts: PlacementOptions = {}) =>
+  !anchor || !!opts.onSurface || !!opts.followsGround;
+
+/** Shared placement fallback: vertex snap, the surface (see placementTakesSurface), then a screen-facing plane
+ *  through the chain anchor. */
 export function resolvePlacementEndpoint(
   resolver: PlacementResolver,
   anchor: V3 | null,
-  axisLocked = false,
-  surfaceLiftM = 0,
+  opts: PlacementOptions = {},
 ): PlacementEndpoint | null {
   const { stage } = resolver;
+  const surfaceLiftM = opts.surfaceLiftM ?? 0;
   let endpoint = resolver.pickVertex();
   let surfaceContact = !!endpoint;
-  if (!endpoint) {
+  if (!endpoint && placementTakesSurface(anchor, opts)) {
     // Runs per pointer move while a placement tool is armed, so it goes through the surface's cached pick
     // tree rather than walking every triangle. The resolver's own surface, NOT stage.terrainMesh: a
     // model-edit session places against the surrounding mountain backdrop (Viewport.placementSurface).
@@ -42,5 +60,5 @@ export function resolvePlacementEndpoint(
     pos: [endpoint.pos[0], endpoint.pos[1] + surfaceLiftM, endpoint.pos[2]],
     vertex: null,
   };
-  return endpoint ? constrainPlacement(endpoint, anchor, axisLocked) : null;
+  return endpoint ? constrainPlacement(endpoint, anchor, !!opts.axisLocked) : null;
 }

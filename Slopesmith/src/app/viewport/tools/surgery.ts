@@ -4,7 +4,7 @@ import type { MeshAdjacency, EdgeHandle } from '../../../core/mesh/topology';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import {
   LOOPCUT_LINE_COLOR, LOOPCUT_LINE_WIDTH, LOOPCUT_DOT_PX, LOOPCUT_STOP_PX,
-  CAGE_POINT_COLOR, CAGE_BOUNDARY_COLOR, CAGE_EXTRA3_COLOR, LOOP_RENDER_ORDER,
+  CAGE_POINT_COLOR, CAGE_BOUNDARY_COLOR, T_JUNCTION_COLOR, LOOP_RENDER_ORDER,
 } from '../constants';
 import { clearGlyphGroup, glyphLines, addLoopDots } from '../shared/overlays';
 import type { Stage } from '../stage';
@@ -61,7 +61,8 @@ export function createSurgeryLayer(stage: Stage, mesh: MeshAccess) {
   }
 
   /** Draw the ghost for the planned cut at the current fraction: the cut curve (gold fat line, on the
-   *  surface), the inserted-vertex dots (green — what they'll become), and the strip's rim / pole stops. */
+   *  surface), the inserted-vertex dots (green — what they'll become), and the strip's rim stops (orange) and
+   *  T-junction ends (red — where it meets a patch it can't cross). */
   function drawGhost(plan: LoopCutPlan) {
     clearGlyphGroup(loopCutGroup);
     const pv = mesh.preview(), eh = mesh.edgeHandle();
@@ -71,7 +72,7 @@ export function createSurgeryLayer(stage: Stage, mesh: MeshAccess) {
     if (geom.line.length) glyphLines(loopCutGroup, geom.line, LOOPCUT_LINE_COLOR, 1, res, LOOPCUT_LINE_WIDTH, LOOP_RENDER_ORDER + 1, false);
     addLoopDots(loopCutGroup, geom.cutPts, CAGE_POINT_COLOR, LOOPCUT_DOT_PX);
     addLoopDots(loopCutGroup, geom.rimPts, CAGE_BOUNDARY_COLOR, LOOPCUT_STOP_PX);  // open ends: rim
-    addLoopDots(loopCutGroup, geom.polePts, CAGE_EXTRA3_COLOR, LOOPCUT_STOP_PX);   // stopped at a pole
+    addLoopDots(loopCutGroup, geom.tPts, T_JUNCTION_COLOR, LOOPCUT_STOP_PX);       // ends as a T-junction
   }
 
   /** Re-plan + redraw the cut ghost from the terrain edge under the cursor. Off the terrain (or off a mesh

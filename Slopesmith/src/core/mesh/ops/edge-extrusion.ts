@@ -9,6 +9,7 @@ import {
   inheritQuadSurface, locateVertex, looseVertexIds,
 } from './contract';
 import { quadPerimeterEdges, readVertex } from '../primitives';
+import { splitGuideEdges, type GuideSplit } from './guide-split';
 
 /**
  * Edge extrusion: extends a selected boundary edge / run into a new connected strip. A plan freezes the
@@ -74,8 +75,14 @@ export interface EdgeExtrusionPlacement extends EdgeExtrusionRing {
   stations?: EdgeExtrusionRing[];
   /** Existing mesh path used as one side of the strip. Its vertices/curves are reused, never duplicated.
    *  `frames` (one per guide vertex) are the local frames the profile was placed in, from which every other
-   *  track's curve is derived so it runs parallel to the guide (sweptTrackHandles). */
-  guide?: { source: number; vertices: number[]; handles: Record<string, V3>; frames?: PathFrame[] };
+   *  track's curve is derived so it runs parallel to the guide (sweptTrackHandles). `splits` are free guide
+   *  edges cut on their own curves first (splitGuideEdges) — `vertices` already names the points those cuts
+   *  append — so a sharply bending edge sweeps as several bands rather than one folded one. `parallel`: the run
+   *  was carried without turning, so every track is an exact copy of the guide's own curve. */
+  guide?: {
+    source: number; vertices: number[]; handles: Record<string, V3>; frames?: PathFrame[]; splits?: GuideSplit[];
+    parallel?: boolean;
+  };
 }
 
 export type EdgeExtrusionPlanResult = { ok: true; plan: EdgeExtrusionPlan } | { ok: false; error: string };
@@ -179,7 +186,8 @@ function writeCrossHandles(
     const point = (segment: number) => ringPoint(doc, placement, source, segment, segments);
     for (let segment = 1; segment <= segments; segment++) {
       const a = ids[segment - 1], b = ids[segment];
-      if (placement.guide?.source === source) {
+      // The guide's own points take its curve; so does every track of a run carried parallel to it.
+      if (placement.guide?.source === source || placement.guide?.parallel) {
         const from = placement.guide.vertices[segment - 1], to = placement.guide.vertices[segment];
         edgeHandles[`${a}>${b}`] = [...placement.guide.handles[`${from}>${to}`]] as V3;
         edgeHandles[`${b}>${a}`] = [...placement.guide.handles[`${to}>${from}`]] as V3;
@@ -589,7 +597,8 @@ export function edgeExtrusionPreviewDoc(doc: QuadMeshDoc, plan: EdgeExtrusionPla
 }
 
 /** Local preview for an arbitrarily transformed outer edge (move / rotate / scale staging). */
-export function edgeExtrusionPlacementPreviewDoc(doc: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): QuadMeshDoc {
+export function edgeExtrusionPlacementPreviewDoc(source: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): QuadMeshDoc {
+  const doc = splitGuideEdges(source, placement.guide?.splits ?? []); // the guide points the stations were placed on
   const segments = edgeExtrusionSegmentCount(doc, plan, placement);
   const old = new Map<number, number>(), fresh = new Map<number, number>(), rings = new Map<number, number[]>();
   const vertices: number[] = [], moved = new Set(plan.vertices);
@@ -690,8 +699,17 @@ export function applyPatchExtrusion(doc: QuadMeshDoc, selection: readonly number
   return applyPlannedEdgeExtrusion(doc, planned.plan, translatedEdgeExtrusionPlacement(doc, planned.plan, delta));
 }
 
-/** Bake a frozen extrusion plan at its staged outer-edge placement. */
-export function applyPlannedEdgeExtrusion(doc: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): EdgeExtrusionResult {
+/** Bake a frozen extrusion plan at its staged outer-edge placement. A path placement that cut its guide first
+ * (`guide.splits`) makes those cuts here too, and reports their points among the added vertices. */
+export function applyPlannedEdgeExtrusion(source: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): EdgeExtrusionResult {
+  const doc = splitGuideEdges(source, placement.guide?.splits ?? []);
+  const result = applyPlannedEdgeExtrusionTo(doc, plan, placement);
+  if (!result.ok || doc === source) return result;
+  const cut = Array.from({ length: (doc.vertices.length - source.vertices.length) / 3 }, (_, i) => source.vertices.length / 3 + i);
+  return { ...result, vertices: [...cut, ...result.vertices] };
+}
+
+function applyPlannedEdgeExtrusionTo(doc: QuadMeshDoc, plan: EdgeExtrusionPlan, placement: EdgeExtrusionPlacement): EdgeExtrusionResult {
   if (!Number.isFinite(plan.segmentLength) || plan.segmentLength <= 0)
     return { ok: false, error: 'Extrusion segment length must be greater than zero.' };
   if (placement.stations && (!placement.stations.length || placement.stations.length > MAX_EXTRUSION_SEGMENTS))

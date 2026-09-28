@@ -42,7 +42,10 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   let mode: 'pull' | 'path' = 'pull';
   let pathId = '';
   let reversePath = false;
+  let turnOverride: boolean | null = null;   // mesh-edge path: turn with it, run parallel, or (null) the path decides
+  let pathTurns = false;                     // what the current mesh-edge placement actually did
   let pathError = '';
+  let pathWarning = '';   // the path is fine to commit, but its sweep folds somewhere (EdgeExtrusionPathResult.warning)
   let pathSegments = 0;
   let segmentLengthOverride: number | null = null;
   let drag: {
@@ -189,8 +192,10 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
           : { ok: false as const, error: 'That path is no longer available. Choose another path.' }
         : selected.length !== edges.length
           ? { ok: false as const, error: 'The selected edge path has changed. Select its edges again.' }
-          : edgeChainExtrusionPlacement(source, staged.plan, edges);
+          : edgeChainExtrusionPlacement(source, staged.plan, edges, turnOverride === null ? {} : { turn: turnOverride });
       pathError = result.ok ? '' : result.error;
+      pathTurns = result.ok && result.turns;
+      pathWarning = result.ok ? result.warning ?? '' : '';
       return result.ok ? result.placement : null;
     }
     anchor.updateMatrixWorld(true);
@@ -412,7 +417,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (!staged) return;
     const sourceEdges = restoreSource && mode === 'path' ? staged.edges : null;
     staged = null;
-    mode = 'pull'; pathId = ''; reversePath = false; pathError = ''; pathSegments = 0;
+    mode = 'pull'; pathId = ''; reversePath = false; turnOverride = null; pathError = ''; pathWarning = ''; pathSegments = 0;
     anchor.visible = false;
     anchor.position.set(0, 0, 0); anchor.quaternion.identity(); anchor.scale.setScalar(1);
     group.visible = false;
@@ -470,6 +475,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (!staged || value === mode || value === 'path' && staged.plan.kind !== 'edge') return;
     mode = value;
     pathError = '';
+    pathWarning = '';
     if (mode === 'path') {
       anchor.visible = false;
       stage.detachGizmo();
@@ -502,6 +508,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     setSegmentLength,
     setPath(value: string) { pathId = value; reversePath = false; rebuild(); },
     setReversePath(value: boolean) { reversePath = value; rebuild(); },
+    setTurnWithPath(value: boolean) { turnOverride = value; rebuild(); },
     refreshPath() { if (staged && mode === 'path') rebuild(); },
     setSideHint(quad: number | null) {
       const source = deps.meshDoc();
@@ -520,7 +527,10 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     get segmentLength() { return staged?.plan.segmentLength ?? segmentLengthOverride ?? 10; },
     get path() { return pathId; },
     get reversePath() { return reversePath; },
+    /** Whether a mesh-edge path extrusion turns the run with the path (else carries it parallel). */
+    get turnWithPath() { return pathTurns; },
     get error() { return pathError; },
+    get warning() { return pathError ? '' : pathWarning; },
   };
 }
 

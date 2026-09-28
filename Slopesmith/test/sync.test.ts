@@ -482,7 +482,7 @@ try {
     for (const corners of [[cutMesh.quads[quad][0], cutMesh.quads[quad][1]],
       [cutMesh.quads[quad][0], cutMesh.quads[quad][2]]] as [number, number][]) {
       const candidate = planLoopCut(cutMesh, cutAdj, quad, corners);
-      if (candidate.splits.length && !candidate.poleStops.length) { cutPlan = candidate; break; }
+      if (candidate.splits.length && !candidate.tStops.length) { cutPlan = candidate; break; }
     }
   }
   const cutFrom = winner.sent.length, cutClaims = winner.claims.length;
