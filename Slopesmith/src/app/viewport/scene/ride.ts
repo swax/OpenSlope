@@ -54,6 +54,11 @@ export interface RideDeps {
   getRefLevel(): string;
   /** The authored mountain name (ride HUD label). */
   getMountainName(): string;
+  /** The editor's undo / redo, for the headset's stick clicks while EDIT is on (docs/068). */
+  undo?(): void;
+  redo?(): void;
+  /** The headset's mixed reality became available, turned on or off, or ended with the session (docs/068). */
+  onXrMixedRealityChange?(on: boolean): void;
   /** The authored terrain's preview data (per-cell surface types) for the ride's surface lookup. */
   getPreview(): PreviewData | null;
   /** The doc's authored grind rails, ridable during an authored-mountain playtest ([Trailmap: 350]). */
@@ -528,9 +533,10 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
 
   /** Enter / leave Play SETUP: select the marker's target without touching either mountain's visibility. Riders
    *  dropped by hand belong to the mountain they were dropped on, so leaving Play — or switching to the other
-   *  mountain — puts them away. */
+   *  mountain — puts them away. A headset session keeps its field: the wrist EDIT palette (docs/068) can switch
+   *  the editor out of Test while the rider is still standing on the mountain, and that field is the session's. */
   function setPlayActive(on: boolean, target: 'authored' | 'reference') {
-    if (!on || target !== playTarget) clearAiField();
+    if ((!on || target !== playTarget) && !xr) clearAiField();
     playTarget = target;
     if (!on) { showRideSpawn(null); return; }
     const reference = target === 'reference';
@@ -544,9 +550,11 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     }
   }
 
-  /** Show / move the world-space start marker (a green flag on the ground). Null hides it. */
+  /** Show / move the world-space start marker (a green flag on the ground). Null hides it. Refused while a
+   *  headset session is up: the flag is put away for the whole session (`startXrPlay`), and re-entering Test from
+   *  the wrist EDIT palette must not plant a mountain-scaled pole on top of the rider. */
   function showRideSpawn(world: V3 | null) {
-    if (!world) { if (playMarker) playMarker.visible = false; return; }
+    if (!world || xr) { if (playMarker) playMarker.visible = false; return; }
     if (!playMarker) {
       const g = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3, 8), new THREE.MeshBasicMaterial({ color: 0x35e06a }));
@@ -965,6 +973,17 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       restartField: () => restartVrField(t, ai),
       setFlightBoostAudio: (active, dt) => vrRide?.setFlightBoostAudio(active, dt),
       onExit: () => finishXrPlay(onExit),
+      // The wrist EDIT palette's right-hand mouse (docs/068) drives the editor's own pointer router: its canvas,
+      // the camera it casts from, and the surface a controller ray is pointing at — and the move gizmo, which the
+      // hand can push in depth where a mouse only slides it.
+      editor: {
+        canvas: stage.renderer.domElement, camera: () => stage.camera, surfaceHit: editSurfaceHit,
+        translateDrag: () => stage.translateDrag(),
+        driveTranslate: world => { stage.driveGizmoTo(world); },
+      },
+      undo: () => deps.undo?.(),
+      redo: () => deps.redo?.(),
+      onMixedRealityChange: on => deps.onXrMixedRealityChange?.(on),
     });
     xr = session;
     // The setup flag goes away for the whole session, as `takeEditorView` puts it away for a desktop ride: the
@@ -1036,6 +1055,36 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     ride.park();
     ride = null;
     colliderOverlay.setSources([]);
+  }
+
+  const editRay = new THREE.Ray(), editHit = new THREE.Vector3();
+  /**
+   * The nearest visible editable surface — the authored mountain or the loaded reference — along a world ray: where
+   * the headset's world mouse puts its cursor (docs/068). Through the same BVH picks a mouse hover uses, and it
+   * leaves the shared pick ray exactly as it found it.
+   */
+  function editSurfaceHit(ray: THREE.Ray): THREE.Vector3 | null {
+    editRay.copy(stage.ray.ray);
+    const near = stage.ray.near, far = stage.ray.far;
+    stage.ray.ray.copy(ray);
+    stage.ray.near = 0;
+    stage.ray.far = Infinity;
+    let best: THREE.Intersection | null = null;
+    for (const target of stage.pickTargets()) {
+      if (!(target instanceof THREE.Mesh) || !shownInScene(target)) continue;
+      const hit = stage.pickSurface(target);
+      if (hit && (!best || hit.distance < best.distance)) best = hit;
+    }
+    stage.ray.ray.copy(editRay);
+    stage.ray.near = near;
+    stage.ray.far = far;
+    return best ? editHit.copy(best.point) : null;
+  }
+
+  /** Visible all the way up: a mountain put away for a ride hides an ancestor, not itself. */
+  function shownInScene(object: THREE.Object3D): boolean {
+    for (let node: THREE.Object3D | null = object; node; node = node.parent) if (!node.visible) return false;
+    return true;
   }
 
   /** Leave VR (the Stop button, or Esc). The session's own `end` runs the teardown either way. */
@@ -1155,6 +1204,13 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     get playTarget() { return playTarget; },
     /** A headset session is up — the rider is in VR, on foot or on the board (docs/048). */
     get xrPresenting() { return !!xr?.presenting; },
+    /** The headset's wrist EDIT is open (docs/068): an editor flying the mountain, not a rider on it. */
+    get xrEditing() { return !!xr?.editing; },
+    /** The headset offers passthrough, and whether it is showing (docs/068). */
+    get xrMixedRealityAvailable() { return !!xr?.mixedRealityAvailable; },
+    get xrMixedReality() { return !!xr?.mixedReality; },
+    /** Swap the headset session for its mixed-reality twin or back; must come from the user's own press. */
+    setXrMixedReality(on: boolean): Promise<boolean> { return xr ? xr.setMixedReality(on) : Promise.resolve(false); },
     /** GPU timing follows the visible profiler: desktop rides always show it; VR can switch it live at the wrist. */
     get perfDiagnostics() { return xr ? xr.presenting && xr.diagnosticsEnabled : !!ride; },
     /** Local participant pose, whichever Play state owns it. WebXR adds tracked head/hands over the board. */

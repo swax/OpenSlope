@@ -1,0 +1,156 @@
+import * as THREE from 'three';
+
+/**
+ * The right controller as the editor's MOUSE on the mountain (docs/068), while the wrist EDIT palette is open.
+ *
+ * The editor's pointer router picks from a CLIENT PIXEL: it casts `stage.camera` through it, and measures vertex,
+ * edge and marquee picks in screen pixels around it. Rather than teach every tool a second input model, the hand
+ * drives that same path. The controller's ray is met with the mountain; that point is projected through the camera
+ * the router casts from (which WebXR keeps on the headset's pose), and pointer events go to the canvas at the
+ * resulting client position. Hover, click, drag and the gizmo then run exactly the code a mouse runs.
+ *
+ * What the router sees is therefore the EYE's ray through where the controller points, not the controller's own
+ * ray. The two meet at the surface point the hand is aimed at, and the cursor dot is drawn there, so what the dot
+ * covers from the eye is what gets picked — including a vertex or gizmo handle in front of the surface. Where the
+ * controller ray meets no surface, a far point along it stands in.
+ *
+ * Pointer capture: the router and TransformControls capture the pointer on a press. A synthetic pointer is not one
+ * the browser tracks (a standalone headset browser may have no mouse at all), so capture calls are made inert
+ * for the duration of each dispatch; the per-frame moves sent here are what keeps a drag going.
+ */
+
+export interface XrWorldPointerDeps {
+  /** The canvas the pointer router and gizmo listen on. */
+  canvas: HTMLCanvasElement;
+  /** The camera the router casts from; the XR session keeps it on the headset's pose. */
+  camera(): THREE.Camera;
+  /** Nearest editable-surface point along a world ray, or null. */
+  surfaceHit(ray: THREE.Ray): THREE.Vector3 | null;
+  /** The move gizmo's live translate, if one is being dragged, and a way to put its anchor at a world point:
+   *  how the hand moves a held prop or point in depth (hand-drag.ts). */
+  translateDrag?(): { anchor: THREE.Object3D; axis: string; space: 'local' | 'world'; snap: number | null } | null;
+  driveTranslate?(world: THREE.Vector3): void;
+}
+
+/** Chrome's mouse is pointer 1; the router's desktop paths key off `pointerType: 'mouse'`. */
+const POINTER_ID = 1;
+/** A move smaller than this (CSS px) is not re-sent; a still hand should not re-run hover picking every frame. */
+const MOVE_EPSILON_PX = 0.35;
+const BUTTON_MASK = { 0: 1, 2: 2 } as const;
+type Button = 0 | 2;
+
+export function createXrWorldPointer(deps: XrWorldPointerDeps) {
+  const { canvas } = deps;
+  const point = new THREE.Vector3(), ndc = new THREE.Vector3();
+  let inside = false;
+  let buttons = 0;
+  let last: { x: number; y: number } | null = null;
+  let hit = false, located = false;
+
+  const noCapture = () => {};
+  /** Run a dispatch with pointer capture made inert (see the header). Own properties shadow the prototype's. */
+  function dispatching(run: () => void) {
+    const target = canvas as unknown as Record<string, unknown>;
+    target.setPointerCapture = noCapture;
+    target.releasePointerCapture = noCapture;
+    try { run(); } finally {
+      delete target.setPointerCapture;
+      delete target.releasePointerCapture;
+    }
+  }
+
+  function fire(type: string, at: { x: number; y: number }, button: number) {
+    const pointer = type.startsWith('pointer');
+    const init: MouseEventInit = {
+      bubbles: type !== 'pointerenter' && type !== 'pointerleave',
+      cancelable: true, composed: true, view: window,
+      clientX: at.x, clientY: at.y, screenX: at.x, screenY: at.y, button, buttons,
+    };
+    canvas.dispatchEvent(pointer
+      ? new PointerEvent(type, {
+        ...init, pointerId: POINTER_ID, pointerType: 'mouse', isPrimary: true, width: 1, height: 1,
+        pressure: buttons ? 0.5 : 0,
+      })
+      : new MouseEvent(type, init));
+  }
+
+  /** Where the ray meets the mountain, as a client point on the canvas; null when that point is not in view. */
+  function locate(ray: THREE.Ray, farDistance: number): { x: number; y: number } | null {
+    const surface = deps.surfaceHit(ray);
+    hit = !!surface;
+    point.copy(surface ?? ray.at(farDistance, point));
+    ndc.copy(point).project(deps.camera());
+    if (!(ndc.z > -1 && ndc.z < 1)) return null; // behind the eyes, or past the far plane
+    const rect = canvas.getBoundingClientRect();
+    return { x: rect.left + (ndc.x + 1) / 2 * rect.width, y: rect.top + (1 - ndc.y) / 2 * rect.height };
+  }
+
+  function press(button: Button, at: { x: number; y: number }) {
+    buttons |= BUTTON_MASK[button];
+    fire('pointerdown', at, button);
+    fire('mousedown', at, button);
+  }
+
+  /** `complete` false when the mouse is being put away mid-press: the up events land, the click does not. */
+  function release(button: Button, at: { x: number; y: number }, complete = true) {
+    buttons &= ~BUTTON_MASK[button];
+    fire('pointerup', at, button);
+    fire('mouseup', at, button);
+    if (complete) fire(button === 0 ? 'click' : 'contextmenu', at, button);
+  }
+
+  /**
+   * One frame. `ray` is the right aim ray (null while the palette or the watch has it); `left` / `right` are the
+   * mouse buttons (trigger / A). A press only starts with the cursor on the canvas; a release always lands, at the
+   * last known point if the ray has since gone elsewhere. `farDistance` is where a ray that meets no surface puts
+   * the cursor, in world units — the host scales it with the player. `holdMoves` sends no moves: the host is
+   * driving a gizmo drag itself (hand-drag.ts), and a move would have the gizmo put it back on its plane.
+   */
+  function update(ray: THREE.Ray | null, left: boolean, right: boolean, farDistance: number, holdMoves = false) {
+    const at = ray ? locate(ray, farDistance) : null;
+    located = !!at;
+    if (!at) hit = false;
+    dispatching(() => {
+      if (at) {
+        if (!inside) { fire('pointerover', at, 0); fire('pointerenter', at, 0); inside = true; }
+        const moved = !last || Math.abs(at.x - last.x) >= MOVE_EPSILON_PX || Math.abs(at.y - last.y) >= MOVE_EPSILON_PX;
+        if (moved && !holdMoves) {
+          last = at;
+          fire('pointermove', at, -1);
+          fire('mousemove', at, 0);
+        }
+      }
+      const from = at ?? last;
+      for (const [button, down] of [[0, left], [2, right]] as const) {
+        const held = (buttons & BUTTON_MASK[button]) !== 0;
+        if (down && !held && at) press(button, at);
+        else if (!down && held && from) release(button, from);
+      }
+      if (!at && inside && !buttons && last) { fire('pointerout', last, 0); fire('pointerleave', last, 0); inside = false; }
+    });
+  }
+
+  /** Put the mouse away: release anything held (without moving), and leave the canvas. */
+  function reset() {
+    if (!last) { buttons = 0; inside = false; return; }
+    const at = last;
+    dispatching(() => {
+      for (const button of [0, 2] as const) if (buttons & BUTTON_MASK[button]) release(button, at, false);
+      if (inside) { fire('pointerout', at, 0); fire('pointerleave', at, 0); }
+    });
+    buttons = 0; inside = false; last = null; hit = false; located = false;
+  }
+
+  return {
+    update, reset,
+    /** The world point under the cursor this frame (surface or far stand-in), valid while `onCanvas`. */
+    get point() { return point; },
+    /** Whether the cursor landed on the canvas this frame, and whether it found an actual surface. */
+    get onCanvas() { return located; },
+    get onSurface() { return hit; },
+    /** A button is held: the drag it started owns the hand until it is released. */
+    get pressed() { return buttons !== 0; },
+  };
+}
+
+export type XrWorldPointer = ReturnType<typeof createXrWorldPointer>;

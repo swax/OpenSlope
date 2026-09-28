@@ -121,6 +121,8 @@ export interface IconButton {
   active?: () => boolean;
   /** Optional getter; when it returns false the button is disabled + dimmed (e.g. Undo with no history). */
   enabled?: () => boolean;
+  /** Optional getter; when it returns false the button is not shown at all (e.g. a headset-only control). */
+  visible?: () => boolean;
 }
 
 export interface IconBar {
@@ -143,6 +145,7 @@ export function iconBar(items: IconButton[]): IconBar {
     b.onclick = () => { it.onClick(); refresh(); };
     if (it.active) { const a = it.active; refreshers.push(() => b.classList.toggle('on', a())); }
     if (it.enabled) { const en = it.enabled; refreshers.push(() => { const ok = en(); b.disabled = !ok; b.classList.toggle('disabled', !ok); }); }
+    if (it.visible) { const show = it.visible; refreshers.push(() => { b.style.display = show() ? '' : 'none'; }); }
     el.appendChild(b);
   }
   refresh();

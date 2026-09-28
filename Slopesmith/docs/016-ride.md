@@ -430,7 +430,10 @@ The left-wrist menu is available throughout the session: press **left Y** to sho
 controller at it and pull the trigger. Alongside calibration, restart, view, controls, and exit, **VR STATS
 ON/OFF** attaches or removes the forward performance readout, console samples, and asynchronous GPU timing
 without leaving VR. The changed stats state is remembered as the Test toolbox's starting choice for the next
-session; off retains only the compact speed/control watch.
+session; off retains only the compact speed/control watch. **EDIT ON/OFF** (on foot) switches to VR editing
+([068](068-vr-editing.md)): a wrist palette of the editor's real Mode/View buttons, current toolbox, and colour
+keys; the right hand as the editor's mouse (trigger left button, A right); and gravity-free edit flight with
+two-grip size, turn and pan. Turning it off lands the rider, life-size, on the snow beneath their eyes.
 
 Test's launch-time **VR render scale** defaults to **1.5×**, spans **0.5×–3×** in 0.1× increments, and is passed to
 `setFramebufferScaleFactor`. Because each dimension scales, 3× requests nine times the nominal eye-buffer

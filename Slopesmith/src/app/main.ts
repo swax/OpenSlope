@@ -174,6 +174,9 @@ const viewportCallbacks = createViewportCallbacks({
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
   refreshSelection: () => refreshSelection(),
+  undo: () => undo(),
+  redo: () => redo(),
+  xrMixedRealityChanged: on => xrMixedRealityChanged(on),
   getSceneSel: () => getSceneSel(),
   selectScene: kind => selectScene(kind),
   showReferenceLightDetails: (level, light) => reference.setSelectedLightDetails(level, light),
@@ -258,6 +261,13 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('agent')) {
   void import('./dev/agent-layer')
     .then(m => { agentLayer = m.installAgentLayer({ store, viewport, container }); })
     .catch(e => log(`agent layer failed to load: ${e}`));
+}
+// `?xrpanels=1` (dev only): the headset's wrist EDIT palette (docs/068) drawn flat, from the same DOM mirrors and
+// pointer, so the rasterized panels and their click-through can be checked without a headset.
+if (import.meta.env.DEV && new URLSearchParams(location.search).has('xrpanels')) {
+  void import('./dev/xr-panel-preview')
+    .then(m => m.installXrPanelPreview())
+    .catch(e => log(`VR panel preview failed to load: ${e}`));
 }
 
 // The Palette (paint mode): a staging grid of tile + ride-feel + orientation combos.
@@ -541,12 +551,12 @@ function syncPropLibBtn() { propLibBtn.classList.toggle('on', store.propLibWante
 // the panel's ✕ is close to a one-way door — reopening means already knowing the toggle is up in the Tools
 // panel. Each tab is that toggle's twin, offered where the panel itself sits.
 const libraryTab = new DockTab({
-  icon: LIB_GRID_ICON, label: 'Texture Library',
+  id: 'texture-library-tab', icon: LIB_GRID_ICON, label: 'Texture Library',
   tip: 'Show the Texture Library — the level’s texture tiles, at the bottom of the screen.',
   onOpen: () => setLibraryWanted(true),
 });
 const propLibTab = new DockTab({
-  icon: LIB_GRID_ICON, label: 'Prop Library',
+  id: 'prop-library-tab', icon: LIB_GRID_ICON, label: 'Prop Library',
   tip: 'Show the Prop Library — this mountain’s and the reference world’s placeable props, at the bottom of the screen.',
   onOpen: () => setPropLibWanted(true),
 });
@@ -825,7 +835,7 @@ async function renderDocProgressively(token: number) {
   loadStatus.update(token, { progress: 96, label: 'Finalizing editor state', detail: 'Preparing the restored session' });
   finishRenderDoc(false);
 }
-const { scheduleRebuild, scheduleSettle, isPending: isRebuildPending } = createRebuilder({
+const { scheduleRebuild, scheduleSettle, flush: flushRebuild, isPending: isRebuildPending } = createRebuilder({
   scheduleCommit: () => scheduleCommit(), // deferred: history is created below
   render: renderDoc,
   settle: settleDoc,
@@ -834,6 +844,8 @@ const { scheduleRebuild, scheduleSettle, isPending: isRebuildPending } = createR
   // incremental one on top of a state nothing ever finished painting.
   onError: e => { captureBuildError = String(e); netWatcher.reset(); log(`build error: ${e}`); agentLayer?.onBuildError(e); },
 });
+// Edits made from a headset (docs/068) must not wait on a page animation frame the headset browser may never run.
+viewport.onXrFrame = flushRebuild;
 
 function log(msg: string) {
   logTextEl.textContent = msg;
@@ -1097,6 +1109,30 @@ const { initReference, initSunLight, syncSunFromDoc, applySunLight, applyReferen
   applyPropsVisible, applyLightsVisible, toggleProps, toggleTricks, toggleLights,
   togglePropLights, toggleSunLight, ensureReferenceEffects, syncGodRays } = reference;
 syncGodRayPreview = syncGodRays;
+
+/**
+ * Mixed reality (docs/068): the headset's passthrough cameras behind the mountain, so it can be edited standing
+ * in the room. A sky would cover the room, so turning it on puts the skybox away (not persisted: this is a
+ * headset moment, not a view preference), and turning it off — or leaving the headset — brings the sky back as
+ * it was. The session reports every change, whether or not it came from here (`xrMixedRealityChanged`).
+ */
+let skyBeforeMixedReality: boolean | null = null;
+function toggleMixedReality() {
+  const on = !viewport.xrMixedReality;
+  if (on && skyBeforeMixedReality === null) {
+    skyBeforeMixedReality = store.skyboxVisible;
+    skybox.setSkyboxVisible(false, false);
+  }
+  // Straight into the request: it spends the press's user activation, and an await first would lose it.
+  void viewport.setXrMixedReality(on);
+}
+function xrMixedRealityChanged(on: boolean) {
+  if (!on && skyBeforeMixedReality !== null) {
+    skybox.setSkyboxVisible(skyBeforeMixedReality, false);
+    skyBeforeMixedReality = null;
+  }
+  viewLighting.refresh(); // the button shows only in a headset that offers passthrough, lit while it is on
+}
 
 /** Preview always-on graph-driven material/model motion and persistent emitters on both mountains. */
 function toggleWorldEffects() {
@@ -1594,6 +1630,8 @@ const {
   toggleLights, getLightRigVisible: () => store.lightRigVisible,
   toggleSunLight, getSunOn: () => reference.getSunOn(),
   toggleSkybox, getSkyboxVisible: () => store.skyboxVisible,
+  toggleMixedReality, getMixedRealityOn: () => viewport.xrMixedReality,
+  mixedRealityAvailable: () => viewport.xrMixedRealityAvailable,
   toggleCage,
   toggleFOverlay, getFOverlayOn: () => store.fOverlayOn,
   focusActive, newMountainDialog, canCreateMountains: () => session.mayCreateMountains(),

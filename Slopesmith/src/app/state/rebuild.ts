@@ -67,10 +67,19 @@ export function createRebuilder(deps: {
     cancelSettle();        // something moved again; whatever was about to settle is out of date
     if (queued) return;
     queued = true;
-    requestAnimationFrame(() => {
-      queued = false;
-      try { deps.render(); } catch (e) { deps.onError(e); }
-    });
+    requestAnimationFrame(flush);
   }
-  return { scheduleRebuild, scheduleSettle, isPending: () => queued || settleTimer !== null };
+
+  /**
+   * Run a queued render now rather than on the next page animation frame (a no-op when nothing is queued). A
+   * headset session calls this from its own frame loop: a standalone headset browser may pause the page's
+   * `requestAnimationFrame` for as long as it is immersive, which would hold every edit made from the wrist
+   * palette (docs/068) until the headset came off. The pending animation-frame callback then finds nothing to do.
+   */
+  function flush() {
+    if (!queued) return;
+    queued = false;
+    try { deps.render(); } catch (e) { deps.onError(e); }
+  }
+  return { scheduleRebuild, scheduleSettle, flush, isPending: () => queued || settleTimer !== null };
 }

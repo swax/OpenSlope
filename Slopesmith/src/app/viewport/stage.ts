@@ -72,6 +72,7 @@ export class Stage {
   // measured at 56 ms per cast on a 278k-vertex mountain, on a path that runs per POINTER MOVE.
   private readonly pickLocalRay = new THREE.Ray();
   private readonly pickInv = new THREE.Matrix4();
+  private readonly eyeAt = new THREE.Vector3(); // worldPerPixel's camera position scratch
 
   readonly marqueeEl: HTMLDivElement;      // rubber-band rectangle for box-select (HTML overlay over the canvas)
   readonly pivotMarker: THREE.Sprite;      // reticle (white dot + black ring) flashed at the orbit / zoom point
@@ -184,6 +185,28 @@ export class Stage {
     };
   }
 
+  /** The translate the gizmo is dragging right now, or null: what the headset's hand needs to drive it in depth. */
+  translateDrag(): { anchor: THREE.Object3D; axis: string; space: 'local' | 'world'; snap: number | null } | null {
+    const g = this.gizmo;
+    if (!g.dragging || g.mode !== 'translate' || !g.object || !g.axis) return null;
+    return { anchor: g.object, axis: g.axis, space: g.space, snap: g.translationSnap };
+  }
+
+  /**
+   * Put a dragged translate's anchor at a world point, reported exactly as the gizmo's own pointer move reports
+   * one, so every drag kind's host callback, the undo merge and the end-of-drag commit run unchanged. The
+   * headset's hand drives a translate through here (ride/xr/hand-drag.ts), in the depth a mouse cannot reach.
+   */
+  driveGizmoTo(world: THREE.Vector3): boolean {
+    const g = this.gizmo, anchor = g.object;
+    if (!anchor || !g.dragging || g.mode !== 'translate') return false;
+    anchor.position.copy(world);
+    if (anchor.parent) anchor.parent.worldToLocal(anchor.position);
+    g.dispatchEvent({ type: 'change' });
+    g.dispatchEvent({ type: 'objectChange' });
+    return true;
+  }
+
   /** Set the shared raycaster from a client-space pointer event. */
   castAt(e: { clientX: number; clientY: number }) {
     const r = this.renderer.domElement.getBoundingClientRect();
@@ -241,13 +264,38 @@ export class Stage {
 
   /** World units per screen pixel at a point (both projections), for screen-constant handle / nub sizing. */
   worldPerPixel(at: THREE.Vector3): number {
-    const h = this.container.clientHeight || 1;
+    let h = this.container.clientHeight || 1;
     if ((this.camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
       const pc = this.camera as THREE.PerspectiveCamera;
-      return (2 * pc.position.distanceTo(at) * Math.tan((pc.fov * Math.PI / 180) / 2)) / h;
+      // In a headset (docs/068) the camera is a child of the XR rig, so its `position` is the head's offset in the
+      // play space, not where it is: measured from there, a selected point's marker far out on the mountain grew
+      // to the size of a house. Its world position is right in both. And three sets `fov` to the headset's, so
+      // a pixel is the eye buffer's — the same pixel a size-in-pixels point marker is drawn in there.
+      if (this.renderer.xr.isPresenting) h = this.renderer.xr.getCamera().cameras[0]?.viewport.w || h;
+      return (2 * pc.getWorldPosition(this.eyeAt).distanceTo(at) * Math.tan((pc.fov * Math.PI / 180) / 2)) / h;
     }
     const oc = this.camera as THREE.OrthographicCamera;
     return (oc.top - oc.bottom) / oc.zoom / h;
+  }
+
+  /** World radius of the move gizmo's free-centre handle (the diamond a selected prop is moved by) at a point,
+   *  by TransformControls' own sizing: 0.1 of a handle scaled by distance × field of view × `size` / 4. */
+  gizmoCentreRadius(at: THREE.Vector3): number {
+    let factor: number;
+    if ((this.camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+      const pc = this.camera as THREE.PerspectiveCamera;
+      factor = pc.getWorldPosition(this.eyeAt).distanceTo(at) * Math.min(1.9 * Math.tan(Math.PI * pc.fov / 360) / pc.zoom, 7);
+    } else {
+      const oc = this.camera as THREE.OrthographicCamera;
+      factor = (oc.top - oc.bottom) / oc.zoom;
+    }
+    return 0.1 * factor * this.gizmo.size / 4;
+  }
+
+  /** A selected point's marker radius: `px` screen pixels at the desk. In a headset (docs/068) a few pixels is a
+   *  speck no laser lands on, so it takes the size of the gizmo's centre handle, which reads right there. */
+  pointMarkerRadius(at: THREE.Vector3, px: number): number {
+    return this.renderer.xr.isPresenting ? this.gizmoCentreRadius(at) : px * this.worldPerPixel(at);
   }
 
   /** Nearest world hit on the visible surfaces (terrain / loaded reference) under the cursor, or null. */

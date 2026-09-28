@@ -79,6 +79,8 @@ Start with the [authoring index](authoring/README.md) for the editor prerequisit
 - [031 — Custom Race Music](031-custom-race-music.md)
 - [034 — Board Sound](034-board-sound.md)
 - [036 — Authored Map References](036-authored-map-references.md)
+- [068 — VR Editing](068-vr-editing.md) — the real editor panels on a wrist palette, the right hand as the
+  editor's mouse, and edit flight with two-hand size, turn and pan.
 
 ## Hosting and collaboration
 

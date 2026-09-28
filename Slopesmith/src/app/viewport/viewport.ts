@@ -465,6 +465,10 @@ export class Viewport {
    * is far too slow to live with and exactly what you want while hunting one.
    */
   verifyRebuilds = false;
+  /** Called once per headset frame, after the headset's input has been applied. The host flushes its pending
+   *  rebuild here: edits made from the wrist EDIT palette (docs/068) must show without a page animation frame,
+   *  which a standalone headset browser may not run while it is immersive. */
+  onXrFrame: (() => void) | null = null;
   /** Sculpt brush footprint radius (world units); the router's ring overlay tracks it live. */
   get brushRadius() { return this.router.brushRadius; }
   set brushRadius(v: number) { this.router.brushRadius = v; }
@@ -667,6 +671,9 @@ export class Viewport {
       getRefData: () => this.refData,
       getRefLevel: () => this.refLevel,
       getMountainName: () => this.meshDoc?.name ?? '',
+      undo: () => this.cb.onUndo?.(),
+      redo: () => this.cb.onRedo?.(),
+      onXrMixedRealityChange: on => this.cb.onXrMixedRealityChange?.(on),
       getPreview: () => this.preview,
       getRails: () => this.rails.rails,
       getRefSplines: () => this.refSplines,
@@ -1127,6 +1134,7 @@ export class Viewport {
       // the gaze the physics below is about to steer on.
       let phaseStarted = performance.now();
       this.rideCtl.beginXrFrame(frame, dt);
+      if (this.rideCtl.xrPresenting) this.onXrFrame?.();
       const xrBeginMs = performance.now() - phaseStarted;
       phaseStarted = performance.now();
       this.assets.propTex.stepWorldEffects(dt); // recovered water / boost / LCD UV motion
@@ -1140,9 +1148,9 @@ export class Viewport {
       const eye = this.camera.getWorldPosition(this.eyeWorld); // world: a VR ride hangs the camera off its rig
       this.glints.sync(); // light glints carry no time term; only the pixel floor needs the live buffer size
       // The weather rides the same eye the backdrop does, and only while a run is on: snow belongs to the
-      // world being ridden, not to the editor view that shapes it. Two uniform writes; the field itself is
-      // entirely in its vertex shader.
-      this.snowfall.sync(eye, dt, this.rideCtl.riding || this.rideCtl.xrPresenting);
+      // world being ridden, not to the editor view that shapes it — including a headset's wrist EDIT (docs/068).
+      // Two uniform writes; the field itself is entirely in its vertex shader.
+      this.snowfall.sync(eye, dt, (this.rideCtl.riding || this.rideCtl.xrPresenting) && !this.rideCtl.xrEditing);
       let sceneMs = performance.now() - phaseStarted;
       phaseStarted = performance.now();
       this.rideCtl.step(dt); // the test ride, or an AI field (spectated, or dropped by hand in Play setup)
@@ -1294,6 +1302,10 @@ export class Viewport {
   get rideWalking() { return this.rideCtl.walking; }
   get rideFirstPerson() { return this.rideCtl.firstPerson; }
   get xrPresenting() { return this.rideCtl.xrPresenting; }
+  /** The headset offers passthrough, and whether it is showing behind the mountain (docs/068). */
+  get xrMixedRealityAvailable() { return this.rideCtl.xrMixedRealityAvailable; }
+  get xrMixedReality() { return this.rideCtl.xrMixedReality; }
+  setXrMixedReality(on: boolean): Promise<boolean> { return this.rideCtl.setXrMixedReality(on); }
   get ridePaused() { return this.rideCtl.paused; }
   /** Spectating: the AI field is racing with no board out there, and the editor still owns the camera + input. */
   get watching() { return this.rideCtl.watching; }

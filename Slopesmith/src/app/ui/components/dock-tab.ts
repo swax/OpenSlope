@@ -28,6 +28,9 @@ const css = `
 `;
 
 export interface DockTabOptions {
+  /** Element id — what the headset's wrist EDIT palette follows to show the tab upright beside the toolbox
+   *  (docs/068). */
+  id: string;
   /** Inline SVG for the glyph, left of the label — the same one its Tools-panel toggle wears. */
   icon: string;
   /** What comes up, e.g. 'Texture Library'. */
@@ -43,6 +46,7 @@ export class DockTab {
   constructor(opts: DockTabOptions) {
     installStyles('dock-tab', css);
     this.el.type = 'button';
+    this.el.id = opts.id;
     this.el.className = 'sp-docktab';
     this.el.innerHTML = `<span class="sp-docktab-caret">▲</span>${opts.icon}<span></span>`;
     this.el.lastElementChild!.textContent = opts.label;

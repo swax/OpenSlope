@@ -20,6 +20,7 @@ type LegendRow = [string, string, string];
 function buildLegendPanel(title: string, items: (LegendRow | string)[]): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'll-panel';
+  el.dataset.xrEdit = 'legend'; // what the headset's wrist EDIT palette crops out of #lowerleft (docs/068)
   el.style.display = 'none';
   el.innerHTML = `<div class="ll-title">${title}</div>` + items.map((item, index) => typeof item === 'string'
     ? `${index ? '<div class="ll-sep"></div>' : ''}<div class="ll-group">${item}</div>`

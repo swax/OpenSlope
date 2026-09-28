@@ -45,8 +45,12 @@ assert.equal(xrHudActionAt(false, new THREE.Vector2(134 / 512, 1 - 262 / 486)), 
   'the compact wrist panel exposes a live performance-stats toggle');
 assert.equal(xrHudActionAt(false, new THREE.Vector2(378 / 512, 1 - 262 / 486)), 'view',
   'the compact wrist panel exposes first/third-person view');
-assert.equal(xrHudActionAt(false, new THREE.Vector2(256 / 512, 1 - 326 / 486)), 'controls',
+assert.equal(xrHudActionAt(false, new THREE.Vector2(134 / 512, 1 - 326 / 486)), 'controls',
   'the compact wrist panel exposes its controller help page');
+assert.equal(xrHudActionAt(false, new THREE.Vector2(378 / 512, 1 - 326 / 486)), 'edit',
+  'the compact wrist panel exposes the EDIT palette beside the controller help (docs/068)');
+assert.equal(xrHudActionAt(false, new THREE.Vector2(256 / 512, 1 - 326 / 486)), null,
+  'the gap between CONTROLS and EDIT selects neither');
 assert.equal(xrHudActionAt(false, new THREE.Vector2(256 / 512, 1 - 446 / 486), true), 'controls',
   'the controller help page turns the same action into a full-width back button');
 assert.equal(xrHudActionAt(false, new THREE.Vector2(134 / 512, 1 - 134 / 486), true), null,
@@ -99,8 +103,8 @@ assert.match(xrSessionSource, /if \(statsEnabled\) viewRig\.add\(profiler\.objec
 assert.match(xrSessionSource,
   /watchAction === 'controls'[^]*?controlsOpen = !controlsOpen;[^]*?hud\.invalidate\(\)/,
   'the wrist controls action opens and closes the alternate help page immediately');
-assert.match(xrSessionSource, /xr\.setFoveation\(1\);[^]*?await xr\.setSession\(session\)/,
-  'every XR layer is constructed with full fixed foveation requested');
+assert.match(xrSessionSource, /xr\.setFoveation\(1\);[^]*?await xr\.setSession\(requested\)/,
+  'every XR layer — the first, and each mixed-reality swap\'s — is constructed with full fixed foveation requested');
 assert.doesNotMatch(xrSessionSource, /cycleFoveation|pressLeftB/,
   'no controller button can change the fixed foveation policy');
 assert.match(xrSessionSource,
@@ -364,6 +368,37 @@ assert.match(xrHudSource, /run\?\.trick\) drawTrick\(ctx, run\.trick\)[^]*?funct
     'while riding, the left stick legend switches from MOVE to STEER');
   assert.ok(visual.group.getObjectByName('xr-controller.button')!.visible,
     'the bound X hardware cap remains visible on the left hand');
+
+  // EDIT (docs/068) reprints both hands: the right hand is the editor's mouse, the sticks fly, the grips grab the world.
+  const clickLabel = visual.group.getObjectByName('xr-controller.action-click')!;
+  const rightClickLabel = visual.group.getObjectByName('xr-controller.action-r-click')!;
+  const flyLabel = visual.group.getObjectByName('xr-controller.action-fly')!;
+  const turnRiseLabel = visual.group.getObjectByName('xr-controller.action-turn-rise')!;
+  const grabWorldLabel = visual.group.getObjectByName('xr-controller.action-grab-world')!;
+  const undoLabel = visual.group.getObjectByName('xr-controller.action-undo')!;
+  const redoLabel = visual.group.getObjectByName('xr-controller.action-redo')!;
+  assert.equal(undoLabel.parent?.name, 'xr-controller.stick', 'UNDO is printed on the stick cap that is clicked');
+  visual.setBoardAction(false);
+  visual.setEditAction(true);
+  assert.ok(flyLabel.visible && menuLabel.visible && !moveLabel.visible && !spawnLabel.visible && !resetLabel.visible,
+    'editing, the left stick FLYs, Y keeps MENU, and the unbound X carries no legend');
+  assert.ok(undoLabel.visible && !redoLabel.visible, 'editing, the left stick cap reads UNDO');
+  assert.ok(!equipLabel.visible && !unequipLabel.visible && !clickLabel.visible,
+    'editing, the left trigger is unbound, so it carries no print');
+  assert.ok(grabWorldLabel.visible && !grabBoardLabel.visible, 'editing, the grips handle the world, not the board');
+  assert.equal(clickLabel.parent?.name, 'xr-controller.trigger', 'CLICK is printed on the moving index trigger');
+  assert.equal(grabWorldLabel.parent?.name, 'xr-controller.grip-pad', 'GRAB WORLD is printed down the grip paddle');
+  visual.setHandedness('right');
+  assert.ok(clickLabel.visible && rightClickLabel.visible && turnRiseLabel.visible && redoLabel.visible
+    && !undoLabel.visible, 'editing, the right trigger CLICKs, A is R CLICK, and the stick turns, rises and REDOes');
+  assert.ok(!jumpLabel.visible && !boostLabel.visible && !lookLabel.visible && !flyLabel.visible,
+    'editing, JUMP/BOOST/LOOK give way, and the unbound B carries no legend');
+  assert.equal(clickLabel.scale.x, -1, 'CLICK reads from the trigger\'s exposed face, like EQUIP');
+  visual.setEditAction(false);
+  assert.ok(equipLabel.visible && jumpLabel.visible && boostLabel.visible && lookLabel.visible && grabBoardLabel.visible
+    && !clickLabel.visible && !rightClickLabel.visible && !turnRiseLabel.visible && !grabWorldLabel.visible
+    && !redoLabel.visible,
+    'leaving EDIT restores the on-foot prints');
   visual.dispose();
 }
 
@@ -434,6 +469,15 @@ assert.deepEqual(xrControllerDiagramLabels('foot').right.map(row => row.control)
   ['TRIGGER', 'GRIP', 'STICK', 'A', 'B'], 'the right-controller diagram includes A jump and B boost');
 assert.equal(xrControllerDiagramLabels('foot').right[0].action, 'RIDE',
   'the on-foot diagram keeps the right trigger exclusively on board interaction');
+assert.deepEqual(xrControllerDiagramLabels('edit').right.map(row => row.control), ['TRIGGER', 'GRIP', 'STICK', 'A'],
+  'editing, the right help drops B, which stepEdit leaves unbound');
+assert.equal(xrControllerDiagramLabels('edit').right[0].action, 'CLICK', 'editing, the right trigger is the left click');
+assert.equal(xrControllerDiagramLabels('edit').right.find(row => row.control === 'A')?.action, 'RIGHT CLICK');
+assert.deepEqual(xrControllerDiagramLabels('edit').left.map(row => row.control), ['GRIP', 'STICK', 'Y'],
+  'editing, the left help drops the unbound trigger and X');
+assert.equal(xrControllerDiagramLabels('edit').left.find(row => row.control === 'STICK')?.action, 'FLY · CLICK UNDO');
+assert.match(xrControllerDiagramLabels('edit').right.find(row => row.control === 'STICK')?.action ?? '', /CLICK REDO/,
+  'editing, the stick clicks are the editor history: left undoes, right redoes');
 assert.match(xrControllerDiagramLabels('foot').right.find(row => row.control === 'A')?.action ?? '', /DOUBLE .*FLY/,
   'the diagram advertises double-jump flight on A');
 assert.match(xrControllerDiagramLabels('foot').right.find(row => row.control === 'B')?.action ?? '', /AIR BOOST · \+A FLY/,
