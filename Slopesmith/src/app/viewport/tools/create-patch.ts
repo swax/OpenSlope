@@ -35,8 +35,8 @@ export function createPatchToolLayer(
     stage.worldRoot.add(object);
   }
 
-  function placement(axisLocked = false): PlacementEndpoint | null {
-    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, axisLocked);
+  function placement(axisLocked = false, onSurface = false): PlacementEndpoint | null {
+    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, { axisLocked, onSurface });
   }
 
   function samePoint(a: PlacementEndpoint, b: PlacementEndpoint) {
@@ -92,14 +92,14 @@ export function createPatchToolLayer(
   function onHover(event: PointerEvent): boolean {
     if (!active) return false;
     stage.castAt(event);
-    hover = placement(event.shiftKey);
+    hover = placement(event.shiftKey, event.ctrlKey || event.metaKey);
     redraw();
     return true;
   }
 
-  function onCommit(axisLocked = false) {
+  function onCommit(axisLocked = false, onSurface = false) {
     if (!active) return;
-    const endpoint = placement(axisLocked);
+    const endpoint = placement(axisLocked, onSurface);
     if (!endpoint) return;
     if (closesTriangle(endpoint)) {
       const corners = points as [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint];

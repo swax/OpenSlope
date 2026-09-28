@@ -47,14 +47,21 @@ free edges, and leaves existing patch identities and authored appearance intact.
 
 ### Loop cut (the headline)
 
-From a hovered edge, walk the quad strip through opposite edges (`SurfaceTopology.cellEdges` pairs
-(0,2)/(1,3) — the same walker as `faceLoop`) in both directions until the strip **closes**, reaches
-the **rim**, or reaches a **pole** (`edgeTouchesPole`). Insert one vertex on every crossed edge at
-fraction `t` (default 0.5; Alt+wheel slides the ghost line along the strip, as it turns a held
-prop — the plain wheel still zooms), split each crossed quad into two.
+From a hovered edge, walk the quad strip through opposite edges in both directions until the strip
+**closes** into a ring or reaches the **rim**. Insert one vertex on every crossed edge at fraction `t`
+(default 0.5; Alt+wheel slides the ghost line along the strip, as it turns a held prop — the plain wheel
+still zooms), split each crossed quad into two.
 
-- Terminating at a pole is **correct behaviour**, not failure — a loop in a poled mesh is a strip,
-  not a global ring. The ghost shows both stop reasons (pole dot / rim tick) before commit.
+- **Poles don't stop it.** Entering a quad by one edge always leaves by the opposite one, whatever its
+  corners' valence, so the strip is as well defined through a 3/5 pole's patches as anywhere — only a
+  vertex-to-vertex edge *loop* is ambiguous at a pole, and a cut walks faces. (It used to stop at any patch
+  touching a pole, and refuse the commit: on GARI_DEUX that was 207 of 298 strips.)
+- **A triangle ends it conformingly.** A wedge has no opposite edge to leave by, so the cut runs on to its
+  far corner and splits it into two triangles (`wedgeEnds`).
+- **What it can't end inside hangs.** A seam three or more patches share, the strip coming back across a
+  quad it already cut the other way, or a second end in one triangle: the new point stays on that patch's
+  unsplit edge as an explicit T-junction, exactly on its curve, as Split's strip ends do (`tStops`, drawn red
+  in the ghost). The ghost shows rim ends orange.
 - On a pristine promoted grid this reproduces a whole row/column insert (strip runs rim to rim), which
   is the regression check.
 - Position of inserted vertices: on the *derived Bézier edge curve* at parameter `t` (not the chord),
@@ -143,18 +150,48 @@ Select an edge or edge run and press **X** to stage an extrusion. The placement 
   extrusion. Its existing vertices and Bézier curves are reused as a side or shared seam of the new quads,
   and free edges become surface edges. A middle-start guide needs free edges because new patches fill both
   sides; an end-start guide can also join boundary edges. The source mesh stays unchanged until commit.
-  Cancel or switching back to Pull restores the captured source selection.
+  Cancel or switching back to Pull restores the captured source selection. **Turn with the path** decides
+  how the run follows it: a path along existing surface edges runs the run **parallel** by default, every
+  point following an exact copy of the path's curve (a skirt down a terrain edge); a path drawn from free
+  edges **turns** it, carrying its frames and point roll. Turning swings a run that reaches far from the path
+  through an arc its length times the path's turn — an 82 m run beside a 16 m boundary edge that turns 45°
+  had its far end thrown 58 m (GARI_DEUX, extrude2) — so the checkbox overrides either way. A **free** guide edge that turns
+  further than one band can follow (45°, `MAX_BAND_TURN`) is cut on its own curve into equal-length pieces
+  first (`guideCuts` / `splitGuideEdges`, exact de Casteljau, so the curve does not move), and sweeps as that
+  many bands. A single patch asked to turn through a hairpin folds.
 - When the mountain contains authored paths or rails, the **follow** list also offers those splines.
   Their start is aligned with the source edge centre, and the edge turns along the curve. **Reverse path**
   chooses the other direction; segment length controls the sampling, with extra segments around bends.
+- A turning profile is carried station to station by the least rotation the path makes, and settled
+  onto the path's level frame wherever that frame is well defined (`sweepPathFrames`, `levelTrust`): an
+  ordinary climbing turn stays exactly level, but a steep or vertical run no longer spins the profile about
+  itself (level fixes the sideways axis by the path's heading, which the slightest bend of a near-vertical
+  path swings through a half turn). A sweep that starts steep takes its roll from where level first holds.
+- Where a turning path bends tighter than the edge run reaches into the bend, the new patches must fold on its
+  inside whatever the frames do; the panel names that bend (radius and reach) with a ⚠ note, and Commit
+  stays available.
 
 ## UI
 
 All ops live in the Edit tool as a "Surgery" group; each follows the placement-model conventions
 ([012](012-props.md)): ghost preview first, Alt+wheel to adjust, click/Enter to commit, Esc to abandon.
+**Loop cut** arms from Edit ▸ Create (⫼ loop cut) or **Ctrl+R**, Blender's key. Edit mode swallows Ctrl+R
+even when another tool keeps it from arming, so the browser's reload never lands mid-edit; Ctrl+Shift+R stays
+the hard reload, and outside Edit the key is the browser's. The tool stays armed across cuts; Esc leaves it.
 The cage overlay auto-enables while a surgery gesture is armed. Pole dots (3 orange / 5 violet, as in
 the reference view) render whenever the cage is on, so the consequences of a cut are visible
 immediately.
+
+The drawing tools (create edge / patch / tube) put a chain's **first** point on the vertex, edge or surface under
+the cursor — a click has no other depth to go on — and every later point on the screen-facing plane through the
+previous one, so terrain behind the cursor never pulls a free-standing wall or overhang off to it. **Ctrl** drops
+a later point onto the surface; **Shift** locks it to a world axis (`resolvePlacementEndpoint`,
+`placementTakesSurface`). Create patch and tube still snap a later point to a vertex under the cursor without
+Ctrl. Create edge does not: in a busy map some corner or edge is nearly always under the cursor, so a later edge
+point sticks to a vertex, an edge or the surface only while Ctrl is held (the ghost re-seats on the key itself).
+The exception is a surface cut that has already crossed a patch, which keeps sticking because only an edge or a
+point can continue it (`createEdgePlacement`). Create trail is drawn over the ground, so each of its knots takes
+the surface; paste has no chain and does too.
 
 ## Verification
 

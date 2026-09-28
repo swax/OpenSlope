@@ -1090,6 +1090,14 @@ export class Viewport {
     window.addEventListener('pointermove', trackAlt, { capture: true });
     window.addEventListener('keydown', e => { if (e.key === 'Shift') this.transforms.shiftKey(true); });
     window.addEventListener('keyup', e => { if (e.key === 'Shift') this.transforms.shiftKey(false); });
+    // Create Edge sticks to existing geometry only under Ctrl, so the ghost re-seats on the key itself.
+    const createEdgeMods = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Meta') {
+        this.router.refreshCreateEdgeGhost(e.shiftKey, e.ctrlKey || e.metaKey);
+      }
+    };
+    window.addEventListener('keydown', createEdgeMods);
+    window.addEventListener('keyup', createEdgeMods);
     window.addEventListener('blur', () => {
       this.transforms.shiftKey(false);
       this.router.cancelSelectionDrag();
@@ -2379,6 +2387,11 @@ export class Viewport {
    * Point groups still move freely because Surface slide is a corner/topology tool. */
   setControlPointSelection(ids: readonly MeshControlPointId[]) { this.selection.setControlPointSelection(ids); }
 
+  /** Whether a pinned control cage shows this point right now — what a Shift range may take. */
+  controlPointVisible(id: MeshControlPointId) {
+    return this.cageLayer.subCage && this.cageLayer.authoredControlPointVisible(id) && !this.selection.controlPointHidden(id);
+  }
+
   /** Remove the current selection gizmo. */
   detachSelectionGizmo() { this.stage.detachGizmo(); }
 
@@ -2633,7 +2646,10 @@ export class Viewport {
   get edgeExtrusionSegmentLength() { return this.edgeExtrusion.segmentLength; }
   get edgeExtrusionPath() { return this.edgeExtrusion.path; }
   get edgeExtrusionReversePath() { return this.edgeExtrusion.reversePath; }
+  get edgeExtrusionTurnWithPath() { return this.edgeExtrusion.turnWithPath; }
+  setEdgeExtrusionTurnWithPath(value: boolean) { this.edgeExtrusion.setTurnWithPath(value); }
   get edgeExtrusionError() { return this.edgeExtrusion.error; }
+  get edgeExtrusionWarning() { return this.edgeExtrusion.warning; }
   setEdgeExtrusionMode(value: 'pull' | 'path') { this.edgeExtrusion.setMode(value); }
   setEdgeExtrusionSegmentLength(value: number) { this.edgeExtrusion.setSegmentLength(value); }
   setEdgeExtrusionPath(value: string) { this.edgeExtrusion.setPath(value); }

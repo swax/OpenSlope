@@ -118,6 +118,20 @@ export function controlPointIndex(doc: QuadMeshDoc, id: MeshControlPointId): Mes
 export const controlPointIndices = (doc: QuadMeshDoc, ids: Iterable<MeshControlPointId>): MeshControlPointId<number>[] =>
   [...ids].flatMap(id => controlPointIndex(doc, id) ?? []);
 
+/** A live control point named by the document's ids, or null when an index is past the arrays. */
+export function controlPointName(doc: QuadMeshDoc, id: MeshControlPointId<number>): MeshControlPointId | null {
+  if (id.kind === 'vertex') {
+    const vertex = vertexName(doc, id.vertex);
+    return vertex === null ? null : { kind: 'vertex', vertex };
+  }
+  if (id.kind === 'edge') {
+    const from = vertexName(doc, id.from), to = vertexName(doc, id.to);
+    return from === null || to === null ? null : { kind: 'edge', from, to };
+  }
+  const quad = quadName(doc, id.quad);
+  return quad === null ? null : { kind: 'twist', quad, corner: id.corner };
+}
+
 /** Every vertex a control-point selection puts a name on — the corners it holds directly plus the corners
  *  that own its floating tangents and interiors, which is what the bulk crease / smooth tools act on. */
 export const controlPointVertexNames = (ids: Iterable<MeshControlPointId>): VertexName[] =>

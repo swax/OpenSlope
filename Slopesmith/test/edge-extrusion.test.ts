@@ -5,12 +5,13 @@ import type { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { meshFromNet, starterCourse } from '../src/core/doc/mountain';
 import { seedMeshIds } from '../src/core/doc/ids';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
-import { len, sub } from '../src/core/math/vec';
+import { add, len, sub } from '../src/core/math/vec';
 import {
   applyPlannedEdgeExtrusion, edgeChainExtrusionPlacement, edgeExtrusionPlacementPreviewDoc,
   edgeExtrusionSegmentCount, pathEdgeExtrusionPlacement, planEdgeExtrusion, translatedEdgeExtrusionPlacement,
 } from '../src/core/mesh/ops';
 import { meshFromDoc, meshAdjacency, quadControlPoints } from '../src/core/mesh/topology';
+import { cubicPoint, patchNormal } from '../src/core/math/bezier';
 import { buildMountainPreview } from '../src/core/mesh/tessellation';
 import { meshEdgeSegments } from '../src/core/mesh/selection';
 import { BRIDGE_RAIL_COLORS } from '../src/app/viewport/constants';
@@ -347,5 +348,98 @@ layer.commitStage();
 assert.equal(layer.staged, false);
 assert.equal(committed, 2, 'A stale source never commits');
 assert.deepEqual(source, before);
+
+// ---- a guide that bends a long way sweeps as several bands, and a steep guide doesn't spin the profile ------------
+{
+  const loose = (vertices: number[], freeEdges: [number, number][], edgeHandles: Record<string, V3>): QuadMeshDoc => ({
+    ...fixture(), vertices, quads: [], freeEdges, edgeHandles, ...seedMeshIds(0, vertices.length / 3, 0), rails: undefined,
+    quadPaint: undefined, quadTex: undefined, quadOrient: undefined, quadTwist: undefined, quadLocked: undefined, quadLabels: undefined,
+  });
+  const at = (doc: QuadMeshDoc, v: number): V3 => doc.vertices.slice(v * 3, v * 3 + 3) as V3;
+
+  // A U: the path dips 15 m between two points level with the source, turning a half circle in one edge. The
+  // profile runs across the U (along x), so the sweep is a clean trough — if the U is swept as more than one band.
+  const dip = loose([-4, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 12], [[0, 1], [1, 2], [1, 3]], { '1>3': [0, -20, 0], '3>1': [0, -20, 0] });
+  const dipPlan = planEdgeExtrusion(dip, [[0, 1], [1, 2]]);
+  assert(dipPlan.ok, dipPlan.ok ? '' : dipPlan.error);
+  const dipped = edgeChainExtrusionPlacement(dip, dipPlan.plan, [[1, 3]]);
+  assert(dipped.ok, dipped.ok ? '' : dipped.error);
+  const cuts = dipped.placement.guide!.splits?.[0]?.ts ?? [];
+  assert(cuts.length >= 3, `a half-circle guide edge is cut into at least four bands (${cuts.length + 1})`);
+  assert.equal(dipped.placement.guide!.vertices.length, cuts.length + 2);
+  const trough = applyPlannedEdgeExtrusion(dip, dipPlan.plan, dipped.placement);
+  assert(trough.ok, trough.ok ? '' : trough.error);
+  const u: [V3, V3, V3, V3] = [[0, 0, 0], [0, -20, 0], [0, -20, 12], [0, 0, 12]];
+  dipped.placement.guide!.vertices.slice(1, -1).forEach((vertex, i) =>
+    assert(len(sub(at(trough.doc, vertex), cubicPoint(...u, cuts[i]))) < 1e-9, 'each cut point sits on the guide curve as drawn'));
+  assert(!(trough.doc.freeEdges ?? []).some(([a, b]) => (a === 1 && b === 3) || (a === 3 && b === 1)), 'the uncut guide edge is gone');
+  assert.equal(trough.vertices.length, cuts.length + 2 * (cuts.length + 1),
+    'the cut points and both tracks\' points (one per band each) are reported as added');
+  dipped.placement.stations!.forEach((ring, i) => {
+    const g = at(trough.doc, dipped.placement.guide!.vertices[i + 1]);
+    assert(len(sub(sub(ring.vertices[0], g), [-4, 0, 0])) < 1e-6, `station ${i + 1}: the profile stays across the trough`);
+  });
+  const { mesh: tm, edgeHandle: te } = meshFromDoc(trough.doc);
+  for (const quad of trough.quads) {
+    const cp = quadControlPoints(tm, te, quad), n0 = patchNormal(cp, 0.5, 0.5);
+    for (const [s, t] of [[0, 0], [0, 1], [1, 0], [1, 1]]) {
+      const n = patchNormal(cp, s, t);
+      assert(n[0] * n0[0] + n[1] * n0[1] + n[2] * n0[2] > 0.3, `patch ${quad} doesn't fold over itself`);
+    }
+  }
+  assert.equal(edgeExtrusionPlacementPreviewDoc(dip, dipPlan.plan, dipped.placement).quads.length, trough.quads.length,
+    'the preview cuts the guide the same way the commit does');
+  assert(!dipped.warning, 'a profile across the bend never folds, so no warning');
+
+  // An 82 m run swept along a drawn 29 m edge that dips 44 m through a ~6 m hairpin. No frame can carry that
+  // profile round so tight a bend without folding its inside — the placement says so rather than leaving it to
+  // be found in the patches.
+  const hairpin = loose([-59.91, -71.03, -317.35, -24.85, -75.64, -337.76, 10.22, -80.26, -358.17, -7.71, -79.52, -314.78],
+    [[0, 1], [1, 2], [1, 3]], { '1>3': [-13.45, -35.19, -6.47], '3>1': [-36.33, -73.24, 12.92] });
+  const hairpinPlan = planEdgeExtrusion(hairpin, [[0, 1], [1, 2]]);
+  assert(hairpinPlan.ok, hairpinPlan.ok ? '' : hairpinPlan.error);
+  const bent = edgeChainExtrusionPlacement(hairpin, hairpinPlan.plan, [[1, 3]]);
+  assert(bent.ok, bent.ok ? '' : bent.error);
+  assert(bent.placement.stations!.length >= 4, 'the hairpin edge sweeps as several bands');
+  assert.match(bent.warning ?? '', /bends tighter \(\d\.\d m radius\)/, 'a bend tighter than the run reaches into it is named');
+  assert(applyPlannedEdgeExtrusion(hairpin, hairpinPlan.plan, bent.placement).ok, 'the warning does not block the commit');
+
+  // A hair off straight down, with a slight sideways bend: the level frame's heading would spin the profile
+  // most of a half turn about the path; carried station to station it turns only as much as the path does.
+  const steep = loose([-10, 0, 0, 0, 0, 0, 10, 0, 0, 0.5, -20, 0.3], [[0, 1], [1, 2], [1, 3]],
+    { '1>3': [0.57, -6.67, -0.5], '3>1': [0.23, 6.67, -0.7] });
+  const steepPlan = planEdgeExtrusion(steep, [[0, 1], [1, 2]]);
+  assert(steepPlan.ok, steepPlan.ok ? '' : steepPlan.error);
+  const down = edgeChainExtrusionPlacement(steep, steepPlan.plan, [[1, 3]]);
+  assert(down.ok, down.ok ? '' : down.error);
+  const across = sub(down.placement.stations!.at(-1)!.vertices[0], at(steep, 3));
+  const turned = Math.acos(Math.max(-1, Math.min(1, -across[0] / len(across)))) * 180 / Math.PI;
+  assert(turned < 8, `a steep, barely bent guide turns the profile ${turned.toFixed(1)}°, not a half turn`);
+  assert(!down.warning, 'a barely bent guide raises no fold warning');
+}
+
+// ---- a path along existing terrain edges carries the run parallel; a drawn path turns it -------------------
+{
+  // The free run 3–4–5 beside the patch, extruded down the patch's boundary edge 3→1: every point should follow a
+  // copy of that edge, however far along the run it sits (GARI_DEUX's extrude2 swung its far end 58 m this way).
+  const doc = fixture(), at = (v: number): V3 => doc.vertices.slice(v * 3, v * 3 + 3) as V3;
+  const skirtPlan = planEdgeExtrusion(doc, [[3, 4], [4, 5]]);
+  assert(skirtPlan.ok, skirtPlan.ok ? '' : skirtPlan.error);
+  const skirt = edgeChainExtrusionPlacement(doc, skirtPlan.plan, [[3, 1]]);
+  assert(skirt.ok, skirt.ok ? '' : skirt.error);
+  assert(!skirt.turns && skirt.placement.guide?.parallel, 'a terrain-edge path runs the extrusion parallel by default');
+  const drop = sub(at(1), at(3));
+  for (const v of [4, 5]) assert(len(sub(sub(skirt.placement.vertices[v], at(v)), drop)) < 1e-9, `point ${v} moves exactly as the path end does`);
+  const laid = applyPlannedEdgeExtrusion(doc, skirtPlan.plan, skirt.placement);
+  assert(laid.ok, laid.ok ? '' : laid.error);
+  const { edgeHandle } = meshFromDoc(laid.doc);
+  const track = laid.vertices.find(v => len(sub(laid.doc.vertices.slice(v * 3, v * 3 + 3) as V3, add(at(5), drop))) < 1e-9)!;
+  assert(len(sub(edgeHandle(5, track), edgeHandle(3, 1))) < 1e-9 && len(sub(edgeHandle(track, 5), edgeHandle(1, 3))) < 1e-9,
+    'each track is an exact copy of the path edge\'s curve');
+  const forced = edgeChainExtrusionPlacement(doc, skirtPlan.plan, [[3, 1]], { turn: true });
+  assert(forced.ok && forced.turns && !forced.placement.guide?.parallel, '"turn with the path" still sweeps it on request');
+  const drawn = edgeChainExtrusionPlacement(doc, plan, [[3, 4], [4, 5], [5, 6]]);
+  assert(drawn.ok && drawn.turns, 'a path drawn from free edges turns by default, as before');
+}
 
 console.log('Edge extrusion Pull / Path checks passed.');

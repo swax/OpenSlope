@@ -45,11 +45,18 @@ export function buildExtrudePlacementTools(ctx: ToolsContext) {
       'Follow the authored path from its other end.');
       detail(placement, 'the path starts at the source edge centre · the edge turns with the path');
     } else {
+      if (!viewport.edgeExtrusionError && viewport.edgeExtrusionSegments)
+        tip(placement.add({ turn: viewport.edgeExtrusionTurnWithPath }, 'turn').name('turn with the path')
+          .onChange((value: boolean) => { viewport.setEdgeExtrusionTurnWithPath(value); ctx.rebuildTools(); }),
+        'On: the run turns and banks as the path does. Off: every point follows a parallel copy of the path.',
+        'A path drawn from free edges turns by default; a path along existing terrain edges runs parallel, '
+        + 'since turning swings a run that reaches far from the path through an arc its length times the turn.');
       note(placement, 'click the first path edge, then Ctrl-click or Shift-click to extend the chain');
       note(placement, 'start at any source vertex, including the middle · path edges become part of the new quads');
       note(placement, 'a middle-start path needs free edges: the new quads fill both sides');
     }
     if (viewport.edgeExtrusionError) note(placement, viewport.edgeExtrusionError);
+    else if (viewport.edgeExtrusionWarning) note(placement, `⚠ ${viewport.edgeExtrusionWarning}`);
   } else detail(placement, viewport.edgeExtrusionFanMode
     ? 'drag the single distance handle · choose Move for the full direction gizmo'
     : 'position the staged extrusion with Move / Rotate / Scale');

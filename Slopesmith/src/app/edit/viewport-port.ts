@@ -12,6 +12,9 @@ export interface EditViewportPort {
   }): boolean;
   clearCornerSelection(): void;
   setControlPointSelection(ids: readonly MeshControlPointId[]): void;
+  /** Whether the cage currently shows this handle / interior (a pinned control cage, not hidden). Optional on
+   *  test doubles, which show every point. */
+  controlPointVisible?(id: MeshControlPointId): boolean;
   setCornerGroup(positions: V3[], indices?: number[], showMarks?: boolean): void;
   setRegionMarks(positions: V3[]): void;
   setPlacedPropSelection(selIdx: number | null, multiSel?: number[]): void;

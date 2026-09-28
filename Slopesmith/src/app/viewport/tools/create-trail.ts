@@ -38,8 +38,9 @@ export function createTrailToolLayer(
   }
 
   function placement(axisLocked = false): PlacementEndpoint | null {
+    // a trail is drawn over the ground, so every knot takes the surface (lifted), not just the first
     return resolvePlacementEndpoint(
-      { stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, axisLocked, surfaceLiftM,
+      { stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, { axisLocked, surfaceLiftM, followsGround: true },
     );
   }
 

@@ -3,12 +3,12 @@ import type { V3 } from '../../../core/doc/types';
 import type { EdgeCrossing } from '../../../core/mesh/edge-crossings';
 import type { CoincidentVertices } from '../../../core/mesh/coincident-vertices';
 import type { Stage } from '../stage';
+import { T_JUNCTION_COLOR } from '../constants';
 
 const POINT_GEO = new THREE.SphereGeometry(1.1, 10, 8);
 const POINT_COLOR = 0x9a5cff;
 const SNAP_COLOR = 0x62f0b6;
 const LINE_COLOR = 0xd7b3ff;
-const T_JUNCTION_COLOR = 0xff2424;
 const T_JUNCTION_SIZE_PX = 18;
 const EDGE_CROSSING_SIZE_PX = 20;
 const EDGE_OVERLAP_SIZE_PX = 17;
@@ -216,6 +216,8 @@ export function createEdgeLayer(stage: Stage) {
     get armed() { return armed; },
     get start() { return start; },
     get hover() { return hover; },
+    /** A surface cut is provisional (it has crossed at least one patch edge): only an edge or a point continues it. */
+    get cutting() { return armed && path.length >= 2; },
     setArmed,
     setStart,
     setPath,

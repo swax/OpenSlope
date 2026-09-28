@@ -17,6 +17,7 @@ import { getVertex } from '../src/core/doc/doc-edit';
 import { buildMountainPreview } from '../src/core/mesh/tessellation';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { constrainPlacement } from '../src/app/viewport/input/placement-constraint';
+import { resolvePlacementEndpoint } from '../src/app/viewport/input/placement';
 import { edgeConnectedFrame, resolveGizmoFrame } from '../src/app/viewport/gizmo/transform';
 import { hoveredGizmoPivot } from '../src/app/viewport/camera/controller';
 import { edgeExtrusionOccludingSourceQuads } from '../src/app/viewport/tools/edge-extrusion';
@@ -119,6 +120,27 @@ import { check, failures } from './check';
   const aligned = constrainPlacement({ pos: [1, 1, 8], vertex: 4 }, [1, 1, 1], true);
   check(aligned.pos.join(',') === '1,1,8' && aligned.vertex === 4,
     'placement axis lock: an existing vertex already on the locked axis is still reused');
+
+  // Where a free point lands: the surface under the cursor only for a chain's first point, under Ctrl, or for
+  // a tool drawn over the ground — otherwise the construction plane through the previous point, so a hill
+  // behind the cursor never pulls a free-standing chain off to it. A vertex snap wins throughout.
+  {
+    let vertex: { pos: V3; vertex: number } | null = null;
+    const stage = {
+      pickSurface: () => ({ point: new THREE.Vector3(10, 0, -5) }),   // scene z is data −z
+      screenPlanePoint: () => new THREE.Vector3(2, 8, -3),
+      snapDataPoint: (p: V3) => p,
+    } as unknown as Parameters<typeof resolvePlacementEndpoint>[0]['stage'];
+    const resolver = { stage, terrain: () => new THREE.Mesh(), pickVertex: () => vertex };
+    const at = (anchor: V3 | null, opts = {}) => resolvePlacementEndpoint(resolver, anchor, opts)?.pos.join(',');
+    check(at(null) === '10,0,5', 'placement: a chain\'s first point lands on the surface under the cursor');
+    check(at([0, 0, 0]) === '2,8,3', 'placement: a later point stays on the plane through the previous one, not the hill behind');
+    check(at([0, 0, 0], { onSurface: true }) === '10,0,5', 'placement: Ctrl drops a later point onto the surface');
+    check(at([0, 0, 0], { followsGround: true, surfaceLiftM: 0.25 }) === '10,0.25,5',
+      'placement: a ground tool (Create Trail) keeps every knot on the surface, lifted');
+    vertex = { pos: [4, 4, 4], vertex: 7 };
+    check(at([0, 0, 0]) === '4,4,4' && at(null, { onSurface: true }) === '4,4,4', 'placement: a vertex snap wins either way');
+  }
   check(resolveGizmoFrame('local', false) === 'local' && resolveGizmoFrame('surface', false) === 'surface',
     'transform frame: Local stays slope-aligned without becoming the constrained Surface mode');
   check(resolveGizmoFrame('local', true) === 'world' && resolveGizmoFrame('surface', true) === 'world',

@@ -3,7 +3,7 @@ import type { MeshBVH } from 'three-mesh-bvh';
 import type { V3 } from '../../../core/doc/types';
 import { meshAdjacency, quadControlPoints, vertexValence, type EdgeHandle, type MeshAdjacency, type QuadMesh } from '../../../core/mesh/topology';
 import {
-  INDEX_NAMING, meshEdgeSegments, resolveVertexSelection, resolveEdgeSelection, resolveCellSelection,
+  INDEX_NAMING, meshCageSegmentsBetween, meshControlPointBlock, meshEdgeSegments, resolveVertexSelection, resolveEdgeSelection, resolveCellSelection,
   type VertexSelectMode, type EdgeSelectMode,
 } from '../../../core/mesh/selection';
 import { ekey } from '../../../core/mesh/ops';
@@ -95,6 +95,7 @@ export function createSelectionLayer(
   let controlPointSel: MeshControlPointId[] = [];   // named, like every authored family on the substrate
   let controlPointSelPositions: V3[] = [];
   let movableControlPointKeys = new Set<string>();
+  let refControlAnchor: MeshControlPointId<number> | null = null; // the reference cage point a Shift-click ranges from
   const refEdgeGroup = new THREE.Group();      // read-only reference edge selection highlight (refRoot coords)
   let refAdj: MeshAdjacency | null = null;   // cached adjacency of the reference QuadMesh (rebuilt on reference load)
   // the authored cell / edge selections live on the shared substrate (sel.cellSel / sel.edgeSel); these are
@@ -852,9 +853,12 @@ export function createSelectionLayer(
     return best;
   }
 
-  function selectReferenceControlPoints(incoming: readonly MeshControlPointId<number>[], mode: 'replace' | 'add' | 'remove' | 'toggle') {
+  function selectReferenceControlPoints(incoming: readonly MeshControlPointId<number>[],
+    mode: 'replace' | 'add' | 'remove' | 'toggle' | 'range') {
     if (mode !== 'replace' && (authoredMeshSelectionActive() || sel.refEdgeSel.length || sel.refCellSel.length)) return;
+    if (mode === 'range') { if (incoming[0]) rangeReferenceControlPoints(incoming[0]); return; }
     if (mode === 'replace') sel.refVertexAnchor = null;
+    if (mode === 'replace' || mode === 'toggle') refControlAnchor = incoming.length === 1 ? incoming[0] : null;
     clearRefCells();
     clearRefEdges();
     const map = new Map((mode === 'replace' ? [] : sel.refControlSel).map(id => [controlPointKey(id), id]));
@@ -880,6 +884,7 @@ export function createSelectionLayer(
   function selectReferenceVertex(vertex: number, mode: VertexSelectMode) {
     const id: MeshControlPointId<number> = { kind: 'vertex', vertex };
     const mixed = sel.refControlSel.some(point => point.kind !== 'vertex');
+    if (mode === 'range' && (mixed || cage.referenceSubCage) && rangeReferenceControlPoints(id)) return;
     if (mixed) {
       selectReferenceControlPoints([id], mode === 'toggle' ? 'toggle' : mode === 'range' ? 'add' : 'replace');
       sel.refVertexAnchor = vertex;
@@ -890,6 +895,28 @@ export function createSelectionLayer(
     const result = resolveVertexSelection(sel.refVertexSel, sel.refVertexAnchor, vertex, mode, adj, INDEX_NAMING);
     selectReferenceControlPoints(result.verts.map((v): MeshControlPointId<number> => ({ kind: 'vertex', vertex: v })), 'replace');
     sel.refVertexAnchor = result.anchor;
+  }
+
+  /** Shift-click on a reference cage point: the shown points of the control-lattice block from the anchor to it
+   * (meshControlPointBlock) join the read-only selection, and the anchor stays. False when there is nothing past
+   * the corner range to take — corners at both ends and no handle or interior showing between — so the corner
+   * range answers instead; with no clean block the point is simply added. */
+  function rangeReferenceControlPoints(target: MeshControlPointId<number>): boolean {
+    const held = new Set(sel.refControlSel.map(controlPointKey));
+    const corner: MeshControlPointId<number> | null = sel.refVertexAnchor === null ? null : { kind: 'vertex', vertex: sel.refVertexAnchor };
+    const anchor = refControlAnchor && held.has(controlPointKey(refControlAnchor)) ? refControlAnchor
+      : corner && held.has(controlPointKey(corner)) ? corner : null;
+    const data = access.refData(), adj = refAdjacency();
+    const block = anchor && data && adj ? meshControlPointBlock(data.mesh, adj, anchor, target) : null;
+    const shown = (block ?? []).filter(id => cage.referenceControlPointVisible(id));
+    const floating = sel.refControlSel.some(id => id.kind !== 'vertex');
+    if (target.kind === 'vertex' && (!anchor || anchor.kind === 'vertex') && !floating && shown.every(id => id.kind === 'vertex')) {
+      if (anchor) sel.refVertexAnchor = anchor.vertex;
+      return false;
+    }
+    selectReferenceControlPoints([...shown, target], 'add'); // the clicked point is shown: it was just clicked
+    refControlAnchor = anchor ?? target;
+    return true;
   }
 
   function mergeMarqueeValues<T>(current: readonly T[], incoming: readonly T[], key: (value: T) => string,
@@ -1078,6 +1105,22 @@ export function createSelectionLayer(
       controlPointCageGroup.add(group);
       buildCellNet(group, quadControlPoints(pv.mesh, eh, quad, pv.twistOf(quad)) as number[][], true);
     }
+    // Positions from the live marks, so the highlight rides a gizmo drag ahead of the queued preview.
+    highlightCageSegments(controlPointCageGroup, pv.mesh, controlPointSel.flatMap((id, i) => {
+      const index = controlPointHidden(id) ? null : controlPointIndex(doc, id), pos = controlPointSelPositions[i];
+      return index && pos ? [{ id: index, pos }] : [];
+    }));
+  }
+
+  /** Draw each pink cage segment whose two ends are both selected in the selection yellow, on top of the cage,
+   *  so a range or block of control points reads as the stretch of cage it covers. */
+  function highlightCageSegments(group: THREE.Group, mesh: QuadMesh, points: readonly { id: MeshControlPointId<number>; pos: V3 }[]) {
+    const at = new Map(points.map(point => [controlPointKey(point.id), point.pos]));
+    const segs: number[] = [];
+    for (const [a, b] of meshCageSegmentsBetween(mesh, points.map(point => point.id))) {
+      segs.push(...at.get(controlPointKey(a))!, ...at.get(controlPointKey(b))!);
+    }
+    if (segs.length) addGlyphLines(group, segs, EDIT_EDGE_SEL_COLOR, 1, EDIT_EDGE_SEL_WIDTH, 13, false);
   }
 
   /** Reference twin of rebuildControlPointCages; the points are read-only but their ownership is identical. */
@@ -1096,6 +1139,11 @@ export function createSelectionLayer(
       refControlPointCageGroup.add(group);
       buildCellNet(group, cps, true);
     }
+    const byKey = new Map(access.referenceControlPoints().map(cp => [controlPointKey(cp.id), cp.pos]));
+    highlightCageSegments(refControlPointCageGroup, data.mesh, sel.refControlSel.flatMap(id => {
+      const pos = !refControlPointHidden(id) && byKey.get(controlPointKey(id));
+      return pos ? [{ id, pos }] : [];
+    }));
   }
 
   function setCornerGroup(positions: V3[], indices: number[] = [], showMarks = true) {

@@ -11,7 +11,8 @@ import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { add, cross, dot, len, norm, rotateAroundAxis, sub } from '../src/core/math/vec';
 import { applyPlannedEdgeExtrusion, edgeChainExtrusionPlacement, planEdgeExtrusion } from '../src/core/mesh/ops';
 import {
-  edgePathFrame, fromPathFrame, isFreePoint, levelPathFrame, pathRollOf, rolledPathFrame, toPathFrame, vertexRollOf,
+  edgePathFrame, fromPathFrame, isFreePoint, levelPathFrame, levelTrust, pathRollOf, rolledPathFrame, sweepPathFrames,
+  toPathFrame, vertexRollOf,
 } from '../src/core/mesh/path-frame';
 import { buildQuadMesh, meshAdjacency, meshFromDoc } from '../src/core/mesh/topology';
 
@@ -131,6 +132,26 @@ for (const rolled of [false, true]) {
       }
     }
   }
+}
+
+// Sweep frames: level wherever level is well defined, carried by the path's own turning where it isn't.
+close(levelTrust([1, 0.3, 0]), 1, 'a gentle climb trusts level fully');
+close(levelTrust([0, -1, 0]), 0, 'straight down has no level');
+{
+  // A climbing quarter turn: every frame is exactly the level frame, as levelPathFrame alone gives.
+  const climb = Array.from({ length: 9 }, (_, i) => [Math.cos(i * Math.PI / 16), 0.4, Math.sin(i * Math.PI / 16)] as V3);
+  const frames = sweepPathFrames(climb)!;
+  frames.forEach((frame, i) => close(len(sub(frame.y, levelPathFrame(climb[i])!.y)), 0, `climb station ${i} is level`, 1e-9));
+  // Setting off straight down and levelling out: the start borrows its roll from where level first holds, so no
+  // station spins about the path by more than the path itself turns between them.
+  const drop = Array.from({ length: 9 }, (_, i) => [0, -Math.cos(i * Math.PI / 16), Math.sin(i * Math.PI / 16)] as V3);
+  const swept = sweepPathFrames(drop)!;
+  for (let i = 1; i < swept.length; i++) {
+    const spin = Math.acos(Math.max(-1, Math.min(1, dot(swept[i - 1].z, swept[i].z)))), turn = Math.PI / 16;
+    assert(spin <= turn + 1e-9, `drop station ${i} spins ${(spin * 180 / Math.PI).toFixed(1)}° for a ${(turn * 180 / Math.PI).toFixed(1)}° turn`);
+  }
+  close(len(sub(swept.at(-1)!.y, levelPathFrame(drop.at(-1)!)!.y)), 0, 'and ends level once the path runs level', 1e-9);
+  assert.equal(sweepPathFrames([[1, 0, 0], [-1, 0, 0]]), null, 'a path turning straight back has no sweep');
 }
 
 console.log('PATH FRAME: PASS');

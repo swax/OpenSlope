@@ -117,6 +117,14 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (typing) return; // let knot/param text fields handle their own keys
+    // Ctrl+R: Loop Cut, Blender's key. Edit mode swallows it whether or not the tool can arm right now, so the
+    // browser's reload never lands mid-edit; any other open tool finishes first (Esc), as with L / P.
+    if (mod && !e.altKey && !e.shiftKey && key === 'r' && store.currentMode === 'edit') {
+      e.preventDefault();
+      if (store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool
+        && !viewport.pastePlacing && !viewport.edgeExtrusionStaged) edit.armLoopCut();
+      return;
+    }
     // The room (docs/038): T opens the box, / opens it on a command. From here the box holds the keyboard and
     // the guard at the top of this listener is what keeps the sentence out of the editor.
     if (!mod && !e.altKey && (key === 't' || e.key === '/')) {

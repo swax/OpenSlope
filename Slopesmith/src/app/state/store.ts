@@ -195,7 +195,8 @@ export type Store = {
   anchorCorner: VertexName | null;   // range anchor: the last plainly-clicked corner a shift-click extends from
   regionSel: VertexName[];           // multi-corner selection (shift-range or box-select): bulk crease / smooth + group move
   controlSel: MeshControlPointId[];   // multi-point sub-cage selection: corners + boundary tangents + patch interiors
-  cellSel: QuadName[];               // Edit-mode cell selection (shade + control-net study, like a clicked reference patch)
+  anchorControl: MeshControlPointId | null; // the last clicked cage point a shift-click ranges from (a corner falls back to anchorCorner)
+  cellSel: QuadName[];              // Edit-mode cell selection (shade + control-net study, like a clicked reference patch)
   anchorCell: QuadName | null;       // the plain-clicked cell a later shift-click extends from
   cellLoopSeed: QuadName | null;     // the last cell double-clicked for a face-loop select — a repeat double-click on it alternates the strip direction
   cellLoopDir: 0 | 1;                // which of the two strip directions that face-loop showed (the toggle a repeat double-click flips)
@@ -417,6 +418,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     anchorCorner: null,
     regionSel: [],
     controlSel: [],
+    anchorControl: null,
     cellSel: [],
     anchorCell: null,
     cellLoopSeed: null,

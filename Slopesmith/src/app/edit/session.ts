@@ -17,7 +17,9 @@ import type { EdgeCrossing } from '../../core/mesh/edge-crossings';
 import type { CoincidentVertices } from '../../core/mesh/coincident-vertices';
 import { coincidentVertexGroup } from '../../core/mesh/coincident-vertices';
 import { applySlidePlan, type SlidePlan } from '../../core/mesh/slide';
-import { resolveEdgeSelection, resolveVertexSelection, resolveCellSelection, type EdgeSelectMode } from '../../core/mesh/selection';
+import {
+  meshControlPointBlock, resolveEdgeSelection, resolveVertexSelection, resolveCellSelection, type EdgeSelectMode,
+} from '../../core/mesh/selection';
 import { getVertex, setVertex, quadVerts } from '../../core/doc/doc-edit';
 import {
   alignCornerTwists, alignOppositeTangent, captureAround, controlPointKey, meshControlPoints, moveMeshVertices,
@@ -28,7 +30,7 @@ import {
 } from '../../core/mesh/locks';
 import type { Store } from '../state/store';
 import {
-  coincidentVertexIndices, controlPointIndex, controlPointIndices, directedEdgeIndex, edgeCrossingIndex, edgeIndex, edgeIndices,
+  coincidentVertexIndices, controlPointIndex, controlPointIndices, controlPointName, directedEdgeIndex, edgeCrossingIndex, edgeIndex, edgeIndices,
   namedCoincidentVertices, namedEdge, namedEdgeCrossing, namedEdges, quadIndex, quadIndices, quadName,
   quadNames, quadNaming, vertexIndex, vertexIndices, vertexName, vertexNames, vertexNaming,
   type NamedEdge, type QuadName, type VertexName,
@@ -861,6 +863,7 @@ export function createEditSession(deps: EditSessionDeps) {
     store.controlSel = points;
     store.regionSel = points.flatMap(point => point.kind === 'vertex' ? [point.vertex] : []).sort();
     store.anchorCorner = null;
+    store.anchorControl = null;
     store.anchorEdge = null;
     store.anchorCell = null;
     store.cellLoopSeed = null;
@@ -908,6 +911,7 @@ export function createEditSession(deps: EditSessionDeps) {
 
   function selectCornerMulti(vertex: number, mode: 'toggle' | 'range') {
     if (mode !== 'toggle') dropPlacementSelection();
+    store.anchorControl = null; // the corner anchor drives from here
     const doc = mdoc();
     const name = vertexName(doc, vertex);
     if (name === null) return;
@@ -929,19 +933,27 @@ export function createEditSession(deps: EditSessionDeps) {
     setRegion(result.verts);
   }
 
-  function selectControlPoints(incoming: readonly MeshControlPointId[], mode: 'replace' | 'add' | 'remove' | 'toggle') {
-    if (mode !== 'replace' && mode !== 'toggle' && crossFamilyModifier('corner')) return;
-    if (mode !== 'toggle') dropPlacementSelection();
-    const seed = store.controlSel.length
+  /** The point selection as control points, whichever form it is held in (one corner, a corner group, a mixed set). */
+  function controlPointSeed(): MeshControlPointId[] {
+    return store.controlSel.length
       ? store.controlSel
       : store.regionSel.length
         ? store.regionSel.map(vertex => ({ kind: 'vertex', vertex }) as MeshControlPointId)
         : store.selectedCorner !== null ? [{ kind: 'vertex', vertex: store.selectedCorner } as MeshControlPointId] : [];
+  }
+
+  function selectControlPoints(incoming: readonly MeshControlPointId[], mode: 'replace' | 'add' | 'remove' | 'toggle' | 'range') {
+    if (mode !== 'replace' && mode !== 'toggle' && crossFamilyModifier('corner')) return;
+    if (mode === 'range') { rangeControlPoints(incoming[0]); return; }
+    if (mode !== 'toggle') dropPlacementSelection();
+    const seed = controlPointSeed();
     const map = new Map((mode === 'replace' ? [] : seed).map(id => [controlPointKey(id), id]));
     for (const id of incoming) {
       const key = controlPointKey(id);
       if (mode === 'remove' || (mode === 'toggle' && map.has(key))) map.delete(key); else map.set(key, id);
     }
+    // a click (plain or Ctrl) names the point a later Shift-click ranges from
+    if (mode === 'replace' || mode === 'toggle') store.anchorControl = incoming.length === 1 ? incoming[0] : null;
     const ids = [...map.values()];
     const vertices = ids.flatMap(id => id.kind === 'vertex' ? [id.vertex] : []).sort();
     if (mode === 'toggle') {
@@ -967,6 +979,36 @@ export function createEditSession(deps: EditSessionDeps) {
     view().setControlPointSelection(ids);
     refreshHandles();
     refreshEditSelectionUi();
+  }
+
+  /** Shift-click on a cage point: every point the cage shows in the block of the control lattice between the
+   * anchor and it (meshControlPointBlock) joins the selection, and the anchor stays for further ranges. A block
+   * that holds no shown handle or interior is just corners, which the corner range already answers; with no
+   * anchor, or no clean block between the two, the point is simply added. */
+  function rangeControlPoints(target: MeshControlPointId | undefined) {
+    if (!target) return;
+    const seed = controlPointSeed(), held = new Set(seed.map(controlPointKey));
+    const corner = store.anchorCorner === null ? null : { kind: 'vertex', vertex: store.anchorCorner } as MeshControlPointId;
+    const anchor = store.anchorControl && held.has(controlPointKey(store.anchorControl)) ? store.anchorControl
+      : corner && held.has(controlPointKey(corner)) ? corner : null;
+    const doc = mdoc(), from = anchor && controlPointIndex(doc, anchor), to = controlPointIndex(doc, target);
+    const { mesh, adj } = meshContext(doc);
+    const block = from && to ? meshControlPointBlock(mesh, adj, from, to) : null;
+    const hidden = hiddenMesh();
+    const shown = (block ?? []).flatMap(id => {
+      const named = controlPointName(doc, id);
+      if (!named) return [];
+      if (id.kind === 'vertex') return vertexIsHidden(id.vertex, adj, hidden) ? [] : [named];
+      return (view().controlPointVisible?.(named) ?? true) ? [named] : [];
+    });
+    const floating = seed.some(id => id.kind !== 'vertex');
+    if (to?.kind === 'vertex' && (!anchor || anchor.kind === 'vertex') && !floating && shown.every(id => id.kind === 'vertex')) {
+      if (anchor) store.anchorCorner = anchor.vertex;
+      selectCornerMulti(to.vertex, 'range');
+      return;
+    }
+    selectControlPoints([...shown, target], 'add'); // the clicked point is shown: it was just clicked
+    store.anchorControl = anchor ?? target;
   }
 
   function selectEditCell(quad: number, mode: 'replace' | 'toggle' | 'range') {
@@ -1569,6 +1611,7 @@ export function createEditSession(deps: EditSessionDeps) {
       store.selectedCorner = name;
       store.controlSel = [];
       store.anchorCorner = name;
+      store.anchorControl = null;
       clearCellSel(); clearEdgeSel();
       if (store.regionSel.length) { store.regionSel = []; view().setCornerGroup([]); }
       log(''); refreshHandles();
