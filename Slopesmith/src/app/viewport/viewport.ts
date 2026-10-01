@@ -1154,7 +1154,7 @@ export class Viewport {
       let sceneMs = performance.now() - phaseStarted;
       phaseStarted = performance.now();
       this.rideCtl.step(dt); // the test ride, or an AI field (spectated, or dropped by hand in Play setup)
-      this.remotePlayers.step(dt); // dead-reckoned remote cameras/riders, independent of local Edit/Play state
+      this.remotePlayers.step(dt, eye); // dead-reckoned remote cameras/riders, independent of local Edit/Play state
       const rideMs = performance.now() - phaseStarted;
       // Pause freezes the Play runtime's clocks and trigger graphs along with rider/AI physics. Editor-world
       // material animation remains live, as does the ride camera, so the held scene is still inspectable.
@@ -1193,9 +1193,11 @@ export class Viewport {
       this.refDecor.sortTransparentProps(this.eyeWorld); // back-to-front, as the game's alpha pass
       // The ride's distance bound, asserted from the same eye the alpha sort just used, at whichever tier
       // Test mode is set to. Only while riding: an editor view wants the whole mountain, and turning the
-      // gate off re-shows every cell and slot it had dropped.
+      // gate off re-shows every cell and slot it had dropped. A headset's EDIT (docs/068) is an editor view
+      // inside the session, so it drops the gate but holds the session's fog, out of reach, for its return.
       const riding = this.rideCtl.riding || this.rideCtl.xrPresenting;
-      this.rangeCull.setRange(riding ? drawDistanceMetres(this.rideDrawDistance) : null);
+      const xrEditing = this.rideCtl.xrEditing;
+      this.rangeCull.setRange(riding && !xrEditing ? drawDistanceMetres(this.rideDrawDistance) : null, xrEditing);
       this.rangeCull.update(this.eyeWorld);
       // Play mode is the in-world presentation boundary, including its setup/spectator views. Everywhere
       // else the same decoder belongs in Users → Jukebox rather than on the mountain's screens.
@@ -1302,10 +1304,6 @@ export class Viewport {
   get rideWalking() { return this.rideCtl.walking; }
   get rideFirstPerson() { return this.rideCtl.firstPerson; }
   get xrPresenting() { return this.rideCtl.xrPresenting; }
-  /** The headset offers passthrough, and whether it is showing behind the mountain (docs/068). */
-  get xrMixedRealityAvailable() { return this.rideCtl.xrMixedRealityAvailable; }
-  get xrMixedReality() { return this.rideCtl.xrMixedReality; }
-  setXrMixedReality(on: boolean): Promise<boolean> { return this.rideCtl.setXrMixedReality(on); }
   get ridePaused() { return this.rideCtl.paused; }
   /** Spectating: the AI field is racing with no board out there, and the editor still owns the camera + input. */
   get watching() { return this.rideCtl.watching; }

@@ -1112,26 +1112,20 @@ syncGodRayPreview = syncGodRays;
 
 /**
  * Mixed reality (docs/068): the headset's passthrough cameras behind the mountain, so it can be edited standing
- * in the room. A sky would cover the room, so turning it on puts the skybox away (not persisted: this is a
- * headset moment, not a view preference), and turning it off — or leaving the headset — brings the sky back as
- * it was. The session reports every change, whether or not it came from here (`xrMixedRealityChanged`).
+ * in the room. It is switched from the watch's MIXED REALITY button, inside the session, which reports every
+ * change here. A sky would cover the room, so landing in passthrough puts the skybox away (not persisted: this
+ * is a headset moment, not a view preference), and leaving it — or the headset — brings the sky back as it was.
  */
 let skyBeforeMixedReality: boolean | null = null;
-function toggleMixedReality() {
-  const on = !viewport.xrMixedReality;
+function xrMixedRealityChanged(on: boolean) {
   if (on && skyBeforeMixedReality === null) {
     skyBeforeMixedReality = store.skyboxVisible;
     skybox.setSkyboxVisible(false, false);
-  }
-  // Straight into the request: it spends the press's user activation, and an await first would lose it.
-  void viewport.setXrMixedReality(on);
-}
-function xrMixedRealityChanged(on: boolean) {
-  if (!on && skyBeforeMixedReality !== null) {
+  } else if (!on && skyBeforeMixedReality !== null) {
     skybox.setSkyboxVisible(skyBeforeMixedReality, false);
     skyBeforeMixedReality = null;
   }
-  viewLighting.refresh(); // the button shows only in a headset that offers passthrough, lit while it is on
+  viewLighting.refresh(); // the Skybox pill follows
 }
 
 /** Preview always-on graph-driven material/model motion and persistent emitters on both mountains. */
@@ -1630,8 +1624,6 @@ const {
   toggleLights, getLightRigVisible: () => store.lightRigVisible,
   toggleSunLight, getSunOn: () => reference.getSunOn(),
   toggleSkybox, getSkyboxVisible: () => store.skyboxVisible,
-  toggleMixedReality, getMixedRealityOn: () => viewport.xrMixedReality,
-  mixedRealityAvailable: () => viewport.xrMixedRealityAvailable,
   toggleCage,
   toggleFOverlay, getFOverlayOn: () => store.fOverlayOn,
   focusActive, newMountainDialog, canCreateMountains: () => session.mayCreateMountains(),

@@ -46,6 +46,8 @@ const FOG_START_METRES = 300;
  *  than proportional is the point — the short tier is chosen for headroom, and a haze that opened at 150 m
  *  would spend that tier's whole draw distance fogged. */
 const FOG_BAND_MIN_METRES = 50;
+/** A held fog's near and far (`setRange`'s `holdFog`): past anything a camera can see, so it hazes nothing. */
+const FOG_OUT_OF_REACH = 1e8;
 
 /**
  * The three draw distances a ride can be taken at, in metres. `far` brackets the Unity culler's PC range and
@@ -114,6 +116,7 @@ export function createRangeCull(deps: RangeCullDeps) {
   const lastEye = new THREE.Vector3();
 
   let range: number | null = null;
+  let fogHeld = false;
   let armed = false;
   let dirty = true;
   let lastPass = 0;
@@ -203,26 +206,34 @@ export function createRangeCull(deps: RangeCullDeps) {
   }
 
   function applyFog(): void {
-    if (range === null) { deps.scene.fog = null; return; }
-    const colour = deps.fogColor() ?? new THREE.Color(DEFAULT_FOG);
-    const near = Math.max(0, Math.min(FOG_START_METRES, range - FOG_BAND_MIN_METRES));
     // Mutate an existing Fog rather than replacing it: `scene.fog` appearing or vanishing is part of every
     // fogged material's program key, so a swap recompiles them, while moving near/far is free.
     const fog = deps.scene.fog;
+    if (range === null) {
+      if (fogHeld && fog instanceof THREE.Fog) { fog.near = FOG_OUT_OF_REACH; fog.far = FOG_OUT_OF_REACH * 2; }
+      else deps.scene.fog = null;
+      return;
+    }
+    const colour = deps.fogColor() ?? new THREE.Color(DEFAULT_FOG);
+    const near = Math.max(0, Math.min(FOG_START_METRES, range - FOG_BAND_MIN_METRES));
     if (fog instanceof THREE.Fog) { fog.color.copy(colour); fog.near = near; fog.far = range; }
     else deps.scene.fog = new THREE.Fog(colour, near, range);
   }
 
   return {
     /** Arm the gate at a range in metres, or `null` to turn it off and re-show everything. Idempotent, so
-     *  the frame loop can simply assert the range it wants every frame. */
-    setRange(metres: number | null): void {
+     *  the frame loop can simply assert the range it wants every frame. `holdFog` turns it off but keeps the
+     *  fog, pushed out of reach: for a pause inside a session that will want it again (a headset's EDIT,
+     *  docs/068), where removing it would recompile every fogged material on the way out and again on the way
+     *  back. */
+    setRange(metres: number | null, holdFog = false): void {
       const next = metres !== null && Number.isFinite(metres) && metres > 0 ? metres : null;
-      if (next === range) return;
+      if (next === range && holdFog === fogHeld) return;
       const wasOn = range !== null;
       range = next;
+      fogHeld = holdFog;
       dirty = true;
-      if (range === null) { restore(); applyFog(); return; }
+      if (range === null) { if (wasOn) restore(); applyFog(); return; }
       applyFog();
       if (!wasOn) lastPopulation = -1; // a fresh arming re-reads the population it is about to gate
     },

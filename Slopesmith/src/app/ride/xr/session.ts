@@ -6,10 +6,11 @@ import {
 import { createRider, type RiderHandTarget } from '../rider';
 import type { CharacterHandCurl } from '../character-rig';
 import type { RideState } from '../physics';
-import { createXrHud, type XrHudAction, type XrHudCalibration, type XrHudPerf } from './hud';
 import {
-  createXrEditPalette, XR_EDIT_PALETTE_DROP, XR_EDIT_PALETTE_POSITION, XR_EDIT_PALETTE_TILT, type XrEditPalette,
-} from './edit-palette';
+  createXrHud, XR_WATCH_POSITION, XR_WATCH_TILT, type XrHudAction, type XrHudCalibration, type XrHudPerf,
+} from './hud';
+import { createXrEditPalette, type XrEditPalette } from './edit-palette';
+import type { XrPaletteSeat } from './palette-seat';
 import { createXrWorldPointer, type XrWorldPointer, type XrWorldPointerDeps } from './world-pointer';
 import {
   solveOneHandGrab, solveTwoHandGrab, turnRigAbout, type OneHandGrab, type RigPose, type TwoHandGrab,
@@ -114,6 +115,8 @@ const WORLD_POINTER_FAR = 1000;
 const WORLD_CURSOR_ANGLE = 0.003;
 /** Leaving edit flight looks this far above and below the eyes for the topmost surface to stand on. */
 const LAND_PROBE = 20000;
+/** What others see of an EDIT flight is the desktop editor's avatar, whose feet are this far below its head. */
+const EDITOR_EYE_HEIGHT = 1.65;
 
 /** Who took a right-hand button's press while EDIT is open. */
 type EditTarget = 'watch' | 'palette' | 'world' | null;
@@ -235,6 +238,8 @@ export interface XrPlayDeps {
   redo?(): void;
   /** Mixed reality became available, turned on or off, or went with the session (`setMixedReality`). */
   onMixedRealityChange?(on: boolean): void;
+  /** EDIT opened or closed (docs/068); it always closes before the session hands back to the editor. */
+  onEditChange?(on: boolean): void;
 }
 
 /** Whether this browser can present at all; false everywhere without a headset runtime. */
@@ -269,6 +274,10 @@ export function createXrPlay(deps: XrPlayDeps) {
   let palettePoint: THREE.Vector3 | null = null;
   /** Edit flight: the rig's own pose while EDIT is open, in place of the walker's. */
   const editPose: RigPose = { x: 0, y: 0, z: 0, yaw: 0, scale: 1 };
+  /** The published avatar's body while EDIT is open (`editPlayerPose`), and the last sample, for its velocity. */
+  const editBody = new THREE.Vector3(), editBodyLast = new THREE.Vector3(), editBodyVelocity = new THREE.Vector3();
+  const editBodyFacing = new THREE.Vector3(), editBodyQuat = new THREE.Quaternion();
+  let editBodyAt = 0;
   let editGrab: TwoHandGrab | null = null;
   /** One grip held alone: the map dragged with that hand. */
   let panGrab: { side: 'left' | 'right'; grab: OneHandGrab } | null = null;
@@ -598,8 +607,12 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (landed === null) { leaveXr(); return false; }
     if (landed) mixedReality = on;
     deps.onMixedRealityChange?.(mixedReality);
+    hud.invalidate(); // the watch's MIXED REALITY button reads the new state
     return landed;
   }
+
+  /** Mixed reality can be switched on: the headset's runtime offers passthrough (`immersive-ar`). */
+  function mixedRealityAvailable(): boolean { return arSupported && (!!session || swapping); }
 
   /**
    * Ask the runtime for its FASTEST supported rate.
@@ -789,6 +802,9 @@ export function createXrPlay(deps: XrPlayDeps) {
     }
     if (watchAction === 'calibrate') startCalibration(performance.now());
     if (watchAction === 'edit') setEditOpen(!editOpen);
+    if (watchAction === 'place' && palette) { palette.setPlacing(!palette.placing); hud.invalidate(); }
+    // The main thread puts the skybox away once the headset lands in passthrough (`onMixedRealityChange`).
+    if (watchAction === 'mixed') void setMixedReality(!mixedReality);
     // EDIT is the whole frame while it is open: flight instead of the walker, the right hand as the editor's mouse.
     if (editOpen && !ride) {
       stepEdit(pads, footFrameDt, pressRightTrigger, pressA);
@@ -905,7 +921,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (ride && editOpen) setEditOpen(false, false);
     if (palette && editOpen) {
       // Left Y puts the palette away with the watch that owns its EDIT button.
-      if (watchVisible && hands.placePalette(palette.object, palette.height)) palette.tick(performance.now());
+      if (watchVisible && hands.placePalette(palette.object, palette.seat)) palette.tick(performance.now());
       else palette.object.visible = false;
     }
     updateWatchPointer();
@@ -934,7 +950,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     watchRaycaster.far = WATCH_REACH * rig.scale.x; // the watch grows with an edit-flight player
     hud.object.updateWorldMatrix(true, false);
     const hit = watchRaycaster.intersectObject(hud.object, false)[0];
-    const action = hit?.uv ? hud.actionAt(hit.uv, controlsOpen) : null;
+    const action = hit?.uv ? hud.actionAt(hit.uv, controlsOpen, editOpen && !ride) : null;
     if (!hit || !action || !watchActionEnabled(action)) return null;
     return { hit, action };
   }
@@ -942,6 +958,8 @@ export function createXrPlay(deps: XrPlayDeps) {
   function watchActionEnabled(action: XrHudAction): boolean {
     // A T-pose measures a life-size body standing on the floor, which an edit-flight player is not.
     if (action === 'calibrate' && editOpen) return false;
+    if (action === 'mixed') return mixedRealityAvailable() && !swapping;
+    if (action === 'place') return editOpen;
     return action === 'restart' || action === 'stats' || action === 'view' || action === 'controls'
       || action === 'exit'
       || (!ride && !calibrationRun);
@@ -991,6 +1009,7 @@ export function createXrPlay(deps: XrPlayDeps) {
       }
       endEditFlight(land);
     }
+    deps.onEditChange?.(on);
     hud.invalidate();
   }
 
@@ -1403,6 +1422,7 @@ export function createXrPlay(deps: XrPlayDeps) {
    * tracking when the runtime supplies it. Controller slots stay unnamed; the rider IK assigns by shoulder. */
   function playerPose(): LocalPlayerPose | null {
     if (!session) return null;
+    if (editOpen && !ride) return editPlayerPose();
     // A viewer faces local −Z; the avatar/board convention faces local +Z. The half-turn converts between them
     // so an on-foot remote body faces the same direction as its tracked head instead of walking backwards.
     const bodyQ = rig.quaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(WORLD_UP, Math.PI));
@@ -1427,6 +1447,37 @@ export function createXrPlay(deps: XrPlayDeps) {
       ...(ride && base.equipment ? { equipment: { ...base.equipment, epoch: boardCoast.epoch } } : {}),
       head: transform(headWorld, headQuat),
       ...(tracked[0] || tracked[1] ? { hands: tracked } : {}),
+    };
+  }
+
+  /**
+   * EDIT flight (docs/068) shows others what a desktop editor shows them: the editor's avatar, standing under the
+   * head at life size (viewport `editorPlayerPose`), with the tracked hands on it. The walk pose would not do:
+   * the walker waits where EDIT began, so its body stayed behind while the head and hands flew off with the rig.
+   * The hands are brought back to life size about the head, since a grown rig holds them metres out.
+   */
+  function editPlayerPose(): LocalPlayerPose {
+    const now = performance.now();
+    editBody.set(headWorld.x, headWorld.y - EDITOR_EYE_HEIGHT, headWorld.z);
+    const dt = (now - editBodyAt) / 1000;
+    if (editBodyAt && dt > 0 && dt < 0.5) editBodyVelocity.copy(editBody).sub(editBodyLast).divideScalar(dt);
+    else editBodyVelocity.set(0, 0, 0);
+    editBodyLast.copy(editBody);
+    editBodyAt = now;
+    editBodyFacing.set(0, 0, -1).applyQuaternion(headQuat).setY(0);
+    if (editBodyFacing.lengthSq() < 1e-8) editBodyFacing.set(0, 0, -1); else editBodyFacing.normalize();
+    // The avatar faces its own +Z.
+    editBodyQuat.setFromAxisAngle(WORLD_UP, Math.atan2(editBodyFacing.x, editBodyFacing.z));
+    const scale = editPose.scale;
+    const lifeSize = hands.worldTransforms(calibration?.hands).map(hand => hand && {
+      p: hand.p.map((value, axis) => headWorld.getComponent(axis) + (value - headWorld.getComponent(axis)) / scale),
+      q: hand.q,
+    } as PlayerTransform) as [PlayerTransform | null, PlayerTransform | null];
+    return {
+      mode: 'edit', vr: true,
+      body: transform(editBody, editBodyQuat), velocity: vector(editBodyVelocity),
+      head: transform(headWorld, headQuat),
+      ...(lifeSize[0] || lifeSize[1] ? { hands: lifeSize } : {}),
     };
   }
 
@@ -1952,13 +2003,15 @@ export function createXrPlay(deps: XrPlayDeps) {
         grinding: st.railIdx >= 0, boosting: ride.boostActive(), charge: st.charging ? st.charge : 0,
       };
       hud.draw(now, state, null, calibrationHud(now), statsEnabled, thirdPerson, run,
-        controlsOpen, 'ride', false, editOpen);
+        controlsOpen, 'ride', false, null);
       if (statsEnabled) profiler.draw(now, state, stats);
       return;
     }
     setHudHint(footHint());
     hud.draw(now, null, null, calibrationHud(now), statsEnabled, thirdPerson, run,
-      controlsOpen, editOpen ? 'edit' : 'foot', !!boardGrab.held, editOpen);
+      controlsOpen, editOpen ? 'edit' : 'foot', !!boardGrab.held, editOpen ? {
+        mixedReality, mixedRealityAvailable: mixedRealityAvailable(), placing: !!palette?.placing,
+      } : null);
     if (statsEnabled) profiler.draw(now, null, stats);
   }
 
@@ -2047,10 +2100,6 @@ export function createXrPlay(deps: XrPlayDeps) {
     get presenting() { return !!session || swapping; },
     /** EDIT is open (docs/068): the player is a free-flying editor rather than a rider on the mountain. */
     get editing() { return (!!session || swapping) && editOpen; },
-    /** Mixed reality can be switched on: the headset's runtime offers passthrough (`immersive-ar`). */
-    get mixedRealityAvailable() { return arSupported && (!!session || swapping); },
-    get mixedReality() { return mixedReality; },
-    setMixedReality,
     get riding() { return !!ride; },
     get diagnosticsEnabled() { return statsEnabled; },
     /** The effects world follows the local participant, not the optional board beneath them. These references
@@ -2313,21 +2362,19 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
       const wrist = node(indexFor('left', 0));
       if (!wrist) { object.visible = false; return false; }
       if (object.parent !== wrist) wrist.add(object);
-      object.position.set(0, 0.045, 0.015);
-      object.rotation.set(-Math.PI / 2, 0, 0);
+      object.position.set(...XR_WATCH_POSITION);
+      object.rotation.set(XR_WATCH_TILT, 0, 0);
       object.visible = true;
       return true;
     },
-    /** Hang the EDIT palette (docs/068) off the same wrist, out ahead of and inboard of the watch, leaning away
-     * from the eyes like a held palette so the right controller can reach every panel. `height` is the palette's
-     * laid-out height: it hangs a fixed share of that below the seat. */
-    placePalette(object: THREE.Object3D, height: number): boolean {
+    /** Wear the EDIT palette (docs/068) on the same wrist, laid out around the watch in its plane. `seat` is the
+     * palette's own: by default the watch's top-left corner, or wherever its placement bar has moved it. */
+    placePalette(object: THREE.Object3D, seat: Readonly<XrPaletteSeat>): boolean {
       const wrist = node(indexFor('left', 0));
       if (!wrist) { object.visible = false; return false; }
       if (object.parent !== wrist) wrist.add(object);
-      object.position.set(...XR_EDIT_PALETTE_POSITION);
-      object.position.y -= height * XR_EDIT_PALETTE_DROP;
-      object.rotation.set(XR_EDIT_PALETTE_TILT, 0, 0);
+      object.position.set(seat.x, seat.y, seat.z);
+      object.rotation.set(seat.tilt, 0, 0);
       object.visible = true;
       return true;
     },

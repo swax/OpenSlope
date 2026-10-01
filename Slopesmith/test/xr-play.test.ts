@@ -51,6 +51,12 @@ assert.equal(xrHudActionAt(false, new THREE.Vector2(378 / 512, 1 - 326 / 486)), 
   'the compact wrist panel exposes the EDIT palette beside the controller help (docs/068)');
 assert.equal(xrHudActionAt(false, new THREE.Vector2(256 / 512, 1 - 326 / 486)), null,
   'the gap between CONTROLS and EDIT selects neither');
+assert.equal(xrHudActionAt(false, new THREE.Vector2(134 / 512, 1 - 198 / 486), false, true), 'place',
+  'while EDIT is on, RESTART gives way to MOVE UI, the palette placement bar (docs/068)');
+assert.equal(xrHudActionAt(false, new THREE.Vector2(378 / 512, 1 - 262 / 486), false, true), 'mixed',
+  'while EDIT is on, the third-person toggle gives way to MIXED REALITY');
+assert.equal(xrHudActionAt(false, new THREE.Vector2(378 / 512, 1 - 326 / 486), false, true), 'edit',
+  'EDIT itself stays where it is, so it can be turned off again');
 assert.equal(xrHudActionAt(false, new THREE.Vector2(256 / 512, 1 - 446 / 486), true), 'controls',
   'the controller help page turns the same action into a full-width back button');
 assert.equal(xrHudActionAt(false, new THREE.Vector2(134 / 512, 1 - 134 / 486), true), null,
@@ -172,6 +178,13 @@ assert.match(rideLayerSource,
 assert.match(rideLayerSource,
   /if \(await session\.enter\(\)\) return true;[^]*?showRideSpawn\(spawn\);[^]*?return false;\s*\}/,
   'a refused headset session puts the setup flag back where it was');
+assert.match(rideLayerSource, /onEditChange: showOtherMountain,/,
+  'the headset\'s EDIT brings back the mountain the session put away, as the desktop editor shows both (docs/068)');
+assert.match(xrSessionSource, /function setEditOpen\([^]*?deps\.onEditChange\?\.\(on\);/,
+  'every EDIT open and close is reported, including the one teardown makes before the editor is restored');
+assert.match(xrSessionSource, /if \(!session\) return null;\s*if \(editOpen && !ride\) return editPlayerPose\(\);/,
+  'EDIT flight publishes the editor\'s avatar under the head, not the walker it left behind');
+assert.match(xrSessionSource, /function editPlayerPose\(\)[^]*?mode: 'edit', vr: true/);
 assert.match(xrSessionSource,
   /offBoardRun = airborne && departing\.runStatus \? departing : null;[^]*?if \(!offBoardRun\) departing\.abandonRun\(\);/,
   'a grounded WebXR dismount clears the run while an airborne hop retains it');

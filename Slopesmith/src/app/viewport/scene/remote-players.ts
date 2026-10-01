@@ -15,6 +15,13 @@ const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(0, 0, 1);   // deck-local nose: the axis a carve rolls about
 const DEG = Math.PI / 180;
 const CHAT_BUBBLE_SECONDS = 6;
+/** A name tag's world size, and a chat bubble's width, from `LABEL_FULL_SIZE_AT` or further out: sized for the
+ *  editor's camera, which usually watches players from tens of metres. */
+const LABEL_WIDTH = 10, LABEL_HEIGHT = 1.4, CHAT_BUBBLE_WIDTH = 7;
+/** Nearer than this, name tags and chat bubbles shrink with distance and keep the size they have on screen here
+ *  (the name's letters about 1.3° tall). At full size they towered over a player a few metres away in a headset. */
+const LABEL_FULL_SIZE_AT = 30;
+export const labelScaleAt = (distance: number): number => Math.max(1e-3, Math.min(1, distance / LABEL_FULL_SIZE_AT));
 /** A setup/watch camera is deliberately well ahead of the player: they ride into the shot instead of leaving
  * it on the next awareness packet. The selected player's heading points from the camera back up the mountain. */
 export const PLAYER_VIEW_DISTANCE = 30;
@@ -137,6 +144,8 @@ class RemoteAvatar {
   private readonly heldEquipmentDirection = new THREE.Vector3();
   private chatBubble: THREE.Sprite | null = null;
   private chatBubbleUntil = 0;
+  /** A bubble's height per unit width: it grows with its line count. */
+  private chatBubbleAspect = 0;
 
   constructor(private readonly scene: THREE.Object3D, peer: PeerMarks, sampleAt: number) {
     this.userId = peer.userId;
@@ -166,6 +175,7 @@ class RemoteAvatar {
     this.clearChatBubble();
     if (!text.trim()) return;
     this.chatBubble = makeChatBubble(text);
+    this.chatBubbleAspect = this.chatBubble.scale.y / this.chatBubble.scale.x;
     this.chatBubbleUntil = performance.now() / 1000 + CHAT_BUBBLE_SECONDS;
     this.scene.add(this.chatBubble);
   }
@@ -376,9 +386,19 @@ class RemoteAvatar {
     else this.rider.pose(input);
     const labelAt = headTarget?.position ?? this.motion.position;
     this.label.position.set(labelAt.x, labelAt.y + (headTarget ? 0.3 : 1.95), labelAt.z);
-    if (this.chatBubble) {
-      this.chatBubble.position.set(labelAt.x, labelAt.y + (headTarget ? 1.65 : 3.3), labelAt.z);
-    }
+  }
+
+  /** Size the name tag and chat bubble for the viewer at `eye` (`labelScaleAt`), and stand the bubble on the tag.
+   *  `viewerScale` is the viewer's own world scale: a headset rig grown with its player (docs/068) keeps that
+   *  scale in its eyes' view matrices, and three's Sprite adds its size in view units, so a tag drawn unadjusted
+   *  would grow with the player. */
+  fitLabels(eye: THREE.Vector3, viewerScale = 1): void {
+    const k = labelScaleAt(this.label.position.distanceTo(eye)), drawn = k / viewerScale;
+    this.label.scale.set(LABEL_WIDTH * drawn, LABEL_HEIGHT * drawn, 1);
+    if (!this.chatBubble) return;
+    this.chatBubble.scale.set(CHAT_BUBBLE_WIDTH * drawn, CHAT_BUBBLE_WIDTH * this.chatBubbleAspect * drawn, 1);
+    // Its tail just overlaps the tag's transparent top margin. A position is in world units: no adjustment.
+    this.chatBubble.position.copy(this.label.position).y += (LABEL_HEIGHT - 0.05) * k;
   }
 
   private worldPosition(local: SmoothedLocalTransform, out: THREE.Vector3): THREE.Vector3 {
@@ -409,7 +429,7 @@ function makeLabel(name: string, color: string): THREE.Sprite {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true,
   }));
-  sprite.scale.set(10, 1.4, 1); sprite.center.set(0.5, 0); sprite.renderOrder = 12;
+  sprite.scale.set(LABEL_WIDTH, LABEL_HEIGHT, 1); sprite.center.set(0.5, 0); sprite.renderOrder = 12;
   return sprite;
 }
 
@@ -484,7 +504,7 @@ function makeChatBubble(text: string): THREE.Sprite {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: texture, depthTest: false, transparent: true,
   }));
-  sprite.scale.set(7, 7 * canvas.height / canvas.width, 1);
+  sprite.scale.set(CHAT_BUBBLE_WIDTH, CHAT_BUBBLE_WIDTH * canvas.height / canvas.width, 1);
   sprite.center.set(0.5, 0);
   sprite.renderOrder = 13;
   return sprite;
@@ -492,6 +512,7 @@ function makeChatBubble(text: string): THREE.Sprite {
 
 export function createRemotePlayersLayer(stage: Stage) {
   const avatars = new Map<string, RemoteAvatar>();
+  const viewerScaleOf = new THREE.Vector3();
   let activePlayers: ActiveMapPlayer[] = [];
   function setPeers(peers: readonly PeerMarks[], serverNow: number) {
     activePlayers = peers.flatMap(peer => peer.player ? [{
@@ -511,7 +532,14 @@ export function createRemotePlayersLayer(stage: Stage) {
   }
   return {
     setPeers,
-    step(dt: number) { const now = performance.now() / 1000; for (const avatar of avatars.values()) avatar.step(dt, now); },
+    /** `eye` is the viewer's world position (a headset's head, too), which the name tags are sized for. */
+    step(dt: number, eye: THREE.Vector3) {
+      const now = performance.now() / 1000;
+      // In a headset, three hands the rig's scale (the player's size) on to the camera it seats (WebXRManager
+      // `updateUserCamera`); a desktop camera has no scaled parent.
+      const viewerScale = stage.camera.getWorldScale(viewerScaleOf).x;
+      for (const avatar of avatars.values()) { avatar.step(dt, now); avatar.fitLabels(eye, viewerScale); }
+    },
     players(): readonly ActiveMapPlayer[] { return activePlayers; },
     navigationTarget(sessionId: string): PlayerNavigationTarget | null {
       return avatars.get(sessionId)?.navigationTarget() ?? null;

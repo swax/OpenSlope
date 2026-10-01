@@ -6,7 +6,8 @@
 //  - the CSS filter keeps every rule that COULD match (negations and alternatives never make a class required);
 //  - a texture UV maps back to the page point it was drawn from, per part;
 //  - dropdown stepping skips disabled options and wraps;
-//  - the palette layout stacks rows from the wrist up, left-aligned, and docks the libraries to the toolbox bottom;
+//  - the palette is laid out around the watch, and a mode switch moves nothing above or beside the watch;
+//  - the placement bar's steps move the seat in grip axes and reset to the defaults, and its buttons hit-test;
 //  - the `data-xr-edit` keys the palette crops to are still the ones the panels carry.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,7 +15,12 @@ import {
   intersectRect, mirrorUvToClient, nextSelectableIndex, paddedPixelRect, partUvRect, ruleMayApply, selectorRequirements,
   splitSelectorList, unionRect,
 } from '../src/app/ride/xr/dom-mirror';
-import { layoutPaletteRows, layoutWorkBlock, XR_EDIT_MIRRORS } from '../src/app/ride/xr/edit-palette';
+import * as THREE from 'three';
+import { layoutAroundWatch, XR_EDIT_MIRRORS, XR_EDIT_PALETTE_SEAT } from '../src/app/ride/xr/edit-palette';
+import { XR_WATCH_HEIGHT, XR_WATCH_POSITION, XR_WATCH_TILT, XR_WATCH_WIDTH } from '../src/app/ride/xr/hud';
+import {
+  paletteSeatActionAt, samePaletteSeat, stepPaletteSeat, XR_PALETTE_SEAT_BUTTONS,
+} from '../src/app/ride/xr/palette-seat';
 
 // ---- the CSS filter
 assert.deepEqual(splitSelectorList('.a, .b:is(.c, .d), [title="x,y"], .e'), ['.a', '.b:is(.c, .d)', '[title="x,y"]', '.e'],
@@ -65,48 +71,90 @@ assert.equal(nextSelectableIndex([false, false, false], 2, 1), 0, 'stepping wrap
 assert.equal(nextSelectableIndex([false, false, true], 0, -1), 1, 'backwards also wraps and skips');
 assert.equal(nextSelectableIndex([true, false, true], 1, 1), 1, 'with nothing else selectable it stays put');
 
-// ---- palette layout
+// ---- palette layout: around the watch, in its plane
 {
   const close = (a: number, b: number, what: string) => assert(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
-  const { placements, width, height } = layoutPaletteRows([
-    [{ w: 0.2, h: 0.01 }],
-    [{ w: 0.1, h: 0.02 }, null, { w: 0.05, h: 0.03 }],
-    [],
-    [{ w: 0.12, h: 0.3 }, { w: 0.1, h: 0.16 }],
-  ], 0.01);
-  close(width, 0.23, 'the widest row sets the width');
-  close(height, 0.36, 'three used rows and two gaps; an empty row takes no space');
-  close(placements[0][0]!.x, -0.015, 'rows start at one shared left edge');
-  close(placements[0][0]!.y, 0.355, 'the first row is at the top');
-  assert.equal(placements[1][1], null, 'a missing panel leaves no hole');
-  close(placements[1][2]!.x, 0.02, 'a missing panel takes no width either');
-  close(placements[1][2]!.y, 0.325, 'items top-align within their row');
-  close(placements[3][0]!.y - placements[3][0]!.h / 2, 0, 'the origin is the bottom of the block: it grows up from the wrist');
-  close(placements[3][1]!.x, 0.065, 'the legend sits right of the toolbox');
+  const gap = 0.01, watch = { w: 0.18, h: 0.17 };
+  const stack = [{ w: 0.44, h: 0.03 }, { w: 0.3, h: 0.02 }, null, { w: 0.4, h: 0.02 }];
+  const tools = { w: 0.24, h: 0.6 }, legend = { w: 0.1, h: 0.2 };
+  const laid = layoutAroundWatch({ stack, tools, legend, docked: [{ w: 0.38, h: 0.3 }, null, { w: 0.03, h: 0.1 }] },
+    watch, gap);
+  close(laid.tools!.x + laid.tools!.w / 2, -gap, "the toolbox's right edge is a gap left of the watch");
+  close(laid.tools!.y + laid.tools!.h / 2, 0, 'and its top is level with the watch top');
+  close(laid.stack[3]!.y - laid.stack[3]!.h / 2, gap, 'the lowest menu strip sits a gap above the watch and toolbox');
+  close(laid.stack[1]!.y - laid.stack[1]!.h / 2, gap + 0.02, 'the strips touch, and a missing one takes no space');
+  close(laid.stack[0]!.y - laid.stack[0]!.h / 2, laid.stack[1]!.y + laid.stack[1]!.h / 2, 'one bar, no gaps');
+  assert.equal(laid.stack[2], null);
+  close(laid.stack[0]!.y + laid.stack[0]!.h / 2, laid.top, 'the status strip is the top row');
+  for (const row of [laid.stack[0], laid.stack[1], laid.stack[3]]) {
+    close(row!.x - row!.w / 2, laid.left, 'the strips are left-aligned with the toolbox');
+  }
+  close(laid.legend!.x - laid.legend!.w / 2, watch.w + gap, 'the keys stand right of the watch');
+  close(laid.legend!.y + laid.legend!.h / 2, 0, 'top edges level');
+  close(laid.docked[0]!.x - laid.docked[0]!.w / 2, 0, 'a library stands right of the toolbox');
+  close(laid.docked[0]!.y - laid.docked[0]!.h / 2, -tools.h, "on the toolbox's bottom edge while that clears the watch");
+  assert(laid.docked[0]!.y + laid.docked[0]!.h / 2 <= -legend.h - gap + 1e-12, 'and it clears the keys too');
+  assert.equal(laid.docked[1], null, 'a closed library takes no space');
+  close(laid.docked[2]!.x - laid.docked[2]!.w / 2, 0.38 + gap, 'a tab stands beside the open library');
+  close(laid.right, 0.38 + gap + 0.03, 'the docked run is the widest thing here');
+  close(laid.bottom, -tools.h, 'the extent includes the toolbox bottom');
+
+  // A mode switch: a shorter toolbox, the keys gone. Nothing above or beside the watch may move — the first
+  // headset pass saw the whole palette shift with each mode's toolbox height.
+  const short = layoutAroundWatch({ stack, tools: { w: 0.24, h: 0.2 }, legend: null, docked: [{ w: 0.38, h: 0.3 }] },
+    watch, gap);
+  assert.deepEqual(short.stack, laid.stack, 'the menu strips stay put across modes');
+  close(short.tools!.y + short.tools!.h / 2, 0, 'the toolbox top stays level with the watch top');
+  close(short.docked[0]!.y + short.docked[0]!.h / 2, -watch.h - gap,
+    'a toolbox too short for the library drops it below the watch instead of beside it');
+  const bare = layoutAroundWatch({ stack: [], tools: null, legend: null, docked: [] }, watch, gap);
+  assert.deepEqual([bare.left, bare.right, bare.top, bare.bottom], [0, watch.w, 0, -watch.h],
+    'with nothing to show the extent is the watch');
 }
 {
-  const close = (a: number, b: number, what: string) => assert(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
-  const tools = { w: 0.24, h: 0.5 }, legend = { w: 0.1, h: 0.1 };
-  const work = layoutWorkBlock(tools, legend, [{ w: 0.3, h: 0.2 }, null, { w: 0.03, h: 0.1 }], 0.01);
-  close(work.width, 0.59, 'toolbox, gap, then the wider of the keys and the docked run');
-  close(work.height, 0.5, 'a tall toolbox sets the height');
-  close(work.tools!.y + work.tools!.h / 2, work.height / 2, 'the toolbox hangs from the block top');
-  close(work.legend!.x - work.legend!.w / 2, work.tools!.x + work.tools!.w / 2 + 0.01, 'the keys sit right of the toolbox');
-  close(work.legend!.y + work.legend!.h / 2, work.height / 2, 'the keys hang from the toolbox top edge');
-  close(work.docked[0]!.x - work.docked[0]!.w / 2, work.legend!.x - work.legend!.w / 2,
-    'the library docks straight right of the toolbox');
-  close(work.docked[0]!.y - work.docked[0]!.h / 2, -work.height / 2, 'the library stands on the toolbox bottom edge');
-  assert.equal(work.docked[1], null, 'a closed library takes no space');
-  close(work.docked[2]!.x - work.docked[2]!.w / 2, work.docked[0]!.x + work.docked[0]!.w / 2 + 0.01,
-    'a tab stands beside the open library');
-  close(work.docked[2]!.y - work.docked[2]!.h / 2, -work.height / 2, 'and on the same bottom edge');
+  // The default seat is the watch's top-left corner as worn, so the layout's origin lands exactly there.
+  const watchNode = new THREE.Object3D();
+  watchNode.position.set(...XR_WATCH_POSITION);
+  watchNode.rotation.set(XR_WATCH_TILT, 0, 0);
+  watchNode.updateMatrixWorld(true);
+  const corner = new THREE.Vector3(-XR_WATCH_WIDTH / 2, XR_WATCH_HEIGHT / 2, 0).applyMatrix4(watchNode.matrixWorld);
+  const seat = XR_EDIT_PALETTE_SEAT;
+  assert(corner.distanceTo(new THREE.Vector3(seat.x, seat.y, seat.z)) < 1e-9, 'the palette seat is the watch corner');
+  assert.equal(seat.tilt, XR_WATCH_TILT, "and the palette lies in the watch's plane");
+}
 
-  const short = layoutWorkBlock({ w: 0.24, h: 0.2 }, legend, [{ w: 0.3, h: 0.2 }], 0.01);
-  close(short.height, 0.31, 'a short toolbox grows the block so the library clears the keys');
-  close((short.legend!.y - short.legend!.h / 2) - (short.docked[0]!.y + short.docked[0]!.h / 2), 0.01,
-    'one gap between the keys and the library below them');
-  const bare = layoutWorkBlock(tools, null, [null, null], 0.01);
-  close(bare.width, 0.24, 'with nothing docked or keyed the block is just the toolbox');
+// ---- the placement bar over the palette
+{
+  const seat0 = { ...XR_EDIT_PALETTE_SEAT };
+  const tenthMm = (value: number) => Math.round(value * 1e4) / 1e4;
+  let seat = seat0;
+  for (let i = 0; i < 7; i++) seat = stepPaletteSeat(seat, 'in', seat0);
+  assert.equal(seat.z, tenthMm(seat0.z + 0.07), 'IN is grip +Z, and a run of 1 cm steps reads back as a round number');
+  seat = stepPaletteSeat(stepPaletteSeat(seat, 'left', seat0), 'up', seat0);
+  assert.deepEqual([seat.x, seat.y], [tenthMm(seat0.x - 0.01), tenthMm(seat0.y + 0.01)], 'LEFT is grip −X, UP grip +Y');
+  seat = stepPaletteSeat(seat, 'tilt-in', seat0);
+  assert(seat.tilt > seat0.tilt, 'TILT IN brings the top edge toward the eyes (less lean)');
+  for (let i = 0; i < 200; i++) seat = stepPaletteSeat(seat, 'smaller', seat0);
+  assert(seat.scale >= 0.25 && seat.scale < 0.26, 'size bottoms out instead of vanishing');
+  assert(!samePaletteSeat(seat, seat0));
+  assert.deepEqual(stepPaletteSeat(seat, 'reset', seat0), seat0, 'RESET returns to the defaults');
+
+  const buttons = XR_PALETTE_SEAT_BUTTONS;
+  assert.equal(buttons.length, 11);
+  for (let i = 1; i < buttons.length; i++) {
+    assert(buttons[i].x >= buttons[i - 1].x + buttons[i - 1].w, `${buttons[i].action} starts clear of its neighbour`);
+  }
+  const last = buttons[buttons.length - 1];
+  assert(last.x + last.w <= 1280 - 11, 'the row fits the bar');
+  // Canvas pixels to three's UV (v runs up) on a 1280 × 176 bar.
+  const uvOf = (x: number, y: number): [number, number] => [x / 1280, 1 - y / 176];
+  for (const b of buttons) {
+    assert.equal(paletteSeatActionAt(...uvOf(b.x + b.w / 2, b.y + b.h / 2)), b.action, `${b.label} is hit at its centre`);
+  }
+  const out = buttons.find(b => b.action === 'out')!, left = buttons.find(b => b.action === 'left')!;
+  assert.equal(paletteSeatActionAt(...uvOf((out.x + out.w + left.x) / 2, out.y + out.h / 2)), null,
+    'the gap between groups is no button');
+  assert.equal(paletteSeatActionAt(...uvOf(out.x + out.w / 2, 140)), null, 'the readout is no button');
 }
 
 // ---- the palette's crop keys are still the panels' own

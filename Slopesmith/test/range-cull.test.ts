@@ -114,7 +114,23 @@ cull.update(eye);
 check(props.getVisibleAt(3) && !props.getVisibleAt(2),
   'a wider range re-admits the slots the gate dropped, and still not the one it never hid');
 
+// ---- a headset's EDIT: the whole mountain, and the fog held out of reach rather than removed ----
+cull.setRange(null, true);
+check(near.visible && far.visible && wide.visible, 'holding the fog still turns the gate off');
+check(scene.fog === fogInstance && (scene.fog as THREE.Fog).near > 1e6,
+  'the held fog is the same object pushed out of reach: removing it would recompile every fogged material');
+cull.setRange(600);
+cull.update(eye);
+check(scene.fog === fogInstance && (scene.fog as THREE.Fog).near === 300 && (scene.fog as THREE.Fog).far === 600,
+  'back from EDIT, the same fog hazes the same band again');
+check(props.getVisibleAt(3) && !props.getVisibleAt(2), 'and the gate re-gates as before');
+
 // ---- leaving the ride ----
+cull.setRange(null, true);
+cull.setRange(null);
+check(scene.fog === null, 'leaving the session from EDIT still drops the held fog');
+cull.setRange(600);
+cull.update(eye);
 cull.setRange(null);
 check(near.visible && far.visible && wide.visible && scene.fog === null,
   'turning the gate off re-shows every cell and drops the fog');

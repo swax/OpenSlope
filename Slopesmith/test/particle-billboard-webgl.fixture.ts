@@ -105,6 +105,24 @@ export function checkParticleBillboards(renderer: THREE.WebGLRenderer): string[]
       }
     }
 
+    // The same eyes in a rig grown 4x with its player (docs/068). A desktop camera drops its parents' scale from
+    // its view matrix; WebXR's eye cameras keep it (WebXRManager `updateCamera` inverts the whole rig-times-eye
+    // matrix), so they are set here as WebXR sets them. The sprite must keep its world width, not grow 4x.
+    const rig = new THREE.Group();
+    rig.scale.setScalar(4);
+    perspectiveEyes.forEach(eye => { rig.add(eye); eye.position.set(eye.position.x / 4, 0, 10 / 4); });
+    rig.updateMatrixWorld(true);
+    perspectiveEyes.forEach(eye => eye.matrixWorldInverse.copy(eye.matrixWorld).invert());
+    draw(perspective);
+    for (const eye of perspectiveEyes) {
+      const row = new Uint8Array(128 * 4);
+      renderer.readRenderTargetPixels(target, eye.viewport.x, 64, 128, 1, row);
+      let width = 0;
+      for (let x = 0; x < 128; x++) if (row[x * 4] > 127) width++;
+      const expected = eye.projectionMatrix.elements[5] * 64 / 10;
+      check(Math.abs(width - expected) <= 2, `a 4x rig sees the same world width at 10 metres (${width}/${expected})`);    }
+    perspectiveEyes.forEach(eye => rig.remove(eye));
+
     // An oversized sprite must extend beyond D3D's common 1024-pixel point-size ceiling.
     renderer.setRenderTarget(null); renderer.setSize(2048, 64, false);
     const wideCamera = new THREE.OrthographicCamera(-2, 2, 0.0625, -0.0625, 0.1, 100);

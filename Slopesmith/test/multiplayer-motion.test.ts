@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { createPlayerPosePublisher } from '../src/app/net/player-publisher';
 import { RemotePlayerMotion, smoothDampVector } from '../src/app/net/remote-player-motion';
 import {
-  PLAYER_JOIN_DISTANCE, PLAYER_VIEW_DISTANCE, playerNavigationTarget,
+  labelScaleAt, PLAYER_JOIN_DISTANCE, PLAYER_VIEW_DISTANCE, playerNavigationTarget,
 } from '../src/app/viewport/scene/remote-players';
 import { sanitizePlayerPose, type LocalPlayerPose, type PlayerPose } from '../src/core/session/player-pose';
 import { ALPINE_EXO_CHARACTER_ID, BUILTIN_CHARACTERS } from '../src/core/characters/builtins';
@@ -20,6 +20,13 @@ const equipment = (state: 'mounted' | 'loose' | 'held', x = 0, velocity = 0, epo
   state, transform: { p: [x, 0, 0] as [number, number, number], q: [0, 0, 0, 1] as [number, number, number, number] },
   velocity: [velocity, 0, 0] as [number, number, number], epoch,
 });
+
+// Name tags: full size from the editor camera's usual range, and a constant on-screen size nearer than that, so
+// a player a few metres away in a headset is not dwarfed by their own name.
+assert.equal(labelScaleAt(300), 1, 'a distant player keeps the full-size tag');
+assert.equal(labelScaleAt(30), 1);
+assert.equal(labelScaleAt(3), 0.1, 'at arm-and-a-bit in a headset the tag is a tenth of its full size');
+assert(labelScaleAt(0) > 0, 'a tag at the eye never collapses to nothing');
 
 // Still participants reuse an identical sample between sparse heartbeats; motion changes immediately.
 const publisher = createPlayerPosePublisher();

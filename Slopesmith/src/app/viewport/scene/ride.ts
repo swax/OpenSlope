@@ -767,6 +767,17 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     rideVis = null;
   }
 
+  /** While a headset's EDIT is open (docs/068), the mountain the session put away comes back, as the desktop
+   *  editor shows both; closing EDIT puts it away again. Whatever the editor changed of it meanwhile is what
+   *  the end of the session restores. */
+  function showOtherMountain(on: boolean) {
+    if (!rideVis) return;
+    for (const entry of rideVis) {
+      if (on) entry.o.visible = entry.v;
+      else { entry.v = entry.o.visible; entry.o.visible = false; }
+    }
+  }
+
   /** Save the editor's view and stand it down: whatever comes next — a chase ride or a headset — owns the
    *  camera, the orbit controls and the gizmo until it gives them back through `restoreEditorView`. */
   function takeEditorView() {
@@ -917,7 +928,8 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    * Enter the headset on `target`, on FOOT, with the board parked at `spawn`.
    *
    * The session, not the board, is the thing that owns the run here: it holds the editor view and the hidden
-   * other mountain for as long as the rider is wearing the headset, and mounts and dismounts boards inside that.
+   * other mountain for as long as the rider is wearing the headset (EDIT shows that mountain again while it is
+   * open: `showOtherMountain`), and mounts and dismounts boards inside that.
    * So this takes the view once and gives it back once, in `stopXrPlay` — `stopRide` deliberately does neither
    * while a session is up.
    *
@@ -984,6 +996,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       undo: () => deps.undo?.(),
       redo: () => deps.redo?.(),
       onMixedRealityChange: on => deps.onXrMixedRealityChange?.(on),
+      onEditChange: showOtherMountain,
     });
     xr = session;
     // The setup flag goes away for the whole session, as `takeEditorView` puts it away for a desktop ride: the
@@ -1206,11 +1219,6 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     get xrPresenting() { return !!xr?.presenting; },
     /** The headset's wrist EDIT is open (docs/068): an editor flying the mountain, not a rider on it. */
     get xrEditing() { return !!xr?.editing; },
-    /** The headset offers passthrough, and whether it is showing (docs/068). */
-    get xrMixedRealityAvailable() { return !!xr?.mixedRealityAvailable; },
-    get xrMixedReality() { return !!xr?.mixedReality; },
-    /** Swap the headset session for its mixed-reality twin or back; must come from the user's own press. */
-    setXrMixedReality(on: boolean): Promise<boolean> { return xr ? xr.setMixedReality(on) : Promise.resolve(false); },
     /** GPU timing follows the visible profiler: desktop rides always show it; VR can switch it live at the wrist. */
     get perfDiagnostics() { return xr ? xr.presenting && xr.diagnosticsEnabled : !!ride; },
     /** Local participant pose, whichever Play state owns it. WebXR adds tracked head/hands over the board. */
