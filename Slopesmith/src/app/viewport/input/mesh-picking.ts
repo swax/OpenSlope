@@ -15,6 +15,27 @@ export type MeshComponentHit = {
   source: 'authored' | 'reference';
 };
 
+/** Degrees of the eye's view each desk pixel of a pick radius is worth at least, in a headset (docs/068): a
+ *  corner's 16 px is then about 2.4°, an edge's 14 px about 2.1°. */
+export const XR_PICK_DEG_PER_PX = 0.15;
+
+/**
+ * A screen-space pick radius given in desk pixels, as a headset needs it (docs/068). There the cursor is a laser,
+ * and a pixel is the page canvas's — whatever size the desktop window happens to be — stretched over the headset's
+ * whole field of view. So each desk pixel is made worth at least XR_PICK_DEG_PER_PX of the view at the cursor, on
+ * the axis where the canvas resolves the view most finely; never less than at the desk.
+ *
+ * `projection` is the pick camera's (three hands the user camera the headset's), `ndc` the cursor.
+ */
+export function headsetPickRadiusPx(px: number, projection: THREE.Matrix4, width: number, height: number,
+  ndc: THREE.Vector2): number {
+  const e = projection.elements;
+  // ndc = P0·tanθ − P8 across and P5·tanφ − P9 up, so a radian there is P0·(1 + tan²θ) of ndc: size / 2 px each.
+  const tx = (ndc.x + e[8]) / e[0], ty = (ndc.y + e[9]) / e[5];
+  const perRadian = Math.max(e[0] * (1 + tx * tx) * width, e[5] * (1 + ty * ty) * height) / 2;
+  return Math.max(px, px * THREE.MathUtils.degToRad(XR_PICK_DEG_PER_PX) * perRadian);
+}
+
 /** The live substrate the pick helpers read, on both sides of the authored ⇄ reference parity: the authored
  *  quad net + tessellated preview + cached directed-edge handle and its terrain mesh, the loaded reference
  *  solid + data + control-point list, the current edge selection, the Edit-mode hidden-component filters,
@@ -47,6 +68,13 @@ export interface MeshPickingAccess {
  * drawn cubic curves in CSS pixel space.
  */
 export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
+  /** A pick radius in desk pixels as this view needs it: unchanged at the desk, widened in a headset. */
+  function reach(px: number): number {
+    if (!stage.renderer.xr.isPresenting) return px;
+    const rect = stage.renderer.domElement.getBoundingClientRect();
+    return headsetPickRadiusPx(px, stage.camera.projectionMatrix, rect.width, rect.height, stage.pointer);
+  }
+
   /** Nearest visible surface under the drag's first pixel; only a tie-breaker when both point clouds are boxed. */
   function vertexSourceAtPointer(): 'authored' | 'reference' | null {
     const reference = access.reference();
@@ -73,7 +101,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     if (!access.subCage() || !access.cage() || !access.authoredControlPoints().length) return null;
     const rect = stage.renderer.domElement.getBoundingClientRect();
     const cx = ((stage.pointer.x + 1) / 2) * rect.width, cy = ((1 - stage.pointer.y) / 2) * rect.height;
-    const maxD2 = pxThresh * pxThresh, v = new THREE.Vector3();
+    const maxD2 = reach(pxThresh) ** 2, v = new THREE.Vector3();
     let best: MeshControlPointId | null = null, bestD2 = Infinity, bestZ = Infinity;
     for (const cp of access.authoredControlPoints()) {
       if (cp.id.kind === 'vertex' || access.controlPointHidden(cp.id) || !access.authoredControlPointVisible(cp.id)) continue;
@@ -93,7 +121,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     if (!access.referenceSubCage() || !access.cage() || !access.reference() || !access.referenceControlPoints().length) return null;
     const rect = stage.renderer.domElement.getBoundingClientRect(), o = stage.refRoot.position;
     const cx = ((stage.pointer.x + 1) / 2) * rect.width, cy = ((1 - stage.pointer.y) / 2) * rect.height;
-    const maxD2 = pxThresh * pxThresh, v = new THREE.Vector3();
+    const maxD2 = reach(pxThresh) ** 2, v = new THREE.Vector3();
     let best: MeshControlPointId<number> | null = null, bestD2 = Infinity, bestZ = Infinity;
     for (const cp of access.referenceControlPoints()) {
       if (cp.id.kind === 'vertex' || !access.referenceControlPointVisible(cp.id)) continue;
@@ -126,7 +154,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
   function vertexAtScreen(points: ArrayLike<number>, offset: V3, cx: number, cy: number, pxThresh: number,
     visible: (vertex: number) => boolean = () => true): number | null {
     const rect = stage.renderer.domElement.getBoundingClientRect();
-    const maxD2 = pxThresh * pxThresh, v = new THREE.Vector3();
+    const maxD2 = reach(pxThresh) ** 2, v = new THREE.Vector3();
     let best = -1, bestZ = Infinity;
     for (let i = 0; i < points.length; i += 3) {
       if (!visible(i / 3)) continue;
@@ -144,7 +172,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     const net = access.net();
     if (!net) return null;
     const rect = stage.renderer.domElement.getBoundingClientRect();
-    const maxD2 = pxThresh * pxThresh, v = new THREE.Vector3(), points = net.positions;
+    const maxD2 = reach(pxThresh) ** 2, v = new THREE.Vector3(), points = net.positions;
     let best = -1, bestZ = Infinity;
     for (let vertex = 0; vertex < points.length / 3; vertex++) {
       if (access.vertexHidden(vertex) || !access.authoredControlPointVisible({ kind: 'vertex', vertex })) continue;
@@ -180,7 +208,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
       const d2 = curveScreenDist2(a, b);
       if (d2 < bestD2) { bestD2 = d2; best = a < b ? [a, b] : [b, a]; }
     }
-    return bestD2 <= EDGE_PICK_PX * EDGE_PICK_PX ? best : null;
+    return bestD2 <= reach(EDGE_PICK_PX) ** 2 ? best : null;
   }
 
   /** Orthographic edge-on fallback: a face ray has zero area when viewed exactly from the side, so scan the
@@ -189,7 +217,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
   function pickAnyEdgeAt(): [number, number] | null {
     const net = access.net();
     if (!net) return null;
-    const limit = EDGE_PICK_PX * EDGE_PICK_PX;
+    const limit = reach(EDGE_PICK_PX) ** 2;
     let best: [number, number] | null = null, bestD2 = limit, bestZ = Infinity;
     const c = net.positions, mid = new THREE.Vector3();
     for (let a = 0; a < net.adj.neighbors.length; a++) {
@@ -212,7 +240,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
   function pickBoundaryEdgeAt(): [number, number] | null {
     const net = access.net();
     if (!net) return null;
-    const limit = EDGE_PICK_PX * EDGE_PICK_PX;
+    const limit = reach(EDGE_PICK_PX) ** 2;
     let best: [number, number] | null = null, bestD2 = limit, bestZ = Infinity;
     const c = net.positions, mid = new THREE.Vector3();
     for (let a = 0; a < net.adj.neighbors.length; a++) for (const b of net.adj.neighbors[a] ?? []) {
@@ -233,7 +261,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     const mesh = access.preview()?.mesh;
     const net = access.net();
     if (!mesh?.freeEdges.length || !net) return null;
-    const limit = EDGE_PICK_PX * EDGE_PICK_PX;
+    const limit = reach(EDGE_PICK_PX) ** 2;
     let best: [number, number] | null = null, bestD2 = limit, bestZ = Infinity;
     const c = net.positions, mid = new THREE.Vector3();
     for (const [a, b] of mesh.freeEdges) {
@@ -297,7 +325,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
   /** True when the current pointer is actually over one of the selected cubic edges. Testing the selected set
    * directly also works in orthographic edge-on and cage-only views, where the terrain face has no ray hit. */
   function selectedEdgeAtPointer(): boolean {
-    const limit = (EDGE_PICK_PX * 1.35) ** 2;
+    const limit = (reach(EDGE_PICK_PX) * 1.35) ** 2;
     return access.selectedEdges().some(([a, b]) => curveScreenDist2(a, b) <= limit);
   }
 
@@ -326,7 +354,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     const c = data.cornerPts;
     const aw = new THREE.Vector3(c[a * 3] + o.x, c[a * 3 + 1] + o.y, -(c[a * 3 + 2] + o.z)); // native + offset → world (Z flip)
     const bw = new THREE.Vector3(c[b * 3] + o.x, c[b * 3 + 1] + o.y, -(c[b * 3 + 2] + o.z));
-    if (chordScreenDist2(aw, bw) > EDGE_PICK_PX * EDGE_PICK_PX) return null;
+    if (chordScreenDist2(aw, bw) > reach(EDGE_PICK_PX) ** 2) return null;
     return a < b ? [a, b] : [b, a];
   }
 

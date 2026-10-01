@@ -59,6 +59,9 @@ export interface RideDeps {
   redo?(): void;
   /** The headset's mixed reality became available, turned on or off, or ended with the session (docs/068). */
   onXrMixedRealityChange?(on: boolean): void;
+  /** The nearest visible scene object the editor picks (prop, light, rail, gem, screen, knot …) under the stage's
+   *  CURRENT ray, or null: where the headset's laser lands when it points at one (docs/068). */
+  pickSceneObject?(): THREE.Intersection | null;
   /** The authored terrain's preview data (per-cell surface types) for the ride's surface lookup. */
   getPreview(): PreviewData | null;
   /** The doc's authored grind rails, ridable during an authored-mountain playtest ([Trailmap: 350]). */
@@ -989,7 +992,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       // the camera it casts from, and the surface a controller ray is pointing at — and the move gizmo, which the
       // hand can push in depth where a mouse only slides it.
       editor: {
-        canvas: stage.renderer.domElement, camera: () => stage.camera, surfaceHit: editSurfaceHit,
+        canvas: stage.renderer.domElement, camera: () => stage.camera, aimHit: editAimHit,
         translateDrag: () => stage.translateDrag(),
         driveTranslate: world => { stage.driveGizmoTo(world); },
       },
@@ -1072,22 +1075,23 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
 
   const editRay = new THREE.Ray(), editHit = new THREE.Vector3();
   /**
-   * The nearest visible editable surface — the authored mountain or the loaded reference — along a world ray: where
-   * the headset's world mouse puts its cursor (docs/068). Through the same BVH picks a mouse hover uses, and it
-   * leaves the shared pick ray exactly as it found it.
+   * The first thing along a world ray the editor can pick — the authored mountain or the loaded reference, a scene
+   * object standing on them, or a gizmo handle: where the headset's world mouse puts its cursor (docs/068). The
+   * surfaces go through the same BVH picks a mouse hover uses, the rest through the editor's own scene and gizmo
+   * picks, and it leaves the shared pick ray exactly as it found it.
    */
-  function editSurfaceHit(ray: THREE.Ray): THREE.Vector3 | null {
+  function editAimHit(ray: THREE.Ray): THREE.Vector3 | null {
     editRay.copy(stage.ray.ray);
     const near = stage.ray.near, far = stage.ray.far;
     stage.ray.ray.copy(ray);
     stage.ray.near = 0;
     stage.ray.far = Infinity;
-    let best: THREE.Intersection | null = null;
+    const hits = [deps.pickSceneObject?.() ?? null, stage.gizmoHandleHit()];
     for (const target of stage.pickTargets()) {
-      if (!(target instanceof THREE.Mesh) || !shownInScene(target)) continue;
-      const hit = stage.pickSurface(target);
-      if (hit && (!best || hit.distance < best.distance)) best = hit;
+      if (target instanceof THREE.Mesh && shownInScene(target)) hits.push(stage.pickSurface(target));
     }
+    let best: THREE.Intersection | null = null;
+    for (const hit of hits) if (hit && (!best || hit.distance < best.distance)) best = hit;
     stage.ray.ray.copy(editRay);
     stage.ray.near = near;
     stage.ray.far = far;

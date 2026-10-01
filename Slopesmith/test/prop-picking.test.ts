@@ -1011,6 +1011,20 @@ check(authoredColliderOverlay?.children.some(object => object instanceof THREE.I
   && authoredUnityOverlay?.children.some(object => object instanceof THREE.LineSegments
     && (object.material as THREE.LineBasicMaterial).color.getHex() === UNITY_COLLISION_OVERLAY_COLOR),
   'An authored mode-3 selection shows donor spheres and its exported Unity bounds box together');
+{
+  // That selection was drawn by the rebuild itself, before any render had refreshed the new placement's world
+  // matrix. Read from an identity world, the leaf at the model origin (35 cm) landed at the world origin as a
+  // 35 m ball: the giant spheres a moved prop showed.
+  const spheres = authoredColliderOverlay?.children.find(object => object instanceof THREE.InstancedMesh);
+  const at = new THREE.Matrix4(), centre = new THREE.Vector3(), scale = new THREE.Vector3();
+  (spheres as THREE.InstancedMesh | undefined)?.getMatrixAt(0, at);
+  at.decompose(centre, new THREE.Quaternion(), scale);
+  const placed = selectionLayer.placedPropMeshes[0];
+  const expected = new THREE.Vector3().applyMatrix4(placed.matrix.clone().multiply(placed.children[0].matrix));
+  check(spheres instanceof THREE.InstancedMesh && centre.distanceTo(expected) < 1e-9
+    && Math.abs(Math.abs(scale.x) - 0.35) < 1e-6, // the member frame's mirror decomposes onto x
+  `A rebuilt, selected prop draws its spheres on the placement at model scale (${centre.toArray()}, r ${scale.x})`);
+}
 selectionLayer.setPlacedProps([{
   id: 'prop-fast-select', level: 'TEST', model: 99, name: 'launcher', pos: [1, 2, 3], yaw: 0, scale: 1,
   nativeCollision: {

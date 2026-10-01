@@ -674,6 +674,11 @@ export class Viewport {
       undo: () => this.cb.onUndo?.(),
       redo: () => this.cb.onRedo?.(),
       onXrMixedRealityChange: on => this.cb.onXrMixedRealityChange?.(on),
+      // The headset's laser stops on the first scene object it meets, as the eye would see it (docs/068). Particle
+      // volumes are left out: their bounds enclose the props and ground the laser is usually aimed at.
+      pickSceneObject: () => this.scenePicking.pick({
+        props: 'effects', lights: true, sources: true, rails: true, lines: true, gems: true, screens: true, knots: true,
+      })?.hit ?? null,
       getPreview: () => this.preview,
       getRails: () => this.rails.rails,
       getRefSplines: () => this.refSplines,

@@ -774,6 +774,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       const group = new THREE.Group();
       group.matrixAutoUpdate = false;
       group.matrix.copy(placementPose(pp));
+      // Flagged so `updateWorldMatrix` takes the pose before the next render: three only recomputes a hand-set
+      // matrix's world when told to, and the selection below reads it at once — unflagged, the collision overlay
+      // and the move handle of a just-rebuilt (just-moved) prop were built from an identity world at the origin.
+      group.matrixWorldNeedsUpdate = true;
       group.userData.propIndex = i;
       // The Surface view's contact colour for this placement, stamped once here so every submesh under it
       // follows (prop-shade.ts). Read straight off the authored profile: attachments only ever influenced
@@ -813,6 +817,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         const child = new THREE.Group();
         child.matrixAutoUpdate = false;
         child.matrix.copy(assets.memberLocalMatrix(m));
+        child.matrixWorldNeedsUpdate = true;
         // A group member with behaviour of its own (docs/069) shades and lights by it, not by the placement's.
         const own = pp.memberBehaviour?.[String(m.model)];
         const fullBright = (own ?? pp).fullBright === true;

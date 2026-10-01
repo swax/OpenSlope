@@ -51,6 +51,8 @@ export class Stage {
   /** The rails the Surface-mode arrows bend along, asked for once per frame. The viewport owns the selection and the
    *  net, so it answers; null means the gizmo is not on an exact slide and the stock straight arrows stand. */
   surfaceRails: (() => SurfaceRails | null) | null = null;
+  /** The gizmo's invisible picker handles by mode: what its own hover raycasts. */
+  private readonly gizmoPickers: Record<string, THREE.Object3D>;
 
   // WYSIWYG: the SSX game is left-handed and Three.js is right-handed. worldRoot flips Z (scale.z = -1) for
   // the whole scene so the editor shows the GAME's orientation. Visual meshes parent here in data coords;
@@ -167,11 +169,14 @@ export class Stage {
     this.gizmo.addEventListener('objectChange', () => this.onGizmoChange());
     // In the surface-corner frame, show only the four handles the spec calls for (tangent pad, normal arrow,
     // two in-plane arrows). Hide the vertical-plane pads (XY, YZ) and the free-move centre (XYZ) — free 3D is
-    // the World / Shift escape hatch. TransformControls recomputes handle visibility each frame, so wrap the
-    // helper's updateMatrixWorld to force our hides LAST, on both the drawn gizmo AND the invisible pickers.
+    // the World / Shift escape hatch. A headset has no Shift, and its hand moves in depth where a mouse cannot
+    // (docs/068), so there the centre stays: a free 3D move, as a prop's is. TransformControls recomputes handle
+    // visibility each frame, so wrap the helper's updateMatrixWorld to force our hides LAST, on both the drawn
+    // gizmo AND the invisible pickers.
     const gz = (this.gizmo as unknown as { _gizmo: { updateMatrixWorld(f?: boolean): void;
       gizmo: Record<string, THREE.Object3D>; picker: Record<string, THREE.Object3D> } })._gizmo;
-    const hideNames = new Set(['XY', 'YZ', 'XYZ']);
+    this.gizmoPickers = gz.picker;
+    const hideNames = new Set(['XY', 'YZ', 'XYZ']), headsetHideNames = new Set(['XY', 'YZ']);
     const arcs = createGizmoArcs(gz.gizmo.translate, gz.picker.translate);
     const baseUpdate = gz.updateMatrixWorld.bind(gz);
     gz.updateMatrixWorld = (force?: boolean) => {
@@ -180,8 +185,9 @@ export class Stage {
       // the user pulls is the curve the corner takes. No rails — World mode, a knot, a corner region — no arcs.
       arcs.update(this.gizmoRestrict ? this.surfaceRails?.() ?? null : null);
       if (!this.gizmoRestrict) return;
+      const hide = this.renderer.xr.isPresenting ? headsetHideNames : hideNames;
       for (const grp of [gz.gizmo.translate, gz.picker.translate])
-        for (const h of grp.children) if (hideNames.has(h.name)) h.visible = false;
+        for (const h of grp.children) if (hide.has(h.name)) h.visible = false;
     };
   }
 
@@ -205,6 +211,16 @@ export class Stage {
     g.dispatchEvent({ type: 'change' });
     g.dispatchEvent({ type: 'objectChange' });
     return true;
+  }
+
+  /**
+   * The gizmo handle under the CURRENT ray, found as the gizmo's own hover finds one (its picker meshes, less the
+   * handles hidden this frame), or null. The headset's laser lands on a handle through here (docs/068).
+   */
+  gizmoHandleHit(): THREE.Intersection | null {
+    const g = this.gizmo;
+    if (!g.enabled || !g.object || !g.getHelper().visible) return null;
+    return this.ray.intersectObject(this.gizmoPickers[g.mode], true).find(hit => hit.object.visible) ?? null;
   }
 
   /** Set the shared raycaster from a client-space pointer event. */
@@ -293,9 +309,10 @@ export class Stage {
   }
 
   /** A selected point's marker radius: `px` screen pixels at the desk. In a headset (docs/068) a few pixels is a
-   *  speck no laser lands on, so it takes the size of the gizmo's centre handle, which reads right there. */
+   *  speck, so it takes half the gizmo's centre handle: big enough to read, and small enough that the centre it
+   *  sits in still shows round it and lights up when the laser is on it, as a prop's does. */
   pointMarkerRadius(at: THREE.Vector3, px: number): number {
-    return this.renderer.xr.isPresenting ? this.gizmoCentreRadius(at) : px * this.worldPerPixel(at);
+    return this.renderer.xr.isPresenting ? 0.5 * this.gizmoCentreRadius(at) : px * this.worldPerPixel(at);
   }
 
   /** Nearest world hit on the visible surfaces (terrain / loaded reference) under the cursor, or null. */
