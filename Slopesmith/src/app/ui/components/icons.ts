@@ -118,7 +118,6 @@ export const VIEW_ICON = {
   // [lucide] shares an element with Lucide v0.100.0 `sun`.
   light: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>'), // master Lighting
   skybox: svg('<path d="M3 17.5 8.5 12l3.5 3.5 2.5-2.5L21 19.5"/><path d="M3 20V4h18v16Z"/><circle cx="16.5" cy="8.5" r="2"/>'), // framed horizon
-  mixedReality: svg('<path d="M4 7h16a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-5l-2-2.5h-2L9 16H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="8" cy="11.5" r="1.5"/><circle cx="16" cy="11.5" r="1.5"/>'), // headset with lenses (headset passthrough)
   props: svg(PROP_BOX_ICON_BODY), // box (props on/off)
   lights: svg('<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/>'), // light, sound, video + effect emitters
   addRail: svg(withPlus(RAIL_ICON_BODY)),     // two rails + ties, + badge (add rail)

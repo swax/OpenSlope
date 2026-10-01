@@ -2,18 +2,23 @@
 
 The wrist watch in a WebXR session has an **EDIT** button. Turning it on does three things:
 
-- **The palette.** A palette on the left controller shows the editor's own **File / undo**, **Mode** and **View**
-  strips stacked in that order, the **current toolbox** under them, the **colour keys**, and the **Texture** or
-  **Prop Library** docked to the toolbox's bottom right. The panels are the real ones, not VR copies: switching to
-  Sculpt from the palette rebuilds the actual Sculpt toolbox, and that is what the palette then shows.
+- **The palette.** A palette laid out around the watch, in the watch's plane, shows the editor's own panels:
+  - the **current toolbox**, to the watch's left;
+  - the **File / undo**, **Mode** and **View** strips stacked above both;
+  - the **colour keys**, to the watch's right;
+  - the **Texture** or **Prop Library**, right of the toolbox and below the watch.
+
+  The panels are the real ones, not VR copies: switching to Sculpt from the palette rebuilds the actual Sculpt
+  toolbox, and that is what the palette then shows.
 - **The right hand is the editor's mouse.** A short translucent laser comes out of it. Where it points at the
   mountain, the editor hovers exactly as it does under a desktop mouse: brush ring, highlighted prop, vertex under
   the cursor. The **trigger** is the left button and **A** the right.
 - **Edit flight.** The player is no longer affected by gravity or collisions. The sticks fly, one grip drags the
   map, and both grips together make the player bigger or smaller, turn the map, and drag it.
 
-In a headset that offers passthrough, the View strip also carries a **Mixed reality** button: the room in place
-of the sky (below).
+While EDIT is on, two watch buttons change job: RESTART becomes **MOVE UI**, which shows the palette's placement
+bar, and 3RD PERSON becomes **MIXED REALITY**, which shows the room in place of the sky in a headset that offers
+passthrough (below).
 
 It began as a proof of concept for one question: can the live DOM be shown and driven inside a headset cheaply
 enough? The first headset pass said yes, and editing the world was built on top of it.
@@ -34,6 +39,8 @@ enough? The first headset pass said yes, and editing the world was built on top 
 | Both grips, twist | Turn the map with the hands. |
 | Both grips, move together | Drag the map along with the hands, including up and down. |
 | EDIT (watch) | Leave edit mode: back to life size with the eyes where they are, standing on the topmost surface beneath them. |
+| MOVE UI (watch, in RESTART's place) | Show or hide the palette's placement bar. Hidden by default. |
+| MIXED REALITY (watch, in 3RD PERSON's place) | Passthrough on or off. Dimmed in a headset that does not offer it. |
 
 Left trigger, left X and right B do nothing while EDIT is on. The virtual controllers' printed labels follow
 the mode: the right trigger reads CLICK, A reads R CLICK, the sticks read FLY and TURN/RISE with UNDO and REDO
@@ -64,9 +71,32 @@ view-metres ahead of the eyes, so the hands, watch, palette and body were culled
 session now refits that union with the separation in the rig's units, right after three's own camera update.
 Drawing was never wrong; each eye renders with its own projection.
 
+**Sprites in a scaled rig.** A desktop camera drops its parents' scale from its view matrix, but WebXR's eye
+cameras keep the rig's (three's `WebXRManager.updateCamera`), so in a headset one view unit is the player's size
+in metres. Anything that adds a world size in view space then grows with the player:
+
+- The effect particles (`particle-batches.ts`) now convert their width by the view matrix's own scale. Before
+  that, a 20× player saw the level's fog banks 20× as wide. They filled the view with blue-grey haze, and their
+  overdraw made the headset choppy.
+- three's `Sprite` does the same with its scale. Remote players' name tags and chat bubbles divide by the
+  viewer's scale to stay the size they should be (`remote-players.ts`). The editor's other sprites, such as
+  course markers and peer labels, still grow with the player.
+
 EDIT can be turned on only on foot, and mounting the board turns it off. Carrying the board when it is turned on
 drops the board. T-POSE is unavailable while EDIT is on: a calibration measures a life-size body standing on the
-floor. RESTART leaves edit mode for the gate.
+floor. RESTART and 3RD PERSON come back when EDIT is turned off.
+
+**Both mountains, all of them.** A headset session puts away the mountain it is not riding, as a desktop ride
+does. While EDIT is open that mountain comes back, as the desktop editor shows both, and closing EDIT puts it away
+again (`showOtherMountain` in `viewport/scene/ride.ts`). The ride's draw distance is off while EDIT is open too:
+nothing is dropped past it, and nothing is hazed. The fog itself is held, pushed out of reach, rather than removed
+(`RangeCull.setRange`'s `holdFog`), because removing a scene's fog recompiles every fogged material, which would
+stall the headset each time EDIT opened and again when it closed.
+
+**What others see.** While EDIT is open, other people see the desktop editor's avatar: standing at life size
+under the headset, facing where it looks, with the tracked hands on it (`editPlayerPose`). The walk pose would
+not do. The walker waits where EDIT began, so the body stayed there while the head and hands flew off with the
+rig. A grown rig also holds the hands metres from the head, so they are brought back to life size about it.
 
 ## The right hand as a mouse
 
@@ -123,10 +153,12 @@ at, so in a headset it takes the size of the gizmo's centre handle — the one a
 
 ## Mixed reality
 
-The View strip's **Mixed reality** button (next to Skybox) shows only in a headset session whose runtime offers
-`immersive-ar`, which on a Quest means the passthrough cameras. Turning it on puts the skybox away and shows the
-room wherever the mountain is not. Turning it off, or leaving the headset, brings the sky back as it was. The
-skybox change is not saved as a view preference.
+The watch's **MIXED REALITY** button takes 3RD PERSON's place while EDIT is on. It works only in a headset session
+whose runtime offers `immersive-ar`, which on a Quest means the passthrough cameras; elsewhere it is dimmed. Once
+the headset is showing passthrough, the skybox is put away and the room shows wherever the mountain is not.
+Turning it off, or leaving the headset, brings the sky back as it was. The skybox change is not saved as a view
+preference. (It began as a View strip button, which the palette showed; the watch holds it now, since it is a
+headset control rather than a view of the mountain.)
 
 - **How the room shows.** In an `immersive-ar` session three clears each frame transparent (`alpha-blend`) when
   the scene background is a plain colour, which the editor's is whenever no sky is drawn. The compositor fills
@@ -135,14 +167,14 @@ skybox change is not saved as a view preference.
   session never shows passthrough. So the button ends the session presenting and requests the other mode
   (`setMixedReality` in `ride/xr/session.ts`). The rig, the edit state and the palette carry across; only the
   session under them changes. The headset shows its own brief transition.
-- **Activation.** Like any `requestSession`, the swap needs user activation. The press that asks for it reaches
-  the page as a synthetic click from the palette, so activation has to come from the real controller `select`
-  behind it, which WebXR allows a browser to count. Whether the Quest browser does so here is untested. The
-  request is made straight away, without awaiting anything first.
+- **Activation.** Like any `requestSession`, the swap needs user activation. The press that asks for it is read
+  from the controller's gamepad state, not a DOM event, so activation has to come from the real controller
+  `select` behind it, which WebXR allows a browser to count. The request follows the old session's end, so that
+  activation must still be live then. Whether the Quest browser allows this here is untested.
 - **Failure.** If the new mode is refused, the old mode is requested again. Only if that is refused too does VR
   end, as it would from the watch.
 - **Scope.** VR always starts as `immersive-vr`. Passthrough is only ever asked for from this button, and stays
-  on until it is turned off or VR ends, riding included.
+  on until it is turned off or VR ends, riding included. Turning it off takes EDIT again.
 
 Edits need a page animation frame to rebuild (`state/rebuild.ts`), and a standalone headset browser may not run
 page frames while it is immersive. The viewport therefore flushes any pending rebuild on every headset frame
@@ -161,7 +193,13 @@ rebuild sites. `app/ride/xr/dom-mirror.ts` does the drawing instead:
    - canvases, as data-URL snapshots;
    - same-origin images and inline `url()` backgrounds, fetched into a data-URL cache that evicts the least
      recently drawn asset once it holds 256;
-   - scroll offsets, emulated by translating each scrolled element's children.
+   - scroll offsets, emulated by translating each scrolled element's children;
+   - every box's size on the page (`pin`). The image lays out at one device pixel per CSS pixel. The page rounds
+     borders to its own device pixels, so at a 1.75 ratio a 1 px border is 0.57 px on the page and 1 px in the
+     image. Unpinned, each bordered button came out almost a pixel wider. The flex spacers gave the growth back,
+     so the top bar's strips drifted left: Mode by 5 px and View by 7 px on the desktop, and further in the
+     headset, where the highlight sat right of the icons and the strips' leading labels were cut off. Pinned, the
+     strips land within half a pixel.
 
    Hidden subtrees are pruned. An element lying wholly outside the drawn region keeps its box but loses its
    contents, so a library scrolled through hundreds of tiles inlines only the art on screen.
@@ -195,15 +233,35 @@ way it follows a mouse.
 Other details:
 
 - The palette is drawn at **0.8 mm per CSS pixel**. That is twice the first pass's size, after it read small in
-  the headset. It is seated about 20 cm out ahead of the left controller, half a metre below it and 15 cm
-  outboard (`XR_EDIT_PALETTE_POSITION`), hangs half its own height below that seat
-  (`XR_EDIT_PALETTE_DROP`), and leans away at 45°. Headset passes moved it there from the wrist, where it filled
-  the view and hung high.
-- **Libraries.** The Texture Library (Paint) and Prop Library (Props) stand on the toolbox's bottom edge, right
-  of it; the colour keys hang from its top edge above them (`layoutWorkBlock`). While a library is closed in its
-  own mode, its pull-up tab (`dock-tab.ts`) stands there instead, turned upright; pressing it opens the library.
-  While the palette is open the page narrows each library to 480 × 400 px just left of the dock, and wraps its
-  header so the ✕ is never scrolled off sideways.
+  the headset.
+- **Around the watch** (`layoutAroundWatch`). The palette lies flat in the watch's plane, and its origin is the
+  watch's top-left corner (`XR_EDIT_PALETTE_SEAT`):
+  - The toolbox stands a gap left of the watch, top edges level.
+  - The status, File / undo, Mode and View strips rise from just above both, left-aligned with the toolbox. They
+    touch, so they read as one bar.
+  - The colour keys stand right of the watch, top edges level.
+  - Everything a mode switch changes grows away from the watch, so nothing above the watch or beside it moves.
+
+  Earlier passes hung the palette on a seat of its own, below the hand and leaning away at 45°. It hung from its
+  bottom edge, lowered by half its height along the grip's Y. Once the placement bar tilted it flat, that drop
+  pointed straight through the palette, so each mode's toolbox height moved it nearer or further. The layout the
+  bar pass settled on (toolbox beside the watch, menus over both) is now built from the watch instead.
+- **Placement bar.** A strip over the palette's top strip carries IN / OUT, LEFT / RIGHT, UP / DOWN, BIGGER /
+  SMALLER, TILT IN / TILT OUT and RESET buttons, and under them a readout of the seat (`ride/xr/palette-seat.ts`).
+  It is for finding the seat by hand in the headset: the readout's position, tilt and mm/px are the constants
+  above.
+  - It shows only while the watch's MOVE UI is on, and is hidden by default.
+  - Moves are 1 cm steps in the left grip's own axes, where IN is toward the eyes. Tilt steps are 2.5°, and TILT
+    IN turns the top edge up toward the eyes. Size steps are 5%; the panels grow away from the watch, which keeps
+    its size.
+  - Holding a button repeats it.
+  - The bar keeps its own size whatever the palette's size.
+  - A moved seat is kept in localStorage with the defaults it was moved from, so it lapses once new defaults ship.
+- **Libraries.** The Texture Library (Paint) and Prop Library (Props) stand right of the toolbox, on its bottom
+  edge. Where that edge is too high for them to clear the watch and the colour keys, they stand lower instead.
+  While a library is closed in its own mode, its pull-up tab (`dock-tab.ts`) stands there instead, turned
+  upright; pressing it opens the library. While the palette is open the page narrows each library to 480 × 400 px
+  just left of the dock, and wraps its header so the ✕ is never scrolled off sideways.
 - **Dropdowns** step to the next option on each press, because a native `<select>` popup is browser UI the
   headset never sees. The status strip names the new choice.
 - While the palette is open, the page gets `body.os-xr-editing`. That clamps `#dock-right` to 720 px so the
@@ -240,6 +298,9 @@ The first decode of a session is slow: 140–700 ms, which includes lil-gui's em
 forced to repaint about seven times a second for 2.5 s: no frame went over 17.5 ms at 60 Hz, and there were no
 long tasks.
 
+Pinning every box (2026-09-30) put the top bar's sync at 2.3–3 ms. Its SVG stayed at 28 KB, because the shared
+declarations live in one rule and only each box's width and height are inline.
+
 ## Known gaps
 
 - **Input the DOM cannot fake.** Text and number entry need a keyboard; numbers can still be scrubbed by
@@ -255,8 +316,6 @@ long tasks.
 - **Floating targets.** The eye-through-the-surface-point rule picks what the dot covers. A handle floating well
   in front of the surface is picked only when the dot sits over it from the eye, not when the laser merely passes
   through it.
-- **Scale and the world.**
-  - Fog distance and depth precision scale with the player.
-  - Remote players keep seeing the body where it was when EDIT opened, at life size.
+- **Scale and the world.** Depth precision scales with the player.
 - **Rendering.** `vh`/`vw` inside a panel resolve against the image, not the window. `:hover` styling is
   replaced by the palette's own highlight.

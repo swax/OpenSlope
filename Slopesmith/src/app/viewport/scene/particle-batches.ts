@@ -55,7 +55,10 @@ const VERTEX_SHADER = `
     bool perspective = projectionMatrix[2][3] == -1.0;
     float depth = perspective ? max(0.1, -mvPosition.z) : 1.0;
     float pixelWidth = depth / max(0.0001, abs(projectionMatrix[1][1]) * halfViewportHeight);
-    mvPosition.xy += position.xy * max(particleSize, pixelWidth);
+    // The world width in view units. A headset rig grown with its player (docs/068) scales the view matrix down
+    // by the player's size; added unscaled, a 20x player saw every sprite 20x as wide, fog banks included.
+    float viewScale = length(viewMatrix[0].xyz);
+    mvPosition.xy += position.xy * max(particleSize * viewScale, pixelWidth);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;

@@ -42,8 +42,9 @@ export function installXrPanelPreview(): { dispose(): void } {
   const status = document.createElement('div');
   Object.assign(status.style, { font: '11px/1.4 ui-monospace, Consolas, monospace', color: '#9fb6cc', marginBottom: '6px',
     whiteSpace: 'pre-wrap', maxWidth: '640px' });
-  // Stacked as the headset stacks them (edit-palette.ts `layout`): File/undo, Mode, View, then toolbox, keys and
-  // libraries in one row. The headset stands a closed library's tab upright; here it stays as drawn.
+  // In the headset's reading order: File/undo, Mode, View, then toolbox, keys and libraries in one row. The headset
+  // lays these out around the watch (edit-palette.ts `layoutAroundWatch`) and stands a closed library's tab
+  // upright; here there is no watch, and a tab stays as drawn.
   const rows = Array.from({ length: 4 }, () => document.createElement('div'));
   for (const row of rows) Object.assign(row.style, { display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '8px' });
   host.append(header, status, ...rows);

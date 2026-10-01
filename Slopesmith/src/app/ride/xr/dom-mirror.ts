@@ -19,6 +19,9 @@
  *  - **Media queries.** Inside an SVG image they are evaluated against the IMAGE's size: a 300 px toolbox would
  *    match `max-width: 760px` and take the phone layout. So the page's CSS is flattened here, against the real
  *    window, and only the rules whose selectors could match the clone are embedded (`selectorRequirements`).
+ *  - **Box sizes.** The image lays out at one device pixel per CSS pixel, and the page's borders are rounded to
+ *    ITS device pixels, so the same markup comes out a little wider in the image. Every box is pinned to its size
+ *    on the page (`pin`).
  *
  * The image covers a REGION of the page (a whole root, or the union of its `data-xr-edit` parts) laid out exactly
  * as it is on screen, so a UV on the drawn texture maps straight back to a client point, and `elementsFromPoint`
@@ -415,11 +418,39 @@ function culled(source: Element, clip: Rect): source is HTMLElement {
 function hollow(source: HTMLElement, copy: Element) {
   const box = copy as HTMLElement;
   box.replaceChildren();
-  for (const [name, value] of [['box-sizing', 'border-box'], ['width', `${source.offsetWidth}px`],
-    ['height', `${source.offsetHeight}px`], ['visibility', 'hidden'], ['background-image', 'none']]) {
-    box.style.setProperty(name, value, 'important');
+  if (!pin(source, box)) {
+    // A transformed box or a table row: offsetWidth/Height still give its layout size, rounded to whole pixels.
+    important(box, { 'box-sizing': 'border-box', width: `${source.offsetWidth}px`, height: `${source.offsetHeight}px` });
   }
+  important(box, { visibility: 'hidden', 'background-image': 'none' });
 }
+
+/** Displays whose width and height mean nothing: inline runs, box-less wrappers, and table rows and groups. */
+const UNPINNABLE = /^(inline|contents|none|table-(row|row-group|header-group|footer-group|column|column-group|caption))$/;
+const px = (value: number) => `${Math.round(value * 1000) / 1000}px`;
+
+/**
+ * Fix a cloned element's border box at the size its source has on the page. The image lays out at one device
+ * pixel per CSS pixel, and the page usually does not. Chrome rounds borders down to whole device pixels, so a 1 px
+ * border is 0.57 px on a 1.75× screen but a full 1 px in the image. Every bordered button in a row then comes out
+ * wider, and the row drifts: 5–7 px across the top bar, to the left, because its flex spacers give the growth
+ * back. With every box pinned, a border (or a fallback font, an image's intrinsic size, a `vw` length) can only
+ * change what is inside its own box, and every control stays where the page, and so the hit mapping, has it.
+ * False when the source has no box that can be pinned, or is transformed so its client rect is not its size.
+ */
+function pin(source: HTMLElement, copy: HTMLElement): boolean {
+  const style = getComputedStyle(source);
+  if (UNPINNABLE.test(style.display) || style.transform !== 'none') return false;
+  const r = source.getBoundingClientRect();
+  // The size inline; the rest, the same for every pinned box, once in PINNED_CSS (a smaller image to decode).
+  copy.setAttribute(PIN_ATTRIBUTE, '');
+  important(copy, { width: px(r.width), height: px(r.height) });
+  return true;
+}
+const PIN_ATTRIBUTE = 'data-xr-pin';
+/** An auto minimum is the content's size, which the image's thicker borders make larger than the pinned box. */
+const PINNED_CSS = `[${PIN_ATTRIBUTE}]{box-sizing:border-box!important;flex:none!important;min-width:0!important;`
+  + 'min-height:0!important;max-width:none!important;max-height:none!important}';
 
 function snapshot(root: HTMLElement, now: number, clip: Rect): { clone: HTMLElement; nodes: number } {
   const clone = root.cloneNode(true) as HTMLElement;
@@ -427,6 +458,7 @@ function snapshot(root: HTMLElement, now: number, clip: Rect): { clone: HTMLElem
   const visit = (source: Element, copy: Element) => {
     nodes++;
     const baked = bake(source, copy, now);
+    if (source instanceof HTMLElement && baked instanceof HTMLElement && source !== root) pin(source, baked);
     if (NO_DESCEND.has(source.localName) || baked !== copy) return;
     const sources = Array.from(source.children), copies = Array.from(copy.children);
     for (let i = 0; i < sources.length && i < copies.length; i++) {
@@ -509,6 +541,7 @@ function buildSvg(root: HTMLElement, clone: HTMLElement, rootRect: Rect, region:
     css += rule.text + '\n';
     cssRules++;
   }
+  css += PINNED_CSS;
   const head = document.createElement('head');
   const style = document.createElement('style');
   style.textContent = css;

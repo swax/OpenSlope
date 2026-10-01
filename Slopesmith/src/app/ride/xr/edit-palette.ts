@@ -3,6 +3,10 @@ import {
   createDomMirror, createDomPointer, partUvRect, type DomMirror, type DomMirrorSpec, type DomPointerTarget, type Rect,
 } from './dom-mirror';
 import { normalizeAxis } from './input';
+import { XR_WATCH_HEIGHT, XR_WATCH_POSITION, XR_WATCH_TILT, XR_WATCH_WIDTH } from './hud';
+import {
+  createXrPaletteSeatBar, loadPaletteSeat, samePaletteSeat, savePaletteSeat, stepPaletteSeat, type XrPaletteSeat,
+} from './palette-seat';
 
 /**
  * The wrist EDIT palette (docs/068): the editor's real file/undo, mode and view buttons, its current toolbox and
@@ -41,24 +45,29 @@ const TAB_ROLL = -Math.PI / 2;
 
 /**
  * Metres per CSS pixel. 0.8 mm — doubled after the first headset pass, where 0.4 mm read small — puts the
- * toolbox's 11–12 px text about 9 mm tall and the 300 px toolbox 24 cm wide. The palette is seated further out
- * to match (below), so it grows in reach more than in how much of the view it fills.
+ * toolbox's 11–12 px text about 9 mm tall and the 300 px toolbox 24 cm wide.
  */
 export const XR_EDIT_METRES_PER_PX = 0.0008;
 /** Space between panels on the palette. */
 const GAP = 0.016;
 /** Full right-stick deflection scrolls this many CSS pixels a second. */
 const SCROLL_PX_PER_S = 900;
-/** Seat on the left controller, in its grip space (+X toward the body, +Y the back of the hand, −Z forward):
- *  outboard of the hand, well below it and a little out ahead, leaning away at 45° so its face looks up and
- *  back at the eyes. The palette's bottom edge sits here, lowered by `XR_EDIT_PALETTE_DROP` of its own height;
- *  the rest rises and recedes from it. Headset passes moved it from the wrist ([0.14, 0.1, −0.22]) a foot
- *  further out and half its height down, then two feet down and a foot left (at the wrist it filled the view
- *  and hung high), then back in a foot. */
-export const XR_EDIT_PALETTE_POSITION: readonly [number, number, number] = [-0.16, -0.51, -0.22];
-export const XR_EDIT_PALETTE_TILT = -Math.PI / 4;
-/** How far below the seat the palette hangs, as a fraction of its laid-out height (grip −Y). */
-export const XR_EDIT_PALETTE_DROP = 0.5;
+/**
+ * Where the palette sits on the left controller, in its grip space (+X toward the body, +Y the back of the hand,
+ * −Z toward the fingers). The palette's origin is the watch's top-left corner (`layoutAroundWatch`), so by default
+ * it lies in the watch's own plane and is laid out around it.
+ *
+ * Earlier headset passes hung it on a seat of its own, below the hand and leaning away at 45°. The placement-bar
+ * pass (2026-09-30) brought it flat into the watch's plane, with the toolbox just left of the watch and the menus
+ * over both. That is now the layout by construction, not by numbers. The placement bar (palette-seat.ts) still
+ * moves, sizes and tilts it from here in the headset, and reads out where it went.
+ */
+export const XR_EDIT_PALETTE_SEAT: Readonly<XrPaletteSeat> = {
+  x: XR_WATCH_POSITION[0] - XR_WATCH_WIDTH / 2,
+  y: XR_WATCH_POSITION[1] + Math.cos(XR_WATCH_TILT) * XR_WATCH_HEIGHT / 2,
+  z: XR_WATCH_POSITION[2] + Math.sin(XR_WATCH_TILT) * XR_WATCH_HEIGHT / 2,
+  tilt: XR_WATCH_TILT, scale: 1,
+};
 /** Status strip along the palette's top: two lines of 24 px text. */
 const STATUS_W = 1024, STATUS_H = 72, STATUS_METRES = 0.44;
 const STATUS_HZ = 2;
@@ -68,72 +77,65 @@ const RENDER_ORDER = 32;
 export interface PaletteItem { w: number; h: number }
 export interface PalettePlacement { x: number; y: number; w: number; h: number }
 
-/**
- * Rows top to bottom, items left to right; every row starts at the same left edge and items top-align within
- * their row. Placements are item CENTRES in palette-local metres, with the origin at the bottom-centre of the
- * whole block, so the palette grows up and out from the wrist it hangs off. Empty slots and empty rows take no
- * space.
- */
-export function layoutPaletteRows(rows: ReadonlyArray<ReadonlyArray<PaletteItem | null>>, gap: number): {
-  placements: (PalettePlacement | null)[][]; width: number; height: number;
-} {
-  const sizes = rows.map(row => {
-    const items = row.filter((item): item is PaletteItem => !!item);
-    return {
-      w: items.reduce((sum, item) => sum + item.w, 0) + gap * Math.max(0, items.length - 1),
-      h: items.reduce((max, item) => Math.max(max, item.h), 0),
-    };
-  });
-  const used = sizes.filter(size => size.h > 0);
-  const width = used.reduce((max, size) => Math.max(max, size.w), 0);
-  const height = used.reduce((sum, size) => sum + size.h, 0) + gap * Math.max(0, used.length - 1);
-  let top = height;
-  const placements = rows.map((row, index) => {
-    if (sizes[index].h <= 0) return row.map(() => null);
-    let x = -width / 2;
-    const placed = row.map(item => {
-      if (!item) return null;
-      const placement = { x: x + item.w / 2, y: top - item.h / 2, w: item.w, h: item.h };
-      x += item.w + gap;
-      return placement;
-    });
-    top -= sizes[index].h + gap;
-    return placed;
-  });
-  return { placements, width, height };
+export interface WatchLayout {
+  stack: (PalettePlacement | null)[];
+  tools: PalettePlacement | null;
+  legend: PalettePlacement | null;
+  docked: (PalettePlacement | null)[];
+  /** The extent of everything laid out, the watch included. */
+  left: number; right: number; top: number; bottom: number;
 }
 
 /**
- * The palette's working block: the toolbox on the left; right of it, the colour keys hang from its top edge and
- * the docked items — an open library, or a closed one's tab — stand on its bottom edge, side by side. If the
- * toolbox is too short for both, the block grows downward so the docked items clear the keys. Placements are
- * item CENTRES relative to the block's own centre, in the palette's axes (+Y up).
+ * The palette laid out around the watch, in the watch's plane. Placements are item CENTRES in metres, with the
+ * origin at the watch's top-left corner and +Y toward the watch's top edge:
+ *
+ * - the toolbox stands left of the watch, top edges level;
+ * - the `stack` rows (status, File, Mode, View, top to bottom) rise from just above both, left-aligned with the
+ *   toolbox and touching, so the strips read as one bar;
+ * - the colour keys stand right of the watch, top edges level;
+ * - the docked items (an open library, or a closed one's tab) stand side by side right of the toolbox, on its
+ *   bottom edge, or lower where that edge is too high for them to clear the watch and the keys.
+ *
+ * A mode switch changes the toolbox, the keys and the docked items, and each only grows away from the watch.
+ * Nothing above the watch or beside it moves. Missing items take no space.
  */
-export function layoutWorkBlock(tools: PaletteItem | null, legend: PaletteItem | null,
-                                docked: ReadonlyArray<PaletteItem | null>, gap: number): {
-  tools: PalettePlacement | null; legend: PalettePlacement | null; docked: (PalettePlacement | null)[];
-  width: number; height: number;
-} {
-  const dockItems = docked.filter((item): item is PaletteItem => !!item);
-  const dockW = dockItems.reduce((sum, item) => sum + item.w, 0) + gap * Math.max(0, dockItems.length - 1);
-  const dockH = dockItems.reduce((max, item) => Math.max(max, item.h), 0);
-  const columnW = Math.max(legend?.w ?? 0, dockW);
-  const columnH = (legend?.h ?? 0) + (legend && dockH > 0 ? gap : 0) + dockH;
-  const left = tools ? tools.w + (columnW > 0 ? gap : 0) : 0;
-  const width = left + columnW, height = Math.max(tools?.h ?? 0, columnH);
+export function layoutAroundWatch(parts: {
+  stack: ReadonlyArray<PaletteItem | null>; tools: PaletteItem | null; legend: PaletteItem | null;
+  docked: ReadonlyArray<PaletteItem | null>;
+}, watch: PaletteItem, gap: number): WatchLayout {
+  const { tools, legend } = parts;
   const at = (x: number, top: number, item: PaletteItem): PalettePlacement =>
-    ({ x: x + item.w / 2 - width / 2, y: height / 2 - top - item.h / 2, w: item.w, h: item.h });
-  let x = left;
+    ({ x: x + item.w / 2, y: top - item.h / 2, w: item.w, h: item.h });
+  const left = tools ? -gap - tools.w : 0;
+  let right = watch.w, bottom = -watch.h;
+  let rise = gap, top = 0; // the bottom of the next stack row up, and the top of the stack so far
+  const stack: (PalettePlacement | null)[] = parts.stack.map(() => null);
+  for (let i = parts.stack.length - 1; i >= 0; i--) {
+    const item = parts.stack[i];
+    if (!item) continue;
+    stack[i] = at(left, rise + item.h, item);
+    right = Math.max(right, left + item.w);
+    rise += item.h;
+    top = rise;
+  }
+  const legendAt = legend && at(watch.w + gap, 0, legend);
+  if (legend) { right = Math.max(right, watch.w + gap + legend.w); bottom = Math.min(bottom, -legend.h); }
+  if (tools) bottom = Math.min(bottom, -tools.h);
+  const dockH = parts.docked.reduce((max, item) => Math.max(max, item?.h ?? 0), 0);
+  const floor = Math.min(-(tools?.h ?? 0), -Math.max(watch.h, legend?.h ?? 0) - gap - dockH);
+  let x = 0;
+  const docked = parts.docked.map(item => {
+    if (!item) return null;
+    const placement = at(x, floor + item.h, item);
+    right = Math.max(right, x + item.w);
+    bottom = Math.min(bottom, floor);
+    x += item.w + gap;
+    return placement;
+  });
   return {
-    tools: tools && at(0, 0, tools),
-    legend: legend && at(left, 0, legend),
-    docked: docked.map(item => {
-      if (!item) return null;
-      const placement = at(x, height - item.h, item);
-      x += item.w + gap;
-      return placement;
-    }),
-    width, height,
+    stack, tools: tools && at(left, 0, tools), legend: legendAt, docked,
+    left, right, top, bottom,
   };
 }
 
@@ -159,6 +161,12 @@ export function createXrEditPalette() {
   const object = new THREE.Group();
   object.name = 'xr-edit-palette';
   object.visible = false;
+  let seat = loadPaletteSeat(XR_EDIT_PALETTE_SEAT);
+  // The placement bar sits over the top strip and keeps its own size, however the palette is sized. It shows
+  // only while the watch's MOVE UI is on (`setPlacing`).
+  const seatBar = createXrPaletteSeatBar({ metresPerPx: XR_EDIT_METRES_PER_PX, renderOrder: RENDER_ORDER });
+  seatBar.object.visible = false;
+  object.add(seatBar.object);
   const pointer = createDomPointer();
   // Unbounded: the palette rides the rig, which grows with the player (world-grab.ts).
   const raycaster = new THREE.Raycaster();
@@ -166,7 +174,7 @@ export function createXrEditPalette() {
     id: spec.id, mirror: createDomMirror(spec), texture: null, textureSize: [0, 0], version: -1, planes: new Map(),
   }));
   const hitTargets: THREE.Object3D[] = [];
-  let open = false, relayout = true, cursor = 0, height = 0;
+  let open = false, relayout = true, cursor = 0, width = 0, height = 0;
   let dragPlane: PartPlane | null = null, hoverPlane: PartPlane | null = null;
 
   // Hover / press frame over the control a trigger would act on. Parented to whichever part plane it is on, in
@@ -263,8 +271,9 @@ export function createXrEditPalette() {
     return plane?.mesh.visible ? plane : null;
   }
 
+  /** A panel's size on the palette. The seat's scale sizes the panels; the watch they surround keeps its own. */
   const size = (plane: PartPlane | null): PaletteItem | null => plane && {
-    w: plane.rect.width * XR_EDIT_METRES_PER_PX, h: plane.rect.height * XR_EDIT_METRES_PER_PX,
+    w: plane.rect.width * XR_EDIT_METRES_PER_PX * seat.scale, h: plane.rect.height * XR_EDIT_METRES_PER_PX * seat.scale,
   };
 
   /** A tab's footprint once it stands upright: its page width becomes its height. */
@@ -273,39 +282,37 @@ export function createXrEditPalette() {
     return item && { w: item.h, h: item.w };
   };
 
-  /** Stacked the way the desktop reads top to bottom: File/undo, then Mode, then View, then the working block —
-   *  the toolbox, its colour keys, and the libraries docked to its bottom right (`layoutWorkBlock`). */
+  /** Around the watch (`layoutAroundWatch`): the toolbox left of it, the status, File/undo, Mode and View strips
+   *  above both, the colour keys right of it, and the libraries right of the toolbox below it. */
   function layout() {
     relayout = false;
     const file = visiblePlane('bar', 'file'), mode = visiblePlane('bar', 'mode'), view = visiblePlane('bar', 'view');
     const tools = visiblePlane('tools', null), legend = visiblePlane('legend', 'legend');
     const libraries = [visiblePlane('texlib', null), visiblePlane('proplib', null)];
     const tabs = [visiblePlane('texlib-tab', null), visiblePlane('proplib-tab', null)];
-    const work = layoutWorkBlock(size(tools), size(legend), [...libraries.map(size), ...tabs.map(turned)], GAP);
-    const statusItem = { w: STATUS_METRES, h: STATUS_METRES * STATUS_H / STATUS_W };
-    const rows = [[statusItem], [size(file)], [size(mode)], [size(view)],
-      [work.height > 0 ? { w: work.width, h: work.height } : null]];
-    const laid = layoutPaletteRows(rows, GAP);
-    const { placements } = laid;
-    height = laid.height;
-    const place = (mesh: THREE.Object3D | undefined, at: PalettePlacement | null, dx = 0, dy = 0, roll = 0) => {
+    const statusW = STATUS_METRES * seat.scale;
+    const laid = layoutAroundWatch({
+      stack: [{ w: statusW, h: statusW * STATUS_H / STATUS_W }, size(file), size(mode), size(view)],
+      tools: size(tools), legend: size(legend), docked: [...libraries.map(size), ...tabs.map(turned)],
+    }, { w: XR_WATCH_WIDTH, h: XR_WATCH_HEIGHT }, GAP);
+    width = laid.right - laid.left;
+    height = laid.top - laid.bottom;
+    const place = (mesh: THREE.Object3D | undefined, at: PalettePlacement | null, roll = 0) => {
       if (!mesh || !at) return;
-      mesh.position.set(at.x + dx, at.y + dy, 0);
+      mesh.position.set(at.x, at.y, 0);
       mesh.rotation.set(0, 0, roll);
       // Scale is the plane's own width and height; a rolled plane's footprint has them swapped.
       if (roll) mesh.scale.set(at.h, at.w, 1); else mesh.scale.set(at.w, at.h, 1);
     };
-    place(status, placements[0][0]);
-    place(file?.mesh, placements[1][0]);
-    place(mode?.mesh, placements[2][0]);
-    place(view?.mesh, placements[3][0]);
-    const block = placements[4][0];
-    if (!block) return;
-    place(tools?.mesh, work.tools, block.x, block.y);
-    place(legend?.mesh, work.legend, block.x, block.y);
-    libraries.forEach((plane, index) => place(plane?.mesh, work.docked[index], block.x, block.y));
-    tabs.forEach((plane, index) =>
-      place(plane?.mesh, work.docked[libraries.length + index], block.x, block.y, TAB_ROLL));
+    place(status, laid.stack[0]);
+    place(file?.mesh, laid.stack[1]);
+    place(mode?.mesh, laid.stack[2]);
+    place(view?.mesh, laid.stack[3]);
+    place(tools?.mesh, laid.tools);
+    place(legend?.mesh, laid.legend);
+    libraries.forEach((plane, index) => place(plane?.mesh, laid.docked[index]));
+    tabs.forEach((plane, index) => place(plane?.mesh, laid.docked[libraries.length + index], TAB_ROLL));
+    seatBar.object.position.set(laid.left + seatBar.width / 2, laid.top + GAP + seatBar.height / 2, 0);
   }
 
   /** The texture UV at a point in a part plane's unit square (−0.5..0.5), unclamped: off the edge is allowed. */
@@ -374,8 +381,11 @@ export function createXrEditPalette() {
     point: THREE.Vector3 | null; consumed: boolean;
   } {
     if (!open) return { point: null, consumed: false };
-    const hit = ray ? cast(ray) : null;
-    let target = hit?.target ?? null, point = hit?.point ?? null;
+    // The placement bar lies below every panel, so nothing else can be under the laser there. A drag that began
+    // on a panel keeps that panel even while the hand strays across the bar.
+    const bar = ray && !pointer.dragging ? seatBar.cast(ray) : null;
+    const hit = ray && !bar ? cast(ray) : null;
+    let target = hit?.target ?? null, point = hit?.point ?? bar?.point ?? null;
     if (!hit && ray && pointer.dragging && dragPlane) {
       const extended = extend(ray, dragPlane);
       if (extended) { target = extended.target; point = extended.point; }
@@ -385,15 +395,23 @@ export function createXrEditPalette() {
     pointer.update(target, left, right);
     if (!wasDragging && pointer.dragging) dragPlane = hit?.plane ?? null;
     if (!pointer.dragging) dragPlane = null;
+    const nudge = seatBar.press(bar?.action ?? null, left, dt);
+    if (nudge) {
+      const resized = stepPaletteSeat(seat, nudge, XR_EDIT_PALETTE_SEAT);
+      if (resized.scale !== seat.scale) relayout = true;
+      seat = resized;
+      savePaletteSeat(seat, XR_EDIT_PALETTE_SEAT);
+    }
     const axis = normalizeAxis(stick);
     if (hit && axis) pointer.scroll(hit.target, axis * SCROLL_PX_PER_S * Math.min(dt, 0.1));
     updateHighlight();
-    return { point, consumed: !!hit || pointer.dragging };
+    return { point, consumed: !!hit || !!bar || pointer.dragging };
   }
 
-  /** Whether the ray meets a panel, without acting on it: the host uses it to decide who a new press belongs to. */
+  /** Whether the ray meets a panel or the placement bar, without acting on it: the host uses it to decide who a
+   *  new press belongs to. */
   function hits(ray: THREE.Ray): boolean {
-    return open && cast(ray) !== null;
+    return open && (cast(ray) !== null || seatBar.cast(ray) !== null);
   }
 
   /** Per frame, after the rig is seated: at most ONE panel serializes per frame, then textures follow. */
@@ -404,6 +422,7 @@ export function createXrEditPalette() {
       if (slots[index].mirror.tick(now, true)) { cursor = (index + 1) % slots.length; break; }
     }
     sync();
+    if (seatBar.object.visible) seatBar.paint(seat, !samePaletteSeat(seat, XR_EDIT_PALETTE_SEAT), { width, height });
     if (now >= nextStatus) { nextStatus = now + 1000 / STATUS_HZ; paintStatus(now); }
     if (now >= nextLog) { nextLog = now + LOG_MS; logStats(); }
   }
@@ -464,6 +483,7 @@ export function createXrEditPalette() {
     } else {
       cancelAnimationFrame(rafHandle);
       pointer.reset();
+      seatBar.reset();
       highlight.visible = false;
       dragPlane = hoverPlane = null;
     }
@@ -478,14 +498,21 @@ export function createXrEditPalette() {
     }
     highlight.geometry.dispose(); highlightMaterial.dispose();
     status.geometry.dispose(); status.material.dispose(); statusTexture.dispose();
+    seatBar.dispose();
     object.removeFromParent();
   }
 
   return {
     object,
     get open() { return open; },
-    /** The laid-out block's height in palette metres, for the seat's drop. */
-    get height() { return height; },
+    /** The placement bar is showing: the watch's MOVE UI while EDIT is on. */
+    get placing() { return seatBar.object.visible; },
+    setPlacing(on: boolean) {
+      seatBar.object.visible = on;
+      if (!on) seatBar.reset();
+    },
+    /** Where the palette sits on the left controller: the defaults, or wherever the placement bar has moved it. */
+    get seat(): Readonly<XrPaletteSeat> { return seat; },
     setOpen, update, hits, tick, dispose,
   };
 }

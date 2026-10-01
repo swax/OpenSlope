@@ -409,7 +409,8 @@ Either trigger is the state-aware board verb: mount or re-equip while on foot, d
 on **left X** while riding, using the nearest-course/breadcrumb recovery. On foot, **left X spawns the board**
 on the snow ahead without moving the player. **RESTART** in the wrist menu is the full gate reset: it abandons
 the current result, puts the rider at the top with the board ahead, resets the opponent field, and starts a
-fresh Race/Showoff run when the board is next mounted. **Left Y shows or hides the complete wrist menu** in either
+fresh Race/Showoff run when the board is next mounted. While the wrist's EDIT is on, RESTART and 3RD PERSON give
+way to editing buttons (docs/068). **Left Y shows or hides the complete wrist menu** in either
 locomotion state; the menu starts visible on each headset session. Fixed foveation is requested at **1 (full)**
 when every XR layer is created rather than occupying a controller button.
 

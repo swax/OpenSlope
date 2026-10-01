@@ -43,8 +43,6 @@ export type TopBarDeps = {
   toggleLights: () => void; getLightRigVisible: () => boolean;
   toggleSunLight: () => void; getSunOn: () => boolean;
   toggleSkybox: () => void; getSkyboxVisible: () => boolean;
-  /** Headset passthrough behind the mountain (docs/068); offered only in a headset session that supports it. */
-  toggleMixedReality: () => void; getMixedRealityOn: () => boolean; mixedRealityAvailable: () => boolean;
   toggleCage: () => void;
   toggleFOverlay: () => void; getFOverlayOn: () => boolean;
   focusActive: () => void;
@@ -70,8 +68,7 @@ export function createTopBar(deps: TopBarDeps) {
     undoSummary, redoSummary, recentUndo, recentRedo, historyEntries, jumpHistory,
     toggleProps, getPropsVisible, toggleTricks, getTricksVisible, toggleWorldEffects, getWorldEffectsVisible,
     toggleLights, getLightRigVisible,
-    toggleSunLight, getSunOn, toggleSkybox, getSkyboxVisible, toggleMixedReality, getMixedRealityOn,
-    mixedRealityAvailable, toggleCage,
+    toggleSunLight, getSunOn, toggleSkybox, getSkyboxVisible, toggleCage,
     toggleFOverlay, getFOverlayOn, focusActive, newMountainDialog, canCreateMountains, canManageMountain,
     openProjectDialog, historyDialog, renameMountain,
     closePreview, isPreviewing, conflictDialog, hasConflict, duplicateMountain, deleteMountain,
@@ -164,13 +161,12 @@ export function createTopBar(deps: TopBarDeps) {
   //  • Lighting: the complete lit result — sun + sky fill + shadow/AO and, when enabled in Scene ▸ Lighting,
   //    the course's local lights. Local lights are subordinate because their pools need the lit terrain.
   //  • Skybox: the backdrop belonging to the camera-nearest mountain; Test rides lock it to their target.
-  //  • Mixed reality: only in a headset that offers passthrough (docs/068) — the room in place of the sky.
-  // (The Add light button lives in the Prop Tools' add row with Add rail / Add gem — see addTrickRow.)
+  // (The Add light button lives in the Prop Tools' add row with Add rail / Add gem — see addTrickRow. Mixed
+  // reality, the headset's room in place of the sky, is on the headset's watch: docs/068.)
   const viewLighting = iconBar([
     { icon: VIEW_ICON.lights, label: 'Sources', title: 'Sources — show clickable markers at every light, sound emitter, and video screen.', onClick: toggleLights, active: () => getLightRigVisible() },
     { icon: VIEW_ICON.light, label: 'Lighting', title: 'Lighting — preview sun, sky fill, baked shadows, and local lights (tune in Scene ▸ Lighting).', onClick: toggleSunLight, active: () => getSunOn() },
     { icon: VIEW_ICON.skybox, label: 'Skybox', title: 'Skybox — show the backdrop for the nearest mountain; a Test ride stays locked to its target.', onClick: toggleSkybox, active: () => getSkyboxVisible() },
-    { icon: VIEW_ICON.mixedReality, label: 'Mixed reality', title: 'Mixed reality — the headset’s passthrough cameras behind the mountain, with the skybox off.', onClick: toggleMixedReality, active: () => getMixedRealityOn(), visible: () => mixedRealityAvailable() },
   ]);
   // Tile-orientation overlay, left of the shade controls. Patch/edge sub-cages live in Edit ▸ Visibility
   // as a focused, sticky working set, not a mountain-wide top-bar toggle. Reading the F glyphs: texture

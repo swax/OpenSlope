@@ -34,16 +34,31 @@ const W = 512, PERF_H = 752, COMPACT_H = 486;
 const PERF_W = 0.48;
 /** A compact 18 cm wrist computer: large enough to read in a headset, but no longer a dashboard on the arm. */
 const COMPACT_W = 0.18;
-export type XrHudAction = 'calibrate' | 'restart' | 'stats' | 'view' | 'controls' | 'edit' | 'exit';
+/** The watch as worn, in metres and in the left grip's space (session `placeWatch`): lying on top of the wrist,
+ *  face up, its top edge toward the fingers. The EDIT palette is laid out around it (edit-palette.ts). */
+export const XR_WATCH_WIDTH = COMPACT_W, XR_WATCH_HEIGHT = COMPACT_W * COMPACT_H / W;
+export const XR_WATCH_POSITION: readonly [number, number, number] = [0, 0.045, 0.015];
+export const XR_WATCH_TILT = -Math.PI / 2;
+export type XrHudAction = 'calibrate' | 'restart' | 'stats' | 'view' | 'controls' | 'edit' | 'exit' | 'mixed' | 'place';
 export type XrControlsMode = 'ride' | 'foot' | 'edit';
+/** What the watch shows while EDIT is on (docs/068), where two of its buttons take other jobs. */
+export interface XrWatchEdit {
+  /** Mixed reality is on, and whether this headset offers it at all. */
+  mixedReality: boolean;
+  mixedRealityAvailable: boolean;
+  /** The palette's placement bar is showing. */
+  placing: boolean;
+}
 /** Four broad rows on the compact watch. Gaps remain after the invisible hit padding, so actions cannot overlap.
- *  EDIT opens the wrist palette of real editor panels (docs/068); like T-POSE it is an on-foot action. */
-const WATCH_BUTTONS: ReadonlyArray<{ action: XrHudAction; x: number; y: number; w: number; h: number }> = [
+ *  EDIT opens the wrist palette of real editor panels (docs/068); like T-POSE it is an on-foot action. While it
+ *  is on, a button's `edit` action replaces its own: RESTART shows the palette's placement bar (MOVE UI), and the
+ *  third-person toggle becomes MIXED REALITY. */
+const WATCH_BUTTONS: ReadonlyArray<{ action: XrHudAction; edit?: XrHudAction; x: number; y: number; w: number; h: number }> = [
   { action: 'calibrate', x: 18, y: 108, w: 476, h: 52 },
-  { action: 'restart', x: 18, y: 172, w: 232, h: 52 },
+  { action: 'restart', edit: 'place', x: 18, y: 172, w: 232, h: 52 },
   { action: 'exit', x: 262, y: 172, w: 232, h: 52 },
   { action: 'stats', x: 18, y: 236, w: 232, h: 52 },
-  { action: 'view', x: 262, y: 236, w: 232, h: 52 },
+  { action: 'view', edit: 'mixed', x: 262, y: 236, w: 232, h: 52 },
   { action: 'controls', x: 18, y: 300, w: 232, h: 52 },
   { action: 'edit', x: 262, y: 300, w: 232, h: 52 },
 ];
@@ -191,16 +206,20 @@ export interface XrHudPerf {
 }
 
 /** Convert compact-panel UV into an action. Exported so its hit geometry stays headless-tested. */
-export function xrHudActionAt(showPerf: boolean, uv: THREE.Vector2, controlsOpen = false): XrHudAction | null {
+export function xrHudActionAt(showPerf: boolean, uv: THREE.Vector2, controlsOpen = false,
+                              editing = false): XrHudAction | null {
   if (showPerf) return null;
   const x = uv.x * W, y = (1 - uv.y) * COMPACT_H;
   const buttons = controlsOpen ? [CONTROLS_BACK_BUTTON] : WATCH_BUTTONS;
   for (const b of buttons) {
     if (x >= b.x - WATCH_HIT_PAD && x <= b.x + b.w + WATCH_HIT_PAD
-      && y >= b.y - WATCH_HIT_PAD && y <= b.y + b.h + WATCH_HIT_PAD) return b.action;
+      && y >= b.y - WATCH_HIT_PAD && y <= b.y + b.h + WATCH_HIT_PAD) return watchAction(b, editing);
   }
   return null;
 }
+
+const watchAction = (button: { action: XrHudAction; edit?: XrHudAction }, editing: boolean): XrHudAction =>
+  editing && button.edit ? button.edit : button.action;
 
 export function createXrHud(label: string, showPerf = true) {
   const height = showPerf ? PERF_H : COMPACT_H;
@@ -234,7 +253,8 @@ export function createXrHud(label: string, showPerf = true) {
   function draw(now: number, state: XrHudState | null, stats: XrHudPerf | null,
                 calibration: XrHudCalibration | null = null, statsEnabled = false, thirdPerson = false,
                 run: RideRunStatus | null = null, controlsOpen = false,
-                controlsMode: XrControlsMode = state ? 'ride' : 'foot', carrying = false, editOpen = false) {
+                controlsMode: XrControlsMode = state ? 'ride' : 'foot', carrying = false,
+                edit: XrWatchEdit | null = null) {
     if (now < nextPaint) return;
     nextPaint = now + 1000 / REPAINT_HZ;
 
@@ -316,7 +336,7 @@ export function createXrHud(label: string, showPerf = true) {
       }
     }
 
-    if (!showPerf && calibration) drawWatchMenu(ctx, calibration, !state, statsEnabled, thirdPerson, editOpen);
+    if (!showPerf && calibration) drawWatchMenu(ctx, calibration, !state, statsEnabled, thirdPerson, edit);
     // The dots are the BOARD run's energy, not Superman fuel. Hide them off-board, where boost is unlimited,
     // even if an airborne grab is retaining the run clock and score for a catch.
     if (!showPerf && state && run?.phase === 'running') drawBoostMeter(ctx, run.boostMeter);
@@ -332,8 +352,8 @@ export function createXrHud(label: string, showPerf = true) {
   /** The one line of guidance for the state the rider is in; the session sets it as that state changes. */
   function setHint(text: string) { hint = text; }
 
-  function actionAt(uv: THREE.Vector2, controlsOpen = false): XrHudAction | null {
-    return xrHudActionAt(showPerf, uv, controlsOpen);
+  function actionAt(uv: THREE.Vector2, controlsOpen = false, editing = false): XrHudAction | null {
+    return xrHudActionAt(showPerf, uv, controlsOpen, editing);
   }
 
   /** Menu page changes should paint on the next frame instead of waiting behind the five-Hz data throttle. */
@@ -489,16 +509,19 @@ function drawPerf(ctx: CanvasRenderingContext2D, s: XrHudPerf) {
 }
 
 function drawWatchMenu(ctx: CanvasRenderingContext2D, calibration: XrHudCalibration, onFoot: boolean,
-                       statsEnabled: boolean, thirdPerson: boolean, editOpen: boolean) {
+                       statsEnabled: boolean, thirdPerson: boolean, edit: XrWatchEdit | null) {
   for (const button of WATCH_BUTTONS) {
-    const enabled = button.action === 'restart' || button.action === 'stats' || button.action === 'view'
-      || button.action === 'controls' || button.action === 'exit' || onFoot;
-    const calibrating = button.action === 'calibrate' && calibration.phase === 'countdown';
-    const saved = button.action === 'calibrate' && calibration.phase === 'saved';
-    const error = button.action === 'calibrate' && calibration.phase === 'error';
-    const active = (button.action === 'stats' && statsEnabled) || (button.action === 'view' && thirdPerson)
-      || (button.action === 'edit' && editOpen);
-    const danger = button.action === 'exit';
+    const action = watchAction(button, !!edit);
+    const enabled = action === 'mixed' ? !!edit?.mixedRealityAvailable
+      : action === 'restart' || action === 'stats' || action === 'view' || action === 'controls' || action === 'exit'
+        || action === 'place' || onFoot;
+    const calibrating = action === 'calibrate' && calibration.phase === 'countdown';
+    const saved = action === 'calibrate' && calibration.phase === 'saved';
+    const error = action === 'calibrate' && calibration.phase === 'error';
+    const active = (action === 'stats' && statsEnabled) || (action === 'view' && thirdPerson)
+      || (action === 'edit' && !!edit) || (action === 'mixed' && !!edit?.mixedReality)
+      || (action === 'place' && !!edit?.placing);
+    const danger = action === 'exit';
     ctx.fillStyle = !enabled ? 'rgba(110,125,140,0.12)'
       : error || danger ? 'rgba(238,91,91,0.25)'
         : saved || active ? 'rgba(66,185,114,0.30)'
@@ -509,13 +532,16 @@ function drawWatchMenu(ctx: CanvasRenderingContext2D, calibration: XrHudCalibrat
       : error || danger ? '#ff8d8d' : saved || active ? '#74e6a3' : '#8fd7ff';
     ctx.lineWidth = 2;
     ctx.stroke();
-    let title = button.action === 'calibrate' ? 'T-POSE'
-      : button.action === 'restart' ? 'RESTART'
-          : button.action === 'stats' ? `VR STATS ${statsEnabled ? 'ON' : 'OFF'}`
-            : button.action === 'view' ? `3RD PERSON ${thirdPerson ? 'ON' : 'OFF'}`
-              : button.action === 'controls' ? 'CONTROLS'
-                : button.action === 'edit' ? `EDIT ${editOpen ? 'ON' : 'OFF'}` : 'EXIT VR';
-    if (button.action === 'calibrate') {
+    const onOff = (on: boolean) => on ? 'ON' : 'OFF';
+    let title = action === 'calibrate' ? 'T-POSE'
+      : action === 'restart' ? 'RESTART'
+        : action === 'place' ? `MOVE UI ${onOff(!!edit?.placing)}`
+          : action === 'stats' ? `VR STATS ${onOff(statsEnabled)}`
+            : action === 'view' ? `3RD PERSON ${onOff(thirdPerson)}`
+              : action === 'mixed' ? `MIXED REALITY ${onOff(!!edit?.mixedReality)}`
+                : action === 'controls' ? 'CONTROLS'
+                  : action === 'edit' ? `EDIT ${onOff(!!edit)}` : 'EXIT VR';
+    if (action === 'calibrate') {
       if (calibrating) title = String(calibration.count ?? 3);
       else if (saved && calibration.standingHeight) title = `${calibration.standingHeight.toFixed(2)} M`;
       else if (error) title = 'RETRY';
@@ -523,7 +549,8 @@ function drawWatchMenu(ctx: CanvasRenderingContext2D, calibration: XrHudCalibrat
     ctx.fillStyle = enabled ? '#eaf4ff' : '#657382';
     ctx.textAlign = 'center';
     ctx.font = calibrating ? '800 32px system-ui, sans-serif' : '700 20px system-ui, sans-serif';
-    ctx.fillText(title, button.x + button.w / 2, button.y + 33);
+    // MIXED REALITY OFF is the longest title: squeezed to the button rather than spilling past its edges.
+    ctx.fillText(title, button.x + button.w / 2, button.y + 33, button.w - 16);
   }
   ctx.textAlign = 'left';
 }
