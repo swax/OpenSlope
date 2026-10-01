@@ -7,7 +7,9 @@
 //  - turning about the head leaves the head where it was;
 //  - the right-hand world mouse: the client pixel it sends the editor casts back, through the editor's own camera,
 //    to the very point the controller is aimed at; buttons map to the mouse events a real mouse would send, and
-//    putting the mouse away mid-press releases without clicking;
+//    putting the mouse away mid-press releases without clicking, and a press only drags once the aim has left
+//    its click slop;
+//  - point and edge pick radii in a headset: a fixed angle of the view, never tighter than at the desk;
 //  - the hand's depth on a held gizmo translate: pushed out along the laser with distance-scaled gain, masked to
 //    the grabbed handle and snapped as TransformControls does.
 import assert from 'node:assert/strict';
@@ -16,7 +18,8 @@ import {
   rigToWorld, solveOneHandGrab, solveTwoHandGrab, turnRigAbout, XR_EDIT_MAX_SCALE, XR_EDIT_ZOOM_EXPONENT,
   type RigPose, type Vec3,
 } from '../src/app/ride/xr/world-grab';
-import { createXrWorldPointer } from '../src/app/ride/xr/world-pointer';
+import { CLICK_SLOP, createXrWorldPointer } from '../src/app/ride/xr/world-pointer';
+import { headsetPickRadiusPx, XR_PICK_DEG_PER_PX } from '../src/app/viewport/input/mesh-picking';
 import { beginHandGrab, handGrabPoint, handTranslateTarget, XR_HAND_DEPTH_REACH } from '../src/app/ride/xr/hand-drag';
 import { correctXrUnionForScale } from '../src/app/ride/xr/scaled-camera';
 
@@ -141,7 +144,7 @@ const grab = { pose: start, a: a0, b: b0 };
   const pointer = createXrWorldPointer({
     canvas: canvas as unknown as HTMLCanvasElement,
     camera: () => camera,
-    surfaceHit: ray => ray.intersectPlane(ground, new THREE.Vector3()),
+    aimHit: ray => ray.intersectPlane(ground, new THREE.Vector3()),
   });
   // The hand is below and right of the eyes, aimed at a spot on the ground.
   const target = new THREE.Vector3(3, 0, 2);
@@ -199,6 +202,59 @@ const grab = { pose: start, a: a0, b: b0 };
   assert(pointer.onCanvas && pointer.pressed, 'though the cursor is still tracked, and the press still held');
   pointer.update(aside, false, false, 1000, true);
   assert.deepEqual(events.map(e => e.type), ['pointerup', 'mouseup', 'click'], 'the release still lands, ending the drag');
+
+  // Click slop: a trigger pull turns the hand a little, and the router makes a 4 px move a box select.
+  const aimAt = (p: THREE.Vector3) => new THREE.Ray(hand, p.clone().sub(hand).normalize());
+  const eye = camera.position;
+  const turnFromEye = (p: THREE.Vector3) => p.clone().sub(eye).angleTo(target.clone().sub(eye));
+  const jiggle = new THREE.Vector3(3.3, 0, 2), sweep = new THREE.Vector3(5, 0, 2);
+  assert(turnFromEye(jiggle) < CLICK_SLOP && turnFromEye(sweep) > CLICK_SLOP);
+  pointer.update(ray, false, false, 1000);
+  events.length = 0;
+  pointer.update(ray, true, false, 1000);
+  const down = events.find(e => e.type === 'pointerdown')!;
+  events.length = 0;
+  pointer.update(aimAt(jiggle), true, false, 1000);
+  assert.deepEqual(events.map(e => e.type), [], 'a press holds still while the aim stays inside the slop');
+  pointer.update(aimAt(jiggle), false, false, 1000);
+  assert.deepEqual(events.map(e => e.type), ['pointerup', 'mouseup', 'click'], 'and letting go there is a click');
+  assert(events.every(e => e.clientX === down.clientX && e.clientY === down.clientY), 'on the point it was pressed on');
+
+  pointer.update(ray, false, false, 1000);
+  pointer.update(ray, true, false, 1000);
+  events.length = 0;
+  pointer.update(aimAt(jiggle), true, false, 1000);
+  pointer.update(aimAt(sweep), true, false, 1000);
+  assert.deepEqual(events.map(e => e.type), ['pointermove', 'mousemove'], 'past the slop the press is a drag');
+  const moved = events[0];
+  events.length = 0;
+  pointer.update(aimAt(jiggle), true, false, 1000);
+  assert.deepEqual(events.map(e => e.type), ['pointermove', 'mousemove'], 'and stays one, even back inside it');
+  pointer.update(aimAt(sweep), false, false, 1000);
+  assert(events.at(-3)!.type === 'pointerup' && events.at(-3)!.clientX === moved.clientX,
+    'a drag lets go where the aim is');
+}
+
+// ---- pick radii in a headset (mesh-picking.ts)
+{
+  // A headset-wide view on a big page canvas: the desk's pixels are much finer than a laser can aim.
+  const width = 1600, height = 1200;
+  const camera = new THREE.PerspectiveCamera(100, width / height, 0.1, 1000);
+  const radius = (ndc: THREE.Vector2) => headsetPickRadiusPx(16, camera.projectionMatrix, width, height, ndc);
+  const across = (angle: number) => {
+    const v = new THREE.Vector3(Math.sin(angle), 0, -Math.cos(angle)).project(camera);
+    return v.x * width / 2;
+  };
+  const angle = THREE.MathUtils.degToRad(16 * XR_PICK_DEG_PER_PX);
+  const centre = radius(new THREE.Vector2(0, 0));
+  assert(centre > 16, 'a fine canvas widens the radius');
+  assert(Math.abs(across(angle) - across(0) - centre) / centre < 0.01, 'to the same angle of the view, ahead');
+  const side = THREE.MathUtils.degToRad(40);
+  const aside = radius(new THREE.Vector2(new THREE.Vector3(Math.sin(side), 0, -Math.cos(side)).project(camera).x, 0));
+  assert(Math.abs(across(side + angle) - across(side) - aside) / aside < 0.1, 'and off to the side');
+  const small = new THREE.PerspectiveCamera(100, 400 / 300, 0.1, 1000);
+  assert.equal(headsetPickRadiusPx(16, small.projectionMatrix, 400, 300, new THREE.Vector2()), 16,
+    'never tighter than at the desk');
 }
 
 // ---- the hand's depth on a held gizmo translate (hand-drag.ts)

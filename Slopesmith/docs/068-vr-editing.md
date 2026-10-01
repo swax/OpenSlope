@@ -104,8 +104,12 @@ The editor's pointer router picks from a client pixel. It casts `stage.camera` t
 measures vertex, edge and marquee picks in screen pixels around it. So the hand drives that same path
 (`ride/xr/world-pointer.ts`) instead of teaching every tool a second input model:
 
-1. The controller ray is met with the visible mountain (`editSurfaceHit` in `viewport/scene/ride.ts`: the
-   authored terrain or the loaded reference, through the same BVH picks a mouse hover uses).
+1. The controller ray is met with the first thing on it the editor picks (`editAimHit` in
+   `viewport/scene/ride.ts`):
+   - the authored terrain or the loaded reference, through the same BVH picks a mouse hover uses;
+   - a prop, light, source marker, rail, prop line node, gem, screen or course knot, through the editor's own
+     scene picks;
+   - a move-gizmo handle (`Stage.gizmoHandleHit`).
 2. That point is projected through the camera the router casts from. WebXR keeps that camera on the headset's
    pose.
 3. Pointer and mouse events go to the canvas at the resulting client position.
@@ -113,13 +117,29 @@ measures vertex, edge and marquee picks in screen pixels around it. So the hand 
 Hover, click, drag, the gizmo and box select then run exactly the code a mouse runs.
 
 What the router sees is therefore the **eye's** ray through where the hand points, not the hand's own ray. The
-two meet at the surface point, and the cursor dot is drawn there. So whatever the dot covers from the eye is what
-gets picked, including a vertex or gizmo handle standing in front of the surface. Where the ray meets no surface,
-a far point along it stands in.
+two meet at that point, and the cursor dot is drawn there. So whatever the dot covers from the eye is what gets
+picked. Where the ray meets nothing, a far point along it stands in.
+
+The first pass met the ray with the mountain alone. Aimed at a prop, the laser went on to the ground behind it,
+and the eye's ray to that ground passed beside the prop by as much as the hand sits from the eyes. Particle
+volumes are still left out, because their bounds enclose the props and ground the laser is usually aimed at.
 
 The router and three's TransformControls capture the pointer on a press. A synthetic pointer is not one the
 browser tracks, and a standalone headset browser may have no mouse at all. So capture calls are made inert for
 the duration of each dispatch, and the per-frame moves are what keep a drag going.
+
+### Clicks and reach
+
+- **Click slop.** The router turns a press that moves 4 px into a drag, which in Props and Edit is a box select.
+  Pulling a trigger turns the hand by a degree or so, which is well over 4 px, so most clicks became tiny box
+  selects that selected nothing. A press now holds the cursor where it went down until the aim, seen from the
+  eyes, has left that point by 2° (`CLICK_SLOP` in `ride/xr/world-pointer.ts`). A release before then is a click
+  on the press point. Past it the press is an ordinary drag, so a sculpt or paint stroke starts 2° late.
+- **Pick radii.** Point and edge picks measure their radius in the page canvas's pixels: 16 px for a corner, 14
+  for an edge. In a headset that canvas is the desktop window stretched over the whole field of view, so how far
+  a radius reached depended on the window's size. Each of those pixels is now worth at least 0.15° of the view at
+  the cursor (`headsetPickRadiusPx` in `viewport/input/mesh-picking.ts`): about 2.4° for a corner and 2.1° for an
+  edge. A radius is never smaller than the desk's.
 
 ### Depth: what a mouse cannot do
 
@@ -141,15 +161,18 @@ centre. Nothing a mouse does carries a prop or point toward or away from the vie
   undo merge and the end-of-drag commit run unchanged.
 - The release is an ordinary pointerup.
 
-Full 3D needs the free centre, and a corner's default Surface frame hides it. Switch to World (the Surface ⇄ World
-pill) to move a point anywhere.
+Full 3D needs the free centre. At the desk a corner's default Surface frame hides it, and World or Shift brings it
+back. A headset has no Shift, so there the Surface frame keeps the centre, and a point, edge or cell moves in 3D
+by it exactly as a prop does. It is a free move, never a slide (`beginSlide` in `gizmo/transform.ts`); the arrows
+and the tangent pad still slide.
 
 **Screen-constant handles.** Handles sized in pixels (`Stage.worldPerPixel`) measured their distance from
 `camera.position`. In a headset that is the head's offset inside the rig, not where the head is, so a point far
 out on the mountain got a marker the size of a house. They now measure from the camera's world position and count
-the eye buffer's pixels. At that true size the selected point's yellow ball was a speck too small to aim a laser
-at, so in a headset it takes the size of the gizmo's centre handle — the one a prop is moved by
-(`Stage.pointMarkerRadius`). The desk keeps its six pixels.
+the eye buffer's pixels. At that true size the selected point's yellow ball was a speck. It first took the full
+size of the gizmo's centre handle, which hid the centre: the gizmo's yellow hover highlight landed on a yellow
+ball of the same size. It now takes half of it (`Stage.pointMarkerRadius`), so the translucent centre shows round
+the ball and lights up under the laser, as a prop's does. The desk keeps its six pixels.
 
 ## Mixed reality
 
@@ -313,9 +336,9 @@ declarations live in one rule and only each box's width and height are inline.
   Double-click, and so edge-loop selection, is not sent either.
 - **Mouse wheel.** It is not sent, so tools that use it (prop ghost rotation, loop-cut slide) cannot be adjusted
   from the hand.
-- **Floating targets.** The eye-through-the-surface-point rule picks what the dot covers. A handle floating well
-  in front of the surface is picked only when the dot sits over it from the eye, not when the laser merely passes
-  through it.
+- **Floating targets.** The eye-through-the-laser-point rule picks what the dot covers. Scene objects and gizmo
+  handles stop the laser, but a cage point or tangent handle floating off the surface does not. It is picked only
+  when the dot sits over it from the eye, not when the laser merely passes through it.
 - **Scale and the world.** Depth precision scales with the player.
 - **Rendering.** `vh`/`vw` inside a panel resolve against the image, not the window. `:hover` styling is
   replaced by the palette's own highlight.

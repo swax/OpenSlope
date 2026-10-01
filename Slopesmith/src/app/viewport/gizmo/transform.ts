@@ -607,7 +607,8 @@ export function createTransformLayer(
    * rather than the surface it is deforming: a corner-REGION group slide (four unrelated corners marching across the
    * surface re-parameterise nothing), which also freezes the net + grid frame (captureSlideGroup) for its
    * ratio-preserving march, and a corner whose surface frame is degenerate (a pinched net names no axes). The 'Y' up
-   * post is the deliberate off-surface move and takes neither. Cleared on drag end.
+   * post is the deliberate off-surface move and takes neither, and nor does the free centre ('XYZ'), which Surface
+   * shows only in a headset (Stage): there it is the free 3D move World gives the desk. Cleared on drag end.
    */
   function beginSlide() {
     slideBVH = null;
@@ -616,6 +617,7 @@ export function createTransformLayer(
     slideMergePending = false;
     if (resolveGizmoFrame(gizmoFrame, gizmoShift) !== 'surface') return;
     if (stage.gizmoKind !== 'corner' && stage.gizmoKind !== 'corners') return;
+    if (stage.gizmo.axis === 'XYZ') return;
     seatExactSlide();
     if (slideExact) return; // the slide re-cuts the net exactly; no surface probe can be more faithful
     slideBVH = mesh.terrainBVH();
