@@ -1,0 +1,45 @@
+name: Suggest a feature
+description: Describe something you would like to accomplish in OpenSlope.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please [search existing requests](https://github.com/swax/OpenSlope/issues) first. If one matches your idea, add your use case there.
+
+        Early ideas and questions are welcome in [Discord](https://discord.gg/QFnt2x9vZ9). See [project scope](https://github.com/swax/OpenSlope/blob/main/CONTRIBUTING.md#scope) for contribution boundaries. A request starts a discussion; it is not a commitment to build the feature.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to accomplish?
+      description: Describe your use case, who it helps, and what is difficult or missing today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What change would help?
+      description: Describe the behavior you would like. You do not need to know how to implement it.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part of OpenSlope would this affect?
+      options:
+        - Slopesmith (browser editor or riding)
+        - Snowknife (import, export, or repacking)
+        - Unity / VRChat / Basis
+        - Blender
+        - Documentation or setup
+        - Other / not sure
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Have you tried another way to accomplish this?
+  - type: textarea
+    id: context
+    attributes:
+      label: Examples and other context
+      description: Add screenshots, sketches, or a link to the Discord discussion. Share only material you may redistribute, and remove private information and credentials.

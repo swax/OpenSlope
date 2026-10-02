@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and community help
+    url: https://discord.gg/QFnt2x9vZ9
+    about: Ask questions, troubleshoot, and discuss early ideas in the OpenSlope Discord.
+  - name: Report a security vulnerability privately
+    url: https://github.com/swax/OpenSlope/security/policy
+    about: Follow the security policy instead of posting vulnerability details in a public issue.

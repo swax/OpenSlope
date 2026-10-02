@@ -1,0 +1,64 @@
+name: Report a bug
+description: Tell us what is not working and how to reproduce it.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve OpenSlope. Please [search existing issues](https://github.com/swax/OpenSlope/issues) first; if someone reported the same problem, add your details there.
+
+        For questions or troubleshooting, ask in [Discord](https://discord.gg/QFnt2x9vZ9). Report security vulnerabilities privately using [SECURITY.md](https://github.com/swax/OpenSlope/blob/main/SECURITY.md).
+  - type: dropdown
+    id: component
+    attributes:
+      label: Where does the problem happen?
+      options:
+        - Slopesmith (browser editor or riding)
+        - Snowknife (import, export, or repacking)
+        - Unity / VRChat / Basis
+        - Blender
+        - Documentation or setup
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened?
+      description: Describe the problem and any error message you saw.
+      placeholder: Copying a prop and pasting it does not create another prop.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we reproduce it?
+      description: List the steps from opening the app or running a command. If it only happens sometimes, say so.
+      placeholder: |
+        1. Open a mountain in Slopesmith.
+        2. Select a prop.
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Device, operating system, and browser
+      description: Include versions if known, and mention VR, touch, keyboard, or controller when relevant.
+      placeholder: Windows 11, Chrome, keyboard and mouse; or Quest 3, Quest Browser, controllers.
+  - type: input
+    id: version
+    attributes:
+      label: OpenSlope version or commit
+      description: Include the version or commit if known. It is fine to leave this blank.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots and other details
+      description: Paste relevant error text, attach a screenshot, or link the Discord discussion. Remove private information and credentials. Do not attach disc images, extracted game assets, local Maps/ or discs/ folders, or generated Unity projects.
