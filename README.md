@@ -18,6 +18,9 @@ OpenSlope is independent and unofficial, and ships no retail game content. [`LEG
 sets out what that means, and how to reach us if you hold rights in something you believe this
 repository carries.
 
+[Join the OpenSlope Discord](https://discord.gg/QFnt2x9vZ9) to meet other course creators, get help,
+share original mountains, and discuss development.
+
 | Author in the browser | Test-ride without exporting |
 |---|---|
 | ![An authored course open in Slopesmith](Slopesmith/media/slopesmith-authoring.png) | ![A course being ridden in Slopesmith](Slopesmith/media/slopesmith-riding.png) |
@@ -157,6 +160,12 @@ provenance, and each component's `NOTICE` describes its scope and third-party at
 [`LEGAL.md`](LEGAL.md) states the full scope and the trademark position.
 
 ## Documentation and contributing
+
+Join the [Discord community](https://discord.gg/QFnt2x9vZ9) for questions and conversation. Use
+[Report a bug](https://github.com/swax/OpenSlope/issues/new?template=bug_report.yml) or
+[Suggest a feature](https://github.com/swax/OpenSlope/issues/new?template=feature_request.yml) to add
+work to the [issue backlog](https://github.com/swax/OpenSlope/issues). Follow
+[SECURITY.md](SECURITY.md) for private vulnerability reports.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for project scope, faster component checks, test tiers,
 environment setup, reverse-engineering hygiene, coding conventions, and pull-request expectations.

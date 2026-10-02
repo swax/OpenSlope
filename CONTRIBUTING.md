@@ -1,5 +1,33 @@
 # Contributing
 
+## Bugs, ideas, and the backlog
+
+Use [Report a bug](https://github.com/swax/OpenSlope/issues/new?template=bug_report.yml) for problems
+and [Suggest a feature](https://github.com/swax/OpenSlope/issues/new?template=feature_request.yml)
+for improvements. Search [existing issues](https://github.com/swax/OpenSlope/issues) before opening
+one, and keep each issue focused on one problem or request. Include reproduction steps for bugs and
+the intended use case for features; screenshots and device/browser details help when relevant.
+
+Questions and early discussion belong in [Discord](https://discord.gg/QFnt2x9vZ9). When a discussion
+turns into work, create a GitHub issue and link it in the Discord thread. If the reporter cannot use
+GitHub, a maintainer can record the report for them. GitHub issues are the lasting backlog.
+
+Maintainers use these labels:
+
+- `bug`: something is not working as expected.
+- `enhancement`: a proposed feature or improvement; not yet a commitment to implement it.
+- `needs-info`: reproduction steps, context, or an answer from the reporter is still needed.
+- `ready-for-agent`: a maintainer has reviewed the issue and considers its scope clear enough for
+  an agent to investigate and prepare a fix. This label does not start automation or authorize a
+  merge or deployment by itself.
+
+Link work and pull requests to the issue number. Check for an existing fix before starting another.
+After a fix is merged, identify the commit in the issue; confirm deployment separately so reporters
+know when the fix is available on the server they use.
+
+Use [SECURITY.md](SECURITY.md) for private vulnerability reports. Do not post credentials, private
+information, disc images, or extracted game assets in issues or Discord.
+
 ## Scope
 
 Two areas are deliberately out of scope, and pull requests adding them will be declined:
