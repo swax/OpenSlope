@@ -54,7 +54,10 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
 
   function copySelectionVertexCount(): number { return selectedCopyVertices().length || view().referenceCopyVertexCount(); }
   function canCopyVertices(): boolean { return store.currentMode === 'edit' && store.bridgeRails === null && cageActive() && copySelectionVertexCount() > 0; }
-  function canPasteVertices(): boolean { return store.currentMode === 'edit' && store.bridgeRails === null && cageActive() && !!clipboard?.vertices.length; }
+  function canPasteVertices(): boolean {
+    return store.currentMode === 'edit' && store.clipboardKind === 'mesh'
+      && store.bridgeRails === null && cageActive() && !!clipboard?.vertices.length;
+  }
 
   function captureSelectedVertices(): { source: 'authored' | 'reference'; clip: MeshVertexClipboard } | null {
     if (!canCopyVertices()) return null;
@@ -84,6 +87,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     }
     if (!clip) { toast('nothing copied — select at least one vertex', 'warn'); return null; }
     clipboard = clip;
+    store.clipboardKind = 'mesh';
     return { source: referenceSelected ? 'reference' : 'authored', clip };
   }
 

@@ -103,6 +103,8 @@ export type Store = {
   selectedKnots: number[];           // Info-mode box-selected course knots (bulk delete; single picks use selected)
 
   currentMode: Mode;
+  /** The most recently copied selection owns paste, shared by the mesh and prop clipboards. Session-only. */
+  clipboardKind: 'mesh' | 'props' | null;
   // Test mode (stored as `play`; docs/016): which mountain to ride and the world-space start point per target.
   playTarget: 'authored' | 'reference';
   playRiderModel: string;                // built-in/server-library character id, or the procedural debug body
@@ -352,6 +354,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     selected: null,
     selectedKnots: [],
     currentMode: init.currentMode,
+    clipboardKind: null,
     playTarget: ui.playTarget === 'reference' ? 'reference' : 'authored',
     playRiderModel: riderModel(ui.playRiderModel),
     playRiderStyle: ridingStyleId(ui.playRiderStyle),

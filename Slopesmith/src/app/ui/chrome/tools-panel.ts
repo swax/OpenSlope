@@ -409,6 +409,12 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       const clipboard = editSection('clipboard', 'Clipboard', false);
       tip(clipboard.add({ paste: edit.pasteSelectedVertices }, 'paste').name('paste (Ctrl+V)'),
         'Preview the clipboard over your mountain, then click to place its points, free edges, and surfaces.');
+    } else if (deps.propClipboard.canPaste()) {
+      const clipboard = editSection('clipboard', 'Clipboard', false);
+      const count = deps.propClipboard.count();
+      tip(clipboard.add({ paste: () => void deps.propClipboard.paste() }, 'paste')
+        .name(`paste ${count} prop${count === 1 ? '' : 's'} (Ctrl+V)`),
+      'Hold the copied props on the cursor in Props mode, then click to place them.');
     }
     if (edit.hiddenMeshCount() || edit.controlCageCount()) {
       const visibility = editSection('visibility', 'Visibility');

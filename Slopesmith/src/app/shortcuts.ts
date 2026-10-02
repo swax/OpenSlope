@@ -191,7 +191,7 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (mod && e.key.toLowerCase() === 'c' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); copySelectedVertices(); return; }
     if (mod && e.key.toLowerCase() === 'x' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); cutSelectedVertices(); return; }
     if (mod && e.key.toLowerCase() === 'v' && canPasteVertices()) { e.preventDefault(); pasteSelectedVertices(); return; }
-    // Props' own clipboard (docs/012). Text selected in a panel — a prop's id, say — keeps the browser's copy.
+    // Prop selections in Props or Edit (docs/012). Text selected in a panel keeps the browser's copy.
     if (mod && !e.altKey && (key === 'c' || key === 'x') && !window.getSelection?.()?.toString() && propClipboard.canCopy()) {
       e.preventDefault(); if (key === 'c') propClipboard.copy(); else propClipboard.cut(); return;
     }

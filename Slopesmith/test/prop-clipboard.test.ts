@@ -2,18 +2,21 @@
 
 import * as THREE from 'three';
 import type { PlacedProp, QuadMeshDoc, Screen, V3 } from '../src/core/doc/types';
+import { meshFromNet, starterCourse } from '../src/core/doc/mountain';
 import { placementQuat } from '../src/core/props/pose';
 import { AUTHORED_MODEL_LEVEL } from '../src/core/doc/models';
 import { attachEffectToProp, createEmptyEffectsDocument, effectAttachments } from '../src/core/effects/authoring';
 import { EFFECT_TRIGGER_LEVEL } from '../src/core/effects/trigger-volume';
 import { copyPlacements, pasteGhost, pastePlacements } from '../src/core/props/clipboard';
-import type { Store } from '../src/app/state/store';
+import { createStore } from '../src/app/state/store';
+import { vertexName } from '../src/app/state/mesh-names';
+import type { EditViewportPort } from '../src/app/edit/viewport-port';
 import type { PropArm } from '../src/app/viewport/scene/props';
 import { check, failures } from './check';
 
 /**
  * Props copy / paste (docs/012): the core snapshot — what a copy carries, the anchor a set is carried by, and
- * where a paste lands turned and scaled about it — and the Props-mode session over it: Ctrl+C / X on a
+ * where a paste lands turned and scaled about it — and the Props / Edit session over it: Ctrl+C / X on a
  * selection, Ctrl+V holding the set as a ghost on the cursor, a click dropping it selected, Esc putting it down.
  */
 
@@ -23,6 +26,8 @@ const toastEl = { set textContent(text: string) { toasts.push(text); }, classNam
 Object.defineProperty(globalThis, 'document', { configurable: true, value: { getElementById: () => toastEl } });
 Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout: () => 0, clearTimeout: () => {} } });
 const { createPropClipboard } = await import('../src/app/props/clipboard');
+const { createMeshClipboardSession } = await import('../src/app/edit/clipboard');
+const { installShortcuts } = await import('../src/app/shortcuts');
 
 type Doc = Pick<QuadMeshDoc, 'name' | 'props' | 'screens' | 'effects' | 'models'>;
 const prop = (id: string, extra: Partial<PlacedProp> = {}): PlacedProp =>
@@ -123,18 +128,21 @@ function sourceDoc(): Doc {
   }), 'every copy lands exactly where the ghost drew it, tilted ones included');
 }
 
-// ================= app: the Props-mode session =================
+// ================= app: the Props / Edit session =================
 {
-  const doc = sourceDoc();
-  const store = {
-    mdoc: doc, currentMode: 'props', selectedProp: null as number | null, multiSel: [] as number[],
-    railDrawing: false, lineDrawing: false, gemArmed: false,
-    selectedRail: null, selectedNode: null, selectedGem: null,
+  const doc = {
+    ...meshFromNet({ rows: 2, cols: 2, spacing: 10, corners: [0, 0, 0, 10, 0, 0, 0, 0, 10, 10, 0, 10], paint: {} },
+      { name: 'SOURCE', course: starterCourse(), baseSurface: 1 }),
+    ...sourceDoc(),
   };
+  const store = createStore({ mdoc: doc, currentMode: 'props', storedUi: {} });
+  let mixed = false;
   const calls: string[] = [];
   const view = { arm: null as PropArm | null }; // what the viewport is holding
   const session = createPropClipboard({
-    store: store as unknown as Store,
+    store,
+    edit: { mixedEditSelection: () => mixed },
+    setMode: mode => { store.currentMode = mode; calls.push(`mode:${mode}`); },
     viewport: {
       setLightArmed: () => calls.push('light-down'),
       setPropArmed: (next: PropArm | null) => { view.arm = next; },
@@ -160,7 +168,13 @@ function sourceDoc(): Doc {
   check(!session.canCopy() && !session.canPaste(), 'nothing selected, nothing copied: neither key acts');
   store.selectedProp = 0;
   store.currentMode = 'edit';
-  check(!session.canCopy(), 'the clipboard is Props mode’s own');
+  check(session.canCopy(), 'a placed prop selected in Edit can be copied');
+  mixed = true;
+  check(!session.canCopy(), 'a mixed Edit selection must be narrowed to props before copying');
+  mixed = false;
+  store.modelEditId = 'model:0000';
+  check(!session.canCopy(), 'editing a model’s geometry does not copy its placement');
+  store.modelEditId = null;
   store.currentMode = 'props';
   session.copy();
   check(session.count() === 1 && toasts.at(-1)?.startsWith('copied Sign') === true, 'Ctrl+C copies the selected prop by name');
@@ -199,6 +213,101 @@ function sourceDoc(): Doc {
 
   store.railDrawing = true;
   check(!session.canPaste(), 'not while a rail is being drawn: that tool owns the click');
+  store.railDrawing = false;
+
+  // Drive the real keyboard router and both clipboard sessions: an earlier mesh copy must not steal Ctrl+V
+  // after copying (or cutting) a prop set in Edit, including copies made through the Tools button.
+  const noop = () => {};
+  const meshClipboard = createMeshClipboardSession({
+    store,
+    viewport: () => ({
+      referenceCopyVertexCount: () => 0,
+      setPasteTool: () => calls.push('mesh-paste'),
+    }) as unknown as EditViewportPort,
+    cageActive: () => true,
+    selectedAuthoredVertices: () => store.regionSel,
+    editMoveSet: () => [], seatMoveGizmo: noop, resetGizmoMode: noop, refreshHandles: noop,
+    deselectEdit: () => { store.regionSel = []; store.multiSel = []; store.selectedProp = null; },
+    scheduleRebuild: noop, rebuildTools: noop, updateCmdSheet: noop, deleteSelectedMesh: noop,
+  });
+  let handler: ((event: KeyboardEvent) => void) | null = null;
+  let selectedText = '';
+  Object.assign(window, {
+    addEventListener: (_name: string, listener: (event: KeyboardEvent) => void) => { handler = listener; },
+    getSelection: () => ({ toString: () => selectedText }),
+  });
+  installShortcuts({
+    store, viewport: { riding: false, pastePlacing: false, edgeExtrusionStaged: false },
+    edit: { ...meshClipboard, mixedEditSelection: () => mixed },
+    propClipboard: session, propOps: {}, cageActive: () => true, chatFocused: () => false,
+  } as unknown as Parameters<typeof installShortcuts>[0]);
+  const press = (key: string, extra: Partial<KeyboardEvent> = {}) => {
+    let prevented = false;
+    handler!({ key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, target: null,
+      preventDefault: () => { prevented = true; }, ...extra } as KeyboardEvent);
+    return prevented;
+  };
+  const finishLoading = () => new Promise(resolve => setImmediate(resolve));
+
+  store.currentMode = 'edit';
+  store.multiSel = [];
+  store.regionSel = [vertexName(doc, 0)!];
+  check(press('c') && meshClipboard.canPasteVertices() && !session.canPaste(), 'Ctrl+C on mesh gives the mesh clipboard paste ownership');
+  store.regionSel = [];
+  store.multiSel = [2, 3];
+  check(press('c') && session.count() === 2 && !meshClipboard.canPasteVertices(), 'Ctrl+C on multiple Edit props replaces the older mesh clipboard');
+  const originals = structuredClone(doc.props!.slice(2));
+  check(press('v'), 'Ctrl+V handles the copied prop set in Edit');
+  await finishLoading();
+  check(String(store.currentMode) === 'props' && calls.includes('mode:props') && view.arm?.paste?.length === 2,
+    'paste enters Props mode and previews every copied placement');
+  check(doc.props!.length === 4 && !calls.includes('mesh-paste'), 'paste previews without inserting props or starting a mesh paste');
+  session.place([30, 0, 40], 0, 1);
+  check(doc.props!.length === 6 && store.multiSel.join() === '4,5', 'the click creates and selects both new placements');
+  check(near(doc.props![5].pos.map((v, axis) => v - doc.props![4].pos[axis]),
+    originals[1].pos.map((v, axis) => v - originals[0].pos[axis])), 'the pasted set keeps the original spacing');
+  check(doc.props!.slice(4).every((p, i) => p.id !== originals[i].id && p.yaw === originals[i].yaw && p.scale === originals[i].scale),
+    'both new placements keep their own transforms and receive fresh ids');
+
+  store.currentMode = 'edit';
+  check(press('x', { ctrlKey: false, metaKey: true }) && doc.props!.length === 4 && store.multiSel.length === 0,
+    'Cmd+X cuts the full Edit prop selection and clears it');
+  check(session.canPaste(), 'the prop clipboard remains pasteable after cutting clears the selection');
+  press('v', { ctrlKey: false, metaKey: true });
+  await finishLoading();
+  check(view.arm?.paste?.length === 2, 'Cmd+V previews the cut set');
+  press('Escape', { ctrlKey: false });
+  check(!session.placing() && doc.props!.length === 4, 'Esc cancels the copied set without inserting it');
+
+  store.currentMode = 'edit';
+  store.regionSel = [vertexName(doc, 0)!];
+  meshClipboard.copySelectedVertices(); // the Tools action, independent of the shortcut listener
+  check(meshClipboard.canPasteVertices() && !session.canPaste(), 'a newer mesh copy takes paste ownership back');
+  press('v');
+  check(calls.includes('mesh-paste') && store.currentMode === 'edit', 'Ctrl+V routes the newer mesh copy without switching modes');
+  store.multiSel = [2, 3];
+  session.copy(); // the multi-prop panel's Copy action
+  check(session.canPaste() && !meshClipboard.canPasteVertices(), 'the panel’s prop Copy action also takes paste ownership');
+
+  // Selection safety and async mode changes must not silently replace the clipboard or enter another mode.
+  mixed = true;
+  check(!press('c') && !press('x') && doc.props!.length === 4, 'mixed selections are neither partially copied nor cut');
+  mixed = false;
+  selectedText = 'prop:0000';
+  check(!press('c') && !press('x'), 'selected panel text keeps native copy/cut');
+  selectedText = '';
+  const input = { matches: () => true } as unknown as EventTarget;
+  check(!press('c', { target: input }) && !press('v', { target: input }), 'typing fields retain native clipboard shortcuts');
+  store.modelEditId = 'model:0000';
+  check(!session.canCopy() && !session.canPaste(), 'a model shape edit cannot copy or paste whole placements');
+  store.modelEditId = null;
+  store.bridgeRails = [];
+  check(!session.canCopy() && !session.canPaste(), 'a bridge in progress retains the Edit tool');
+  store.bridgeRails = null;
+  const pending = session.paste();
+  store.currentMode = 'props'; // a mode change while the geometry promise is pending cancels that request
+  await pending;
+  check(!session.placing(), 'switching modes during loading does not unexpectedly arm a paste');
 }
 
 if (failures) process.exitCode = 1;

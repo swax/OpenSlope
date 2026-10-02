@@ -2,12 +2,15 @@ import type { V3 } from '../../core/doc/types';
 import { copyPlacements, pasteGhost, pastePlacements, type PropClipboard } from '../../core/props/clipboard';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
 import type { Store } from '../state/store';
+import type { EditSession } from '../edit/session';
 import type { Viewport } from '../viewport/viewport';
+import type { Mode } from '../viewport/types';
 import type { PropOps } from './operations';
 import { toast } from '../ui/components/toast';
 
 /**
- * Props-mode copy / cut / paste (docs/012): Ctrl+C / X / V over the selected placement or the box-selected set.
+ * Prop copy / cut / paste (docs/012): Ctrl+C / X / V over the selected placement or the box-selected set in
+ * Props or Edit mode. Pasting enters Props mode for the same placement workflow as a Library pick.
  * A paste is held like a prop from the Library: its ghost rides the terrain under the cursor — turned with
  * Alt+wheel or ← / →, resized with Shift+wheel — until a click drops it, selected under the move gizmo, or Esc
  * puts it down. The set keeps its shape about the anchor it was copied by. The clipboard is session-local and
@@ -16,6 +19,8 @@ import { toast } from '../ui/components/toast';
 
 export type PropClipboardDeps = {
   store: Store;
+  edit: Pick<EditSession, 'mixedEditSelection'>;
+  setMode: (mode: Mode) => void;
   viewport: Pick<Viewport, 'setLightArmed' | 'setPropArmed' | 'propPastePlacing' | 'groundHeightAt'>;
   propOps: Pick<PropOps, 'disarmProp' | 'deselectPropOrLight' | 'deleteSelectedProp' | 'deleteMultiSelProps'
     | 'shortPropName' | 'ensurePropLevel' | 'ensureGroupDefs'>;
@@ -27,7 +32,7 @@ export type PropClipboardDeps = {
 };
 
 export function createPropClipboard(deps: PropClipboardDeps) {
-  const { store, viewport, propOps, resetGizmoMode, scheduleRebuild, rebuildTools, updateCmdSheet } = deps;
+  const { store, edit, setMode, viewport, propOps, resetGizmoMode, scheduleRebuild, rebuildTools, updateCmdSheet } = deps;
   let clipboard: PropClipboard | null = null;
   /** The clipboard on the cursor, while its ghost is out. */
   let placingClip: PropClipboard | null = null;
@@ -40,10 +45,18 @@ export function createPropClipboard(deps: PropClipboardDeps) {
   const label = (names: readonly string[]) => names.length === 1 ? propOps.shortPropName(names[0]) : plural(names.length);
   const clipLabel = (clip: PropClipboard) => label(clip.entries.map(entry => entry.prop.name));
 
-  function canCopy(): boolean { return store.currentMode === 'props' && selection().length > 0; }
+  function available(): boolean {
+    return store.currentMode === 'props'
+      || (store.currentMode === 'edit' && !store.modelEditId && store.bridgeRails === null);
+  }
+  function canCopy(): boolean {
+    return available() && selection().length > 0
+      && (store.currentMode !== 'edit' || !edit.mixedEditSelection());
+  }
   /** Not while another tool owns the click: a rail or prop line being drawn, a held gem. */
   function canPaste(): boolean {
-    return store.currentMode === 'props' && !!clipboard && !store.railDrawing && !store.lineDrawing && !store.gemArmed;
+    return available() && store.clipboardKind === 'props' && !!clipboard
+      && !store.railDrawing && !store.lineDrawing && !store.gemArmed;
   }
   function count(): number { return clipboard?.entries.length ?? 0; }
   /** Whether the paste ghost is out. Anything else that takes the cursor — a prop from the Library, a rail,
@@ -58,6 +71,7 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     const clip = copyPlacements(store.mdoc, selection(), (x, z, nearY) => viewport.groundHeightAt(x, z, nearY));
     if (!clip) { toast('nothing copied — Effects trigger volumes are copied in Effects mode', 'warn'); return null; }
     clipboard = clip;
+    store.clipboardKind = 'props';
     return clip;
   }
 
@@ -84,6 +98,7 @@ export function createPropClipboard(deps: PropClipboardDeps) {
   async function paste() {
     if (!canPaste() || !clipboard) return;
     const clip = clipboard;
+    const mode = store.currentMode, mountain = store.mdoc.name;
     const ghost = pasteGhost(store.mdoc, clip);
     if (!ghost.length) { toast('nothing to paste — the copied props are models from another mountain', 'warn'); return; }
     // The ghost draws from loaded geometry, and a set copied on another mountain can name levels not loaded here.
@@ -93,7 +108,8 @@ export function createPropClipboard(deps: PropClipboardDeps) {
         ...[...new Set(ghost.filter(p => p.group).map(p => p.level))].map(level => propOps.ensureGroupDefs(level)),
       ]);
     } catch (e) { toast(`props load failed: ${e}`, 'err'); return; }
-    if (!canPaste() || clipboard !== clip) return; // the editor moved on while it loaded
+    if (!canPaste() || clipboard !== clip || store.currentMode !== mode || store.mdoc.name !== mountain) return;
+    if (store.currentMode !== 'props') setMode('props');
     propOps.disarmProp();          // the paste is what is in hand now
     viewport.setLightArmed(false); // …a held light included
     propOps.deselectPropOrLight(); // …and the ghost replaces whatever inspector was open
