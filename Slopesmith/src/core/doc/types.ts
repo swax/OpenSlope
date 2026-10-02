@@ -16,11 +16,10 @@ export type PaintMap = Record<string, number>;
 export type TexPaintMap = Record<string, string>;
 
 /** One point of a course path: a position the run passes through, plus the ribbon cross-section there.
- *  `pos` places the spine; the four profile fields describe the channel around it — a floor of `width`,
- *  quarter-pipe walls at its edges, a shoulder beyond them, and a bank rolling the whole section. `width`
- *  additionally bounds the AI field's wander. Nothing derives terrain from
- *  the profile continuously: Course ▸ shape run into terrain presses it into the mesh as a one-shot command
- *  (doc/run-shaping), and the mesh owns the result from there (docs/002, docs/006). */
+ *  `pos` places the spine and `width` bounds the AI field's wander. The other three profile fields — walls at
+ *  the floor edges, a shoulder beyond them, a bank rolling the section — no longer reach the terrain: only the
+ *  legacy-carve migration reads them (doc/run-shaping), and a groomed path is Edit ▸ Create Trail's job
+ *  (docs/002, docs/023). New runs carry DEFAULT_KNOT_PROFILE's. */
 export interface CourseKnot {
   pos: V3;
   /** Seconds this course-progress station adds to a showoff clock. Absent = an ordinary knot. This is the
@@ -42,8 +41,7 @@ export interface CourseKnot {
  * The run: a LINE through the mountain, not a shape cut into it. It exports as the AIP racing line (which
  * the game bakes into the manifest's Paths.Course, driving respawn + the finish line), stages the field at
  * knot 0, and seeds the test ride. The terrain's shape is the net alone, edited corner-wise
- * in Edit / Sculpt — see docs/006-surface-net.md. The profile below is the channel the run WANTS; Course ▸
- * shape run into terrain is what writes it into the net, once, on request.
+ * in Edit / Sculpt — see docs/006-surface-net.md; the run never shapes it.
  *
  * Every mountain has exactly one, because the export needs one: `migrateMountain` collapses a multi-run
  * doc to its first usable run and sweeps a fall line for a doc that carries none. Being the only one, it

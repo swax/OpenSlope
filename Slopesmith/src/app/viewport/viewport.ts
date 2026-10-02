@@ -219,6 +219,7 @@ export class Viewport {
   readonly trailTool: TrailToolLayer;
   private createTrailPreviewListener: (() => void) | null = null;
   readonly courseDraw: CourseDrawLayer; // Info's reset course: the run redrawn by clicking the terrain
+  private courseDragY: number | null = null; // the ground a dragged course knot / flag last stood on
   readonly cameraCtl: CameraController; // navigation (fly/orbit/twist/zoom/projection/view); `camera` is the THREE cam
   readonly rideCtl: RideLayer; // test ride (docs/016) + Play setup; owns the camera + input while riding
   readonly remotePlayers: RemotePlayersLayer; // camera/rider avatars for every other session on this mountain
@@ -538,6 +539,10 @@ export class Viewport {
     // A Move drag freezes the slide surface. Rotate / Scale freeze member values around the shared anchor.
     // Release drops that snapshot and re-orients the next gizmo from the resulting geometry.
     this.stage.onGizmoDrag = dragging => {
+      // A course knot / flag drag starts on the deck the point stands on (see onGizmoChange).
+      const courseObj = this.gizmoKind === 'knot' || this.gizmoKind === 'anchor' ? this.gizmo.object : undefined;
+      this.courseDragY = dragging && courseObj
+        ? courseObj.position.y - (this.gizmoKind === 'anchor' ? ANCHOR_HANDLE_LIFT : 0) : null;
       if (this.gizmoKind === 'edgeextrusion') {
         if (dragging) this.gizmoReadout.begin(this.transforms.mode);
         else this.gizmoReadout.end();
@@ -1439,7 +1444,7 @@ export class Viewport {
    * fixed-tick ride model; these bodies only need a floor on which to bounce and settle. The ray runs through
    * the ride's cached BVH (physics.ts `rideBVH`) — a plain Raycaster walk is linear over every triangle of
    * the mountain, tens of ms per body per frame on a full reference. */
-  private effectGroundAt(kind: 'authored' | 'reference', position: THREE.Vector3, lift = 80, far = 240): THREE.Vector3 | null {
+  private effectGroundAt(kind: 'authored' | 'reference', position: THREE.Vector3): THREE.Vector3 | null {
     const mesh = kind === 'reference' ? this.reference : this.terrain;
     if (!mesh) return null;
     // The same tree the ride probes against (mesh/surface-trees.ts), cached on the geometry, so whichever of
@@ -1448,18 +1453,32 @@ export class Viewport {
     if (!bvh) return null;
     mesh.updateWorldMatrix(true, false);
     const ray = this.effectGroundRay;
-    ray.origin.copy(position); ray.origin.y += lift;
+    ray.origin.copy(position); ray.origin.y += 80;
     ray.direction.set(0, -1, 0);
     ray.applyMatrix4(this.effectGroundToLocal.copy(mesh.matrixWorld).invert());
-    const hit = bvh.raycastFirst(ray, THREE.DoubleSide, 0, far);
+    const hit = bvh.raycastFirst(ray, THREE.DoubleSide, 0, 240);
     return hit ? hit.point.applyMatrix4(mesh.matrixWorld) : null;
   }
 
-  /** The authored terrain's TOPMOST height at a data-space (x, z) — where a course knot or flag sits, by the same
-   *  topmost rule core/doc/course seatRunOnTerrain applies. Cast from far above, off the cached ride tree, so a
-   *  drag can ask on every move and a sculpt stroke can re-seat the whole run as it lifts. Null off the terrain. */
-  terrainTopAt(x: number, z: number): number | null {
-    return this.effectGroundAt('authored', new THREE.Vector3(x, 0, -z), 1e5, 2e5)?.y ?? null;
+  /** The authored terrain's height at a data-space (x, z) NEAREST `nearY` — where a course knot or flag sits, by
+   *  the rule core/doc/course seatRunOnTerrain applies: where the mountain passes over itself, the deck a point
+   *  already rides keeps it. Every surface in the column comes off one cast down the cached ride tree, so a drag
+   *  can ask on every move and a sculpt stroke can re-seat the whole run as it lifts. Null off the terrain. */
+  terrainNearestAt(x: number, z: number, nearY: number): number | null {
+    const mesh = this.terrain;
+    const bvh = rideTree(mesh.geometry as TreeGeometry);
+    if (!bvh) return null;
+    mesh.updateWorldMatrix(true, false);
+    const ray = this.effectGroundRay;
+    ray.origin.set(x, 1e5, -z);
+    ray.direction.set(0, -1, 0);
+    ray.applyMatrix4(this.effectGroundToLocal.copy(mesh.matrixWorld).invert());
+    let best: number | null = null;
+    for (const hit of bvh.raycast(ray, THREE.DoubleSide, 0, 2e5)) {
+      const y = hit.point.applyMatrix4(mesh.matrixWorld).y;
+      if (best === null || Math.abs(y - nearY) < Math.abs(best - nearY)) best = y;
+    }
+    return best;
   }
 
   setReferenceEffects(data: ReferenceEffectsData | null) {
@@ -2530,13 +2549,18 @@ export class Viewport {
     }
     // A knot and a flag slide over the hill rather than through it: their gizmo moves them across X/Z only
     // (gizmo/transform) and the ground under them sets the height, so the run stays seated as it is dragged.
+    // Where the mountain overlaps itself the ground is the deck nearest where the point last stood, so a knot
+    // dragged along under a bridge stays under it (courseDragY follows it move by move; the gizmo itself snaps
+    // the object back to its drag-start height every time).
     else if (this.gizmoKind === 'knot') {
-      const ground = this.terrainTopAt(p[0], p[2]);
-      if (ground !== null) { p[1] = ground; obj.position.y = ground; }
+      const ground = this.terrainNearestAt(p[0], p[2], this.courseDragY ?? p[1]);
+      if (ground !== null) { p[1] = ground; obj.position.y = ground; this.courseDragY = ground; }
       this.cb.onMoveKnot(this.gizmoKnot, p);
     }
     else if (this.gizmoKind === 'anchor' && this.gizmoAnchor) {
-      const ground = this.terrainTopAt(p[0], p[2]) ?? p[1] - ANCHOR_HANDLE_LIFT; // the flag floats; the anchor is the ground point
+      const was = this.courseDragY ?? p[1] - ANCHOR_HANDLE_LIFT; // the flag floats; the anchor is the ground point
+      const ground = this.terrainNearestAt(p[0], p[2], was) ?? was;
+      this.courseDragY = ground;
       obj.position.y = ground + ANCHOR_HANDLE_LIFT;
       this.cb.onMoveAnchor?.(this.gizmoAnchor, [p[0], ground, p[2]]);
     }

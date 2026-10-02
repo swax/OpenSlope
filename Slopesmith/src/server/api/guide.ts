@@ -201,8 +201,8 @@ accounts needs no header at all. Reads scope with \`?prefix=o/prop/\` or \`?keys
 2. Terrain: move vertices (\`v/…\`) to carve berms, kickers, a halfpipe; paint surfaces (\`q/…/paint\`);
    texture faces (\`q/…/tex\`) with reference tiles or your uploads — by \`rules\` once the faces are
    labelled, which is one call per section instead of one key per face.
-3. The run (\`course\`): reposition knots along your terrain; knot 0 is the start gate, the profile fields
-   (width/wall/bank/shoulder) describe the channel; \`checkpointBonus\` on a knot makes it a showoff
+3. The run (\`course\`): reposition knots along your terrain; knot 0 is the start gate, \`width\` bounds how far
+   the AI field weaves (wall/bank/shoulder are legacy and shape nothing); \`checkpointBonus\` on a knot makes it a showoff
    checkpoint station.
 4. Place things (\`o/prop\`, \`o/rail\`, \`o/gem\`, \`o/light\`, \`o/screen\`). Prop geometry comes from a
    reference level (\`level\` + ModelID), your imports (\`"@import"\`), or your authored models

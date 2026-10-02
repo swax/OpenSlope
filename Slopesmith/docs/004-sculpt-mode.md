@@ -54,8 +54,8 @@ skyward normals (asserted by both smoke tests).
 ## Carve lines: the course as a modifier
 
 > The shipping editor does not work this way. A mountain is its mesh, the course is a line through it, and the
-> run's cross-section reaches the terrain through the one-shot **shape run into terrain** command rather than a
-> derive-time mix — see [002 — Shaping the run into the terrain](002-course-model.md). The nondestructive carve
+> run does not shape the terrain at all — a groomed path is built with Edit ▸ Create Trail — see
+> [002 — The run no longer shapes the terrain](002-course-model.md). The nondestructive carve
 > below is the stage-2a grid model, kept because the reasoning about feature width against vertex spacing is
 > what still decides how fine a channel the net can hold.
 

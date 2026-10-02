@@ -7,11 +7,15 @@ export type SurfaceSample = { height: number; quad: number; surface: number };
 /** Patch evaluation resolution: the 4×4 base / export-collider tessellation. */
 const RES = 4;
 
-/** Topmost samples on the editor quilt at several XZ coordinates, over ONE mesh build and one evaluation of
+/** A sample column: (x, z), and optionally the height to look near — present, the surface NEAREST it answers
+ *  (the deck a point already rides, where one part of the mountain passes over another); absent, the topmost. */
+export type SampleColumn = readonly [number, number] | readonly [number, number, number];
+
+/** Surface samples on the editor quilt at several XZ coordinates, over ONE mesh build and one evaluation of
  * each patch's grid. Each patch is sampled at the 4×4 base/export-collider resolution. Returning the resolved
  * SurfaceType alongside height prevents placement tools from confusing an out-of-bounds shoulder with the
  * intended ride surface. Null where no patch covers the point. */
-export function surfaceSamplesAt(doc: QuadMeshDoc, points: readonly (readonly [number, number])[]): (SurfaceSample | null)[] {
+export function surfaceSamplesAt(doc: QuadMeshDoc, points: readonly SampleColumn[]): (SurfaceSample | null)[] {
   const best: (SurfaceSample | null)[] = points.map(() => null);
   if (!points.length) return best;
   const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
@@ -31,7 +35,8 @@ export function surfaceSamplesAt(doc: QuadMeshDoc, points: readonly (readonly [n
       if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;
       const y = w0 * a[1] + w1 * b[1] + w2 * c[1];
       const held = best[i];
-      if (held === null || y > held.height)
+      const near = points[i][2];
+      if (held === null || (near === undefined ? y > held.height : Math.abs(y - near) < Math.abs(held.height - near)))
         best[i] = { height: y, quad, surface: doc.quadPaint?.[quad] ?? doc.baseSurface };
     }
   };

@@ -785,7 +785,8 @@ function seatPendingCourse() {
   if (!courseSeatPending) return;
   courseSeatPending = false;
   if (store.modelEditId) return; // the viewport is standing in a model's substrate, not the mountain's hill
-  const ground = (points: readonly (readonly [number, number])[]) => points.map(([x, z]) => viewport.terrainTopAt(x, z));
+  const ground = (points: readonly (readonly [number, number, number])[]) =>
+    points.map(([x, z, y]) => viewport.terrainNearestAt(x, z, y));
   if (seatRunOnTerrain(store.mdoc, ground) > 0)
     viewport.refreshMountainOverlays(store.mdoc, store.selected, store.selectedKnots);
 }

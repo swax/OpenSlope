@@ -86,53 +86,36 @@ is no button for it:
   drag re-lands it when it ends, as does adding a knot. Edit commands that are not drags (smooth, loft and the
   like) do not; the next stroke or drag near the line picks it up.
 
-A knot's `width` is the run's own floor: it bounds the AI field's weave (half of it, less a 1.5 m margin) and
-is the floor `shape run into terrain` cuts. Every new run — reset course, New mountain's starter line, a
+A knot's `width` is the run's own floor: it bounds the AI field's weave (half of it, less a 1.5 m margin). Every new run — reset course, New mountain's starter line, a
 reference line borrowed into a new mountain, a blank mountain's guide run — starts at 30 m. The generators'
 **edge width** is a separate thing, the span of terrain lofted around the run; until this split it was also
 written into every knot, which gave generated mountains 400 m floors and a field that could weave ±178 m.
 Saved mountains keep the widths they have. The editor draws its start, checkpoint and finish lines a fixed
 30 m across regardless (`course-markers.ts`); none of them ships as a model.
 
-The height is always the TOPMOST surface at the point's (x, z), so a ridable overhang seats on its deck. The
-editor reads it from the viewport's cached surface tree (`Viewport.terrainTopAt`), the HD tessellation the user
-sees; `seatRunOnTerrain`'s default ground is the document's own quilt at the 4×4 collider resolution, which is
+Where the mountain passes over itself — a bridge, an overhang, a lap running under its own upper section — the
+point's (x, z) column holds several surfaces, and a seat picks the one NEAREST the height the point already has,
+so a run under a deck stays under it however the deck above is sculpted. A drag carries that height move to move,
+so a knot dragged along beneath a bridge stays beneath it; to move a point onto the other deck, reset the course
+and click it there (a click lands on the surface you see). The editor reads every surface in the column from the
+viewport's cached surface tree (`Viewport.terrainNearestAt`), the HD tessellation the user sees; `seatRunOnTerrain`'s default ground is the document's own quilt at the 4×4 collider resolution, which is
 what generation and the checks use. Building every patch's control points costs a dense mountain a tenth of a
 second or more, too much to pay each time a sculpt stroke lifts; the two surfaces differ by centimetres.
 
-## Shaping the run into the terrain
+## The run no longer shapes the terrain
 
-Code: `src/core/doc/run-shaping.ts` (`crossHeight`, `shapeRunIntoTerrain`, `profileWarnings`), Scene ▸ Course ▸
-**⌒ shape run into terrain** and the Selected-knot sliders.
+Scene ▸ Course once had **shape run into terrain**, a one-shot command that pressed a channel profile — the
+floor `width`, a quarter-pipe `wall` at each floor edge, a `shoulder` past the wall tops, a `bank` rolling the
+section, faded back into the hill over the run's `blend` — into the mesh's heights and painted the floor strip.
+It is gone, along with the wall / bank / shoulder sliders: the course is a line through the terrain and nothing
+else, and a groomed path along it is built with Edit ▸ Create Trail (docs/023), which emits a clean ribbon at
+its own density instead of bending whatever the terrain's patches happen to be. The command also worked in
+plan only, so on a mountain that overlaps itself it pulled a deck above or below the run onto it.
 
-A knot carries four numbers that describe a channel around the line: a floor of `width`, a quarter-pipe `wall`
-at each floor edge, a `shoulder` past the wall tops, and a `bank` rolling the whole section. The run's own
-`blend` (30 m by default; no longer exposed in the panel) says how many metres that channel takes to fade back into the
-hill it was cut into. **Shape run into
-terrain** presses it in: every vertex the ribbon reaches moves to the profile's height, the blend band mixes
-toward it, and the floor strip takes the run's surface.
-
-It is a COMMAND, not a modifier. The mountain is its mesh (006) — nothing re-derives the channel behind you, so
-sculpt, Edit and Paint all own the result afterwards, and pressing the button again re-asserts the profile over
-whatever has happened since. Two consequences follow from that and are the whole behaviour worth knowing:
-
-- **Heights only.** Vertices keep their XZ, so a floor spans exactly its authored width in plan and the pass
-  cannot fold a patch sideways into its neighbour. A wall past vertical is Edit work, not a knot field.
-- **Inside the reach the target is absolute; the blend band is not.** Re-running changes nothing on the floor
-  or the wall crest, and draws the blend band a little further toward the ribbon each time. Locked patches
-  (`quadLocked`) are honoured exactly as sculpt honours them, and the pass reports how many points they held.
-
-The wall's lateral run equals its height, so a wall is a 45° face and a 30 m wall is a 30 m-wide berm. Which
-sets up the one trap in the model, and the reason `profileWarnings` exists at all: **bank rolls the walls with
-the floor.** Bank far enough and the downhill wall's crest drops below the floor it was meant to contain, so a
-"banked turn" is a chute open on its outside edge and a whole AI field slides out of it. The rule is
-`wall > (width/2 + wall)·sin|bank|`, and it bites hardest where a designer wants it least — a wide floor needs
-a tall wall to survive even a gentle bank. Its mirror is cheaper but worth saying: the uphill wall stands at
-45° + |bank|, and past ~58° nothing holds to it. Both are checked from the four numbers alone and shown under
-the sliders as you drag them.
-
-`seatCourse` is the same profile swept by the one-shot generator seat on a build-time `GridNet`, and shares
-`crossHeight` with the above so a seeded course and a shaped one have the same cross-section.
+The fields stay in the document format, so older saves open unchanged. Only `width` still means anything
+live (the AI field's bound). The cross-section math (`crossHeight` / `seatSample` in `core/doc/run-shaping.ts`)
+survives for one reader: `seatCourse`, which re-creates a legacy carved save's channel on its build-time
+`GridNet` during migration so the document opens with the terrain it was saved with.
 
 ## TL;DR
 

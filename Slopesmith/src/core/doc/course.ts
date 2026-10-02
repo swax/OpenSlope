@@ -236,8 +236,9 @@ export function aiPathLines(course: CoursePath, seed: number, wander = true): V3
 /** Below this a seat leaves a point alone, so re-seating an already-seated run writes nothing at all. */
 const SEAT_EPSILON_M = 1e-3;
 
-/** The ground's topmost height at each (x, z), null where there is none. */
-export type GroundSampler = (points: readonly (readonly [number, number])[]) => (number | null)[];
+/** The ground's height in each (x, z, y) column — the surface NEAREST y, where the mountain overlaps itself —
+ *  null where there is none. */
+export type GroundSampler = (points: readonly (readonly [number, number, number])[]) => (number | null)[];
 
 /**
  * Seat the run on the terrain: resample each course knot's elevation — and a placed start / finish flag's —
@@ -245,9 +246,12 @@ export type GroundSampler = (points: readonly (readonly [number, number])[]) => 
  * the net, never the line — and everything the export derives from the line (per-mode start paths, respawn
  * spine, race line, AI lines) ships its heights verbatim. The StageArea formation is anchored to the same
  * authored origin, so a drifted line puts the entire start system off the snow. The editor therefore re-seats
- * the run after every sculpt stroke and Edit drag, and a dragged knot follows the ground as it moves. The height
- * at a point is the TOPMOST tessellated surface under/over it (a ridable overhang seats on its deck); a point
- * with no terrain at its (x, z) keeps its height. Returns the largest adjustment, metres.
+ * the run after every sculpt stroke and Edit drag, and a dragged knot follows the ground as it moves.
+ *
+ * Where the mountain passes over itself — a bridge, an overhang, a lap that runs under its own upper section —
+ * a column has several surfaces, and the one a point lands on is the one NEAREST the height it already has: a
+ * run under a deck stays under it however the deck is sculpted. A point with no terrain at its (x, z) keeps its
+ * height. Returns the largest adjustment, metres.
  *
  * The ground defaults to the document's own quilt at the export collider's resolution. The editor passes the
  * viewport's cached surface tree instead: building every patch's control points costs a dense mountain a tenth
@@ -257,7 +261,7 @@ export function seatRunOnTerrain(doc: QuadMeshDoc, ground: GroundSampler =
   points => surfaceSamplesAt(doc, points).map(sample => sample?.height ?? null)): number {
   const course = doc.course;
   const points = [...course.knots, ...(course.start ? [course.start] : []), ...(course.finish ? [course.finish] : [])];
-  const heights = ground(points.map(p => [p.pos[0], p.pos[2]] as const));
+  const heights = ground(points.map(p => [p.pos[0], p.pos[2], p.pos[1]] as const));
   let maxAdjust = 0;
   points.forEach((p, i) => {
     const y = heights[i];
@@ -273,8 +277,8 @@ export function seatRunOnTerrain(doc: QuadMeshDoc, ground: GroundSampler =
 /**
  * The channel every new run starts with — a reset course, a New mountain's starter line, a reference line
  * borrowed into one: a 30 m floor, open (no wall, no bank), an 8 m shoulder. A knot's width bounds the AI
- * field's weave and is the floor `shape run into terrain` cuts, so it is the run's own width and nothing to
- * do with how wide a generator made the terrain around it.
+ * field's weave, so it is the run's own width and nothing to do with how wide a generator made the terrain
+ * around it.
  */
 export const DEFAULT_KNOT_PROFILE = { width: 30, wall: 0, bank: 0, shoulder: 8 } as const;
 
