@@ -3,6 +3,7 @@ import type { GodRayCourse } from '../lighting/god-rays';
 import type { EffectsDocument } from '../effects/document';
 import type { ParticleVolume } from '../particles/volumes';
 import type { AuthoredEnvironmentBed } from '../audio/environment';
+import type { AnnouncerSettings } from '../audio/announcer';
 import type { V3 } from '../math/vector-types';
 
 export type { V3 } from '../math/vector-types';
@@ -137,6 +138,8 @@ export interface MountainMeta {
   /** Mix for the board-ride bed the test ride performs from the shared zboard bank (docs/034).
    *  Absent => DEFAULT_BOARD_SOUND. */
   boardSound?: BoardSoundMix;
+  /** Local Test announcer mix, event chances and optional mountain-library WAV overrides. */
+  announcer?: AnnouncerSettings;
   /**
    * Uploaded WAVs claiming the engine's three hit-gated event ids, in claim order: position 0 takes event
    * 16, 1 takes 28, 2 takes 57. At most three, because the engine's interactive-class test is three literal

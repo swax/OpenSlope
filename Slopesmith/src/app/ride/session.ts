@@ -23,11 +23,12 @@ import { createRiderPose, type RiderPose } from './pose';
 import { createBoardAudio, type BoardAudio } from './board-audio';
 import type { EquipmentAppearance, RideGear, SnowboardStance } from './gear';
 import type { BoardSoundMix } from '../../core/doc/types';
+import type { AnnouncerEvent } from '../../core/audio/announcer';
 import {
   DEFAULT_RACE_MODE, raceModeIsTimed, scoringEffectsApplyInMode, type RaceMode,
 } from '../../core/doc/race';
 import type { RideEffectAction, RideEffectState } from './effect-actions';
-import { downloadRideTelemetry, RideTelemetryCapture, type RideShovedBodySample } from './telemetry';
+import { downloadRideTelemetry, RideTelemetryCapture, type RideShovedBodySample, type RideTelemetryTick } from './telemetry';
 import { createCheckpointTracker, type CheckpointTracker, type RideCheckpoint } from './checkpoints';
 import type { XrRideControls } from './xr/input';
 import { createWalker, type WalkGroundQuery, type Walker } from './xr/walk';
@@ -139,6 +140,8 @@ export interface RideStartOpts {
   telemetry?: boolean;
   /** The mountain's authored board-sound mix (docs/034); absent rides silent. */
   boardSound?: BoardSoundMix;
+  onAnnouncerEvent?: (event: AnnouncerEvent) => void;
+  onAnnouncerTick?: (tick: RideTelemetryTick) => void;
   /** Selected server-wide character-library model id. */
   riderModel?: string;
   /** Selected riding-style id (docs/016) — how the rider stands. */
@@ -246,6 +249,7 @@ export class TestRide {
   private started = false;
   private pausedFlag = false;
   private countdownElapsed = 0;
+  private announceGoPending = false;
   /**
    * THE RUN CLOCK, in ride seconds. It is one accumulator for both events because the engine's is one field
    * ([Trailmap: 390-showoff-clock]) — a race reads it as elapsed, a showoff run subtracts it from the seeded
@@ -332,8 +336,14 @@ export class TestRide {
       // The same run boundary owns automatic recovery. Free riding keeps the result of crashes, wedges and OOB
       // falls until the player explicitly asks for the public/manual carry-back.
       automaticRespawnAvailable: () => this.runActive,
-      onRespawn: () => { this.scorer.bail(); this.syncScoreState(); this.cam.resetAim(this.model.st.pos); },
-      onTelemetryTick: tick => { this.telemetry.ingest(tick); this.scorer.ingest(tick); this.syncScoreState(); },
+      onRespawn: () => {
+        this.scorer.bail(); this.syncScoreState(); this.cam.resetAim(this.model.st.pos);
+        this.o.onAnnouncerEvent?.('knockdown');
+      },
+      onTelemetryTick: tick => {
+        this.telemetry.ingest(tick); this.scorer.ingest(tick); this.syncScoreState();
+        this.o.onAnnouncerTick?.(tick);
+      },
       obstacles: this.o.obstacles,
       onObstacleHit: this.o.onObstacleHit,
       boostVolumes: this.o.boostVolumes,
@@ -501,6 +511,7 @@ export class TestRide {
     // Only a live timed/scored run spends held boost. The retained board may be remounted after that run was
     // abandoned or finished; in that no-clock state boost is unlimited and no stale scorer meter may gate it.
     // If this frame empties an ACTIVE meter, no fixed tick receives held thrust. Course pads remain independent.
+    if (this.announceGoPending) { this.announceGoPending = false; this.o.onAnnouncerEvent?.('go'); }
     if (this.runActive) this.scorer.stepBoost(rideDt, this.input.keys.boost);
     this.syncScoreState();
     this.tickRunClock(rideDt);
@@ -1208,6 +1219,7 @@ export class TestRide {
     this.runResult = null;
     this.runVisible = visible;
     this.runActive = visible;
+    this.announceGoPending = visible;
     if (visible) this.scorer.start(); else this.scorer.abandon();
     this.lastScoreResolution = this.scorer.snapshot().resolution;
     this.lastTrickResolvedAt = -Infinity;
@@ -1228,6 +1240,7 @@ export class TestRide {
   /** A grounded exit abandons the result entirely, matching Unity's gate-run lifecycle. */
   abandonRun() {
     if (!this.started) return;
+    this.announceGoPending = false;
     this.scorer.abandon();
     this.runScore = 0;
     this.runActive = false;

@@ -243,6 +243,8 @@ const ROUTE_ACCESS: Record<string, Access> = {
     '/api/effect-sound': at('viewer'),
     '/api/environment-sound': at('viewer'),
     '/api/board-audio': at('viewer'),
+    '/api/announcer-audio': at('viewer'),
+    '/api/announcer-sound': at('viewer'),
   '/api/board-sound': at('viewer'),
   '/api/sound-banks': at('viewer'),
 

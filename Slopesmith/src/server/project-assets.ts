@@ -181,6 +181,9 @@ function collectDocumentAssets(document: EditDoc, wanted: WantedAssets): void {
     sounds(prop);
   }
   if (document.raceMusic) wanted.music.add(document.raceMusic);
+  for (const event of Object.values(document.announcer?.events ?? {})) {
+    if (event.file) wanted.sounds.add(event.file);
+  }
   for (const owner of [...(document.effects?.graphs ?? []), ...(document.effects?.functions ?? [])]) {
     for (const node of owner.nodes ?? []) {
       const file = effectNodeSoundFile(node);

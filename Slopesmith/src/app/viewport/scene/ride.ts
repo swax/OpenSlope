@@ -14,7 +14,7 @@ import {
   type CrackedSurface, type CrackedSurfaceRuntime, type CrackedSurfaceSpec,
 } from '../../ride/cracked-surfaces';
 import { authoredPatchContact, referencePatchContact } from '../../ride/patch-contact';
-import { RIDER_HEAD_Y } from '../../ride/physics-tuning';
+import { MAX_SPEED, RIDER_HEAD_Y } from '../../ride/physics-tuning';
 import type { RideObstacleHit, RideObstacleObject, RideObstacleSource, RideState } from '../../ride/physics';
 import { obstacleKeyCovers } from '../../ride/obstacles';
 import { createRideColliderOverlay } from './ride-collider-overlay';
@@ -39,6 +39,8 @@ import type { RideFrameTimingSample } from '../../ride/perf';
 import type { LocalPlayerPose } from '../../../core/session/player-pose';
 import { createWalkObstacleWorld, type WalkObstacleWorld } from '../../ride/walk-collision';
 import { RideMusicRuntime } from '../../audio/ride-music';
+import { RideAnnouncerRuntime } from '../../audio/announcer';
+import type { AnnouncerSettings } from '../../../core/audio/announcer';
 import type { AuthoredEnvironmentBed } from '../../../core/audio/environment';
 
 /** The shell-held state the ride layer reads at play time (terrain / reference / preview live in the shell
@@ -92,6 +94,7 @@ export interface RideDeps {
   getRefAiPaths(): RefAiPath[] | null;
   /** The authored mountain's board-sound mix — the bed a test ride performs on either target (docs/034). */
   getBoardSound(): BoardSoundMix;
+  getAnnouncer(): AnnouncerSettings;
   /** Authored race master. Reference Test ignores it and follows the loaded level's own PathFinder playlist. */
   getRaceMusic(): string | null;
   getRaceMusicArrangement(): RaceMusicArrangement;
@@ -147,6 +150,8 @@ const EMPTY_KEYS: ReadonlySet<string> = new Set();
 export function createRideLayer(stage: Stage, deps: RideDeps) {
   const music = new RideMusicRuntime();
   let musicEnabled = true;
+  const announcer = new RideAnnouncerRuntime();
+  let announcerEnabled = true;
   let ride: TestRide | null = null;
   /**
    * The WebXR session's board, which OUTLIVES its mounts. A headset session mounts and dismounts constantly —
@@ -220,6 +225,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    *  simply dropped onto the slope click by click. The shell's render loop calls this every frame; with neither a
    *  ride nor a field out there it does nothing. */
   function step(dt: number) {
+    announcer.configure(deps.getAnnouncer(), announcerEnabled && !!ride && !ride.onFoot && !ride.paused);
     // WebXR opens its collision frame before this call because on-foot simulation lives in beginXrFrame.
     // Desktop walking lives below, so it opens the frame here instead. Do not reset XR's counters between its
     // expensive begin phase and the profiler sample after rendering.
@@ -862,6 +868,11 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       countdown,
       telemetry,
       boardSound: deps.getBoardSound(),
+      onAnnouncerEvent: event => announcer.fire(event),
+      onAnnouncerTick: tick => announcer.step(tick.dt, {
+        grounded: tick.closing.grounded, airTime: tick.closing.airTime,
+        speed01: Math.min(1, tick.closing.speed / MAX_SPEED), boosting: ride?.boostActive() ?? false,
+      }),
       riderModel, riderStyle, gear: rideGear, snowboardStance, equipmentAppearance,
       boardFx: boardFxEnabled, boardFxGround,
       view, gaze,
@@ -872,6 +883,9 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       onControlContextChange: () => stage.cb.onRideControlContextChange?.(),
       label: `Riding: ${reference ? deps.getRefLevel() || 'Reference' : deps.getMountainName() || 'Mountain'}`, onExit,
     });
+    announcer.reset();
+    announcer.configure(deps.getAnnouncer(), announcerEnabled);
+    if (announcerEnabled) announcer.preload();
     ride.start();
     colliderOverlay.setSources(t.obstacles);
     hideOtherMountain(reference);
@@ -913,6 +927,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   /** Leave the test ride, restoring the other mountain and the saved editor camera / controls / gizmo. */
   function stopRide() {
     if (!ride) return;
+    announcer.reset();
     ride.stop();
     ride = null;
     colliderOverlay.setSources([]);
@@ -1068,6 +1083,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    *  itself ends, so the next mount is a warp rather than a rebuild. */
   function parkVrBoard() {
     if (!ride) return;
+    announcer.stop();
     ride.park();
     ride = null;
     colliderOverlay.setSources([]);
@@ -1238,6 +1254,11 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     setCollidersVisible(on: boolean) { colliderOverlay.setVisible(on); },
     /** Test's live music master: environment off-board and race track on-board. */
     setMusicEnabled(on: boolean) { musicEnabled = on; if (!on) music.stop(); },
+    setAnnouncerEnabled(on: boolean) {
+      announcerEnabled = on;
+      announcer.configure(deps.getAnnouncer(), on && !!ride && !ride.onFoot && !ride.paused);
+      if (on && (ride || xr?.presenting)) announcer.preload();
+    },
     get collidersVisible() { return colliderOverlay.visible; },
     togglePause, orbitCamera, zoomThirdPersonWheel, setDesktopBoardAim, beginDesktopPointer, endDesktopPointer,
   };

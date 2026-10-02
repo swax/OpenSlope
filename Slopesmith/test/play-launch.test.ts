@@ -12,6 +12,18 @@ Object.assign(globalThis, {
   window: { setTimeout },
 });
 
+// A device can be suspended again after a backgrounded tab/headset session. Each launch must
+// resume it inside the gesture, even while reference preparation is still pending.
+let audioResumes = 0;
+class FakeAudioContext {
+  state = 'suspended';
+  currentTime = 0;
+  destination = {};
+  createGain() { return { gain: { value: 1 }, connect() {} }; }
+  resume() { audioResumes++; this.state = 'running'; return Promise.resolve(); }
+}
+Object.assign(globalThis, { AudioContext: FakeAudioContext });
+const { sharedAudioContext } = await import('../src/app/audio/runtime');
 const { createPlay } = await import('../src/app/ride/play');
 const {
   lastRidePointerWasTouch, noteRidePointerType, preferImmersivePlay,
@@ -85,6 +97,8 @@ function deferred() {
 }
 
 function harness(wait: Promise<void>) {
+  (sharedAudioContext() as unknown as FakeAudioContext).state = 'suspended';
+  audioResumes = 0;
   const store = {
     currentMode: 'play', playTarget: 'reference', playSpawnRef: [1, 2, 3], playSpawnAuthored: [4, 5, 6],
     placingStart: false, playAiMax: 6, playCountdownOn: false, playTelemetryOn: false,
@@ -131,6 +145,7 @@ function harness(wait: Promise<void>) {
   const gate = deferred();
   const h = harness(gate.promise);
   const pending = h.play.startPlay();
+  assert.equal(audioResumes, 1, 'Play unlocks audio before awaiting the reference effects');
   assert.equal(h.play.launching, 'play');
   h.play.cancelLaunch();
   h.store.currentMode = 'edit';
@@ -190,6 +205,7 @@ function harness(wait: Promise<void>) {
   const gate = deferred();
   const h = harness(gate.promise);
   const pending = h.play.startVr();
+  assert.equal(audioResumes, 1, 'VR unlocks audio in the launch gesture too');
   assert.equal(h.vr().vrSessions, 1);
   assert.equal(h.vr().effectsAtVrRequest, 0,
     'the session is requested inside the click, before any effects fetch is awaited');

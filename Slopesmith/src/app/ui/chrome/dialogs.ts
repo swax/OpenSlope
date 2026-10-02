@@ -341,6 +341,7 @@ export function createDialogs(deps: DialogDeps) {
           raceMusicArrangement: doc.raceMusicArrangement,
           environmentBed: doc.environmentBed,
           boardSound: doc.boardSound,
+          announcer: doc.announcer,
           aiSeed: doc.aiSeed,
           effects: doc.effects,
       });
