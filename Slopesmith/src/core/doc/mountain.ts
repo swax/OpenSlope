@@ -1,5 +1,6 @@
 import type { CoursePath, CourseKnot, MountainMeta, PaintMap, TexPaintMap, QuadMeshDoc, V3 } from './types';
 import { normalizeEnvironmentBed } from '../audio/environment';
+import { normalizeAnnouncer } from '../audio/announcer';
 import { ensureGemIds, ensureLightIds, ensureScreenIds, seedMeshIds } from './ids';
 import { keyMountainByIndex, storedById } from './serialize';
 import { frameAt, sampleSpine, spineAt, totalLength, type SpineSample } from '../math/spine';
@@ -231,10 +232,10 @@ export function meshFromNet(net: GridNet, meta: Omit<MountainMeta, 'kind' | 'spa
     return any ? out : undefined;
   };
   const { name, course, baseSurface, props, lights, rails, gems, labels, sun, skybox, raceMusic, raceMusicArrangement, environmentBed,
-    boardSound, laps, aiSeed, effects, particleVolumes } = meta;
+    boardSound, announcer, laps, aiSeed, effects, particleVolumes } = meta;
   return {
     kind: 'mountain', version: 5, name, spacing: net.spacing, course, baseSurface, props, lights, rails, gems, labels, sun,
-    skybox, raceMusic, raceMusicArrangement, environmentBed, boardSound, laps, aiSeed, effects, particleVolumes,
+    skybox, raceMusic, raceMusicArrangement, environmentBed, boardSound, announcer, laps, aiSeed, effects, particleVolumes,
     vertices, quads, ...seedMeshIds(0, vertices.length / 3, quads.length), edgeHandles, tJunctions: [],
     quadPaint: remap(doc.paint), quadTex: remap(doc.texPaint), quadOrient: remap(doc.texOrient),
   };
@@ -1095,7 +1096,7 @@ export function buildMeshFromCourse(
     propLines: meta.propLines, gems: meta.gems, sun: meta.sun, skybox: meta.skybox, raceMusic: meta.raceMusic,
     raceMusicArrangement: meta.raceMusicArrangement,
     environmentBed: normalizeEnvironmentBed(meta.environmentBed),
-    boardSound: meta.boardSound, laps: meta.laps,
+    boardSound: meta.boardSound, announcer: meta.announcer, laps: meta.laps,
     aiSeed: meta.aiSeed,
     effects: meta.effects ?? createEmptyEffectsDocument(name),
     particleVolumes: normalizeParticleVolumes(meta.particleVolumes),
@@ -1281,6 +1282,7 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
       doc.raceMusicArrangement = normalizeRaceMusicArrangement(d.raceMusicArrangement);
     doc.environmentBed = normalizeEnvironmentBed(d.environmentBed);
     if (d.boardSound !== undefined) doc.boardSound = normalizeBoardSound(d.boardSound);
+    if (d.announcer !== undefined) doc.announcer = normalizeAnnouncer(d.announcer);
     doc.effects = migrateMountainEffects(doc.effects, doc.name);
     doc.particleVolumes = normalizeParticleVolumes(doc.particleVolumes);
     ensurePlacedPropIds(doc.props);
@@ -1336,6 +1338,7 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
         ? undefined : normalizeRaceMusicArrangement(d.raceMusicArrangement),
       environmentBed: normalizeEnvironmentBed(d.environmentBed),
       boardSound: d.boardSound === undefined ? undefined : normalizeBoardSound(d.boardSound),
+      announcer: d.announcer === undefined ? undefined : normalizeAnnouncer(d.announcer),
       laps: normalizeLaps(d.laps),
       aiSeed: d.aiSeed as MountainMeta['aiSeed'],
       effects: migrateMountainEffects(d.effects, typeof d.name === 'string' ? d.name : 'MOUNTAIN01'),

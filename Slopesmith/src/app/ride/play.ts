@@ -4,6 +4,7 @@ import { docPositions } from '../../core/doc/doc-edit';
 import type { Store } from '../state/store';
 import type { Viewport } from '../viewport/viewport';
 import { toast } from '../ui/components/toast';
+import { resumeSharedAudio } from '../audio/runtime';
 import { reconcileXrEyeBuffer } from './xr/config';
 
 /**
@@ -143,6 +144,9 @@ export function createPlay(deps: PlayDeps) {
     if (store.currentMode !== 'play' || launching) return;
     const target = store.playTarget;
     if (target === 'reference' && !viewport.canRideReference) { toast('Load a reference level first (Scene ▸ Reference).', 'warn'); return; }
+    // Unlock before reference preparation can yield out of the click/touch gesture. The
+    // later board/effect/music callbacks cannot unlock a suspended device on every browser.
+    resumeSharedAudio();
     const generation = ++launchGeneration;
     launching = 'play'; rebuildTools();
     try {
@@ -182,6 +186,8 @@ export function createPlay(deps: PlayDeps) {
     const fallback = defaultPlaySpawn();
     const spawn = currentPlaySpawn() ?? fallback?.pos ?? null;
     if (!spawn) { toast('No start point — use Position ▸ Set custom start.', 'warn'); return; }
+    // Resume synchronously without awaiting it: WebXR needs this same user gesture.
+    resumeSharedAudio();
     const entered = await viewport.startXrPlay(target, spawn, fallback?.heading ?? null, exitVr,
       store.playAiMax > 0, store.playTelemetryOn, store.playVrRenderScale, store.playVrLayerMode,
       store.playSmoothCutoutsOn, store.playVrStatsOn, enabled => {
@@ -227,6 +233,9 @@ export function createPlay(deps: PlayDeps) {
     if (store.playAiMax === 0) { toast('AI riders are off — raise the rider count above zero first.', 'info'); return; }
     const target = store.playTarget;
     if (target === 'reference' && !viewport.canRideReference) { toast('Load a reference level first (Scene ▸ Reference).', 'warn'); return; }
+    // Unlock before reference preparation can yield out of the click/touch gesture. The
+    // later board/effect/music callbacks cannot unlock a suspended device on every browser.
+    resumeSharedAudio();
     const generation = ++launchGeneration;
     launching = 'watch'; rebuildTools();
     try {

@@ -1,4 +1,7 @@
 import GUI from 'lil-gui';
+import { renderAnnouncerPanel } from './announcer-panel';
+import { announcerIndex } from '../../audio/announcer';
+import type { AnnouncerIndex } from '../../../core/audio/announcer';
 import { createSceneCamera, type SceneCameraDeps } from './scene-camera';
 import type { CourseKnot, CoursePath, V3 } from '../../../core/doc/types';
 import type { EditDoc } from '../../../core/doc/doc-edit';
@@ -135,7 +138,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
   const categories: Array<{ value: SceneSel; label: string | (() => string); icon: string; title: string | (() => string) }> = [
     { value: 'info', label: 'Reference', icon: '◇', title: () => `Choose a read-only mountain to compare with ${mountainName()}.` },
     { value: 'course', label: 'Course', icon: '⌁', title: () => `${mountainName()} run controls followed by the recovered ${referenceName()} course.` },
-    { value: 'sound', label: 'Sound', icon: '♫', title: () => `${mountainName()} race music followed by shared rider audio and the ${referenceName()} music graph.` },
+    { value: 'sound', label: 'Sound', icon: '♫', title: () => `${mountainName()} music, rider audio, announcer, and the ${referenceName()} music graph.` },
     { value: 'lighting', label: 'Lighting', icon: '☀', title: () => `${mountainName()} sun controls followed by the ${referenceName()} lighting study.` },
     { value: 'skybox', label: 'Skybox', icon: '▣', title: () => `${mountainName()} skybox followed by the ${referenceName()} skybox.` },
     { value: 'godrays', label: 'God Rays', icon: '✺', title: () => `${mountainName()} god-ray settings followed by ${referenceName()}’s extracted settings.` },
@@ -266,7 +269,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
   function refreshSceneAfterSync(before: EditDoc) {
     const doc = getDoc();
     const sound = (d: EditDoc) => canonicalJson([
-      d.name, d.baseSurface, d.raceMusic, d.raceMusicArrangement, d.boardSound, d.environmentBed,
+      d.name, d.baseSurface, d.raceMusic, d.raceMusicArrangement, d.boardSound, d.environmentBed, d.announcer,
     ]);
     const course = (d: EditDoc) => canonicalJson([d.name, d.baseSurface, d.laps, d.showoffSeconds]);
     if (before.name !== doc.name)
@@ -291,10 +294,14 @@ export function createScenePanel(deps: ScenePanelDeps) {
     soundFolder.open(); // outer Scene card is a label; only its Sound subsections start collapsed
     note(soundFolder, 'Loading this mountain’s music…');
     try {
-      const body = await fetchJson<{ tracks?: string[]; error?: string }>('/api/custom-music');
+      const [body, sounds, voices] = await Promise.all([
+        fetchJson<{ tracks?: string[]; error?: string }>('/api/custom-music'),
+        fetchJson<{ sounds?: string[] }>('/api/custom-sounds').catch(() => ({ sounds: [] })),
+        announcerIndex(true),
+      ]);
       if (body.error) throw new Error(body.error);
       if (request !== soundRequest) return;
-      renderSoundDetail(body.tracks ?? []);
+      renderSoundDetail(body.tracks ?? [], sounds.sounds ?? [], voices);
     } catch (e) {
       if (request !== soundRequest) return;
       clearGui(soundFolder);
@@ -303,7 +310,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     }
   }
 
-  function renderSoundDetail(tracks: string[]) {
+  function renderSoundDetail(tracks: string[], sounds: string[], voices: AnnouncerIndex) {
     clearGui(soundFolder);
     const doc = getDoc();
     const environment = soundFolder.addFolder('Environment filler');
@@ -411,6 +418,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     soundFolder.add({ stop: stopAudition }, 'stop').name('■ stop preview');
     soundFolder.add({ refresh: () => void buildSoundDetail() }, 'refresh').name('↻ refresh library');
     renderBoardSoundDetail(soundRequest);
+    renderAnnouncerPanel(soundFolder, getDoc, scheduleRebuild, () => void buildSoundDetail(), sounds, voices);
   }
 
   /** The board bed the test ride performs (docs/034): the mix over the shared zboard loops. The layer levels

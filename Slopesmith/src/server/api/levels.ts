@@ -1,4 +1,5 @@
 import { responseCache } from '../response-cache';
+import { readAnnouncerIndex, readAnnouncerSound } from '../routes/announcer';
 import {
   boardSoundSource, listSoundBankLevels, listSoundBanks, readBoardSoundBytes, readBoardSoundIndex,
   readCourseEffectSoundBytes, readEnvironmentSoundBytes, readSoundIndex,
@@ -213,6 +214,20 @@ export const levelRoutes: Record<string, ApiHandler> = {
   // Board-ride audio, from the shared level-independent banks any extracted level carries:
   // GET /api/board-audio -> shared bank sources plus the locally extracted surface-family routes,
   // GET /api/board-sound?slot=4[&bank=zboard|zbxsfx][&loop=1] -> that slot's WAV (loop prefers NNN.loop.wav).
+  '/api/announcer-audio': async (req, res) => {
+    await responseCache.json(req, res, 'announcer-audio', readAnnouncerIndex);
+  },
+  '/api/announcer-sound': async (req, res) => {
+    const q = new URL(req.url ?? '', 'http://localhost').searchParams;
+    const event = q.get('event') ?? '', file = q.get('file') ?? '';
+    try {
+      await responseCache.bytes(req, res, `announcer-sound:${event}:${file}`, 'audio/wav',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => readAnnouncerSound(event, file));
+    } catch (e) {
+      res.statusCode = 404;
+      res.end(e instanceof Error ? e.message : String(e));
+    }
+  },
   '/api/board-audio': async (req, res) => {
     try {
       await responseCache.json(req, res, 'board-audio', async () => ({

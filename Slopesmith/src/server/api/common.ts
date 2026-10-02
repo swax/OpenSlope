@@ -182,10 +182,10 @@ const RESPONSE_KIND = /^(?:json|bytes):/;
 export function invalidateSharedLibrary(scope: string): void {
   const sharedSky = scope.toLowerCase() === 'shared';
   const exact = sharedSky
-    ? new Set(['json:skybox'])
+    ? new Set(['json:skybox', 'json:announcer-audio'])
     : new Set(['json:characters']);
   const prefixes = sharedSky
-    ? ['bytes:skypano:custom:', 'bytes:skyground:custom:']
+    ? ['bytes:skypano:custom:', 'bytes:skyground:custom:', 'bytes:announcer-sound:']
     : ['bytes:character-model:'];
   responseCache.invalidate(key => {
     const candidate = key.toLowerCase();

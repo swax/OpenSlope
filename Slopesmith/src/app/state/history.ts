@@ -72,6 +72,7 @@ export function describeRegisters(keys: readonly string[]): string {
   if (has(key => key === 'g/raceMusic' || key === 'g/raceMusicArrangement')) return 'Edit race music';
   if (has(key => key === 'g/environmentBed')) return 'Edit environment sound';
   if (has(key => key === 'g/boardSound')) return 'Edit board sound';
+  if (has(key => key === 'g/announcer')) return 'Edit announcer';
   if (has(key => key === 'course')) return 'Edit course';
   if (has(key => key.startsWith('h/') || key.endsWith('/twist'))) return 'Shape / smooth terrain';
   if (has(key => key.startsWith('v/'))) return 'Move / shape terrain';

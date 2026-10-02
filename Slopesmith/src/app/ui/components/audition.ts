@@ -79,6 +79,9 @@ function startElementAudition(url: string, volume: number, boardKeyForPreview: s
   void element.play().catch(finished);
 }
 
+/** Announcer previews share the exclusive audition owner and bypass Test's master volume. */
+export const auditionAnnouncer = (url: string, volume: number): void => startElementAudition(url, volume);
+
 /**
  * A held loop runs on WEB AUDIO rather than on an audio element.
  *

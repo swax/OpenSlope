@@ -15,6 +15,7 @@ import { xrSupported } from '../../ride/xr/session';
 import { XR_RENDER_SCALE_STEP, xrEyeBufferNote, xrScaleMayBeCapped } from '../../ride/xr/config';
 import type { RaceMode } from '../../../core/doc/race';
 import { toast } from '../components/toast';
+import { resumeSharedAudio } from '../../audio/runtime';
 import type { ToolsContext } from './widgets';
 import { preferImmersivePlay, primaryPointerIsCoarse } from '../../ride/input-modality';
 
@@ -450,6 +451,7 @@ export function buildPlayTools(ctx: ToolsContext) {
   const gameVolume = { percent: Math.round(store.playGameVolume * 100) };
   tip(options.add(gameVolume, 'percent', 0, 100, 1).name('Game volume')
     .onChange((percent: number) => {
+      if (percent > 0) resumeSharedAudio();
       store.playGameVolume = percent / 100;
       viewport.setRideGameVolume(store.playGameVolume);
     })
@@ -457,9 +459,16 @@ export function buildPlayTools(ctx: ToolsContext) {
   'Master level for all gameplay sound; zero mutes the game. Scene Sound previews stay audible.');
   tip(options.add({ music: store.playMusicOn }, 'music').name('Music')
     .onChange((v: boolean) => {
+      if (v) resumeSharedAudio();
       store.playMusicOn = v; viewport.setRideMusic(v); persistUi(); releaseKeyboard();
     }),
   'Play the map’s environment bed off-board and its race track mounted. Applies live.');
+  tip(options.add({ announcer: store.playAnnouncerOn }, 'announcer').name('Announcer')
+    .onChange((v: boolean) => {
+      if (v) resumeSharedAudio();
+      store.playAnnouncerOn = v; viewport.setRideAnnouncer(v); persistUi(); releaseKeyboard();
+    }),
+  'Hear the MC call starts, big air, landings, wipeouts, boost, slow riding, and clean runs. Applies live.');
   // One count owns both the old enable switch and cap. Zero is a real live cap: it retires the current field and
   // prevents slope-click drops; raising it again enables the next field without a second contradictory control.
   const aiRiders = { count: store.playAiMax };

@@ -25,6 +25,7 @@ import { patchDependency, patchVertexSpans, type NetChange } from '../../core/me
 import { aiLineRatings, aiPathLines, courseCenters, DEFAULT_AI_SEED, finishFrame } from '../../core/doc/course';
 import { DEFAULT_LAPS, DEFAULT_RACE_MODE, DEFAULT_SHOWOFF_SECONDS, type RaceMode } from '../../core/doc/race';
 import { normalizeBoardSound } from '../../core/audio/board-sound';
+import { normalizeAnnouncer } from '../../core/audio/announcer';
 import { normalizeRaceMusicArrangement } from '../../core/music/arrangement';
 import { preloadBoardAudio } from '../ride/board-audio';
 import {
@@ -722,6 +723,7 @@ export class Viewport {
         ? { pos: this.refAnchors.finish, fwd: this.refAnchors.finishFwd } : null),
       getRefAiPaths: () => this.refAiPaths,
       getBoardSound: () => normalizeBoardSound(this.meshDoc?.boardSound),
+      getAnnouncer: () => normalizeAnnouncer(this.meshDoc?.announcer),
       getRaceMusic: () => this.meshDoc?.raceMusic ?? null,
       getRaceMusicArrangement: () => normalizeRaceMusicArrangement(this.meshDoc?.raceMusicArrangement,
         this.meshDoc?.raceMusic ? 'linear-loop' : 'retail-graph'),
@@ -1360,6 +1362,7 @@ export class Viewport {
     this.rideMusicChecked = on;
     this.applyRideMusicPlayback();
   }
+  setRideAnnouncer(on: boolean) { this.rideCtl.setAnnouncerEnabled(on); }
   private applyRideMusicPlayback() {
     this.rideCtl.setMusicEnabled(rideMusicPlaybackEnabled(this.rideMusicChecked, this.jukeboxPlaying));
   }
