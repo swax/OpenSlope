@@ -150,8 +150,8 @@ export type ToolsPanelDeps = {
   // delete ops
   deleteSelectedProp: () => void;
   deleteMultiSelProps: () => void;
-  /** Props-mode copy / cut / paste of the selected placement(s) (docs/012). */
-  propClipboard: Pick<PropClipboardSession, 'canCopy' | 'canPaste' | 'count' | 'placing' | 'copy' | 'paste' | 'cancel'>;
+  /** Copy / cut / paste of selected placements in Props or Edit mode (docs/012). */
+  propClipboard: Pick<PropClipboardSession, 'canCopy' | 'canPaste' | 'count' | 'placing' | 'copy' | 'cut' | 'paste' | 'cancel'>;
   deleteSelectedLight: () => void;
   deleteSelectedScreen: () => void;
   /** Turn the Sources view on: video screens are drawn there, so one added while it is off is invisible. */

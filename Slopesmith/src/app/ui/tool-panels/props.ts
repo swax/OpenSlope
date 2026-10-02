@@ -1629,10 +1629,16 @@ export function createPropTools(ctx: ToolsContext) {
    *  one gizmo at the set's centre moves them together, and delete removes them all (also the Delete key). */
   function buildMultiPropTools() {
     multiList.show(store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })));
-    // Edit mode borrows this panel for a marquee narrowed to props; the clipboard is Props mode's own.
-    if (propClipboard.canCopy())
+    // Shared by Props mode and an Edit marquee narrowed to props.
+    if (propClipboard.canCopy()) {
       tip(gui.add({ copy: propClipboard.copy }, 'copy').name(`⧉ copy ${plural(store.multiSel.length)} (Ctrl+C)`),
         'Copy the set; Ctrl+V holds it on the cursor to place.');
+      tip(gui.add({ cut: propClipboard.cut }, 'cut').name(`cut ${plural(store.multiSel.length)} (Ctrl+X)`),
+        'Copy the set and remove the original placements.');
+    }
+    if (propClipboard.canPaste())
+      tip(gui.add({ paste: () => void propClipboard.paste() }, 'paste').name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
+        'Hold the copied props on the cursor in Props mode, then click to place them.');
     gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete ${plural(store.multiSel.length)}`);
     addDeselect();
   }

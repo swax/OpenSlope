@@ -1100,9 +1100,9 @@ const propOps = createPropOps({
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
 });
-// Props-mode Ctrl+C / X / V over the selected placement(s) (docs/012); a paste is held on the cursor until a click.
+// Ctrl+C / X / V over selected placements in Props or Edit (docs/012); paste enters Props and waits for a click.
 const propClipboard = createPropClipboard({
-  store, viewport, propOps, resetGizmoMode: edit.resetGizmoMode, scheduleRebuild,
+  store, edit, setMode, viewport, propOps, resetGizmoMode: edit.resetGizmoMode, scheduleRebuild,
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
 });
