@@ -178,6 +178,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     store,
     cageActive,
     pastePlacing,
+    propPastePlacing: deps.propClipboard.placing,
     canRotateSelection,
     editSelection,
     selectedControlCagesVisible: edit.selectedControlCagesVisible,
@@ -455,9 +456,12 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     syncDockTabs(); // the same rule's other half: a hidden library offers its pull-up tab in its own mode
     propLibToggle.style.display = propLaunchersVisible() ? 'block' : 'none';
     propTools.updatePropPreview(); // show the held/selected prop preview in Props mode, hide it otherwise
-    viewport.setPropArmed(propping && store.armedProp // an armed prop places (and ghosts) only in Props mode
-      ? { level: store.armedProp.level, model: store.armedProp.model, baseOffset: propBaseOffset(store.armedProp.level, store.armedProp.model) }
-      : null);
+    // A held paste stays held while Props stays up; leaving Props puts it down with everything else.
+    if (!(propping && deps.propClipboard.placing())) {
+      viewport.setPropArmed(propping && store.armedProp // an armed prop places (and ghosts) only in Props mode
+        ? { level: store.armedProp.level, model: store.armedProp.model, baseOffset: propBaseOffset(store.armedProp.level, store.armedProp.model) }
+        : null);
+    }
     palette.setVisible(painting);   // the Palette shows while painting
     updateCmdSheet();
   }

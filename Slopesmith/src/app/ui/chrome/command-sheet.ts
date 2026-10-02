@@ -10,6 +10,8 @@ export type CommandSheetDeps = {
   store: Store;
   cageActive: () => boolean;
   pastePlacing: () => boolean;
+  /** Props mode is holding a paste (docs/012). */
+  propPastePlacing: () => boolean;
   canRotateSelection: () => boolean;
   editSelection: () => { kind: 'control points' | 'edges' | 'patches' | 'mixed selection'; readOnly: boolean } | null;
   selectedControlCagesVisible: () => boolean;
@@ -27,7 +29,7 @@ export type CommandSheetDeps = {
 /** Bottom keyboard/mouse help overlays. Kept outside the tools builder because this is a mode projection, not
  * lil-gui construction, and it is refreshed independently by viewport selection/tool changes. */
 export function createCommandSheet(deps: CommandSheetDeps) {
-  const { store, cageActive, pastePlacing, canRotateSelection, editSelection, selectedControlCagesVisible, canEditCurvature, edgeExtrusionStaged, edgeExtrusionFanMode,
+  const { store, cageActive, pastePlacing, propPastePlacing, canRotateSelection, editSelection, selectedControlCagesVisible, canEditCurvature, edgeExtrusionStaged, edgeExtrusionFanMode,
     edgeExtrusionSideFlippable, paletteSurfaceView, desktopRiding, rideWalking, rideFirstPerson } = deps;
   const cmdSheet = document.getElementById('cmdsheet')!;
   const paintControls = document.getElementById('paintctl')!;
@@ -123,9 +125,11 @@ export function createCommandSheet(deps: CommandSheetDeps) {
           })()
           : store.armedProp
           ? helpPanel('Props Mode — placing', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['MMB', 'select + arm prop'], ['Esc', 'put down']])
+          : propPastePlacing()
+          ? helpPanel('Props Mode — paste', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['Esc', 'cancel']])
           : helpPanel('Props Mode — select', [['LMB', 'select'], ['drag', 'box-select many'], ['MMB', 'select + arm prop'],
             ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),
-            ['Del', 'remove'], ['Esc', 'deselect']]))
+            ['Ctrl+C / X / V', 'copy / cut / paste'], ['Del', 'remove'], ['Esc', 'deselect']]))
         : store.currentMode === 'edit' && edgeExtrusionStaged()
           ? deps.edgeExtrusionPathMode?.()
             ? helpPanel('Edit Mode — extrude along path', [['LMB', 'select path edge'], ['Ctrl-click', 'add / remove path edge'],

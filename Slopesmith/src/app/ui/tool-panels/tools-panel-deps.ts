@@ -13,6 +13,7 @@ import type { EffectsEditor } from '../../effects/editor';
 import type { EditSession } from '../../edit/session';
 import type { Palette } from '../../paint/palette';
 import type { TextureLibrary } from '../../paint/library';
+import type { PropClipboardSession } from '../../props/clipboard';
 import type { PropLibrary } from '../../props/library';
 import type { PropLineOps } from '../../props/lines';
 import type { PropPreview } from '../../props/preview';
@@ -149,6 +150,8 @@ export type ToolsPanelDeps = {
   // delete ops
   deleteSelectedProp: () => void;
   deleteMultiSelProps: () => void;
+  /** Props-mode copy / cut / paste of the selected placement(s) (docs/012). */
+  propClipboard: Pick<PropClipboardSession, 'canCopy' | 'canPaste' | 'count' | 'placing' | 'copy' | 'paste' | 'cancel'>;
   deleteSelectedLight: () => void;
   deleteSelectedScreen: () => void;
   /** Turn the Sources view on: video screens are drawn there, so one added while it is off is invisible. */

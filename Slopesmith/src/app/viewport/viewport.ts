@@ -84,7 +84,7 @@ import {
 } from './scene/range-cull';
 import { createPropAssets } from './scene/prop-assets';
 import { setCutoutAlphaToCoverage } from '../props/texture-alpha';
-import { createPropsLayer, type PropsLayer } from './scene/props';
+import { createPropsLayer, type PropArm, type PropsLayer } from './scene/props';
 import { createSurgeryLayer, type SurgeryLayer } from './tools/surgery';
 import { createCageLayer, type CageLayer } from './mesh/cage';
 import { createMeshPicking, type MeshPicking } from './input/mesh-picking';
@@ -3421,11 +3421,14 @@ export class Viewport {
    * commits it at the ghost's exact pose (onPlaceProp). The turn starts random (an unscrolled scatter doesn't
    * look stamped) and re-rolls per drop until a hand turn takes manual control; the size persists across drops.
    */
-  setPropArmed(arm: { level: string; model: number; baseOffset: number; group?: string } | null) {
+  setPropArmed(arm: PropArm | null) {
     if (arm) this.refDecor.clearPropSelection(); // holding a prop leaves the read-only reference selection behind
     this.props.setArmed(arm);
     this.setArmedPlacement(arm ? 'prop' : null);
   }
+
+  /** Whether the held thing is a pasted set (setPropArmed with `paste`) — false once anything else takes over. */
+  get propPastePlacing(): boolean { return !!this.props.propArm?.paste; }
 
   /** ← / → while a prop is held: turn the pending drop by `deg` (+ = clockwise from above). False when
    *  nothing is held, so the key stays the browser's. */
