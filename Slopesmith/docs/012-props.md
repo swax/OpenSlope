@@ -487,10 +487,10 @@ modify the matrix. A mode-3 donor is level-local: exporting that profile to anot
 body instead of silently borrowing an unrelated index.
 
 **Export** (`server/routes/props.ts buildPlacedProps`, appended in `export.ts`): each placed prop's model submeshes
-are transformed to raw SSX space at its pose and appended to `Props.obj` after the start gate — the SAME
+are transformed to raw SSX space at its pose and appended to `Props.obj` after the staging plates — the SAME
 THREE math the viewport renders with, so what's placed is what ships. Because `toRaw(RAW_TO_EDITOR·v) = v`, an
 identity placement bakes the model's own mesh verbatim (verified: round-trip max error 0.0005 cm; translate
-= `toRaw(pos)`; scale exact; faces `v/vt` offset past the start gate's vertices). The model's own OBJ `vt`
+= `toRaw(pos)`; scale exact; faces `v/vt` offset past the staging plates' vertices). The model's own OBJ `vt`
 are emitted as-is (the winding + UVs the shipped `Props.obj` carries). Imported GLB props (docs/032) share
 this emission path verbatim through `emitPosedSubs` — their decoded submeshes are the same shape — differing
 only in that their materials resolve through the combiner's tile slot rather than a source `MaterialID`.

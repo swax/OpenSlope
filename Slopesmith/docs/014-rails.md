@@ -252,7 +252,7 @@ wraps a clean 0..1, v ping-ponging exactly like the originals.
   `resolveTileSlot` (docs/012's combined `Materials.json` + verbatim texture copy — the red/white tile lands
   as `p_<level>_0077.png`, a Custom pick as `p_Custom_<file>`). It rides the standard authored-props path into
   `props.glb`, textured in Unity with **no collider** — matching the originals (`PlayerCollision: false`;
-  grinding is the spline network's job). A tube with no texture emits untextured (clay), like the start gate.
+  grinding is the spline network's job). A tube with no texture emits untextured (clay), like the staging plates.
   The export log lists the tiles the tubes wore and how many went untextured.
 
 ### Tube texture

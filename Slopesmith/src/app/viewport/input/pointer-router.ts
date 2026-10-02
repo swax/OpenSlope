@@ -25,6 +25,7 @@ import type { TubeToolLayer } from '../tools/create-tube';
 import type { TrailToolLayer } from '../tools/create-trail';
 import type { WeldToolLayer } from '../tools/weld';
 import type { ClipboardPlacementLayer } from '../tools/clipboard-placement';
+import type { CourseDrawLayer } from '../tools/course-draw';
 import type { EdgeExtrusionLayer } from '../tools/edge-extrusion';
 import type { CreateEdgeLayer } from '../tools/create-edge';
 import type { BridgePreviewLayer } from '../tools/bridge-preview';
@@ -57,6 +58,7 @@ export interface RouterLayers {
   trailTool: TrailToolLayer;
   weldTool: WeldToolLayer;
   clipboardPlacement: ClipboardPlacementLayer;
+  courseDraw: CourseDrawLayer;
   edgeExtrusion: EdgeExtrusionLayer;
   createEdge: CreateEdgeLayer;
   bridgePreview: BridgePreviewLayer;
@@ -877,6 +879,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (layers.rideCtl.riding) return; // a test ride owns input
     if (access.mode() === 'paint' || access.mode() === 'sculpt') return;
     if (access.mode() === 'edit' && layers.createEdge.armed) return; // endpoint clicks own the gesture; Enter/Esc finishes
+    if (access.mode() === 'info' && layers.courseDraw.ownsDoubleClick()) return; // …as a course being redrawn's do
     stage.castAt(e);
     const preview = access.preview(), reference = access.reference(), refData = access.refData();
     // Edit + cage: on the authored net a double-click near a control-net edge selects its whole EDGE-loop
@@ -1052,6 +1055,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // custom ray-cast orbit, same as desktop RMB), a stationary tap selects on release (see pointerUp), so
     // picking a knot / corner still works. A mouse click selects immediately.
     if (touch) { touchNav = { x: e.clientX, y: e.clientY }; (e.target as Element).setPointerCapture?.(e.pointerId); return; }
+    // Reset course: each click drops the next point of the new run on the terrain (clicking the newest one
+    // again finishes). It owns Info's clicks while armed — no knot pick, no marquee.
+    if (access.mode() === 'info' && layers.courseDraw.active) { layers.courseDraw.onCommit(e); return; }
     // Info: defer the press so a still click keeps ordinary knot/reference selection while a drag can
     // rubber-band several authored course knots for bulk deletion.
     if (access.mode() === 'info') {
@@ -1105,6 +1111,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.surgery.tool) return;
     // Clipboard-paste touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.clipboardPlacement.active) { layers.clipboardPlacement.onCommit(); return; }
+    // Reset-course touch tap (mouse is handled in pointerDown).
+    if (access.mode() === 'info' && layers.courseDraw.active) { layers.courseDraw.onCommit(); return; }
     // Create patch touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(shift, ctrl); return; }
     // Create Tube touch tap (mouse is handled in pointerDown).
@@ -1575,6 +1583,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // Paste vertices: its faithful teal copy follows authored terrain or the free-space construction plane and
     // owns Edit hover while armed.
     if (access.mode() === 'edit' && layers.clipboardPlacement.onHover(e)) return;
+    // Reset course: the next point of the new run follows the terrain under the cursor.
+    if (access.mode() === 'info' && layers.courseDraw.onHover(e)) return;
     // Create patch: a teal square follows the hit point and surface tangent; it owns Edit hover while armed.
     if (access.mode() === 'edit' && layers.patchTool.onHover(e)) return;
     // Create Tube: its next axis endpoint follows terrain or the free-space construction plane.

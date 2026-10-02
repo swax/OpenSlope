@@ -1,21 +1,27 @@
 import * as THREE from 'three';
 import type { CoursePath, V3 } from '../../../core/doc/types';
-import { courseCenters, startFrame, finishFrame, startGateLines, startGateBoxes } from '../../../core/doc/course';
+import { courseCenters, startFrame, finishFrame, startGateLines } from '../../../core/doc/course';
 import type { Stage } from '../stage';
+import { fadeObject } from '../shared/fade';
 
 /**
- * Where the race starts and ends (docs/003): the start-gate prop + the six path starts at the course
- * head, a checkered line at the tail — the point the exported race line's DistanceToFinish reaches zero —
- * and the exported path points themselves, small beads along the curve (the spine resampled at ~15 m; the
- * actual AIP / race-line vertices the disc ships, between the editable knots). Everything is derived from
- * core/doc/course, the SAME functions the export writes AIP.json / SOP.json / the gate prop from, so the
- * markers are the positions the disc ships. Part of the course guide (the run's spine + knots): the shell
- * shows them together in Info mode. Non-interactive, so the whole group lives at scene root with Z negated
- * by hand, like the spine line it annotates.
+ * Where the race starts and ends (docs/003): a start line + the six path starts at the course head, a
+ * checkered line at the tail — the point the exported race line's DistanceToFinish reaches zero — and the
+ * exported path points themselves, small beads along the curve (the spine resampled at ~15 m; the actual
+ * AIP / race-line vertices the disc ships, between the editable knots). The positions are derived from
+ * core/doc/course, the SAME functions the export writes AIP.json / SOP.json / the staging anchors from, so
+ * the markers are the positions the disc ships. The lines themselves are editor-only — nothing at the start
+ * or finish ships as a model. Part of the course guide (the run's spine + knots): the shell shows them
+ * together in Info mode. Non-interactive, so the whole group lives at scene root with Z negated by hand, like
+ * the spine line it annotates.
  */
 /** Metres the grabbable start/finish flags float above the point they set (see `anchorHandle`). The viewport
  *  subtracts it when a drag reports back, so the stored anchor is the ground point, not the flag. */
 export const ANCHOR_HANDLE_LIFT = 5;
+
+/** How far across the run the editor draws its start, checkpoint and finish lines, whatever the floor width:
+ *  they mark a station on the line, and a floor can be far wider than a rider needs to read one. */
+const MARKER_WIDTH_M = 30;
 
 export function createCourseMarkersLayer(stage: Stage) {
   const group = new THREE.Group();
@@ -25,10 +31,10 @@ export function createCourseMarkersLayer(stage: Stage) {
   group.add(rebuilt);
   let visible = true;
   let built = false;
+  let fade = 1;
 
   const flip = (p: V3): V3 => [p[0], p[1], -p[2]];
 
-  const gateMat = new THREE.MeshLambertMaterial({ color: 0x999999, emissive: 0x222222 }); // the shipped prop's untextured grey
   const spawnMat = new THREE.MeshBasicMaterial({ color: 0x41d06a });
   const startLineMat = new THREE.MeshBasicMaterial({
     color: 0x41d06a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false,
@@ -118,15 +124,7 @@ export function createCourseMarkersLayer(stage: Stage) {
     if (!course || !built) return;
 
     const start = startFrame(course);
-    // the gate prop's three boxes, exactly as buildStartGate bakes them (axis-aligned, so the Z flip is
-    // just the base point's)
-    for (const { base, size } of startGateBoxes(start.left, start.right)) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), gateMat);
-      const p = flip(base);
-      b.position.set(p[0], p[1] + size[1] / 2, p[2]);
-      rebuilt.add(b);
-    }
-    rebuilt.add(strip(start.pos, start.side, start.width, 1.2, startLineMat));
+    rebuilt.add(strip(start.pos, start.side, MARKER_WIDTH_M, 1.2, startLineMat));
     for (const line of startGateLines(course)) {
       const dot = new THREE.Mesh(spawnGeo, spawnMat);
       const p = flip(line[0]);
@@ -159,7 +157,7 @@ export function createCourseMarkersLayer(stage: Stage) {
       const b = course.knots[Math.min(course.knots.length - 1, i + 1)].pos;
       const dx = b[0] - a[0], dz = b[2] - a[2], h = Math.hypot(dx, dz) || 1;
       const side: V3 = [-dz / h, 0, dx / h];
-      rebuilt.add(strip(knot.pos, side, knot.width, 2.2, checkpointMat));
+      rebuilt.add(strip(knot.pos, side, MARKER_WIDTH_M, 2.2, checkpointMat));
       const minutes = Math.floor(bonus / 60), seconds = bonus % 60;
       const tag = label(`CHECKPOINT +${minutes}:${String(seconds).padStart(2, '0')}`, '#ffbd66', 32);
       const p = flip(knot.pos);
@@ -168,12 +166,13 @@ export function createCourseMarkersLayer(stage: Stage) {
     });
 
     const finish = finishFrame(course);
-    checker.repeat.set(Math.max(4, Math.round(finish.width)), 3);
-    rebuilt.add(strip(finish.pos, finish.side, finish.width, 3, finishMat));
+    checker.repeat.set(MARKER_WIDTH_M, 3);
+    rebuilt.add(strip(finish.pos, finish.side, MARKER_WIDTH_M, 3, finishMat));
     finishLabel.position.set(...flip(finish.pos));
     finishLabel.position.y += 8;
     finishHandle.position.set(...flip(finish.pos));
     finishHandle.position.y += ANCHOR_HANDLE_LIFT;
+    if (fade !== 1) fadeObject(rebuilt, fade);
   }
 
   /** The two grabbable anchor flags, for the shell's picking + gizmo. Empty while the layer is hidden — a
@@ -188,8 +187,15 @@ export function createCourseMarkersLayer(stage: Stage) {
     group.visible = on && built;
   }
 
+  /** Fade every marker back while a replacement course is being drawn (1 restores them). A rebuild re-applies
+   *  it, since a checkpoint's label is made fresh each time. */
+  function setFade(factor: number) {
+    fade = factor;
+    fadeObject(group, factor);
+  }
+
   stage.scene.add(group);
-  return { setCourse, setVisible, handles };
+  return { setCourse, setVisible, setFade, handles };
 }
 
 export type CourseMarkersLayer = ReturnType<typeof createCourseMarkersLayer>;

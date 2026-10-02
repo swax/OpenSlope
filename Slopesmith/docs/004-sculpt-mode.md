@@ -82,7 +82,7 @@ that makes ribbon networks hard (watertight Y-junction patch layouts) never appe
 grid is the mountain, not the ribbon.
 
 The first carve line doubles as the level's course: its spine exports as the Respawnable AIP path
-(~15 m point spacing) and hosts the start gate, so the six-slot start field, StageArea alignment and
+(~15 m point spacing) and stages the field at its head, so the six-slot start field, StageArea alignment and
 on-track OOB reset share the same authored origin.
 
 **The density rule** (inherited from the Blender NURBS prototype, `Blender/openslope_terrain.py`): a

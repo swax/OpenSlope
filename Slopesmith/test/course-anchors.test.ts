@@ -26,7 +26,7 @@ const MAPS = join(process.cwd(), '..', 'Maps');
 
 // ---- parity: an untouched run is unchanged ---------------------------------------------------------------
 {
-  const course: CoursePath = starterCourse(1500, 60, 7);
+  const course: CoursePath = starterCourse(1500, 7);
   const knots = course.knots;
 
   check(startStation(course) === 0, 'no anchor: the run starts at station 0');
@@ -34,7 +34,7 @@ const MAPS = join(process.cwd(), '..', 'Maps');
   check(sameV(startFrame(course).pos, knots[0].pos), 'no anchor: startFrame is knot 0');
   check(sameV(finishFrame(course).pos, courseCenters(course)[courseCenters(course).length - 1], 1e-3),
     'no anchor: finishFrame is the tail');
-  check(startFrame(course).width === knots[0].width, 'no anchor: the gate spans knot 0’s floor width');
+  check(startFrame(course).width === knots[0].width, 'no anchor: the start frame carries knot 0’s floor width');
 
   // The gate lead-ins and the AI lines must still begin at the head of the line.
   const gates = startGateLines(course);
@@ -54,7 +54,7 @@ const MAPS = join(process.cwd(), '..', 'Maps');
 
 // ---- a placed start moves the grid, the lead-ins and the field ---------------------------------------------
 {
-  const course: CoursePath = starterCourse(1500, 60, 7);
+  const course: CoursePath = starterCourse(1500, 7);
   const centers = courseCenters(course);
   const mid = centers[Math.floor(centers.length / 2)];
   course.start = { pos: [...mid] as V3 };
@@ -78,7 +78,7 @@ const MAPS = join(process.cwd(), '..', 'Maps');
 
 // ---- a placed finish moves where DTF reaches zero ----------------------------------------------------------
 {
-  const course: CoursePath = starterCourse(1500, 60, 7);
+  const course: CoursePath = starterCourse(1500, 7);
   const full = finishStation(course);
   const centers = courseCenters(course);
   const mid = centers[Math.floor(centers.length / 2)];

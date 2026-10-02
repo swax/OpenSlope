@@ -179,6 +179,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     cageActive,
     pastePlacing,
     propPastePlacing: deps.propClipboard.placing,
+    courseDrawing: () => viewport.courseDrawing,
     canRotateSelection,
     editSelection,
     selectedControlCagesVisible: edit.selectedControlCagesVisible,

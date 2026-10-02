@@ -2,8 +2,7 @@ import GUI, { type Controller } from 'lil-gui';
 import type { V3 } from '../../../core/doc/types';
 import type { EditDoc } from '../../../core/doc/doc-edit';
 import {
-  DEFAULT_BLANK_SLOPE_DEG, blankMountain, buildMeshFromCourse, courseAtHeight, courseHeight,
-  coursePathFromLine, starterCourse,
+  DEFAULT_BLANK_SLOPE_DEG, blankMountain, buildMeshFromCourse, coursePathFromLine, starterCourse,
 } from '../../../core/doc/mountain';
 import { buildQuadMesh } from '../../../core/mesh/topology';
 import { RETAIL_PROPS, type Preflight, type TileClass } from '../../../core/export/preflight';
@@ -29,8 +28,8 @@ import { isReservedMapName } from '../../state/map-url';
 import { clientFetch } from '../../net/client';
 
 /**
- * The editor's modal dialogs + file actions (docs/011): loft a New mountain, regenerate terrain around a
- * drawn run, borrow a reference level's course line through that same generator, import / export an editable
+ * The editor's modal dialogs + file actions (docs/011): loft a New mountain, borrow a reference level's course
+ * line through that same generator, import / export an editable
  * mountain ZIP, the History panel over the project's checkpoints and the conflict resolution behind a refused
  * save, and the Export map flow with its summary of what the folder ships. These are the file-menu / Scene-panel actions; they mutate the
  * document through the injected setDoc + re-run loadMountain, and read the loaded reference through getters
@@ -98,8 +97,8 @@ function banner(host: HTMLElement, text: string, tone: 'info' | 'warn') {
 
 /** What each New-mountain shape makes, in the dialog's own banner. */
 const NEW_MOUNTAIN_NOTE = {
-  lofted: 'Lofts rolling terrain around an editable starter course — the same generator as Generate terrain '
-    + 'from run. Height is the course’s top-to-bottom vertical extent.',
+  lofted: 'Lofts rolling terrain around an editable starter course — the same generator a reference course '
+    + 'builds with. Height is the course’s top-to-bottom vertical extent.',
   blank: 'Creates NO terrain — just a straight guide run hanging in space at the pitch below. Build every '
     + 'surface by hand in Edit ▸ create patch (P).',
   collisionLab: 'Creates the reusable collision spec-validation lab: Garibaldi crash-bag cases with native '
@@ -244,16 +243,16 @@ export function createDialogs(deps: DialogDeps) {
   }
 
   /**
-   * Sweep fresh terrain around the run (the course-builder workflow: draw the run, grow the hill). This
-   * REPLACES the net rather than deforming it, so the dialog is the confirmation step: it opens naming what
-   * goes, and its action button says "Replace".
+   * Sweep fresh terrain around a run: a brand-new mountain's starter course, or the loaded reference's
+   * recovered line. The reference flow REPLACES the net rather than deforming it, so the dialog is the
+   * confirmation step: it opens naming what goes, and its action button says "Replace".
    *
    * The warning is unconditional because a SCULPTED net is indistinguishable from a generated one — nothing
    * in the document records that a brush touched it. Gating on the losses we *can* count (paint, creases,
    * twist, poles) would stay quiet on the most common authored work of all. So the net is always announced;
    * the countable losses only sharpen the message.
    */
-  type TerrainDialogMode = { kind: 'current' } | { kind: 'reference'; line: RefLine } | { kind: 'new' };
+  type TerrainDialogMode = { kind: 'reference'; line: RefLine } | { kind: 'new' };
 
   function terrainFromRunDialog(mode: TerrainDialogMode) {
     const doc = getDoc();
@@ -269,15 +268,13 @@ export function createDialogs(deps: DialogDeps) {
     } else {
       banner(host, `Replaces the terrain — the whole net (${doc.quads.length.toLocaleString()} patches)`
         + `${lost.length ? `, and with it ${lost.join(', ')}` : ''}, including anything you sculpted. `
-        + (replacement
-          ? `The current run is replaced by ${getRefLevel()}’s course line; that replacement is the terrain input. `
-          : 'The current run is the terrain input and survives. ')
+        + `The current run is replaced by ${getRefLevel()}’s course line; that replacement is the terrain input. `
         + 'The sun, props, rails, lights and gems survive — though placed items '
         + 'keep their world positions, so they may end up floating or buried. Undo restores the old terrain, '
         + 'until you reload the page.', 'warn');
     }
 
-    const sourceHeight = isNew ? 1500 : replacement?.drop ?? courseHeight(doc.course);
+    const sourceHeight = replacement?.drop ?? 1500;
     const o = {
       name: 'MOUNTAIN01', shape: 'lofted' as 'lofted' | 'blank' | 'collisionLab', width: 400, height: sourceHeight,
       slope: DEFAULT_BLANK_SLOPE_DEG, roughness: 0.5, targetPatch: 50, seed: randomTerrainSeed(),
@@ -293,9 +290,7 @@ export function createDialogs(deps: DialogDeps) {
     const widthCtl = tip(g.add(o, 'width', 30, 3000, 10).name('edge width (m)'), 'Full endpoint-to-endpoint width of each generated edge perpendicular to the run.');
     tip(g.add(o, 'height', 50, 6000, 10).name('height (m)'), replacement
       ? 'Vertical course extent. Lower values trim the reference line; higher values extend its downhill tail.'
-      : isNew
-        ? 'Top-to-bottom vertical extent of the new starter course.'
-        : 'Vertical course extent. Lower values trim the run; higher values extend its downhill tail.');
+      : 'Top-to-bottom vertical extent of the new starter course.');
     const slopeCtl = isNew
       ? tip(g.add(o, 'slope', 5, 60, 1).name('slope (°)'),
         'Pitch of the guide run; a gentler pitch carries the same drop further out.')
@@ -335,11 +330,9 @@ export function createDialogs(deps: DialogDeps) {
         toast(`Blank ${empty.name}: no terrain yet — press P (Edit ▸ create patch) to draw the first surface.`, 'ok', 6500);
         return;
       }
-      // Loft a brand-new mesh around the run. The old terrain — every sculpted vertex, every
-      // painted cell, every crease and pole — is discarded; the run, the sun and the placed items carry over.
-      const course = isNew ? starterCourse(o.height, o.width, o.seed)
-        : replacement ? coursePathFromLine(replacement.points, o.width, o.height)
-        : courseAtHeight(doc.course, o.height);
+      // Loft a brand-new mesh around the run. Replacing from a reference line discards the old terrain — every
+      // sculpted vertex, every painted cell, every crease and pole; the sun and the placed items carry over.
+      const course = replacement ? coursePathFromLine(replacement.points, o.height) : starterCourse(o.height, o.seed);
       const generated = buildMeshFromCourse(course, {
         widthM: o.width, roughness: o.roughness, targetPatchM: o.targetPatch, seed: o.seed,
       }, isNew ? { name: o.name, baseSurface: 1 } : {
@@ -359,7 +352,7 @@ export function createDialogs(deps: DialogDeps) {
       if (!await installDocument(generated, isNew)) return;
       toast(isNew
         ? `New ${generated.name} mountain generated at ${o.height} m with seed ${o.seed}.`
-        : `Terrain generated${replacement ? ` from ${getRefLevel()}’s course` : ''} at ${o.height} m with seed ${o.seed}, smoothed, and the run seated — undo to restore the old terrain.`, 'ok', 5500);
+        : `Terrain generated from ${getRefLevel()}’s course at ${o.height} m with seed ${o.seed}, smoothed, and the run seated — undo to restore the old terrain.`, 'ok', 5500);
     } }, 'make').name(isNew ? 'Create mountain' : 'Replace terrain');
     g.add({ cancel: close }, 'cancel').name('Cancel');
   }
@@ -371,8 +364,6 @@ export function createDialogs(deps: DialogDeps) {
     }
     terrainFromRunDialog({ kind: 'new' });
   }
-
-  function genTerrainDialog() { terrainFromRunDialog({ kind: 'current' }); }
 
   /** Use the exact terrain-regeneration workflow, substituting only the loaded reference's recovered line. */
   function buildFromReferenceCourseDialog() {
@@ -940,7 +931,7 @@ export function createDialogs(deps: DialogDeps) {
     }
   }
 
-  return { newMountainDialog, genTerrainDialog, buildFromReferenceCourseDialog, openProjectDialog,
+  return { newMountainDialog, buildFromReferenceCourseDialog, openProjectDialog,
     historyDialog, closePreview, conflictDialog, renameMountain, duplicateMountain, deleteMountain,
     exportMountain, importMountain, exportDialog };
 }

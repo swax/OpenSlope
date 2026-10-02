@@ -7,7 +7,8 @@ The design rationale is [001](001-design.md); what the result is serialized into
 Code: `src/core/math/spine.ts` (centerline), `src/core/doc/mountain.ts` (generation — `buildMeshFromCourse`/`seatCourse`), `src/core/math/bezier.ts`
 (quilt + evaluation), `src/core/mesh/tessellation.ts` (viewport tessellation).
 
-`Generate terrain from run` is a separate topology-general path. Every authored course knot creates a primary
+The terrain generator (`buildMeshFromCourse`, behind New mountain and a reference's "new mountain from this
+course") is a separate topology-general path. Every authored course knot creates a primary
 random-height edge chain perpendicular to the course, with **width** meaning the full endpoint-to-endpoint edge
 length (300 m by default). The first edge seeds a height profile; each following edge carries forward the previous
 edge vertex-by-vertex, adds the course elevation change, then progressively replaces the inherited relative profile
@@ -36,8 +37,8 @@ Freshly generated terrain also receives a deterministic default surface pass. Th
 patches whose centres lie within 75 m overhead of the course are snow (`1`), and the rest are powder (`3`). A
 gentle far-field pocket at least 110 m from and 20 m below its nearest course point becomes slow powder (`4`).
 
-`New mountain`, `Generate terrain from run`, and `New mountain from this course` all use this one dialog and
-generator. Alongside edge width, roughness, target patch size and seed, the dialog exposes **height**: the
+`New mountain` and `New mountain from this course` both use this one dialog and generator. There is no
+regenerate-in-place for the current run: once a mountain exists its terrain is edited, not re-lofted. Alongside edge width, roughness, target patch size and seed, the dialog exposes **height**: the
 course's maxY − minY vertical extent. A shorter height trims the course at an interpolated downhill crossing;
 a taller height extrapolates its final downhill direction. Reference lines are adjusted before their dense raw
 points are resampled, so leaving the displayed reference height unchanged is a geometry-preserving no-op rather
@@ -64,6 +65,41 @@ knots follow Gari's uneven X/Z and descent profile with small seed-driven variat
 reproduces both the starter line and its terrain. **Frame map** uses a course-facing isometric angle, preserving
 that profile's start upper-right and finish lower-left orientation while showing the mountain's depth.
 
+## Drawing and seating the run
+
+Code: `src/core/doc/course.ts` (`redrawCourse`, `seatRunOnTerrain`), `src/app/viewport/tools/course-draw.ts`,
+Scene ▸ Course ▸ **⟲ reset course**.
+
+The run is a line the net does not carry, and the game spawns the field at its exported heights — so a line
+left floating or buried starts the race that far off the snow. The editor therefore keeps it seated, and there
+is no button for it:
+
+- **Reset course** replaces the line. Click the terrain at the start, then each point down to the finish;
+  click the newest point again (or press Enter) to commit, Backspace takes a point back, Esc cancels and keeps
+  the old line. Every point is a hit on the mountain's own surface, so the new run starts seated. Each new knot
+  is a 30 m open floor (`DEFAULT_KNOT_PROFILE`: no wall, no bank, 8 m shoulder) — the same profile every new run
+  starts with, below — rather than whatever the old knots carried. Checkpoint bonuses and placed START /
+  FINISH flags go with the old line, so the drawn ends are the race's ends until a flag is dragged again.
+- **Dragging** a knot or a flag moves it across X/Z only — the gizmo has no vertical handle — and the ground
+  under it sets its height on every move.
+- **Reshaping the hill** re-seats the whole line, knots and flags together: each sculpt stroke and each Edit
+  drag re-lands it when it ends, as does adding a knot. Edit commands that are not drags (smooth, loft and the
+  like) do not; the next stroke or drag near the line picks it up.
+
+A knot's `width` is the run's own floor: it bounds the AI field's weave (half of it, less a 1.5 m margin) and
+is the floor `shape run into terrain` cuts. Every new run — reset course, New mountain's starter line, a
+reference line borrowed into a new mountain, a blank mountain's guide run — starts at 30 m. The generators'
+**edge width** is a separate thing, the span of terrain lofted around the run; until this split it was also
+written into every knot, which gave generated mountains 400 m floors and a field that could weave ±178 m.
+Saved mountains keep the widths they have. The editor draws its start, checkpoint and finish lines a fixed
+30 m across regardless (`course-markers.ts`); none of them ships as a model.
+
+The height is always the TOPMOST surface at the point's (x, z), so a ridable overhang seats on its deck. The
+editor reads it from the viewport's cached surface tree (`Viewport.terrainTopAt`), the HD tessellation the user
+sees; `seatRunOnTerrain`'s default ground is the document's own quilt at the 4×4 collider resolution, which is
+what generation and the checks use. Building every patch's control points costs a dense mountain a tenth of a
+second or more, too much to pay each time a sculpt stroke lifts; the two surfaces differ by centimetres.
+
 ## Shaping the run into the terrain
 
 Code: `src/core/doc/run-shaping.ts` (`crossHeight`, `shapeRunIntoTerrain`, `profileWarnings`), Scene ▸ Course ▸
@@ -71,7 +107,8 @@ Code: `src/core/doc/run-shaping.ts` (`crossHeight`, `shapeRunIntoTerrain`, `prof
 
 A knot carries four numbers that describe a channel around the line: a floor of `width`, a quarter-pipe `wall`
 at each floor edge, a `shoulder` past the wall tops, and a `bank` rolling the whole section. The run's own
-`blend` says how many metres that channel takes to fade back into the hill it was cut into. **Shape run into
+`blend` (30 m by default; no longer exposed in the panel) says how many metres that channel takes to fade back into the
+hill it was cut into. **Shape run into
 terrain** presses it in: every vertex the ribbon reaches moves to the profile's height, the blend band mixes
 toward it, and the floor strip takes the run's surface.
 

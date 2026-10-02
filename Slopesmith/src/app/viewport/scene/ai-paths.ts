@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { CoursePath, V3 } from '../../../core/doc/types';
 import { aiPathLines } from '../../../core/doc/course';
 import type { Stage } from '../stage';
+import { fadeMaterial } from '../shared/fade';
 
 /**
  * The authored mountain's AI opponent lines — the SAME six gate-anchored wandering paths the AIP.json
@@ -39,8 +40,11 @@ export function createAiPathsLayer(stage: Stage) {
     group.visible = on && built;
   }
 
+  /** Fade the lines back while a replacement course is being drawn (1 restores them). */
+  function setFade(factor: number) { fadeMaterial(mat, factor); }
+
   stage.scene.add(group);
-  return { setCourse, setVisible };
+  return { setCourse, setVisible, setFade };
 }
 
 export type AiPathsLayer = ReturnType<typeof createAiPathsLayer>;

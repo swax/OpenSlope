@@ -173,14 +173,14 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   if (exportDoc.effects) syncAuthoredMotionPathEffectResources(exportDoc.effects, exportDoc.rails);
   const files = buildLevelFiles(exportDoc, lights,
     { lighting: opts?.lighting, aiPaths: opts?.aiPaths, propBaseOffset: placedBaseOffset });
-  const propGroups: BakedPropGroup[] = [...files.propGroups];
+  const propGroups: BakedPropGroup[] = [];
 
   if (opts?.lighting === false) logLines.push('lighting OFF (export setting): no Lights.json / Lightmaps/ — an ISO repack keeps the target level\'s original lighting verbatim');
   else if (lights.length) logLines.push(`authored lighting: ${signLights.length} billboard sign light(s) + ${freeLights.length} free light(s) + ${groupLights.length} group light(s) → Lights.json + baked terrain glow`);
   if (opts?.aiPaths) logLines.push('AI path variation ON: six gate-anchored race routes carry seeded lateral variation');
   else logLines.push('AI path variation OFF: six required gate-to-center race routes still ship in AIP.json');
 
-  // bake any placed props into Props.obj (appended after the start gate the core emits). Each placed prop
+  // bake any placed props into Props.obj (appended after the staging plates the core emits). Each placed prop
   // imports textured: the appended usemtl mat_<id> slots resolve through a fresh combined Materials.json, and
   // the referenced tiles are copied into Textures/ (docs/012). Rail tubes and the gem tier models bake
   // through the SAME combiner, so all three share one material table.
@@ -667,8 +667,8 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       logLines.push(`wrote GemModels.obj (native tier crystal(s): ${gm.tiers.map(t => '×' + t).join(' ')})`);
     }
   }
-  // A canonical map always has a material table, including a fresh mountain whose only prop is the
-  // untextured start gate.
+  // A canonical map always has a material table, including a fresh mountain whose only props are the
+  // untextured staging plates.
   files.text['Materials.json'] = JSON.stringify({ Materials: combiner.materials });
   // This file is an owned snapshot too: a material changing from explicit cutout back to automatic must
   // retire the prior verdict instead of leaving a stale sidecar beside otherwise-current output.

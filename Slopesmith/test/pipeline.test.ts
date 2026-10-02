@@ -32,12 +32,12 @@ let fail = 0;
 const sha = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 16);
 
 const GOLDEN: Record<string, Record<string, string>> = {
-  'defaultMountain': { doc: '138ef16db7773bf3', 'AIP.json': '2d354e43a325de60', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '7e8fe40612e01460' },
-  'migrate(v1)': { doc: 'e9a82422371dc941', 'AIP.json': '901753e6ff0de45c', 'SOP.json': 'a673592a16e3c57b', 'Patches.json': 'afd6b63b9e0e0477', 'Props.obj': 'fd73355abcfad479' },
-  'migrate(v5 passthrough)': { doc: '138ef16db7773bf3', 'AIP.json': '2d354e43a325de60', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '7e8fe40612e01460' },
-  'migrate(garbage)': { doc: '138ef16db7773bf3', 'AIP.json': '2d354e43a325de60', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '7e8fe40612e01460' },
-  'buildMeshFromCourse (generate terrain from run)': { doc: '8a8ac2d0f97aacc8', 'AIP.json': '88e9994eae813092', 'SOP.json': '6d8dae32f824ba52', 'Patches.json': '1bb02917de86083d', 'Props.obj': '96cbcedad8a3067a' },
-  'defaultMountain (AI field)': { doc: '138ef16db7773bf3', 'AIP.json': '1d591d566514f7ed', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '7e8fe40612e01460' },
+  'defaultMountain': { doc: 'e411d03dbe1a98b8', 'AIP.json': '2d354e43a325de60', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '8743fee764ffa51d' },
+  'migrate(v1)': { doc: 'e9a82422371dc941', 'AIP.json': '901753e6ff0de45c', 'SOP.json': 'a673592a16e3c57b', 'Patches.json': 'afd6b63b9e0e0477', 'Props.obj': '822e6d034b940505' },
+  'migrate(v5 passthrough)': { doc: 'e411d03dbe1a98b8', 'AIP.json': '2d354e43a325de60', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '8743fee764ffa51d' },
+  'migrate(garbage)': { doc: 'e411d03dbe1a98b8', 'AIP.json': '2d354e43a325de60', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '8743fee764ffa51d' },
+  'buildMeshFromCourse (generated terrain)': { doc: '4ce6d6aa5627009a', 'AIP.json': '88e9994eae813092', 'SOP.json': '6d8dae32f824ba52', 'Patches.json': '1bb02917de86083d', 'Props.obj': '23052eec23d2c811' },
+  'defaultMountain (AI field)': { doc: 'e411d03dbe1a98b8', 'AIP.json': '57baa8fa4ac77f1e', 'SOP.json': '693c467b53eca57f', 'Patches.json': 'e83cda16c869c706', 'Props.obj': '8743fee764ffa51d' },
 };
 
 const borrowedLine = (n: number): V3[] =>
@@ -54,7 +54,7 @@ function v1Mountain() {
     baseSurface: 2, paint: {} };
 }
 
-/** What `generate terrain from run` does: loft fresh cross edges around the run, carry the meta across. */
+/** What the terrain generator does: loft fresh cross edges around the run, carry the meta across. */
 function sweptFromRun(): QuadMeshDoc {
   const cur = defaultMountain();
   return buildMeshFromCourse(cur.course, { widthM: 400, roughness: 0.5, targetPatchM: 50, seed: 12345 },
@@ -66,7 +66,7 @@ const cases: Array<[string, () => QuadMeshDoc, LevelFileOpts?]> = [
   ['migrate(v1)', () => migrateMountain(v1Mountain())],
   ['migrate(v5 passthrough)', () => migrateMountain(defaultMountain())],
   ['migrate(garbage)', () => migrateMountain({ nope: 1 })],
-  ['buildMeshFromCourse (generate terrain from run)', sweptFromRun],
+  ['buildMeshFromCourse (generated terrain)', sweptFromRun],
   ['defaultMountain (AI field)', () => defaultMountain(), { aiPaths: true }],
 ];
 
@@ -182,9 +182,9 @@ console.log('\n== the start line uses the exact first-node chord ==');
 console.log('\n== new courses cross the retail profile box corner-to-corner ==');
 {
   const height = 1500;
-  const a = starterCourse(height, 300, 12345);
-  const again = starterCourse(height, 300, 12345);
-  const b = starterCourse(height, 300, 54321);
+  const a = starterCourse(height, 12345);
+  const again = starterCourse(height, 12345);
+  const b = starterCourse(height, 54321);
   const start = a.knots[0].pos, finish = a.knots[a.knots.length - 1].pos;
   const exactCorners = start[0] === 0 && start[1] === 0 && start[2] === 0
     && Math.abs(finish[0] + height * 0.68) < 1e-9 && finish[1] === -height && finish[2] === -height;
@@ -193,7 +193,7 @@ console.log('\n== new courses cross the retail profile box corner-to-corner ==')
   const reproducible = JSON.stringify(a) === JSON.stringify(again);
   const variedInterior = a.knots.slice(1, -1).some((k, i) =>
     k.pos.some((v, axis) => Math.abs(v - b.knots[i + 1].pos[axis]) > 1e-6));
-  const defaultWidth = starterCourse().knots.every(k => k.width === 400);
+  const defaultWidth = starterCourse().knots.every(k => k.width === 30);
   const ok = exactCorners && insideBox && reproducible && variedInterior && defaultWidth;
   if (!ok) fail++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} corners ${exactCorners} · inside ${insideBox} · seeded ${reproducible}/${variedInterior} · default width ${defaultWidth}`);
@@ -217,7 +217,7 @@ console.log('\n== steep reference courses keep their requested terrain width =='
   const width = 300, target = 50;
   const referenceHeight = Math.max(...steepLine.map(p => p[1])) - Math.min(...steepLine.map(p => p[1]));
   // This is the reference-dialog path: passing the displayed raw height must not spuriously extend the tail.
-  const referenceCourse = coursePathFromLine(steepLine, width, referenceHeight);
+  const referenceCourse = coursePathFromLine(steepLine, referenceHeight);
   const generated = buildMeshFromCourse(referenceCourse, {
     widthM: width, roughness: 0.5, targetPatchM: target, seed: 0,
   })!;
@@ -250,19 +250,19 @@ console.log('\n== the common generator trims and extends course height ==');
 {
   const source = coursePathFromLine([
     [0, 900, 0], [300, 700, 80], [650, 420, -40], [1000, 100, 20],
-  ], 300);
+  ]);
   const trimmed = courseAtHeight(source, 400);
   const extended = courseAtHeight(source, 1200);
   const referenceTrimmed = coursePathFromLine([
     [0, 900, 0], [300, 700, 80], [650, 420, -40], [1000, 100, 20],
-  ], 300, 400);
+  ], 400);
   const trimExact = Math.abs(courseHeight(trimmed) - 400) < 1e-6
     && Math.abs(trimmed.knots[trimmed.knots.length - 1].pos[1] - 500) < 1e-6;
   const extendExact = Math.abs(courseHeight(extended) - 1200) < 1e-6
     && extended.knots.length === source.knots.length + 1;
   const refUsesSamePath = Math.abs(courseHeight(referenceTrimmed) - 400) < 1e-6
     && !!buildMeshFromCourse(referenceTrimmed, { widthM: 300, roughness: 0.5, targetPatchM: 50, seed: 1 });
-  const fresh = starterCourse(1750, 300);
+  const fresh = starterCourse(1750);
   const freshExact = Math.abs(courseHeight(fresh) - 1750) < 1e-6;
   const ok = trimExact && extendExact && refUsesSamePath && freshExact;
   if (!ok) fail++;
@@ -309,7 +309,7 @@ console.log('\n== course terrain has visible cross-edge relief and skyward windi
     i % 3 === 0 && Math.abs(vertices[i] - movedKnot[0]) < 1e-9
       && Math.abs(vertices[i + 2] - movedKnot[2]) < 1e-9);
   const borrowed = borrowedLine(9);
-  const borrowedViaSharedGenerator = buildMeshFromCourse(coursePathFromLine(borrowed, 160), {
+  const borrowedViaSharedGenerator = buildMeshFromCourse(coursePathFromLine(borrowed), {
     widthM: 160, roughness: 0.4, targetPatchM: 50, seed: 0,
   }, { name: 'MOUNTAIN01', baseSurface: 1 });
   const sharedReferencePath = !!borrowedViaSharedGenerator;
@@ -372,7 +372,7 @@ console.log('\n== generated terrain receives safety, snow, powder and shape surf
 {
   // Wide/high-relief input reaches every semantic branch, including a genuine deep gentle pocket.
   const width = 700, target = 50;
-  const doc = buildMeshFromCourse(starterCourse(1500, width, 77), {
+  const doc = buildMeshFromCourse(starterCourse(1500, 77), {
     widthM: width, roughness: 1.5, targetPatchM: target, seed: 77,
   })!;
   const quadsAcross = Math.ceil(width / target); // already even for this fixture

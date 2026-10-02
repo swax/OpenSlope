@@ -18,7 +18,7 @@ export type TexPaintMap = Record<string, string>;
 /** One point of a course path: a position the run passes through, plus the ribbon cross-section there.
  *  `pos` places the spine; the four profile fields describe the channel around it — a floor of `width`,
  *  quarter-pipe walls at its edges, a shoulder beyond them, and a bank rolling the whole section. `width`
- *  additionally sizes the exported start gate and bounds the AI field's wander. Nothing derives terrain from
+ *  additionally bounds the AI field's wander. Nothing derives terrain from
  *  the profile continuously: Course ▸ shape run into terrain presses it into the mesh as a one-shot command
  *  (doc/run-shaping), and the mesh owns the result from there (docs/002, docs/006). */
 export interface CourseKnot {
@@ -27,7 +27,7 @@ export interface CourseKnot {
    *  authored counterpart of a SOP race-line type-11 event: crossing the station, not touching a prop beside
    *  it, fires the award. A flashing checkpoint sign is therefore optional decoration and remains a prop. */
   checkpointBonus?: number;
-  /** Run floor width here, metres. At knot 0 it sets the exported start gate's span. */
+  /** Run floor width here, metres — the AI field weaves within half of it. 30 m on a new run. */
   width: number;
   /** Quarter-pipe wall height at each floor edge here, metres (0 = open channel). Its lateral run matches
    *  its height, so a 30 m wall is a 30 m-wide 45° berm. */
@@ -40,8 +40,8 @@ export interface CourseKnot {
 
 /**
  * The run: a LINE through the mountain, not a shape cut into it. It exports as the AIP racing line (which
- * the game bakes into the manifest's Paths.Course, driving respawn + the finish line), sets where the start
- * gate straddles knot 0, and seeds the test ride. The terrain's shape is the net alone, edited corner-wise
+ * the game bakes into the manifest's Paths.Course, driving respawn + the finish line), stages the field at
+ * knot 0, and seeds the test ride. The terrain's shape is the net alone, edited corner-wise
  * in Edit / Sculpt — see docs/006-surface-net.md. The profile below is the channel the run WANTS; Course ▸
  * shape run into terrain is what writes it into the net, once, on request.
  *

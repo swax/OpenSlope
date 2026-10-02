@@ -15,7 +15,8 @@ import {
 import type { TexRef } from '../paint/textures';
 import { inferGeometricTJunctions, normalizeTJunctions } from '../mesh/t-junctions';
 import { applyLoft } from '../mesh/loft';
-import { surfaceHeightAt } from '../mesh/surface-height';
+import { surfaceSamplesAt } from '../mesh/surface-height';
+import { DEFAULT_KNOT_PROFILE } from './course';
 import { parseEffectsDocument, type EffectsDocument } from '../effects/document';
 import { createEmptyEffectsDocument, ensurePlacedPropIds } from '../effects/authoring';
 import { ensureRailIds } from '../rails/rails';
@@ -41,7 +42,7 @@ export type { HandleDir } from '../math/bezier';
  * row/col addressing does not exist. New mountains are lofted directly from their course. Everything after
  * either entry path (edit tools, preview, export) speaks vertex and quad ids.
  *
- * The course is a path ON the surface: it exports the AIP line + start gate and seeds the ride. It grooves
+ * The course is a path ON the surface: it exports the AIP line + start paths and seeds the ride. It grooves
  * the net only at seed / migration time (`seatCourse`), never live.
  *
  * Net orientation: rows along +X, cols along +Z, so the quilt's u x v cross points DOWN in editor space (the
@@ -731,9 +732,10 @@ export function courseHeight(line: CoursePath): number {
  * A Gari-shaped editable top-to-bottom course used by New mountain before the shared loft generator runs.
  * Retail courses consistently read from the high/max-X,max-Z corner to the low/min-X,min-Z corner in course
  * profile view. Keep those endpoints exact, while the generation seed varies the interior line through the box.
+ * Its knots take DEFAULT_KNOT_PROFILE; how wide the terrain lofted around it is belongs to the generator.
  */
-export function starterCourse(heightM = DEFAULT_COURSE_HEIGHT_M, widthM = 400, seed = 1): CoursePath {
-  const height = clampN(heightM, 50, 6000), width = clampN(widthM, 30, 3000);
+export function starterCourse(heightM = DEFAULT_COURSE_HEIGHT_M, seed = 1): CoursePath {
+  const height = clampN(heightM, 50, 6000);
   const seedN = Math.abs(Math.trunc(seed)) % 0x80000000;
   // Normalised samples from Gari's overall course profile. X and Z descend at different rates, creating the
   // long traverses and direction changes of the retail line instead of a symmetric sine down one axis.
@@ -752,7 +754,7 @@ export function starterCourse(heightM = DEFAULT_COURSE_HEIGHT_M, widthM = 400, s
     return {
       // Start at the box's high corner (0,0,0), finish at its opposite low corner.
       pos: [-xSpan * (1 - x), -height * drop, -zSpan * (1 - z)] as V3,
-      width, wall: 0, bank: 0, shoulder: 8,
+      ...DEFAULT_KNOT_PROFILE,
     };
   });
   return { knots, blend: 30, surface: 1 };
@@ -768,7 +770,7 @@ export const DEFAULT_BLANK_SLOPE_DEG = 25;
  * corner of its box, finish at the opposite low corner — so a blank mountain frames and exports like any other.
  */
 export function straightCourse(
-  heightM = DEFAULT_COURSE_HEIGHT_M, widthM = 400, slopeDeg = DEFAULT_BLANK_SLOPE_DEG,
+  heightM = DEFAULT_COURSE_HEIGHT_M, widthM: number = DEFAULT_KNOT_PROFILE.width, slopeDeg = DEFAULT_BLANK_SLOPE_DEG,
 ): CoursePath {
   const height = clampN(heightM, 50, 6000), width = clampN(widthM, 30, 3000);
   const run = height / Math.tan((clampN(slopeDeg, 5, 60) * Math.PI) / 180); // horizontal reach of the drop
@@ -1108,25 +1110,21 @@ export function buildMeshFromCourse(
   // tangent returns to the automatic Bessel surface. Generated lofts normally have no overrides already,
   // but using the shared command keeps this invariant explicit if the generator gains authored handles later.
   meshSmoothVertices(generated, Array.from({ length: generated.vertices.length / 3 }, (_, id) => id));
-  for (const knot of generated.course.knots) {
-    const y = surfaceHeightAt(generated, knot.pos[0], knot.pos[2]);
-    if (y !== null) knot.pos[1] = y;
-  }
+  const seated = surfaceSamplesAt(generated, generated.course.knots.map(knot => [knot.pos[0], knot.pos[2]] as const));
+  generated.course.knots.forEach((knot, i) => { const y = seated[i]?.height; if (y !== undefined) knot.pos[1] = y; });
   paintGeneratedCourseSurfaces(generated, samples, crossSegments);
   return generated;
 }
 
-/** Convert a recovered/reference polyline into the same editable CoursePath consumed by terrain regeneration. */
-export function coursePathFromLine(points: V3[], widthM = 400, heightM?: number): CoursePath {
+/** Convert a recovered/reference polyline into the same editable CoursePath consumed by terrain regeneration.
+ *  Its knots take DEFAULT_KNOT_PROFILE: the generated terrain's width is the generator's own option. */
+export function coursePathFromLine(points: V3[], heightM?: number): CoursePath {
   if (points.length < 2) throw new Error('A course line needs at least 2 points.');
-  const width = clampN(widthM, 30, 3000);
   // Height belongs to the recovered path itself. Adjust before resampling so choosing the reference's shown
   // height is a true no-op; doing this afterward can lose a raw extremum, falsely trigger tail extension and
   // create an enormous invalid final rail on a nearly flat finish segment.
   const source = heightM === undefined ? points : courseAtHeight({
-    blend: 30, surface: 1, knots: points.map(pos => ({
-      pos: [...pos] as V3, width, wall: 0, bank: 0, shoulder: 8,
-    })),
+    blend: 30, surface: 1, knots: points.map(pos => ({ pos: [...pos] as V3, ...DEFAULT_KNOT_PROFILE })),
   }, heightM).knots.map(k => k.pos);
 
   // Resample to evenly arc-length-spaced knots (~1 per 150 m) so the Catmull-Rom run keeps the line's
@@ -1149,9 +1147,7 @@ export function coursePathFromLine(points: V3[], widthM = 400, heightM?: number)
   }
 
   // Keep native editor coordinates so the authored mountain overlays the loaded reference and round-trips.
-  const knots: CourseKnot[] = resampled.map(q => ({
-    pos: [q[0], q[1], q[2]] as V3, width, wall: 0, bank: 0, shoulder: 8,
-  }));
+  const knots: CourseKnot[] = resampled.map(q => ({ pos: [q[0], q[1], q[2]] as V3, ...DEFAULT_KNOT_PROFILE }));
   return { knots, blend: 30, surface: 1 };
 }
 
@@ -1169,7 +1165,7 @@ export function blankMountain(
   return {
     kind: 'mountain', version: 5, name: level,
     spacing: clampN(Math.round(spacingM), 5, 500),
-    course: straightCourse(heightM, 400, slopeDeg),
+    course: straightCourse(heightM, DEFAULT_KNOT_PROFILE.width, slopeDeg),
     baseSurface: 1,
     raceMusicArrangement: { mode: 'linear-loop', bpm: 120, loopStartSeconds: 0, loopEndSeconds: 0 },
     environmentBed: normalizeEnvironmentBed(undefined),
@@ -1181,7 +1177,7 @@ export function blankMountain(
 
 /** Stock document for first launch and invalid legacy input: the same course-loft workflow as New mountain. */
 export function defaultMountain(): QuadMeshDoc {
-  const generated = buildMeshFromCourse(starterCourse(DEFAULT_COURSE_HEIGHT_M, 400, 1), {
+  const generated = buildMeshFromCourse(starterCourse(DEFAULT_COURSE_HEIGHT_M, 1), {
     widthM: 400, roughness: 0.5, targetPatchM: 50, seed: 1,
   }, { name: 'MOUNTAIN01', baseSurface: 1 });
   if (!generated) throw new Error('The default starter course could not be lofted.');

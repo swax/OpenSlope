@@ -1,12 +1,12 @@
 import type { CoursePath, QuadMeshDoc, V3 } from './types';
 import { frameAt, paramsAt, sampleSpine, spineAt, totalLength } from '../math/spine';
 import { add, mul, norm, cross, sub } from '../math/vec';
-import { surfaceHeightAt } from '../mesh/surface-height';
+import { surfaceSamplesAt } from '../mesh/surface-height';
 
 /**
  * The course line's shipped endpoints: where the game puts the rider (the SOP start gates) and where
  * the race ends (the race line's DistanceToFinish zero). The level export (AIP.json / SOP.json / the
- * start-gate prop) and the viewport's start/finish preview both read THESE functions, so the markers
+ * staging anchors) and the viewport's start/finish preview both read THESE functions, so the markers
  * the editor draws are the positions the disc ships.
  */
 
@@ -44,17 +44,12 @@ export interface CourseEndFrame {
   fwd: V3;
   /** Horizontal unit side vector (fwd x world-up). */
   side: V3;
-  /** Run floor width here, metres (knot 0 / last knot). */
+  /** Run floor width here, metres (knot 0 / last knot) — what squeezes the six-rider start row on a narrow run. */
   width: number;
-  /** Floor-edge points — the start gate's pillars straddle these. */
-  left: V3;
-  right: V3;
 }
 
 function endFrame(pos: V3, fwd: V3, width: number): CourseEndFrame {
-  const side = norm(cross(fwd, [0, 1, 0]));
-  const half = width / 2;
-  return { pos, fwd, side, width, left: add(pos, mul(side, -half)), right: add(pos, mul(side, half)) };
+  return { pos, fwd, side: norm(cross(fwd, [0, 1, 0])), width };
 }
 
 /**
@@ -238,44 +233,62 @@ export function aiPathLines(course: CoursePath, seed: number, wander = true): V3
   return lines;
 }
 
+/** Below this a seat leaves a point alone, so re-seating an already-seated run writes nothing at all. */
+const SEAT_EPSILON_M = 1e-3;
+
+/** The ground's topmost height at each (x, z), null where there is none. */
+export type GroundSampler = (points: readonly (readonly [number, number])[]) => (number | null)[];
+
 /**
- * Seat the run on the sculpted terrain: resample each course knot's elevation from the CURRENT quilt
- * surface at its (x, z). The run is a LINE the terrain doesn't follow — sculpting moves the net, never the
- * line — and everything the export derives from the line (per-mode start paths, respawn spine, race line,
- * AI lines) ships its heights verbatim. The StageArea formation is anchored to the same authored origin,
- * so a drifted line puts the entire start system off the snow. Seating the knots re-lands it in one stroke. The height at
- * a knot is the TOPMOST tessellated surface under/over it (a ridable overhang seats on its deck); a knot
- * with no terrain at its (x, z) keeps its height. Returns the largest knot adjustment, metres.
+ * Seat the run on the terrain: resample each course knot's elevation — and a placed start / finish flag's —
+ * from the CURRENT quilt surface at its (x, z). The run is a LINE the terrain doesn't follow — sculpting moves
+ * the net, never the line — and everything the export derives from the line (per-mode start paths, respawn
+ * spine, race line, AI lines) ships its heights verbatim. The StageArea formation is anchored to the same
+ * authored origin, so a drifted line puts the entire start system off the snow. The editor therefore re-seats
+ * the run after every sculpt stroke and Edit drag, and a dragged knot follows the ground as it moves. The height
+ * at a point is the TOPMOST tessellated surface under/over it (a ridable overhang seats on its deck); a point
+ * with no terrain at its (x, z) keeps its height. Returns the largest adjustment, metres.
+ *
+ * The ground defaults to the document's own quilt at the export collider's resolution. The editor passes the
+ * viewport's cached surface tree instead: building every patch's control points costs a dense mountain a tenth
+ * of a second or more, which a sculpt stroke cannot pay each time it lifts.
  */
-export function seatRunOnTerrain(doc: QuadMeshDoc): number {
+export function seatRunOnTerrain(doc: QuadMeshDoc, ground: GroundSampler =
+  points => surfaceSamplesAt(doc, points).map(sample => sample?.height ?? null)): number {
+  const course = doc.course;
+  const points = [...course.knots, ...(course.start ? [course.start] : []), ...(course.finish ? [course.finish] : [])];
+  const heights = ground(points.map(p => [p.pos[0], p.pos[2]] as const));
   let maxAdjust = 0;
-  for (const k of doc.course.knots) {
-    const y = surfaceHeightAt(doc, k.pos[0], k.pos[2]);
-    if (y === null) continue;
-    maxAdjust = Math.max(maxAdjust, Math.abs(k.pos[1] - y));
-    k.pos[1] = y;
-  }
+  points.forEach((p, i) => {
+    const y = heights[i];
+    if (y === null || y === undefined) return;
+    const adjust = Math.abs(p.pos[1] - y);
+    if (adjust <= SEAT_EPSILON_M) return;
+    maxAdjust = Math.max(maxAdjust, adjust);
+    p.pos[1] = y;
+  });
   return maxAdjust;
 }
 
-/** An axis-aligned box: `base` is the bottom-center (the box spans base.y .. base.y + size.y). */
-export interface GateBox {
-  base: V3;
-  size: V3;
-}
+/**
+ * The channel every new run starts with — a reset course, a New mountain's starter line, a reference line
+ * borrowed into one: a 30 m floor, open (no wall, no bank), an 8 m shoulder. A knot's width bounds the AI
+ * field's weave and is the floor `shape run into terrain` cuts, so it is the run's own width and nothing to
+ * do with how wide a generator made the terrain around it.
+ */
+export const DEFAULT_KNOT_PROFILE = { width: 30, wall: 0, bank: 0, shoulder: 8 } as const;
 
 /**
- * The start-gate prop's boxes — two pillars on the floor edges + a crossbar over the run. The export
- * writes these into Props.obj and the viewport previews the same three boxes. The crossbar is
- * approximated axis-aligned along the gate line's dominant axis, matching the shipped prop.
+ * Replace the run with a freshly drawn line: one knot per point, start first, finish last (Scene ▸ Course ▸
+ * reset course, where the points are clicks on the terrain). Every new knot takes DEFAULT_KNOT_PROFILE;
+ * checkpoint bonuses belonged to the old stations and go with them. Placed start / finish flags are dropped
+ * as well: the drawn line's own ends are the race's ends. The run's blend and floor surface are kept. Returns
+ * false, leaving the course untouched, for fewer than two points — a spine and the export both need two.
  */
-export function startGateBoxes(left: V3, right: V3): GateBox[] {
-  const mid: V3 = [(left[0] + right[0]) / 2, Math.max(left[1], right[1]) + 4, (left[2] + right[2]) / 2];
-  const span = Math.hypot(right[0] - left[0], right[2] - left[2]) + 0.5;
-  const alongX = Math.abs(right[0] - left[0]) > Math.abs(right[2] - left[2]);
-  return [
-    { base: left, size: [0.5, 4, 0.5] },
-    { base: right, size: [0.5, 4, 0.5] },
-    { base: mid, size: [alongX ? span : 0.4, 0.4, alongX ? 0.4 : span] },
-  ];
+export function redrawCourse(course: CoursePath, points: readonly V3[]): boolean {
+  if (points.length < 2) return false;
+  course.knots = points.map(pos => ({ pos: [pos[0], pos[1], pos[2]], ...DEFAULT_KNOT_PROFILE }));
+  delete course.start;
+  delete course.finish;
+  return true;
 }

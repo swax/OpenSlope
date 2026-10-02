@@ -5,6 +5,7 @@ import {
   type BrushOp, type BrushDir, type BrushFalloff, type FlattenMode, type FlattenPlaneBehavior,
 } from '../core/doc/mountain';
 import { surfOf, texOf, orientOf, clearTex, setOrient, turnOrient, type EditDoc } from '../core/doc/doc-edit';
+import { seatRunOnTerrain } from '../core/doc/course';
 import type { LevelProps } from '../core/reference/props';
 import type { GroupDef } from '../core/reference/groups';
 import { TextureLibrary } from './paint/library';
@@ -173,6 +174,7 @@ const viewportCallbacks = createViewportCallbacks({
   play: () => play,
   coursePath: () => coursePath(),
   scheduleRebuild: () => scheduleRebuild(),
+  requestCourseSeat: () => requestCourseSeat(),
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
   refreshSelection: () => refreshSelection(),
@@ -770,11 +772,30 @@ function finishRenderDoc(edited = true) {
   agentLayer?.onRendered(); // drives the agent layer's settled() + entity re-projection
 }
 
+/**
+ * The run is a line the net does not carry, and the game spawns the field at its exported heights — so when a
+ * gesture reshapes the hill (a sculpt stroke, an Edit drag) or a knot is added, the run is re-landed on it.
+ * It waits for the next render because what it reads is the viewport's own surface tree, which that render is
+ * what brings up to date with the last dab.
+ */
+let courseSeatPending = false;
+function requestCourseSeat() { courseSeatPending = true; scheduleRebuild(); }
+
+function seatPendingCourse() {
+  if (!courseSeatPending) return;
+  courseSeatPending = false;
+  if (store.modelEditId) return; // the viewport is standing in a model's substrate, not the mountain's hill
+  const ground = (points: readonly (readonly [number, number])[]) => points.map(([x, z]) => viewport.terrainTopAt(x, z));
+  if (seatRunOnTerrain(store.mdoc, ground) > 0)
+    viewport.refreshMountainOverlays(store.mdoc, store.selected, store.selectedKnots);
+}
+
 function renderDoc() {
   reconcileTJunctionGeometry(activeEditMesh());
   const change = netWatcher.note(activeEditMesh());
   prepareRenderDoc(change);
   renderMountainTerrain(change);
+  seatPendingCourse();
   renderMountainObjects();
   renderMountainDetails();
   finishRenderDoc();
@@ -901,6 +922,7 @@ function restoreDoc(json: string) {
   store.selectedCoincidentVertices = null;
   if (store.surgeryTool) { store.surgeryTool = null; viewport.setSurgeryTool(null); } // its ghost previews the OLD net
   if (store.weldTool) { store.weldTool = null; store.weldSource = []; store.weldEdgeSource = []; viewport.setWeldTool(false); } // its source ids belong to the OLD net
+  cancelCourseReset();             // a course being redrawn was clicked onto the OLD terrain
   exitRegion();                    // region + cell + edge selections (refreshEditCells / refreshEditEdges drop the cage handles)
   viewport.clearCornerSelection(); // the corner marker / gizmo / tangent nubs seated on the old net
   clearPaintSel();
@@ -928,10 +950,10 @@ const history = createHistory({
 });
 const { scheduleCommit, commit, undo, redo } = history;
 
-// The modal dialogs + file actions (New / generate-terrain / borrow-a-line / History / mountain import/export
+// The modal dialogs + file actions (New / borrow-a-line / History / mountain import/export
 // / map export, and the resolution behind a refused save). They replace the document via setDoc + re-run loadMountain, and
 // read the loaded reference through getters.
-const { newMountainDialog, genTerrainDialog, buildFromReferenceCourseDialog, openProjectDialog, historyDialog,
+const { newMountainDialog, buildFromReferenceCourseDialog, openProjectDialog, historyDialog,
   closePreview, conflictDialog, renameMountain, duplicateMountain, deleteMountain,
   exportMountain, importMountain, exportDialog } = createDialogs({
   getDoc: activeDoc,
@@ -1000,7 +1022,7 @@ const { newMountainDialog, genTerrainDialog, buildFromReferenceCourseDialog, ope
 });
 
 // ================= Scene toolbox: category launcher + paired Mountain / Reference detail =================
-// Reference is the landing view; Lighting / God Rays / Sound / Skybox / Course compare the authored mountain above it.
+// Reference is the landing view; Course / Sound / Lighting / Skybox / God Rays compare the authored mountain above it.
 // rebuildTools swaps this whole block in/out per mode. The panel owns its view
 // state + paired folders; the Lighting / Skybox / Reference / lighting-study / sound-study /
 // reference-Skybox / reference-Course folders are filled below by the sun + reference + sky subsystems, so it returns
@@ -1011,7 +1033,8 @@ let syncGodRayPreview = () => {};
 const { sunFolder, godRayFolder, refGodRayFolder, skyPreviewFolder, skyFolder, refFolder, lightFolder,
   refSoundFolder, refSkyFolder, refCourseFolder,
   getSceneSel, setSceneSel, rebuildScene, rebuildOutliner, selectScene, backToInfo,
-  applySceneSelection, refreshSelection, deleteKnot, setSceneVisible } = createScenePanel({
+  applySceneSelection, refreshSelection, deleteKnot, setSceneVisible,
+  finishCourseReset, cancelCourseReset, undoCourseResetPoint } = createScenePanel({
   camera: {
     getView: () => viewport.serializeView(),
     applyView: view => viewport.applyView(view),
@@ -1034,6 +1057,7 @@ const { sunFolder, godRayFolder, refGodRayFolder, skyPreviewFolder, skyFolder, r
   getSelectedKnots: () => store.selectedKnots,
   setSelectedKnots: indices => { store.selectedKnots = indices; if (indices.length) store.selected = null; },
   scheduleRebuild,
+  requestCourseSeat,
   surfaceOptions,
   isSceneActive: () => store.currentMode === 'info',
   onSelectionChange: () => syncSceneSkyPreview(),
@@ -1047,7 +1071,13 @@ const { sunFolder, godRayFolder, refGodRayFolder, skyPreviewFolder, skyFolder, r
   setNormalsVisible: on => { store.normalsOn = on; viewport.normalsGuide = on; persistUi(); },
   getAiPathsVisible: () => store.aiPathsOn,
   setAiPathsVisible: on => { store.aiPathsOn = on; viewport.aiPathsGuide = on; persistUi(); },
-  genTerrainDialog,
+  courseDraw: { // the lower-left command sheet swaps to the drawing keys for as long as it lasts
+    begin: handlers => { viewport.beginCourseDraw(handlers); updateCmdSheet(); },
+    end: () => { viewport.endCourseDraw(); updateCmdSheet(); },
+    active: () => viewport.courseDrawing,
+    points: () => viewport.courseDrawPoints,
+    removeLast: () => viewport.removeLastCourseDrawPoint(),
+  },
 });
 // ================= Placed props: caches + arming + deletes =================
 // The placed-prop domain ops live in props/operations.ts: the model geometry caches (base offsets + local
@@ -1795,6 +1825,7 @@ function setMode(m: Mode) {
   const carriedProp = store.selectedProp;
   const carriedRefSource = store.selectedRefProp?.sourceIndex;
   if (m !== 'info') store.selectedKnots = []; // course marquee selection exists only in Info
+  if (m !== 'info') cancelCourseReset(); // …and so does a course being redrawn
   if (m !== 'edit') cancelPastePlacement(false);
   if (m !== 'edit') cancelBridge(false, false);
   if (m !== 'edit') exitRegion(); // box-select is an Edit-only tool
@@ -2281,6 +2312,7 @@ async function loadMountain() {
 installShortcuts({
   store, viewport, edit, trickTools, propOps, propLines, propClipboard, sculptBrush: brush,
   undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot,
+  courseReset: { finish: finishCourseReset, cancel: cancelCourseReset, undoPoint: undoCourseResetPoint },
   cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile,
   turnPaintTexture,
   turnModelTexture: turnEditedModelTexture,

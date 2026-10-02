@@ -49,9 +49,9 @@ export const LIGHT_PLACEMENT_CURSOR = placementCursor(BULB_ICON_BODY);
 
 /** Which tool, if any, is currently held over the viewport. At most one is ever armed at a time — arming any
  *  of them disarms the others — so this is a choice rather than a set of flags to resolve. */
-export type ArmedPlacement = 'prop' | 'rail' | 'line' | 'gem' | 'light' | null;
+export type ArmedPlacement = 'prop' | 'rail' | 'line' | 'gem' | 'light' | 'course' | null;
 
-const PLACEMENT_CURSOR: Record<Exclude<ArmedPlacement, null>, string> = {
+const PLACEMENT_CURSOR: Record<Exclude<ArmedPlacement, 'course' | null>, string> = {
   prop: PROP_PLACEMENT_CURSOR,
   rail: RAIL_PLACEMENT_CURSOR,
   // A prop line is laid with the rail's click-a-chain-of-points gesture, so it wears the rail's cursor.
@@ -63,9 +63,11 @@ const PLACEMENT_CURSOR: Record<Exclude<ArmedPlacement, null>, string> = {
 /** Cursor for the viewport's mutually exclusive Paint and Props-mode placement interactions. */
 export function viewportCursor(mode: Mode, paintArmed: boolean, armed: ArmedPlacement = null): string {
   if (mode === 'paint') return paintArmed ? PAINT_CURSOR : '';
-  if (mode === 'props' && armed) return PLACEMENT_CURSOR[armed];
+  if (mode === 'props' && armed && armed !== 'course') return PLACEMENT_CURSOR[armed];
   // Effects mode draws motion paths with the same click-a-chain-of-points gesture the rail tool uses, so it
   // borrows the rail cursor rather than leaving the one mode that also lays a spline with a bare arrow.
   if (mode === 'effects' && armed === 'rail') return RAIL_PLACEMENT_CURSOR;
+  // …and so does Info's reset course, the run redrawn one terrain click at a time.
+  if (mode === 'info' && armed === 'course') return RAIL_PLACEMENT_CURSOR;
   return '';
 }
