@@ -4,12 +4,12 @@ import type { CourseKnot, CoursePath, V3 } from '../../../core/doc/types';
 import type { EditDoc } from '../../../core/doc/doc-edit';
 import { redrawCourse } from '../../../core/doc/course';
 import type { CourseDrawHandlers } from '../../viewport/tools/course-draw';
-import { clampKnotProfile, KNOT_LIMITS, profileWarnings, shapeRunIntoTerrain } from '../../../core/doc/run-shaping';
+import { clampKnotWidth, KNOT_WIDTH_LIMITS } from '../../../core/doc/run-shaping';
 import {
   DEFAULT_LAPS, DEFAULT_SHOWOFF_SECONDS, MAX_CHECKPOINT_BONUS_SECONDS, MAX_LAPS, MAX_SHOWOFF_SECONDS,
   normalizeCheckpointBonus, normalizeLaps, normalizeShowoffSeconds,
 } from '../../../core/doc/race';
-import { clearGui, detail, note, tip, warningBanner } from '../components/gui';
+import { clearGui, detail, note, tip } from '../components/gui';
 import { tooltip } from '../components/tooltip';
 import { toast } from '../components/toast';
 import {
@@ -35,9 +35,8 @@ export type { SceneSel } from './scene-navigation';
  *
  * A mountain has exactly one run, and it can't be added or removed — the export rides it (CoursePath). It's a
  * LINE through the mountain, never a shape cut into it: it exports as the AIP path, stages the field at
- * knot 0, and seeds the test ride. The net is shaped in Edit / Sculpt — and by *shape run into terrain*,
- * which presses the selected knots' floor / wall / bank / shoulder profile into the mesh once, on request
- * (core/doc/run-shaping). That is a command, not a modifier: the mesh owns the result afterwards.
+ * knot 0, and seeds the test ride. The net is shaped in Edit / Sculpt, never by the run; a groomed path along
+ * it is built with Edit ▸ Create Trail.
  *
  * The panel owns its own view state (which category is selected and whether the launcher is folded) and the
  * paired detail folders. The sun / reference / sky subsystems fill their existing
@@ -517,13 +516,9 @@ export function createScenePanel(deps: ScenePanelDeps) {
     // exported gate heights, so a line left floating would start the race that far off the snow.
     tip(courseFolder.add({ reset: startCourseReset }, 'reset').name('⟲ reset course'),
       'Redraw the run: click the terrain at the start, then each point down to the finish.',
-      'Every point lands on the snow, and the new run starts as a 30 m open floor. Widen a point in Selected '
-      + 'knot; drag a START or FINISH flag to stage the race partway along the line, the way MEGAPLEX’s lap does.');
-    tip(courseFolder.add({ shape: shapeRun }, 'shape').name('⌒ shape run into terrain'),
-      'Press the run’s cross-section into the terrain and paint the floor strip.',
-      'The line follows the hill; this makes the HILL follow the line. It writes heights once and the mesh '
-      + 'owns them — sculpt freely afterwards and press again when you want the channel back. Locked patches '
-      + 'are left alone.');
+      'Every point lands on the snow, and the new run starts 30 m wide — the band the AI field weaves within. '
+      + 'Widen a point in Selected knot; drag a START or FINISH flag to stage the race partway along the line, '
+      + 'the way MEGAPLEX’s lap does. To build a groomed path along it, use Edit ▸ Create Trail.');
   }
 
   /** The Course panel while a reset is being clicked out: the count so far and the ways out of it. */
@@ -573,22 +568,6 @@ export function createScenePanel(deps: ScenePanelDeps) {
 
   function undoCourseResetPoint() { courseDraw.removeLast(); }
 
-  /** Press the run's authored cross-section into the mesh (core/doc/run-shaping), then rebuild. A one-shot
-   *  command: what it writes is ordinary terrain afterwards, and undo puts the old heights back. */
-  function shapeRun() {
-    const done = shapeRunIntoTerrain(getDoc());
-    if (!done.moved && !done.painted) {
-      toast(done.held
-        ? `Every patch the run reaches is locked (${done.held} points held).`
-        : 'The run reaches no terrain to shape — reset the course onto the mountain first.', 'warn', 5000);
-      return;
-    }
-    toast(`Run shaped into the terrain — ${done.moved} points moved (largest ${done.maxAdjust.toFixed(1)} m)`
-      + `${done.painted ? `, ${done.painted} floor patches painted` : ''}`
-      + `${done.held ? `, ${done.held} held by locked patches` : ''}.`, 'ok', 5000);
-    scheduleRebuild();
-  }
-
   /** Rebuild the Selection inspector for the currently selected run knot. */
   function refreshSelection() {
     clearGui(selFolder);
@@ -597,64 +576,42 @@ export function createScenePanel(deps: ScenePanelDeps) {
     selFolder.show(sceneSel === 'course' && (sel !== null || many.length > 0));
     selFolder.title(many.length ? `${many.length} selected points` : sel === null ? 'Selected knot' : `Knot ${sel}`);
     if (many.length) {
-      note(selFolder, 'A profile edit writes every selected point; Delete removes the set.');
-      addProfileControls(many);
+      note(selFolder, 'An edit writes every selected point; Delete removes the set.');
+      addKnotControls(many);
       selFolder.add({ del: deleteKnot }, 'del').name(`x delete ${many.length} points`);
       return;
     }
     if (sel === null) { note(selFolder, 'Click a course point to edit it, or drag a box around several.'); return; }
     note(selFolder, 'Drag the selected point with the 3D move gizmo.');
-    addProfileControls([sel]);
+    addKnotControls([sel]);
     selFolder.add({ add: addKnotAfter }, 'add').name('+ add point after');
     selFolder.add({ del: deleteKnot }, 'del').name('x delete point');
   }
 
   /**
-   * The channel these knots ask the terrain for: a floor of some width, quarter-pipe walls at its edges, a
-   * shoulder past them, and a bank rolling the section. Editing them changes NOTHING on its own — the run is
-   * a line, and Course ▸ shape run into terrain is what presses the profile into the mesh. `width` is the
-   * exception and always has been: it bounds where the AI field may wander.
+   * What a course point still carries: its floor width — the band the AI field weaves within — and an optional
+   * checkpoint bonus. (The wall / bank / shoulder a knot also stores no longer reach the terrain; a groomed path
+   * is Edit ▸ Create Trail's job, so they have no controls.)
    *
    * The width slider's top end follows the value it finds, so an older mountain's 400 m generated corridor is
    * draggable at a useful resolution without capping a run that was authored wider by hand.
    */
-  function addProfileControls(indices: number[]) {
+  function addKnotControls(indices: number[]) {
     const knots = coursePath().knots;
     const first = knots[indices[0]];
     if (!first) return;
-    const state = { width: first.width, wall: first.wall, bank: first.bank, shoulder: first.shoulder };
-    const write = (field: keyof typeof state) => (value: number) => {
-      for (const i of indices) {
-        const knot: CourseKnot | undefined = knots[i];
-        if (knot) clampKnotProfile(Object.assign(knot, { [field]: value }));
-      }
-      scheduleRebuild();
-    };
-    // The warnings below are read off the numbers, so they are rebuilt when a drag ENDS rather than during
-    // it — swapping the folder out from under a slider the pointer still owns would cancel the gesture.
-    const live = (field: keyof typeof state, control: ReturnType<GUI['add']>) =>
-      control.onChange(write(field)).onFinishChange(() => refreshSelection());
+    const state = { width: first.width };
     const widthMax = Math.max(600, Math.ceil(state.width / 50) * 50);
-    tip(live('width', selFolder.add(state, 'width', KNOT_LIMITS.width.min, widthMax, KNOT_LIMITS.width.step)
-      .name('floor width (m)')),
-      'Flat floor across the run here.',
-      'A new run starts at 30 m; retail race channels run nearer 80–150 m, a chute reads at 60 and a plaza at '
-      + '250. It bounds the AI field to half of it — a narrow run keeps opponents on the snow as well as you.');
-    tip(live('wall', selFolder.add(state, 'wall', KNOT_LIMITS.wall.min, KNOT_LIMITS.wall.max, KNOT_LIMITS.wall.step)
-      .name('wall (m)')),
-      'Quarter-pipe wall rising at each floor edge.',
-      'Its lateral run matches its height, so 30 m is a 30 m-wide 45° berm you can carry speed round — and 0 '
-      + 'is an open channel that just spills into the hill.');
-    tip(live('bank', selFolder.add(state, 'bank', KNOT_LIMITS.bank.min, KNOT_LIMITS.bank.max, KNOT_LIMITS.bank.step)
-      .name('bank (°)')),
-      'Roll of the whole section about the line; positive raises the rider’s right.',
-      'A left-hand bend wants a positive bank to hold the field in it. Walls roll with it, so a bank steep '
-      + 'enough tips the downhill wall below the floor and the turn stops containing anything; the panel says '
-      + 'so when it happens.');
-    tip(live('shoulder', selFolder.add(state, 'shoulder', KNOT_LIMITS.shoulder.min, KNOT_LIMITS.shoulder.max,
-      KNOT_LIMITS.shoulder.step).name('shoulder (m)')),
-      'Near-flat lip carried beyond the wall tops before the blend takes over.',
-      'The landing you get for overshooting a wall rather than the fall you get without one.');
+    tip(selFolder.add(state, 'width', KNOT_WIDTH_LIMITS.min, widthMax, KNOT_WIDTH_LIMITS.step).name('floor width (m)')
+      .onChange((value: number) => {
+        for (const i of indices) {
+          const knot: CourseKnot | undefined = knots[i];
+          if (knot) knot.width = clampKnotWidth(value);
+        }
+        scheduleRebuild();
+      }),
+      'How wide the run is here — the AI field weaves within half of it.',
+      'A new run starts at 30 m; a narrow run keeps opponents on the snow as well as you.');
     const checkpoint = { bonus: first.checkpointBonus ?? 0 };
     tip(selFolder.add(checkpoint, 'bonus', 0, MAX_CHECKPOINT_BONUS_SECONDS, 5).name('checkpoint bonus (s)')
       .onChange((value: number) => {
@@ -672,8 +629,6 @@ export function createScenePanel(deps: ScenePanelDeps) {
       + 'It is not a collision volume and is not attached to a checkpoint sign: place or animate a sign beside '
       + 'the course separately if you want the retail visual. Add a course point first when the checkpoint belongs '
       + 'between the existing points.');
-    // Amber, not a red failure: a spilled bank is a design fault the shaping will carry out faithfully.
-    for (const warning of profileWarnings(first)) warningBanner(selFolder, warning);
   }
 
   function addKnotAfter() {

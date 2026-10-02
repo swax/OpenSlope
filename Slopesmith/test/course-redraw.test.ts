@@ -1,6 +1,6 @@
 // tier: fast
 
-import { redrawCourse, seatRunOnTerrain, courseCenters, startFrame } from '../src/core/doc/course';
+import { DEFAULT_KNOT_PROFILE, redrawCourse, seatRunOnTerrain, courseCenters, startFrame } from '../src/core/doc/course';
 import { blankMountain, buildMeshFromCourse, coursePathFromLine, defaultMountain } from '../src/core/doc/mountain';
 import { buildMountainLevel } from '../src/core/export/level';
 import { surfaceSampleAt, surfaceSamplesAt } from '../src/core/mesh/surface-height';
@@ -62,6 +62,28 @@ const mountain = () => {
   const before = JSON.stringify(doc.course);
   check(seatRunOnTerrain(doc) === 0 && JSON.stringify(doc.course) === before,
     'seating a seated run moves nothing and writes nothing');
+}
+
+// Where the mountain passes over itself, a point keeps to the deck it is on: two flat 100 m decks, 20 m apart,
+// over the same ground — a run under a bridge, or a lap under its own upper section.
+{
+  const doc = mountain();
+  const deck = (h: number) => [0, h, 0, 0, h, 100, 100, h, 0, 100, h, 100]; // corners A(0,0) B(0,1) C(1,0) D(1,1)
+  doc.vertices = [...deck(0), ...deck(20)];
+  doc.quads = [[0, 1, 2, 3], [4, 5, 6, 7]];
+  doc.freeEdges = [];
+  delete doc.edgeHandles; delete doc.quadTwist; delete doc.quadPaint;
+  doc.course = { blend: 30, surface: 1, knots: [
+    { pos: [20, 3, 50], ...DEFAULT_KNOT_PROFILE },  // just above the lower deck, under the upper one
+    { pos: [80, 17, 50], ...DEFAULT_KNOT_PROFILE }, // just below the upper deck
+  ] };
+  doc.course.start = { pos: [50, 4, 50] };
+  seatRunOnTerrain(doc);
+  check(doc.course.knots[0].pos[1] === 0 && doc.course.start.pos[1] === 0,
+    'a point under an overhang seats on the deck it is on, not the one above it',
+    `${doc.course.knots[0].pos[1]} m / start ${doc.course.start.pos[1]} m`);
+  check(doc.course.knots[1].pos[1] === 20, 'and one nearer the upper deck seats there', `${doc.course.knots[1].pos[1]} m`);
+  check(surfaceSampleAt(doc, 20, 50)?.height === 20, 'while a plain sample still answers the topmost surface');
 }
 
 // The editor seats against the viewport's surface tree rather than the document's quilt; any ground will do.
