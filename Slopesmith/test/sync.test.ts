@@ -758,6 +758,7 @@ try {
   const [hostA, hostB, embedded] = roomDoc.quads[0];
   roomDoc.tJunctions = [{ vertex: embedded, edge: [hostA, hostB], t: 0.2 }];
   let doc = structuredClone(roomDoc), fetches = 0;
+  doc.tJunctions = []; // a real topology divergence requires one replacement before derived values re-fit
   const applied: string[] = [];
   const sync = createRegisterSync({
     getDoc: () => doc,
@@ -774,7 +775,7 @@ try {
   sync.adopt(doc);
 
   // This is the order in the app: the fetched topology is adopted, `onApplied('document')` launches the
-  // progressive render, and that render re-fits the derived parameter before the next drift check.
+  // frame render, and that render re-fits the derived parameter before the next drift check.
   sync.repair({ registers: [], document: structuredClone(roomDoc) });
   doc.tJunctions![0].t = 0.800000271;
   sync.noteEdit();

@@ -121,6 +121,27 @@ applies the change locally at once, and reverts if it lost the race. One round t
 remember. You never manage a claim; you occasionally see *"Jed just changed that — try again"*, and rarely,
 because topology edits are a small fraction of drags and paints.
 
+Same-map snapshots use the ordinary frame renderer rather than the opening-map loader. They keep the camera,
+mode, armed tools and surviving selections; object selections are remapped by stable id, and deleted geometry
+is removed from selections, hidden sets and pinned cages. Frozen gestures are ended before indices change.
+The existing scene stays visible until the synchronous geometry/picking replacement is ready. Updates within
+one frame coalesce, and identical topology broadcasts, claim rejections, catch-ups and whole-document drift
+repairs do not replace or redraw the map twice. A rejected local geometry edit produces one brief, non-modal
+notice, even when its winning snapshot already arrived; successful edits and ordinary remote updates stay quiet.
+Full-document replacements still reset undo history: old snapshot entries cannot safely restore over
+another participant's work. Initial loads and project switches keep their progressive loading experience.
+
+Terrain-only snapshots leave the Scene category launcher, Sound panel and Course controls intact, preserving
+focus, expanded sections and an active board-sound preview. Preserved controls resolve the current document
+when edited. Changed settings still refresh their own panels, and object inspectors that bind directly to
+replaced objects are rebound. Prop assets already in memory need no load or second object redraw; newly loaded
+models or group definitions request that redraw only after they arrive. Failed asset loads can be retried.
+
+`test/sync-context.test.ts` covers identity preservation, deleted selections, frame coalescing and duplicate
+conflict/drift recovery and rejection notices. `test/prop-sync.test.ts` covers cached, concurrent and failed
+asset loads. `test/sync-browser.test.ts` follows real remote topology edits in an isolated browser and checks
+camera, selection, mode, focus, audio-preview continuity, retained controls, loading overlays and render errors.
+
 The alternative — serialising topology through the server and having it execute the operation with the pure
 core — is tempting because `src/core/` is deterministic and fs-free. It is rejected: it puts a round trip in
 front of every subdivide, and it makes core version skew between installs a correctness bug rather than a

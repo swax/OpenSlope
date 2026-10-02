@@ -2013,6 +2013,26 @@ export class Viewport {
   showPlayerChat(userId: string, text: string): void { this.remotePlayers.showChat(userId, text); }
   showPeers(on: boolean) { this.peers.setVisible(on); }
 
+  /** Stop gestures whose frozen indices belong to the document being replaced. Keep camera and tool modes. */
+  cancelDocumentGesture() {
+    if (this.edgeExtrusion.active) this.edgeExtrusion.cancel();
+    this.router.cancelDocumentGesture();
+    if (this.gizmoKind === 'reference') return; // the independent reference has not changed
+    this.transforms.cancelGesture();
+    this.gizmo.dragging = false;
+    this.stage.detachGizmo();
+    this.gizmoReadout.end();
+    this.stage.controls.enabled = true;
+  }
+
+  /** A surviving single-corner selection gets a freshly indexed drag anchor after a snapshot. */
+  refreshSyncedCorner() {
+    const index = this.selectedCornerIndex();
+    if (index === null || this.surgery.tool || this.weldTool.active) return;
+    this.selection.placeCornerMarker(index);
+    this.attachGizmo(this.selection.cornerMarker, 'corner', index);
+  }
+
   /** Rebuild all scene content from a mountain document; knot handles are its run. */
   setMountain(doc: EditDoc, selected: number | null, selectedKnots: readonly number[] = []) {
     this.beginMountain(doc);

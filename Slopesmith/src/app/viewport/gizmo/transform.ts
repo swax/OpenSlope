@@ -959,6 +959,15 @@ export function createTransformLayer(
   stage.surfaceRails = () => arcRails();
 
   return {
+    /** A remote snapshot invalidates frozen indices. Abandon them without committing a pending slide weld. */
+    cancelGesture() {
+      rotationDrag = null;
+      scaleDrag = null;
+      slideBVH = null;
+      slideGroup = null;
+      slideExact = null;
+      setSlideMergePending(false);
+    },
     /** The active W / E / R transform tool; rotate / scale are selection-gated (rotationActive / scaleActive). */
     get mode() { return gizmoMode; },
     /** A frozen-net group slide is live (a corner-REGION drag): its updates belong to slideGroupUpdate. */

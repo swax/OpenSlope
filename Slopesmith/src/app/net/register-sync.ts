@@ -252,6 +252,9 @@ export function createRegisterSync(deps: {
   /** Somebody else overrode a register this tab had touched — the one place per-element indication earns its
    *  place, where the element flashes in their colour (docs/039). */
   onOverride?: (keys: RegisterKey[], by: string) => void;
+  /** This tab's optimistic topology edit lost its claim. Called once, even if the winning snapshot already
+   *  arrived by broadcast; ordinary remote edits and duplicate acknowledgements stay quiet. */
+  onTopologyRejected?: () => void;
   /** A disconnection long enough that replaying blind would be wrong. Nothing is replayed until the host
    *  answers with `replayHeld` or `discardHeld`. */
   onReconcile?: (summary: Reconciliation) => void;
@@ -350,6 +353,17 @@ export function createRegisterSync(deps: {
   function adopt(doc: EditDoc): void {
     deps.setDoc(doc);
     rebase(doc);
+  }
+
+  /** Broadcasts, rejected claims and drift repairs can carry the same snapshot. Compare the LIVE document,
+   *  not the shadow (which may predate an unsent edit), before replacing the editor's objects. */
+  function adoptChanged(doc: EditDoc): boolean {
+    if (digestDocument(deps.getDoc(), textHash).root === digestDocument(doc, textHash).root) {
+      rebase(deps.getDoc());
+      return false;
+    }
+    adopt(doc);
+    return true;
   }
 
   /** The registers that differ from what the room holds, with what they held before — the whole of an
@@ -563,13 +577,13 @@ export function createRegisterSync(deps: {
      *  structure afterwards; anything naming geometry the operation removed retires quietly. */
     applyTopology(document: EditDoc): void {
       const unsent = claiming ? [] : collect().changes;
-      adopt(document);
+      const changed = adoptChanged(document);
       if (unsent.length) {
         absorb(unsent);
         if (connected) sendAssignments(unsent);
         else for (const [key, value] of unsent) holding.set(key, value);
       }
-      deps.onApplied?.('document');
+      if (changed) deps.onApplied?.('document');
       report();
     },
     /** How a batch of this tab's assignments turned out. Nothing here can have been rejected for losing a
@@ -585,13 +599,14 @@ export function createRegisterSync(deps: {
       if (!result.ok && result.document) {
         // Lost. The winner's document is already in hand, so this goes from its own optimistic geometry to the
         // authoritative geometry in one step rather than back through the geometry it started with.
-        adopt(result.document);
+        const changed = adoptChanged(result.document);
         step = null;
-        deps.onApplied?.('document');
+        if (changed) deps.onApplied?.('document');
         lastChangeAt = 0;
         checkedAt = 0;
         maybeCheckDrift();
       }
+      if (!result.ok) deps.onTopologyRejected?.();
       report();
     },
     /**
@@ -609,10 +624,7 @@ export function createRegisterSync(deps: {
         // with the whole mountain. Very often that is the same durable snapshot boot just rendered. Rebase the
         // replica without replacing the live object in that case: replacing an identical document would make
         // the editor display its full progressive loader again for a mountain that did not change.
-        const currentRoot = digestDocument(deps.getDoc(), textHash).root;
-        const incomingRoot = digestDocument(missed.document, textHash).root;
-        if (currentRoot === incomingRoot) rebase(deps.getDoc());
-        else { adopt(missed.document); deps.onApplied?.('document'); }
+        if (adoptChanged(missed.document)) deps.onApplied?.('document');
       }
       else if (missed.changes.length) {
         absorb(missed.changes);
@@ -654,7 +666,11 @@ export function createRegisterSync(deps: {
     /** The repair. A divergent section arrives as its registers; a divergent topology arrives as the document,
      *  because the topology section is not register-shaped. */
     repair(payload: { registers: readonly RegisterAssignment[]; document?: EditDoc }): void {
-      if (payload.document) { adopt(payload.document); deps.onApplied?.('document'); report(); return; }
+      if (payload.document) {
+        if (adoptChanged(payload.document)) deps.onApplied?.('document');
+        report();
+        return;
+      }
       if (!payload.registers.length) return;
       absorb(payload.registers);
       digest = null;

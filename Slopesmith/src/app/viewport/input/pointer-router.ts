@@ -1881,6 +1881,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
 
   return {
     cancelSelectionDrag,
+    cancelDocumentGesture() {
+      cancelSelectionDrag();
+      cancelSculptDrag();
+      painting = false;
+    },
     createEdgePlacement,
     refreshCreateEdgeGhost,
     /** Where the pointer is over the canvas, or null once it has left it. */

@@ -2,6 +2,7 @@ import GUI from 'lil-gui';
 import { createSceneCamera, type SceneCameraDeps } from './scene-camera';
 import type { CourseKnot, CoursePath, V3 } from '../../../core/doc/types';
 import type { EditDoc } from '../../../core/doc/doc-edit';
+import { canonicalJson } from '../../../core/doc/canonical';
 import { redrawCourse } from '../../../core/doc/course';
 import type { CourseDrawHandlers } from '../../viewport/tools/course-draw';
 import { clampKnotWidth, KNOT_WIDTH_LIMITS } from '../../../core/doc/run-shaping';
@@ -84,6 +85,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
 
   let sceneSel: SceneSel = 'info';
   let sceneCollapsed = false; // the whole Scene content (tree + details) folds away from the SCENE header
+  let selectionStamp = '';
 
   const coursePath = (): CoursePath => getDoc().course;
   const mountainName = (): string => getDoc().name.trim() || 'Mountain';
@@ -187,7 +189,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
   }
 
   /** Show the reference picker, or the Mountain + Reference pair belonging to a study category. */
-  function applySceneSelection() {
+  function applySceneSelection(refreshOutliner = true) {
     for (const folder of [lightFolder, refGodRayFolder, refSoundFolder, refSkyFolder, refCourseFolder])
       folder.title(referenceHeader());
     const visible = sceneFolderVisibility(sceneSel, getSelected() !== null || getSelectedKnots().length > 0);
@@ -224,7 +226,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     showOwnBox(bounds.mountain);
     showRefBox(bounds.reference);
     onSelectionChange();
-    rebuildOutliner();
+    if (refreshOutliner) rebuildOutliner();
   }
 
   /** Select a category; the Reference landing view frames both positionable worlds. */
@@ -257,6 +259,21 @@ export function createScenePanel(deps: ScenePanelDeps) {
     void buildSoundDetail();
     buildCourseDetail();
     rebuildOutliner();
+  }
+
+  /** A same-map replacement only refreshes the details it changed. Sound controls already resolve the live
+   *  document on commit; Course controls do too, so untouched folders can keep focus and open subsections. */
+  function refreshSceneAfterSync(before: EditDoc) {
+    const doc = getDoc();
+    const sound = (d: EditDoc) => canonicalJson([
+      d.name, d.baseSurface, d.raceMusic, d.raceMusicArrangement, d.boardSound, d.environmentBed,
+    ]);
+    const course = (d: EditDoc) => canonicalJson([d.name, d.baseSurface, d.laps, d.showoffSeconds]);
+    if (before.name !== doc.name)
+      for (const folder of [sunFolder, godRayFolder, soundFolder, skyFolder, courseFolder]) folder.title(mountainName());
+    if (sound(before) !== sound(doc)) void buildSoundDetail();
+    if (course(before) !== course(doc)) buildCourseDetail();
+    refreshSelection(true);
   }
 
   let soundRequest = 0;
@@ -475,7 +492,11 @@ export function createScenePanel(deps: ScenePanelDeps) {
     clearGui(courseFolder);
     courseFolder.title(mountainName());
     if (courseDraw.active()) { buildCourseDrawDetail(); return; }
-    tip(courseFolder.add(getDoc(), 'baseSurface', surfaceOptions).name('base ride feel'),
+    const surface = {
+      get baseSurface() { return getDoc().baseSurface; },
+      set baseSurface(value: number) { getDoc().baseSurface = value; },
+    };
+    tip(courseFolder.add(surface, 'baseSurface', surfaceOptions).name('base ride feel'),
       'Physics of every cell with no painted tile on it.').onChange(scheduleRebuild);
     // Stored only above the single-pass default, so an ordinary mountain's document says nothing about laps.
     const race = {
@@ -569,10 +590,14 @@ export function createScenePanel(deps: ScenePanelDeps) {
   function undoCourseResetPoint() { courseDraw.removeLast(); }
 
   /** Rebuild the Selection inspector for the currently selected run knot. */
-  function refreshSelection() {
-    clearGui(selFolder);
+  function refreshSelection(onlyChanged = false) {
     const sel = getSelected();
     const many = getSelectedKnots();
+    const indices = many.length ? many : sel === null ? [] : [sel];
+    const stamp = canonicalJson([sceneSel, sel, many, indices.map(i => coursePath().knots[i])]);
+    if (onlyChanged && stamp === selectionStamp) return;
+    selectionStamp = stamp;
+    clearGui(selFolder);
     selFolder.show(sceneSel === 'course' && (sel !== null || many.length > 0));
     selFolder.title(many.length ? `${many.length} selected points` : sel === null ? 'Selected knot' : `Knot ${sel}`);
     if (many.length) {
@@ -605,7 +630,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     tip(selFolder.add(state, 'width', KNOT_WIDTH_LIMITS.min, widthMax, KNOT_WIDTH_LIMITS.step).name('floor width (m)')
       .onChange((value: number) => {
         for (const i of indices) {
-          const knot: CourseKnot | undefined = knots[i];
+          const knot: CourseKnot | undefined = coursePath().knots[i];
           if (knot) knot.width = clampKnotWidth(value);
         }
         scheduleRebuild();
@@ -617,7 +642,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
       .onChange((value: number) => {
         const bonus = normalizeCheckpointBonus(value);
         for (const i of indices) {
-          const knot = knots[i];
+          const knot = coursePath().knots[i];
           if (!knot) continue;
           if (bonus === undefined) delete knot.checkpointBonus;
           else knot.checkpointBonus = bonus;
@@ -685,7 +710,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
       sceneSel = s;
     }, // host resets state, then rebuilds the panel itself
     setSceneVisible,
-    rebuildScene, rebuildOutliner, selectScene, backToInfo, applySceneSelection, refreshSelection, deleteKnot,
+    rebuildScene, refreshSceneAfterSync, rebuildOutliner, selectScene, backToInfo, applySceneSelection, refreshSelection, deleteKnot,
     finishCourseReset, cancelCourseReset, undoCourseResetPoint,
   };
 }

@@ -25,6 +25,7 @@ import { mapNameInUrl, showMapInUrl } from './state/map-url';
 import { createHistory } from './state/history';
 import { createRebuilder } from './state/rebuild';
 import { createStore } from './state/store';
+import { reconcileSyncContext } from './state/sync-context';
 import { quadIndex, quadIndices, quadName } from './state/mesh-names';
 import { reconcileTJunctionGeometry } from '../core/mesh/t-junctions';
 import { createNetWatcher, type NetChange } from '../core/mesh/incremental';
@@ -673,9 +674,8 @@ const projectSync = createProjectSync({
   // is reset for the same reason a project switch resets it: every state it holds was built on a document
   // that is no longer the project's (docs/038).
   onFollow: document => {
-    history.reset();
-    store.mdoc = document;
-    void loadMountain();
+    setSyncedDocument(document);
+    queueSyncedDocument();
   },
   // Shared: what is outstanding is a coalescing window of register assignments, not a document (docs/039).
   flushShared: () => registerSync.flush(),
@@ -692,9 +692,14 @@ const activeEditMesh = () => store.modelEditDoc ?? store.mdoc;
  * touched between them.
  */
 const netWatcher = createNetWatcher();
+let syncDocumentPending = false;
+let syncUiBeforeDoc: EditDoc | null = null;
+let syncSunPending = false;
+let syncSkyPending = false;
 
 function prepareRenderDoc(change: NetChange) {
   if (!change.renumbered) return;
+  if (syncDocumentPending) return; // surviving named selections/hidden geometry were reconciled on adoption
   // Which vertices and quads exist has moved, so every one of these is an index into a mesh that is gone.
   const hadHidden = store.hiddenVertices.length || store.hiddenEdges.length || store.hiddenQuads.length;
   const hadControlCages = store.controlCageEdges.length || store.controlCageQuads.length;
@@ -791,7 +796,7 @@ function seatPendingCourse() {
     viewport.refreshMountainOverlays(store.mdoc, store.selected, store.selectedKnots);
 }
 
-function renderDoc() {
+function renderDoc(edited = true) {
   reconcileTJunctionGeometry(activeEditMesh());
   const change = netWatcher.note(activeEditMesh());
   prepareRenderDoc(change);
@@ -799,7 +804,11 @@ function renderDoc() {
   seatPendingCourse();
   renderMountainObjects();
   renderMountainDetails();
-  finishRenderDoc();
+  if (syncDocumentPending) {
+    syncDocumentPending = false;
+    refreshSyncedDocumentUi();
+  }
+  finishRenderDoc(edited);
 }
 
 /**
@@ -859,7 +868,7 @@ async function renderDocProgressively(token: number) {
   loadStatus.update(token, { progress: 96, label: 'Finalizing editor state', detail: 'Preparing the restored session' });
   finishRenderDoc(false);
 }
-const { scheduleRebuild, scheduleSettle, flush: flushRebuild, isPending: isRebuildPending } = createRebuilder({
+const { scheduleRebuild, scheduleRemoteRebuild, scheduleSettle, flush: flushRebuild, isPending: isRebuildPending } = createRebuilder({
   scheduleCommit: () => scheduleCommit(), // deferred: history is created below
   render: renderDoc,
   settle: settleDoc,
@@ -1033,7 +1042,7 @@ let syncSceneSkyPreview = () => {};
 let syncGodRayPreview = () => {};
 const { sunFolder, godRayFolder, refGodRayFolder, skyPreviewFolder, skyFolder, refFolder, lightFolder,
   refSoundFolder, refSkyFolder, refCourseFolder,
-  getSceneSel, setSceneSel, rebuildScene, rebuildOutliner, selectScene, backToInfo,
+  getSceneSel, setSceneSel, rebuildScene, refreshSceneAfterSync, rebuildOutliner, selectScene, backToInfo,
   applySceneSelection, refreshSelection, deleteKnot, setSceneVisible,
   finishCourseReset, cancelCourseReset, undoCourseResetPoint } = createScenePanel({
   camera: {
@@ -2216,7 +2225,75 @@ function refreshMapUrl(name = projectSync.current()?.name ?? '') {
 /** Bind the scene + panels to the current `mdoc` (after New / Load / undo). */
 let mountainLoadCount = 0;
 let assetProjectId = '';
+/** Same-map snapshots keep the editor's view and tools. The frame renderer installs geometry and its pick
+ *  trees together; the existing scene remains visible until then, without the opening-map overlay. */
+function setSyncedDocument(document: EditDoc) {
+  const before = store.mdoc;
+  syncUiBeforeDoc ??= before; // compare the final coalesced snapshot with the panels still on screen
+  const modelId = store.modelEditId;
+  viewport.cancelDocumentGesture();
+  cancelPastePlacement(false);
+  cancelBridge(false, false);
+  store.mdoc = migrateMountain(document);
+  syncSunPending ||= JSON.stringify([before.sun, before.glare]) !== JSON.stringify([store.mdoc.sun, store.mdoc.glare]);
+  syncSkyPending ||= JSON.stringify(before.skybox) !== JSON.stringify(store.mdoc.skybox);
+  refreshModelEditTarget(store);
+  if (modelId !== store.modelEditId) clearMeshEditState();
+  reconcileSyncContext(store, before, activeEditMesh());
+  // A provisional route was planned against the old surface, but its tool can remain armed.
+  store.createEdgeStart = null;
+  store.createEdgeChain = [];
+  store.createEdgeSurfacePath = [];
+  store.createEdgeSurfacePositions = [];
+  viewport.setCreateEdgeTool(store.createEdgeTool, null);
+}
+
+function queueSyncedDocument() {
+  history.reset(); // whole-document undo entries cannot safely survive another author's topology
+  syncDocumentPending = true;
+  scheduleRemoteRebuild(true);
+}
+
+function refreshSyncedDocumentUi() {
+  const dock = document.getElementById('dock-right');
+  const scrollTop = dock?.scrollTop ?? 0;
+  viewport.setModelEditContext(!!store.modelEditId, store.mdoc);
+  if (store.currentMode === 'edit') {
+    edit.refreshAfterSync();
+    viewport.refreshSyncedCorner();
+  }
+  viewport.setRailArmed(store.railDrawing);
+  viewport.setLineDrawing(store.lineDrawing);
+  const before = syncUiBeforeDoc ?? store.mdoc;
+  syncUiBeforeDoc = null;
+  refreshSceneAfterSync(before);
+  applySceneSelection(false);
+  // Other mode inspectors bind directly to document objects and must be rebound after replacement.
+  if (store.currentMode !== 'info') rebuildTools();
+  updatePaintUi();
+  if (before.name !== store.mdoc.name) {
+    refreshMapUrl();
+    library.refreshMountainName();
+    propLib.refreshMountainName();
+    reference.refreshMountainName();
+  }
+  if (syncSunPending) syncSunFromDoc();
+  if (syncSkyPending) syncSkyFromDoc();
+  syncSunPending = false;
+  syncSkyPending = false;
+  if (dock) dock.scrollTop = scrollTop;
+  const syncedDoc = store.mdoc;
+  // Most assets are already cached. Newly referenced art can arrive without another terrain rebuild.
+  void propOps.syncPropGeom(false).then(changed => {
+    if (changed && store.mdoc === syncedDoc) renderMountainObjects();
+  }).catch(error => log(`synced prop load failed: ${error instanceof Error ? error.message : error}`));
+}
+
 async function loadMountain() {
+  syncDocumentPending = false;
+  syncUiBeforeDoc = null;
+  syncSunPending = false;
+  syncSkyPending = false;
   refreshMountainTitle();
   refreshMapUrl(); // every document replacement passes through here, so the URL follows the map by construction
   library.refreshMountainName();
@@ -2448,7 +2525,7 @@ syncChatSpeakers();
  *  claims the ids a topology edit consumes, and holds this participant's undo as inverse assignments. */
 const registerSync = createRegisterSync({
   getDoc: () => store.mdoc,
-  setDoc: doc => { store.mdoc = migrateMountain(doc); },
+  setDoc: setSyncedDocument,
   channel: {
     assign: (changes, batch) => session.assign(changes, batch),
     claim: (ids, document, batch) => session.claim(ids, document, batch),
@@ -2456,11 +2533,12 @@ const registerSync = createRegisterSync({
     fetchSections: sections => session.fetchSections(sections),
   },
   onApplied: what => {
-    if (what === 'document') { history.reset(); void loadMountain(); return; }
-    scheduleRebuild();
+    if (what === 'document') { queueSyncedDocument(); return; }
+    scheduleRemoteRebuild();
   },
   onStatus: status => syncChip.show(status),
   onOverride: (keys, by) => { log(`${by} changed ${keys.length} of the values you had touched`); },
+  onTopologyRejected: () => toast('Someone else changed that part of the map. Your last geometry edit wasn’t applied.', 'info', 6000),
   onReconcile: summary => syncChip.reconcile(summary),
 });
 

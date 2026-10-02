@@ -109,6 +109,7 @@ const EXCLUSIVE_GROUP = new Map([
   ['particle-blend-webgl.test.ts', 'browser-webgl'],
   ['prop-shader-webgl.test.ts', 'browser-webgl'],
   ['snowfall-webgl.test.ts', 'browser-webgl'],
+  ['sync-browser.test.ts', 'browser-webgl'],
 ]);
 
 /**

@@ -47,6 +47,7 @@ export function createPropOps(deps: PropOpsDeps) {
   const { store, viewport, propLevels, groupDefIdx, propLib, propPreview, setMode, scheduleRebuild, rebuildTools, updateCmdSheet } = deps;
 
   const groupDefsByLevel = new Map<string, Promise<GroupDef[]>>(); // /api/groups fetches, one per level (docs/015)
+  const loadedGroupLevels = new Set<string>(); // includes successfully loaded empty group catalogues
   const propLoadsByLevel = new Map<string, Promise<LevelProps>>(); // in-flight /api/props fetches, one per level
 
   /** Short prop label: drop the "Mdl_" prefix and the trailing "_<n>" instance suffix (matches the library). */
@@ -227,6 +228,7 @@ export function createPropOps(deps: PropOpsDeps) {
         if (payload.error) throw new Error(payload.error);
         for (const d of payload.groups) groupDefIdx.set(`${level}:${d.id}`, d);
         viewport.registerGroupDefs(level, payload.groups);
+        loadedGroupLevels.add(level);
         return payload.groups;
       })();
       p.catch(() => groupDefsByLevel.delete(level)); // a failed fetch retries next time
@@ -312,18 +314,21 @@ export function createPropOps(deps: PropOpsDeps) {
   }
 
   /** Ensure every level referenced by the doc's placed props has its geometry loaded — and, for group
-   *  placements, its mined group defs — then optionally re-render. Undo uses the retry; progressive document
-   *  loading passes false because it waits for these assets before its one object-render stage. */
-  async function syncPropGeom(rebuild = true) {
+   *  placements, its mined group defs. Return whether assets arrived that need another object render. Undo
+   *  uses the retry; progressive loading waits before rendering, while sync redraws only for new assets.
+   *  Authored models are already refreshed by renderMountainObjects, including on the first load. */
+  async function syncPropGeom(rebuild = true): Promise<boolean> {
     const modelProps = (store.mdoc.props ?? []).filter(p => !isEffectTriggerProp(p));
     const levels = new Set(modelProps.map(p => p.level));
-    if (!levels.size) return;
     const defLevels = new Set(modelProps.filter(p => p.group).map(p => p.level));
-    await Promise.all([
-      ...[...levels].map(l => ensurePropLevel(l).catch(() => null)),
-      ...[...defLevels].map(l => ensureGroupDefs(l).catch(() => null)),
-    ]);
-    if (rebuild) scheduleRebuild();
+    const loads = [
+      ...[...levels].filter(l => l !== AUTHORED_MODEL_LEVEL && !propLevels.has(l)).map(ensurePropLevel),
+      ...[...defLevels].filter(l => !loadedGroupLevels.has(l)).map(ensureGroupDefs),
+    ];
+    if (!loads.length) return false;
+    const changed = (await Promise.all(loads.map(load => load.then(() => true, () => false)))).some(Boolean);
+    if (changed && rebuild) scheduleRebuild();
+    return changed;
   }
 
   /**

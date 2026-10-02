@@ -1898,6 +1898,27 @@ export function createEditSession(deps: EditSessionDeps) {
 
   return {
     viewportCallbacks,
+    /** Re-seat surviving selections after a snapshot; no selection transitions or edits are authored here. */
+    refreshAfterSync() {
+      slideBase = null;
+      slideWeld = [];
+      view().setWeldTool(store.weldTool === 'weld' ? vertexIndices(mdoc(), store.weldSource) : false);
+      view().setEdgeWeldTool(store.weldTool === 'edge-weld' ? edgeIndices(mdoc(), store.weldEdgeSource) : null);
+      if (store.selectedCorner !== null) {
+        view().setCornerGroup([]);
+        view().setControlPointSelection([]);
+        refreshHandles();
+      } else if (store.regionSel.length || store.controlSel.length || store.cellSel.length
+        || store.edgeSel.length || store.multiSel.length) renderEditMarqueeSelection();
+      else {
+        view().setCornerGroup([]);
+        view().setControlPointSelection([]);
+        view().refreshEditEdges();
+        view().refreshEditCells();
+        view().setPlacedPropSelection(store.selectedProp, store.multiSel);
+        refreshHandles();
+      }
+    },
     activeEditFamily, mixedEditSelection, transformSelectionActive, rotatableSelection, selectedFreePoint, setGizmoMode,
     resetGizmoMode,
     toggleEditProp,
