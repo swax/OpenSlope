@@ -666,7 +666,9 @@ export function applyRegisters(doc: QuadMeshDoc,
  * statement of what the model owns given as its complement.
  *
  * Containers are kept while their contents go, because whether a mountain carries an empty prop list or no
- * prop list at all is the document's own shape rather than something a register holds. Topology is untouched:
+ * prop list at all is the document's own shape rather than something a register holds. An explicitly undefined
+ * field is absent too; materializing an empty container there would change the document's canonical hash.
+ * Topology is untouched:
  * the mesh a shell describes is the mesh it came from, down to the numbering.
  */
 export function registerShell(doc: QuadMeshDoc): QuadMeshDoc {
@@ -680,10 +682,10 @@ export function registerShell(doc: QuadMeshDoc): QuadMeshDoc {
   if (doc.tJunctions) shell.tJunctions = doc.tJunctions.map(node => ({ ...node, edge: [...node.edge] }));
   if (doc.tombstones) shell.tombstones = [...doc.tombstones];
   for (const channel of ['edgeHandles', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels']) {
-    if (channel in record) record[channel] = {};
+    if (record[channel] !== undefined) record[channel] = {};
   }
   for (const family of ['props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'labels']) {
-    if (family in record) record[family] = [];
+    if (record[family] !== undefined) record[family] = [];
   }
   // The effects document's presence is itself carried by a register, so it goes with the rest of them.
   delete record.effects;
