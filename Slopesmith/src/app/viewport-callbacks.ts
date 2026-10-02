@@ -13,6 +13,7 @@ import type { Palette } from './paint/palette';
 import type { TextureLibrary } from './paint/library';
 import type { PropOps } from './props/operations';
 import type { PropLineOps } from './props/lines';
+import type { PropClipboardSession } from './props/clipboard';
 import type { Play } from './ride/play';
 import type { SceneSel } from './ui/chrome/scene-panel';
 import { toast } from './ui/components/toast';
@@ -65,6 +66,7 @@ export type ViewportWiringDeps = {
   library: () => TextureLibrary;
   propOps: () => PropOps;
   propLines: () => PropLineOps;
+  propClipboard: () => PropClipboardSession;
   play: () => Play;
   coursePath: () => CoursePath;
   scheduleRebuild: () => void;
@@ -86,7 +88,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     store, edit, brush, gemTool, lightTool,
     toggleViewGrid, setViewGridStep, toggleSnap, setSnapStep, setRotationSnapStep,
     selectPaintCell, rangeSelectPaintCells, clearPaintSelection,
-    viewport, palette, library, propOps, propLines, play, coursePath,
+    viewport, palette, library, propOps, propLines, propClipboard, play, coursePath,
     scheduleRebuild, rebuildTools, updateCmdSheet, refreshSelection, undo, redo, xrMixedRealityChanged,
     getSceneSel, selectScene, showReferenceLightDetails, persistRef, sendRideEvent,
   } = deps;
@@ -259,6 +261,8 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     },
     onEndSculptGrab() { grabBrush = null; },
     onPlaceProp(pos: V3, yaw: number, scale: number) {
+      // A held paste drops its whole set about the anchor the ghost was carried by (docs/012).
+      if (propClipboard().placing()) { propClipboard().place(pos, yaw, scale); return; }
       if (!store.armedProp) return;
       const props = (store.mdoc.props ??= []);
       // the viewport hands over the ghost's exact pose: pos already seated (base offset × scale taken out of

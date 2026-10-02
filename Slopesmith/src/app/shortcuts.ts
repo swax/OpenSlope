@@ -4,6 +4,7 @@ import { quadIndices, vertexNames } from './state/mesh-names';
 import type { EditSession } from './edit/session';
 import type { PropOps } from './props/operations';
 import type { PropLineOps } from './props/lines';
+import type { PropClipboardSession } from './props/clipboard';
 import type { TrickTools } from './tricks/operations';
 import type { Viewport } from './viewport/viewport';
 import type { BrushOp } from '../core/doc/mountain';
@@ -15,7 +16,7 @@ import type { EffectsEditor } from './effects/editor';
  * The editor's global keyboard shortcuts: one window keydown listener routing undo / redo, the Edit-mode mesh
  * operations (hide, connected-select, copy / cut / paste, bridge, weld, extrude, rip, split selected patches,
  * show control cage, crease / smooth, dissolve, flip ridable side, the modal-tool Enters), 1–6 top-level view switching, the
- * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, a prop line's Enter / Esc / Delete, Delete across every mode's selection, and the layered Escape
+ * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, Props' copy / cut / paste, a prop line's Enter / Esc / Delete, Delete across every mode's selection, and the layered Escape
  * (first put the held tool down, then clear the selection). Installed once
  * at compose time, after every service it routes to exists — so every dependency arrives direct. A live test
  * ride owns movement / ollie / respawn / Esc-to-exit (or release first-person / RMB capture); this layer retains P so it can pause and refresh the UI.
@@ -34,6 +35,7 @@ export type ShortcutDeps = {
   trickTools: TrickTools;
   propOps: PropOps;
   propLines: PropLineOps;
+  propClipboard: PropClipboardSession;
   sculptBrush: { op: BrushOp; radius: number };
   // history
   undo: () => void;
@@ -72,7 +74,7 @@ export type ShortcutDeps = {
 /** Install the window keydown listener. */
 export function installShortcuts(deps: ShortcutDeps) {
   const {
-    store, viewport, edit, trickTools, propOps, propLines, sculptBrush,
+    store, viewport, edit, trickTools, propOps, propLines, propClipboard, sculptBrush,
     undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot,
     cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile, turnPaintTexture,
     turnModelTexture, disarmBrush, stopWatch,
@@ -187,6 +189,11 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (mod && e.key.toLowerCase() === 'c' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); copySelectedVertices(); return; }
     if (mod && e.key.toLowerCase() === 'x' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); cutSelectedVertices(); return; }
     if (mod && e.key.toLowerCase() === 'v' && canPasteVertices()) { e.preventDefault(); pasteSelectedVertices(); return; }
+    // Props' own clipboard (docs/012). Text selected in a panel — a prop's id, say — keeps the browser's copy.
+    if (mod && !e.altKey && (key === 'c' || key === 'x') && !window.getSelection?.()?.toString() && propClipboard.canCopy()) {
+      e.preventDefault(); if (key === 'c') propClipboard.copy(); else propClipboard.cut(); return;
+    }
+    if (mod && !e.altKey && key === 'v' && propClipboard.canPaste()) { e.preventDefault(); void propClipboard.paste(); return; }
     if (store.currentMode === 'edit' && store.bridgeRails !== null) {
       if (!mod && !e.altKey && key === 'a') { e.preventDefault(); addBridgeRail(); return; }
       if (e.key === 'Enter') { e.preventDefault(); completeBridge(); return; }
@@ -318,6 +325,7 @@ export function installShortcuts(deps: ShortcutDeps) {
         deselectEdit(); return;
       }
       if (store.currentMode === 'props' && store.armedProp) { propOps.disarmProp(); return; }
+      if (store.currentMode === 'props' && propClipboard.placing()) { propClipboard.cancel(); return; } // …and a held paste
       if (store.currentMode === 'paint' && store.paintBrush) { disarmBrush(); return; }
       if (store.currentMode === 'props' && (store.selectedProp !== null || store.multiSel.length > 0
         || store.selectedRefProp !== null || store.selectedLight !== null || store.selectedRefLight !== null

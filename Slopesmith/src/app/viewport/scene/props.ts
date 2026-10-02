@@ -27,6 +27,7 @@ import type { GroupPropDef } from '../../../core/reference/groups';
 import { propRigGlow } from '../../../core/reference/lights';
 import { EFFECT_PROP_OVERLAY_RENDER_ORDER, PROP_RIG_MAX_BOOST } from '../constants';
 import { placementQuat } from '../../../core/props/pose';
+import type { PasteGhostPlacement } from '../../../core/props/clipboard';
 import type { PropAssets } from './prop-assets';
 import type { LightsLayer } from './lights';
 import type { Stage } from '../stage';
@@ -46,7 +47,12 @@ import {
 } from './collision-overlay';
 import type { EffectPieceMotion } from './reference-effects';
 
-type PropArm = { level: string; model: number; baseOffset: number; group?: string };
+/** What placement mode holds: one model (or group), or — with `paste` — a copied SET posed about the anchor
+ *  the cursor carries (core/props/clipboard.ts), whose level / model name its first placement. */
+export type PropArm = {
+  level: string; model: number; baseOffset: number; group?: string;
+  paste?: readonly PasteGhostPlacement[];
+};
 type AnimatedPropMesh = { mesh: THREE.Mesh; object: number | null };
 interface AnimatedPropTrack {
   clip: PropModelClip;
@@ -175,28 +181,50 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
    * Arm placement mode with a model (or put it down with null). While armed, a translucent ghost of the
    * model rides the cursor over the terrain — seated by `baseOffset`×scale like the real drop — and a click
    * commits it at the ghost's exact pose (onPlaceProp). The turn starts random and re-rolls per drop until a
-   * hand turn (turnPending) takes manual control; the size persists across drops. (The shell drops the read-only ref selection.)
+   * hand turn (turnPending) takes manual control; the size persists across drops. A pasted set arrives as it was
+   * copied — unturned, full size — and holds that turn, since its placements' own turns are what it carries.
+   * (The shell drops the read-only ref selection.)
    */
   function setArmed(arm: PropArm | null) {
-    const rearming = !!arm && (!propArm || propArm.level !== arm.level || propArm.model !== arm.model || propArm.group !== arm.group);
+    const rearming = !!arm && (!propArm || propArm.paste !== arm.paste
+      || propArm.level !== arm.level || propArm.model !== arm.model || propArm.group !== arm.group);
     propArm = arm;
-    if (rearming) { pendingYaw = Math.random() * 360; yawManual = false; pendingScale = 1; }
+    if (rearming && arm.paste) { pendingYaw = 0; yawManual = true; pendingScale = 1; }
+    else if (rearming) { pendingYaw = Math.random() * 360; yawManual = false; pendingScale = 1; }
     disposePropGhost();
     if (arm) buildPropGhost(); // hidden until the cursor hovers the terrain (seatPropGhost)
   }
 
   /** Build the armed model's ghost: its cached submeshes under translucent clones of their real materials,
-   *  so the preview is the textured prop at half strength — for a group, the whole assembly. Never pickable. */
+   *  so the preview is the textured prop at half strength — for a group, the whole assembly; for a pasted set,
+   *  every placement at its pose about the anchor. Never pickable. */
   function buildPropGhost() {
     if (!propArm) return;
-    const members = assets.membersOf(propArm.level, propArm.model, '', propArm.group);
     const g = new THREE.Group();
     g.matrixAutoUpdate = false;
     g.visible = false;
+    if (propArm.paste) {
+      for (const placement of propArm.paste) {
+        const placed = new THREE.Group();
+        placed.matrixAutoUpdate = false;
+        placed.matrix.copy(placementPose(placement));
+        if (addGhostModel(placed, placement.level, placement.model, placement.group)) g.add(placed);
+      }
+    } else addGhostModel(g, propArm.level, propArm.model, propArm.group);
+    if (!g.children.length) return;
+    stage.worldRoot.add(g);
+    propGhost = g;
+    propGhostHit = null;
+  }
+
+  /** One model's (or group's) ghost meshes under `parent`, in the placement's own frame. False when none of
+   *  its geometry is cached — the host loads geometry before arming, so a miss just means no ghost for it. */
+  function addGhostModel(parent: THREE.Group, level: string, model: number, group?: string): boolean {
     let tris = 0; // renderable triangles across the members — 0 with cached geometry = surfaceless model
-    for (const member of members) {
-      const subs = assets.propGeom.get(`${propArm.level}:${member.model}`);
-      if (!subs) continue; // the host loads geometry before arming; a miss just means no ghost for that member
+    let added = false;
+    for (const member of assets.membersOf(level, model, '', group)) {
+      const subs = assets.propGeom.get(`${level}:${member.model}`);
+      if (!subs) continue;
       const child = new THREE.Group();
       child.matrixAutoUpdate = false;
       child.matrix.copy(assets.memberLocalMatrix(member));
@@ -218,21 +246,19 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         mesh.raycast = () => { /* the ghost is never a pick target */ };
         child.add(mesh);
       }
-      g.add(child);
+      parent.add(child);
+      added = true;
     }
-    if (!g.children.length) return;
-    if (!tris) {
-      // the armed model has no surfaces — preview the same stand-in box its placement will render
+    if (added && !tris) {
+      // the model has no surfaces — preview the same stand-in box its placement will render
       const m = placeholderMat.clone();
       m.opacity = 0.3;
       propGhostMats.push(m);
       const mesh = new THREE.Mesh(placeholderGeo, m);
       mesh.raycast = () => { /* the ghost is never a pick target */ };
-      g.add(mesh);
+      parent.add(mesh);
     }
-    stage.worldRoot.add(g);
-    propGhost = g;
-    propGhostHit = null;
+    return added;
   }
 
   function disposePropGhost() {

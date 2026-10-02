@@ -13,6 +13,7 @@ import { describeApplied, drainBlenderPushes, openBlenderGuide } from './props/b
 import { PropLibrary } from './props/library';
 import { PropPreview } from './props/preview';
 import { createPropOps } from './props/operations';
+import { createPropClipboard } from './props/clipboard';
 import { createPropLineOps } from './props/lines';
 import { createTrickTools } from './tricks/operations';
 import { Palette } from './paint/palette';
@@ -168,6 +169,7 @@ const viewportCallbacks = createViewportCallbacks({
   library: () => library,
   propOps: () => propOps,
   propLines: () => propLines,
+  propClipboard: () => propClipboard,
   play: () => play,
   coursePath: () => coursePath(),
   scheduleRebuild: () => scheduleRebuild(),
@@ -1058,6 +1060,12 @@ const propOps = createPropOps({
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
 });
+// Props-mode Ctrl+C / X / V over the selected placement(s) (docs/012); a paste is held on the cursor until a click.
+const propClipboard = createPropClipboard({
+  store, viewport, propOps, resetGizmoMode: edit.resetGizmoMode, scheduleRebuild,
+  rebuildTools: () => rebuildTools(),
+  updateCmdSheet: () => updateCmdSheet(),
+});
 // Prop lines (docs/070): a path that owns a row of placements. The ops live in props/lines.ts; the members are
 // ordinary placements, so everything below that reads props handles them unchanged.
 const propLines = createPropLineOps({
@@ -1547,6 +1555,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   lightTool,
   getPlay: () => play,
   deleteSelectedProp: propOps.deleteSelectedProp, deleteMultiSelProps: propOps.deleteMultiSelProps,
+  propClipboard,
   deleteSelectedLight, deleteSelectedScreen, revealScreens,
   deleteSelectedGem: trickTools.deleteSelectedGem, deleteSelectedRail: trickTools.deleteSelectedRail,
   deleteSelectedRailNode: trickTools.deleteSelectedRailNode, finishRail: trickTools.finishRail,
@@ -2270,7 +2279,7 @@ async function loadMountain() {
 
 // keyboard — the global shortcut listener (shortcuts.ts); everything it routes to exists by now
 installShortcuts({
-  store, viewport, edit, trickTools, propOps, propLines, sculptBrush: brush,
+  store, viewport, edit, trickTools, propOps, propLines, propClipboard, sculptBrush: brush,
   undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot,
   cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile,
   turnPaintTexture,

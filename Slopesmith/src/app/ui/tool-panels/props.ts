@@ -157,11 +157,12 @@ export function createPropTools(ctx: ToolsContext) {
     defOfPlaced, placedBaseOffset, shortPropName, propLevels, groupDefIdx,
     armProp, armGroupById, deselectPropOrLight, lightTool,
     propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
-    deleteSelectedProp, deleteMultiSelProps, deleteSelectedLight, deleteSelectedScreen, revealScreens,
+    deleteSelectedProp, deleteMultiSelProps, propClipboard, deleteSelectedLight, deleteSelectedScreen, revealScreens,
     modelEdit, editSection, goToEffects,
     library, reloadImportedProps, setAuthoredModelTexture, setAuthoredModelFrames,
   } = ctx;
   const mountainName = store.mdoc.name.trim() || 'Mountain';
+  const plural = (n: number) => `${n} prop${n === 1 ? '' : 's'}`;
 
   // The uploaded-WAV library is shared with the effects inspector; rebuild when it lands or grows so the
   // dropdowns appear without a reselect.
@@ -1430,6 +1431,18 @@ export function createPropTools(ctx: ToolsContext) {
     }
     // Nothing selected, something in hand: what the next click will stamp, and the model's defaults (docs/069).
     if (store.armedProp) buildHeldPropTools(store.armedProp);
+    else if (propClipboard.placing()) {
+      // open: it IS the panel while the paste is held, not a detail of one
+      const placement = editSection('props-paste-placement', `Paste · ${plural(propClipboard.count())}`);
+      detail(placement, 'move over the terrain · click to place');
+      tip(placement.add({ cancel: propClipboard.cancel }, 'cancel').name('cancel paste (Esc)'),
+        'Put the paste down without placing anything.');
+    } else if (propClipboard.canPaste()) {
+      const clipboard = editSection('props-clipboard', 'Clipboard', false);
+      tip(clipboard.add({ paste: () => void propClipboard.paste() }, 'paste')
+        .name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
+      'Hold the copied props on the cursor, then click to place them.');
+    }
   }
 
   /**
@@ -1616,8 +1629,11 @@ export function createPropTools(ctx: ToolsContext) {
    *  one gizmo at the set's centre moves them together, and delete removes them all (also the Delete key). */
   function buildMultiPropTools() {
     multiList.show(store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })));
-    gui.add({ del: () => deleteMultiSelProps() }, 'del')
-      .name(`✕ delete ${store.multiSel.length} prop${store.multiSel.length === 1 ? '' : 's'}`);
+    // Edit mode borrows this panel for a marquee narrowed to props; the clipboard is Props mode's own.
+    if (propClipboard.canCopy())
+      tip(gui.add({ copy: propClipboard.copy }, 'copy').name(`⧉ copy ${plural(store.multiSel.length)} (Ctrl+C)`),
+        'Copy the set; Ctrl+V holds it on the cursor to place.');
+    gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete ${plural(store.multiSel.length)}`);
     addDeselect();
   }
 

@@ -218,6 +218,22 @@ row's **✕** drops it from the set (the prop stays placed), and **delete N prop
 the whole set. A single click, arming any tool, Esc, or undo clears the set. Box-selecting in edit mode
 (corners) and props mode share the marquee overlay; `marqueeKind` routes the finished rectangle.
 
+**Copy / paste** (select mode): **Ctrl+C** copies the selected prop or box-selected set, **Ctrl+X** cuts it,
+and **Ctrl+V** holds the copies on the cursor the way a Library pick is held — a translucent ghost of the whole
+set riding the terrain, **Alt+wheel** or **← / →** turning it and **Shift+wheel** resizing it. A **click**
+drops it and selects what landed under the move gizmo; **Esc** puts it down with nothing placed. One click
+places one copy (Ctrl+V again for another), and anything else taking the cursor — a Library pick, a rail,
+leaving Props — puts the paste down too. The set is carried by one **anchor**, its origins' centroid on the
+ground beneath it, so it keeps its shape, turns and scales about that point, and each prop keeps its
+clearance above the ground — a seated prop lands seated. The turn is added to each placement's yaw, the
+outermost of its YXZ angles, so tilted props keep their tilt. A copy is the whole placement — pose, behaviour,
+labels, its fitted screens — under a fresh id, sharing the source's effect slot as **＋ place** does
+([069](069-prop-defaults.md)). A prop line's member pastes as an ordinary prop, and an Effects trigger volume is
+not copied. The clipboard lives for the session, so it carries props between mountains; there, the effect slot
+is not trusted and copies of the author's own models are left out, since the same model number names a
+different model elsewhere (`core/props/clipboard.ts`). The idle Prop Tools offer **paste** while the clipboard
+holds something, and the set's panel offers **copy**.
+
 **Prop Tools preview** (`app/props/preview.ts`): the top of the Tools panel in Props mode shows the name,
 a big 3/4 thumbnail, and the tri / vert counts of the prop you're **holding** (armed from the Library or middle-clicked off the world) or
 the placed prop you have **selected** — the props answer to the paint Palette's current-tile preview.
