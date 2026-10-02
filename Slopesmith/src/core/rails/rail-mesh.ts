@@ -108,7 +108,7 @@ export const RAIL_POST_SINK = 0.3;
  * underside down through the authored standoff (`rail.height`, already baked into every node's Y) and
  * RAIL_POST_SINK into the ground. No terrain sampler needed - the standoff IS the node-to-ground distance
  * as laid, and a dragged node keeps a plausible post. Sides only (the top hides under the tube, the foot
- * sits in the snow); UVs are a constant centre sample - posts bake untextured, like the start gate. The
+ * sits in the snow); UVs are a constant centre sample - posts bake untextured, like the staging plates. The
  * same geometry feeds the viewport preview and the export bake, so the posts you see are the posts that
  * ship. Rails floating too low for a visible post (under ~0.15 m of standoff) yield null.
  */

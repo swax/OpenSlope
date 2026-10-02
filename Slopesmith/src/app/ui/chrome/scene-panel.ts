@@ -2,7 +2,8 @@ import GUI from 'lil-gui';
 import { createSceneCamera, type SceneCameraDeps } from './scene-camera';
 import type { CourseKnot, CoursePath, V3 } from '../../../core/doc/types';
 import type { EditDoc } from '../../../core/doc/doc-edit';
-import { seatRunOnTerrain } from '../../../core/doc/course';
+import { redrawCourse } from '../../../core/doc/course';
+import type { CourseDrawHandlers } from '../../viewport/tools/course-draw';
 import { clampKnotProfile, KNOT_LIMITS, profileWarnings, shapeRunIntoTerrain } from '../../../core/doc/run-shaping';
 import {
   DEFAULT_LAPS, DEFAULT_SHOWOFF_SECONDS, MAX_CHECKPOINT_BONUS_SECONDS, MAX_LAPS, MAX_SHOWOFF_SECONDS,
@@ -27,14 +28,14 @@ export type { SceneSel } from './scene-navigation';
 
 /**
  * The Scene-mode toolbox (right dock): a small category launcher above one focused comparison at a time.
- * Reference is the landing view; Lighting, God Rays, Sound, Skybox and Course put the authored mountain first and
+ * Reference is the landing view; Course, Sound, Lighting, Skybox and God Rays put the authored mountain first and
  * the loaded Reference directly beneath it. Escape returns from any focused category to Reference, mirroring the
  * way a selected Edit detail returns to its launcher.
  * rebuildTools swaps this whole block in/out per mode, so there's one panel and no per-mode gating here.
  *
  * A mountain has exactly one run, and it can't be added or removed — the export rides it (CoursePath). It's a
- * LINE through the mountain, never a shape cut into it: it exports as the AIP path, straddles the start gate
- * at knot 0, and seeds the test ride. The net is shaped in Edit / Sculpt — and by *shape run into terrain*,
+ * LINE through the mountain, never a shape cut into it: it exports as the AIP path, stages the field at
+ * knot 0, and seeds the test ride. The net is shaped in Edit / Sculpt — and by *shape run into terrain*,
  * which presses the selected knots' floor / wall / bank / shoulder profile into the mesh once, on request
  * (core/doc/run-shaping). That is a command, not a modifier: the mesh owns the result afterwards.
  *
@@ -53,6 +54,7 @@ export type ScenePanelDeps = {
   getSelectedKnots: () => number[];      // Info marquee selection for bulk course-point deletion
   setSelectedKnots: (indices: number[]) => void;
   scheduleRebuild: () => void;
+  requestCourseSeat: () => void;         // re-land the run on the terrain at the next render (host-owned)
   surfaceOptions: Record<string, number>; // "<num> <label>" -> surface id, for the base ride-feel dropdown
   isSceneActive: () => boolean;            // Scene's panel is the active editor mode (not merely retaining state)
   onSelectionChange: () => void;           // synchronize category-scoped viewport previews
@@ -66,14 +68,20 @@ export type ScenePanelDeps = {
   setNormalsVisible: (on: boolean) => void;
   getAiPathsVisible: () => boolean;       // shared authored AI lines + reference AIP-network visibility
   setAiPathsVisible: (on: boolean) => void;
-  genTerrainDialog: () => void;           // open the generate-terrain-from-run dialog (owned by ui/dialogs)
+  courseDraw: {                           // Course ▸ reset course: the new run clicked onto the terrain (viewport)
+    begin: (handlers: CourseDrawHandlers) => void;
+    end: () => void;
+    active: () => boolean;
+    points: () => readonly V3[];
+    removeLast: () => void;
+  };
 };
 
 export function createScenePanel(deps: ScenePanelDeps) {
   const { getDoc, getSelected, setSelected, getSelectedKnots, setSelectedKnots,
-    scheduleRebuild, surfaceOptions, isSceneActive, onSelectionChange, showOwnBox, showRefBox,
+    scheduleRebuild, requestCourseSeat, surfaceOptions, isSceneActive, onSelectionChange, showOwnBox, showRefBox,
     hasReference, getReferenceName, getCourseVisible, setCourseVisible, getNormalsVisible, setNormalsVisible,
-    getAiPathsVisible, setAiPathsVisible, genTerrainDialog } = deps;
+    getAiPathsVisible, setAiPathsVisible, courseDraw } = deps;
 
   let sceneSel: SceneSel = 'info';
   let sceneCollapsed = false; // the whole Scene content (tree + details) folds away from the SCENE header
@@ -125,12 +133,12 @@ export function createScenePanel(deps: ScenePanelDeps) {
 
   const categories: Array<{ value: SceneSel; label: string | (() => string); icon: string; title: string | (() => string) }> = [
     { value: 'info', label: 'Reference', icon: '◇', title: () => `Choose a read-only mountain to compare with ${mountainName()}.` },
-    { value: 'lighting', label: 'Lighting', icon: '☀', title: () => `${mountainName()} sun controls followed by the ${referenceName()} lighting study.` },
-    { value: 'godrays', label: 'God Rays', icon: '✺', title: () => `${mountainName()} god-ray settings followed by ${referenceName()}’s extracted settings.` },
-    { value: 'sound', label: 'Sound', icon: '♫', title: () => `${mountainName()} race music followed by shared rider audio and the ${referenceName()} music graph.` },
-    { value: 'skybox', label: 'Skybox', icon: '▣', title: () => `${mountainName()} skybox followed by the ${referenceName()} skybox.` },
-    { value: 'camera', label: 'Camera', icon: '◉', title: 'Inspect and set the camera, restore your opening view, or save a screenshot.' },
     { value: 'course', label: 'Course', icon: '⌁', title: () => `${mountainName()} run controls followed by the recovered ${referenceName()} course.` },
+    { value: 'sound', label: 'Sound', icon: '♫', title: () => `${mountainName()} race music followed by shared rider audio and the ${referenceName()} music graph.` },
+    { value: 'lighting', label: 'Lighting', icon: '☀', title: () => `${mountainName()} sun controls followed by the ${referenceName()} lighting study.` },
+    { value: 'skybox', label: 'Skybox', icon: '▣', title: () => `${mountainName()} skybox followed by the ${referenceName()} skybox.` },
+    { value: 'godrays', label: 'God Rays', icon: '✺', title: () => `${mountainName()} god-ray settings followed by ${referenceName()}’s extracted settings.` },
+    { value: 'camera', label: 'Camera', icon: '◉', title: 'Inspect and set the camera, restore your opening view, or save a screenshot.' },
   ];
 
   /** Rebuild the collapsible Scene header and its small category launcher. */
@@ -223,6 +231,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
   /** Select a category; the Reference landing view frames both positionable worlds. */
   function selectScene(kind: SceneSel) {
     if (leavesSceneSound(sceneSel, kind)) stopAudition();
+    if (kind !== 'course') cancelCourseReset(); // a half-clicked course belongs to the Course card
     sceneSel = kind;
     applySceneSelection(); // swap which detail folders are visible
   }
@@ -460,11 +469,13 @@ export function createScenePanel(deps: ScenePanelDeps) {
   }
 
   /** Mountain's Course panel. There is exactly one run, it can't be removed and it needs no name —
-   *  the export rides it. The run is a LINE, not a terrain op: it becomes the exported AIP path, sets where
-   *  the start gate straddles it, and seeds the test ride. The net is shaped in Edit / Sculpt. */
+   *  the export rides it. The run is a LINE, not a terrain op: it becomes the exported AIP path, stages the
+   *  field at its head, and seeds the test ride. The net is shaped in Edit / Sculpt, and the line
+   *  re-seats itself on whatever those leave behind. */
   function buildCourseDetail() {
     clearGui(courseFolder);
     courseFolder.title(mountainName());
+    if (courseDraw.active()) { buildCourseDrawDetail(); return; }
     tip(courseFolder.add(getDoc(), 'baseSurface', surfaceOptions).name('base ride feel'),
       'Physics of every cell with no painted tile on it.').onChange(scheduleRebuild);
     // Stored only above the single-pass default, so an ordinary mountain's document says nothing about laps.
@@ -501,31 +512,66 @@ export function createScenePanel(deps: ScenePanelDeps) {
       'Show the six AI lines your mountain exports (amber) and the loaded reference’s AI network (amber and violet).');
     tip(courseFolder.add(view, 'normals').name('show normals').listen(),
       'Show surface-normal direction by tinting each surface’s back, non-ridable side pink.');
-    tip(courseFolder.add({ gen: genTerrainDialog }, 'gen').name('▼ generate terrain from run'),
-      'Generate fresh terrain around the run. Replaces the terrain.',
-      'Builds perpendicular random-height edges at course knots, bridges to the target patch size, smooths '
-      + 'once, then seats the run.');
-    tip(courseFolder.add({ seat: seatRun }, 'seat').name('⇩ seat run on terrain'),
-      'Drop each course knot onto the current terrain surface.',
-      'Sculpting moves the terrain, never the run — and the game spawns the field AT the exported gate '
-      + 'heights, so a drifted line starts the race that far off the snow. Seating re-lands the gates, '
-      + 'respawn path, race line and AI lines together.');
-    tip(courseFolder.add(coursePath(), 'blend', 0, 200, 5).name('run blend (m)').onChange(scheduleRebuild),
-      'How far past the shoulder the shaping fades back into the hill.',
-      'Wide reads as a natural bench, narrow as a cut into the slope. Costs nothing until you shape.');
+    // Seating is automatic: every drawn point is a terrain hit, a dragged knot or flag follows the ground, and
+    // a sculpt stroke or Edit drag re-seats the whole line when it ends — the game spawns the field AT the
+    // exported gate heights, so a line left floating would start the race that far off the snow.
+    tip(courseFolder.add({ reset: startCourseReset }, 'reset').name('⟲ reset course'),
+      'Redraw the run: click the terrain at the start, then each point down to the finish.',
+      'Every point lands on the snow, and the new run starts as a 30 m open floor. Widen a point in Selected '
+      + 'knot; drag a START or FINISH flag to stage the race partway along the line, the way MEGAPLEX’s lap does.');
     tip(courseFolder.add({ shape: shapeRun }, 'shape').name('⌒ shape run into terrain'),
       'Press the run’s cross-section into the terrain and paint the floor strip.',
-      'The opposite of seating: seating moves the LINE onto the hill, shaping moves the HILL onto the line. '
-      + 'It writes heights once and the mesh owns them — sculpt freely afterwards and press again when you '
-      + 'want the channel back. Locked patches are left alone.');
-    tip(courseFolder.add({ reset: resetRaceEnds }, 'reset').name('⟲ reset start / finish to the run’s ends'),
-      'Return the START and FINISH flags to the run’s own ends.',
-      'Drag either flag in the viewport to place it somewhere else — how a lap course puts its grid partway '
-      + 'down the loop and its finish before the tube, the way MEGAPLEX does.');
-    tip(courseFolder.add({ ai: regenAiPaths }, 'ai').name('⟲ regenerate AI paths'),
-      'Deal a new random hand of the six exported AI opponent lines.',
-      'They re-derive on their own whenever the run changes; this only re-rolls the wander.');
+      'The line follows the hill; this makes the HILL follow the line. It writes heights once and the mesh '
+      + 'owns them — sculpt freely afterwards and press again when you want the channel back. Locked patches '
+      + 'are left alone.');
   }
+
+  /** The Course panel while a reset is being clicked out: the count so far and the ways out of it. */
+  function buildCourseDrawDetail() {
+    const count = courseDraw.points().length;
+    note(courseFolder, 'Click the terrain at the start, then each point down to the finish. Click the last '
+      + 'point again or press Enter to finish; Backspace removes a point, Esc cancels.');
+    detail(courseFolder, count === 0 ? 'none yet' : count === 1 ? '1 — the start' : `${count}`, 'points');
+    const finish = courseFolder.add({ finish: finishCourseReset }, 'finish').name('✔ finish course');
+    if (count < 2) finish.disable();
+    const undo = courseFolder.add({ undo: undoCourseResetPoint }, 'undo').name('↶ remove last point');
+    if (!count) undo.disable();
+    courseFolder.add({ cancel: cancelCourseReset }, 'cancel').name('✕ cancel — keep the current course');
+  }
+
+  /** Start redrawing the run. The old line stays on screen until the new one is finished. */
+  function startCourseReset() {
+    setSelected(null);
+    setSelectedKnots([]);
+    if (!getCourseVisible()) setCourseVisible(true);
+    courseDraw.begin({ changed: buildCourseDetail, finish: finishCourseReset });
+    refreshSelection();
+    buildCourseDetail();
+    scheduleRebuild();
+    toast('Click the start of the new course, then each point down to the finish.', 'ok', 5000);
+  }
+
+  /** Commit the clicked points as the run (core/doc/course redrawCourse) — one undoable course edit. */
+  function finishCourseReset() {
+    if (!courseDraw.active()) return;
+    const points = courseDraw.points();
+    if (points.length < 2) { toast('Click at least two points — a start and a finish.', 'warn'); return; }
+    redrawCourse(coursePath(), points);
+    courseDraw.end();
+    refreshSelection();
+    buildCourseDetail();
+    scheduleRebuild();
+    toast(`Course reset — ${points.length} points from start to finish.`, 'ok');
+  }
+
+  /** Put the reset down and keep the course as it was. */
+  function cancelCourseReset() {
+    if (!courseDraw.active()) return;
+    courseDraw.end();
+    buildCourseDetail();
+  }
+
+  function undoCourseResetPoint() { courseDraw.removeLast(); }
 
   /** Press the run's authored cross-section into the mesh (core/doc/run-shaping), then rebuild. A one-shot
    *  command: what it writes is ordinary terrain afterwards, and undo puts the old heights back. */
@@ -534,40 +580,12 @@ export function createScenePanel(deps: ScenePanelDeps) {
     if (!done.moved && !done.painted) {
       toast(done.held
         ? `Every patch the run reaches is locked (${done.held} points held).`
-        : 'The run reaches no terrain to shape — seat it on the mountain first.', 'warn', 5000);
+        : 'The run reaches no terrain to shape — reset the course onto the mountain first.', 'warn', 5000);
       return;
     }
     toast(`Run shaped into the terrain — ${done.moved} points moved (largest ${done.maxAdjust.toFixed(1)} m)`
       + `${done.painted ? `, ${done.painted} floor patches painted` : ''}`
       + `${done.held ? `, ${done.held} held by locked patches` : ''}.`, 'ok', 5000);
-    scheduleRebuild();
-  }
-
-  /** Drop the run's knots onto the terrain surface (core/doc/course seatRunOnTerrain), then rebuild —
-   *  the markers, gates and AI lines all re-derive from the seated line. */
-  function seatRun() {
-    const moved = seatRunOnTerrain(getDoc());
-    toast(moved > 0.05 ? `run seated on terrain — largest knot moved ${moved.toFixed(1)} m` : 'run already on the terrain', 'ok');
-    refreshSelection();
-    scheduleRebuild();
-  }
-
-  /** Forget both placed race endpoints, so start and finish derive from the run's own ends again. */
-  function resetRaceEnds() {
-    const course = getDoc().course;
-    const had = !!course.start || !!course.finish;
-    delete course.start;
-    delete course.finish;
-    toast(had ? 'start and finish back on the run’s ends' : 'start and finish were already the run’s ends', 'ok');
-    refreshSelection();
-    scheduleRebuild();
-  }
-
-  /** Re-roll the derived AI lines' seed (they re-derive from the run either way — this just re-deals the
-   *  wander) and reveal the overlay so the new hand shows immediately. */
-  function regenAiPaths() {
-    getDoc().aiSeed = (Math.random() * 0x7fffffff) | 0;
-    if (!getAiPathsVisible()) setAiPathsVisible(true);
     scheduleRebuild();
   }
 
@@ -595,10 +613,10 @@ export function createScenePanel(deps: ScenePanelDeps) {
    * The channel these knots ask the terrain for: a floor of some width, quarter-pipe walls at its edges, a
    * shoulder past them, and a bank rolling the section. Editing them changes NOTHING on its own — the run is
    * a line, and Course ▸ shape run into terrain is what presses the profile into the mesh. `width` is the
-   * exception and always has been: it spans the start gate and bounds where the AI field may wander.
+   * exception and always has been: it bounds where the AI field may wander.
    *
-   * The width slider's top end follows the value it finds, so a 400 m generated corridor is draggable at a
-   * useful resolution without capping a run that was authored wider by hand.
+   * The width slider's top end follows the value it finds, so an older mountain's 400 m generated corridor is
+   * draggable at a useful resolution without capping a run that was authored wider by hand.
    */
   function addProfileControls(indices: number[]) {
     const knots = coursePath().knots;
@@ -620,9 +638,8 @@ export function createScenePanel(deps: ScenePanelDeps) {
     tip(live('width', selFolder.add(state, 'width', KNOT_LIMITS.width.min, widthMax, KNOT_LIMITS.width.step)
       .name('floor width (m)')),
       'Flat floor across the run here.',
-      'Retail race channels run nearer 80–150 m; a chute reads at 60 and a plaza at 250. It also spans the '
-      + 'exported start gate at the first point, and bounds the AI field to half of it — a narrow run keeps '
-      + 'opponents on the snow as well as you.');
+      'A new run starts at 30 m; retail race channels run nearer 80–150 m, a chute reads at 60 and a plaza at '
+      + '250. It bounds the AI field to half of it — a narrow run keeps opponents on the snow as well as you.');
     tip(live('wall', selFolder.add(state, 'wall', KNOT_LIMITS.wall.min, KNOT_LIMITS.wall.max, KNOT_LIMITS.wall.step)
       .name('wall (m)')),
       'Quarter-pipe wall rising at each floor edge.',
@@ -674,6 +691,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     // silently duplicate when an author inserts a point after it.
     delete inserted.checkpointBonus;
     line.knots.splice(i + 1, 0, inserted);
+    requestCourseSeat(); // a chord midpoint (or the downhill extension) lands on the hill, like every knot
     setSelectedKnots([]);
     setSelected(i + 1);
     refreshSelection();
@@ -708,10 +726,12 @@ export function createScenePanel(deps: ScenePanelDeps) {
     setSceneSel: (s: SceneSel) => {
       cameraPanel.setActive(false);
       if (leavesSceneSound(sceneSel, s)) stopAudition();
+      if (s !== 'course' && courseDraw.active()) courseDraw.end();
       sceneSel = s;
     }, // host resets state, then rebuilds the panel itself
     setSceneVisible,
     rebuildScene, rebuildOutliner, selectScene, backToInfo, applySceneSelection, refreshSelection, deleteKnot,
+    finishCourseReset, cancelCourseReset, undoCourseResetPoint,
   };
 }
 

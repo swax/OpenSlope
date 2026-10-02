@@ -16,7 +16,7 @@ import type { EffectsEditor } from './effects/editor';
  * The editor's global keyboard shortcuts: one window keydown listener routing undo / redo, the Edit-mode mesh
  * operations (hide, connected-select, copy / cut / paste, bridge, weld, extrude, rip, split selected patches,
  * show control cage, crease / smooth, dissolve, flip ridable side, the modal-tool Enters), 1–6 top-level view switching, the
- * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, Props' copy / cut / paste, a prop line's Enter / Esc / Delete, Delete across every mode's selection, and the layered Escape
+ * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, Props' copy / cut / paste, a prop line's Enter / Esc / Delete, a course redraw's Enter / Backspace / Esc, Delete across every mode's selection, and the layered Escape
  * (first put the held tool down, then clear the selection). Installed once
  * at compose time, after every service it routes to exists — so every dependency arrives direct. A live test
  * ride owns movement / ollie / respawn / Esc-to-exit (or release first-person / RMB capture); this layer retains P so it can pause and refresh the UI.
@@ -47,6 +47,8 @@ export type ShortcutDeps = {
   scheduleRebuild: () => void;
   refreshSelection: () => void;
   deleteKnot: () => void;
+  /** Scene ▸ Course ▸ reset course, while its points are being clicked: Enter / Backspace / Esc. */
+  courseReset: { finish: () => void; cancel: () => void; undoPoint: () => void };
   // host glue that stays with the compose root (cage / focus / the paint-selection helpers)
   cageActive: () => boolean;
   focusActive: () => void;
@@ -75,7 +77,7 @@ export type ShortcutDeps = {
 export function installShortcuts(deps: ShortcutDeps) {
   const {
     store, viewport, edit, trickTools, propOps, propLines, propClipboard, sculptBrush,
-    undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot,
+    undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot, courseReset,
     cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile, turnPaintTexture,
     turnModelTexture, disarmBrush, stopWatch,
     cancelStartPlacement, exitModelEdit, sceneBack, effects, chatFocused, openChat,
@@ -214,6 +216,13 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (e.key === 'Enter' && store.surgeryTool === 'patch') { e.preventDefault(); edit.finishCreatePatch(true); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.surgeryTool === 'trail') {
       e.preventDefault(); undoCreateTrailPoint(); return;
+    }
+    // A course being redrawn (Scene ▸ Course ▸ reset course): Enter commits it, Backspace takes a point back and
+    // Esc puts it down — ahead of Info's own Esc, which would otherwise leave the Course card.
+    if (store.currentMode === 'info' && viewport.courseDrawing) {
+      if (e.key === 'Enter') { e.preventDefault(); courseReset.finish(); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); courseReset.undoPoint(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); courseReset.cancel(); return; }
     }
     const creationShortcutAvailable = !mod && !e.altKey && store.currentMode === 'edit'
       && store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool

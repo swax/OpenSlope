@@ -209,8 +209,8 @@ on demand, and there is nothing to read off a target.
 
 The reference panel (`main.ts` `initReference`) carries no texture-target control: the panel keeps its level
 picker + clear, terrain readout, course line, and "▶ new mountain from this course." That action opens the
-Generate terrain from run dialog and uses the same generator; its only extra step is replacing the authored run
-with the recovered reference course. The shared height control trims a shorter requested reference course or
+terrain dialog New mountain uses (titled Generate terrain from run here) with the same generator; its only extra
+step is replacing the authored run with the recovered reference course. The shared height control trims a shorter requested reference course or
 extrapolates its downhill tail when a taller one is requested.
 
 ## Verification

@@ -28,7 +28,7 @@ selecting retail-shaped type-2 pages so a prop-heavy build does not cross the me
 | File | Status for the bake | Slopesmith writes |
 |---|---|---|
 | `Patches.json` | **required** | one record per grid cell |
-| `Props.obj` | **required canonical preview** | world-space projection of the structured prop bake, with the extracted-map `o inst<n>_<model>` join. It includes the start gate, the two staging-anchor markers, placed reference props, authored models, imported GLBs, trigger boxes, and rail/support meshes |
+| `Props.obj` | **required canonical preview** | world-space projection of the structured prop bake, with the extracted-map `o inst<n>_<model>` join. It includes the two staging-anchor markers, placed reference props, authored models, imported GLBs, trigger boxes, and rail/support meshes |
 | `AIP.json` | optional | Race/Freeride paths: six required start routes, the floor-centerline respawn path and the race line |
 | `SOP.json` | optional | Show Off paths: six required start routes + the same race line |
 | `Textures/*.png` | optional | one procedural seamless tile per surface type in use, plus a flattened verbatim copy of every painted tile |
@@ -172,7 +172,8 @@ The **AIP start routes** are the Race/Freeride field ([Trailmap: 250-paths-aip-s
 rides the whole course. With **AI path variation** off, all six converge on and follow the centerline;
 with it on they carry independent seeded lateral wander bounded by the run floor
 (`core/doc/course.ts` `aiPathLines`). The routes are derived from the course plus the document's
-`aiSeed`; editing the course re-derives them and "regenerate" changes the seed. Path events are empty.
+`aiSeed`; editing the course re-derives them. The editor offers no re-roll: a document without a seed uses
+`DEFAULT_AI_SEED`, and one that carries a seed keeps it. Path events are empty.
 
 The **race line** carries the engine's progress metric: `DistanceToFinish` is the line's summed
 **horizontal** raw arc length ([Trailmap: 250-paths-aip-sop] — path distance chains in the ground
@@ -212,7 +213,10 @@ The engine loads `.aip` for Race/Freeride and `.sop` for Show Off. Both files re
 valid `StartPosList` entries. SOP carries six short lead-ins at retail's ~1.4 m pitch, converging on
 the course line. Initial world placement is a separate fixed six-rider formation transformed through
 `Mdl_StageArea_Start_0`; the repacker aligns that instance to the shared authored race origin.
-`core/doc/course.ts` computes the route gates, course frame and gate-prop boxes from the same origin.
+`core/doc/course.ts` computes the route gates and course frame from the same origin. No start-gate MODEL
+ships: an authored mountain once exported a box arch (two pillars and a crossbar) there, but nothing in the
+game reads it — the field stages through `Mdl_StageArea_Start_0` and the gate routes, and the countdown's
+gate hide targets a retail `Mdl_StartGate` by name. The staging plates are what keep `Props.obj` non-empty.
 
 ## Where the race starts and ends
 
@@ -229,7 +233,7 @@ existing instances. Absent an anchor the head and tail of the line supply them, 
 does until a flag is dragged. A placed anchor keeps the run's own heading and floor width at its station,
 so a start can never end up facing uphill.
 
-Three things follow the start anchor: the gate prop, the six SOP lead-ins, and where the AI field enters
+Three things follow the start anchor: the start staging plate, the six SOP lead-ins, and where the AI field enters
 the course. The finish anchor sets where the race line's `DistanceToFinish` reaches zero — the crossing —
 which is a different place from `Mdl_StageArea_Finish_0`, the corral 20–48 m beyond it.
 

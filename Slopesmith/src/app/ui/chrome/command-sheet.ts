@@ -12,6 +12,8 @@ export type CommandSheetDeps = {
   pastePlacing: () => boolean;
   /** Props mode is holding a paste (docs/012). */
   propPastePlacing: () => boolean;
+  /** Scene ▸ Course ▸ reset course is clicking out a new run. */
+  courseDrawing: () => boolean;
   canRotateSelection: () => boolean;
   editSelection: () => { kind: 'control points' | 'edges' | 'patches' | 'mixed selection'; readOnly: boolean } | null;
   selectedControlCagesVisible: () => boolean;
@@ -29,7 +31,7 @@ export type CommandSheetDeps = {
 /** Bottom keyboard/mouse help overlays. Kept outside the tools builder because this is a mode projection, not
  * lil-gui construction, and it is refreshed independently by viewport selection/tool changes. */
 export function createCommandSheet(deps: CommandSheetDeps) {
-  const { store, cageActive, pastePlacing, propPastePlacing, canRotateSelection, editSelection, selectedControlCagesVisible, canEditCurvature, edgeExtrusionStaged, edgeExtrusionFanMode,
+  const { store, cageActive, pastePlacing, propPastePlacing, courseDrawing, canRotateSelection, editSelection, selectedControlCagesVisible, canEditCurvature, edgeExtrusionStaged, edgeExtrusionFanMode,
     edgeExtrusionSideFlippable, paletteSurfaceView, desktopRiding, rideWalking, rideFirstPerson } = deps;
   const cmdSheet = document.getElementById('cmdsheet')!;
   const paintControls = document.getElementById('paintctl')!;
@@ -101,7 +103,10 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         [['RMB', 'orbit'], ['Alt+RMB', 'fly · WASD/QE'], ['MMB', 'pan'], ['wheel', 'zoom'], ['F', 'frame'], ['1–7', 'switch main view']]);
     cmdSheet.style.display = cmdSheet.innerHTML ? '' : 'none';
     paintControls.innerHTML = rideHelp ? '' : store.currentMode === 'info'
-      ? helpPanel('Scene Mode — course', [['LMB point', 'select + move'], ['drag', 'box-select points'], ['Del', 'delete selected points'], ['Esc', 'deselect']])
+      ? (courseDrawing()
+        ? helpPanel('Scene Mode — drawing the course', [['LMB', 'add a point'], ['LMB last point / Enter', 'finish'],
+          ['Backspace', 'remove last point'], ['Esc', 'cancel']])
+        : helpPanel('Scene Mode — course', [['LMB point', 'select + move'], ['drag', 'box-select points'], ['Del', 'delete selected points'], ['Esc', 'deselect']]))
       : store.currentMode === 'play'
         ? (store.placingStart
           ? helpPanel('Test Mode — set start', [['LMB', 'place the ride start'], ['Esc', 'cancel']])

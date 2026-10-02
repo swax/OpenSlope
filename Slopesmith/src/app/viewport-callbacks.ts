@@ -70,6 +70,8 @@ export type ViewportWiringDeps = {
   play: () => Play;
   coursePath: () => CoursePath;
   scheduleRebuild: () => void;
+  /** Re-land the run on the terrain once the next render has drawn it (main.ts renderDoc). */
+  requestCourseSeat: () => void;
   rebuildTools: () => void;
   updateCmdSheet: () => void;
   refreshSelection: () => void;
@@ -89,13 +91,17 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     toggleViewGrid, setViewGridStep, toggleSnap, setSnapStep, setRotationSnapStep,
     selectPaintCell, rangeSelectPaintCells, clearPaintSelection,
     viewport, palette, library, propOps, propLines, propClipboard, play, coursePath,
-    scheduleRebuild, rebuildTools, updateCmdSheet, refreshSelection, undo, redo, xrMixedRealityChanged,
+    scheduleRebuild, requestCourseSeat, rebuildTools, updateCmdSheet, refreshSelection, undo, redo, xrMixedRealityChanged,
     getSceneSel, selectScene, showReferenceLightDetails, persistRef, sendRideEvent,
   } = deps;
   const { resetGizmoMode } = edit;
   let grabBrush: GrabBrushState | null = null;
   let flattenPlane: FlattenBrushPlane | null = null;
   let pushPoint: V3 | null = null;
+
+  /** A terrain gesture ended: the run follows the hill it reshaped. A model session reshapes the model, never
+   *  the mountain under the run. */
+  const reseatCourse = () => { if (!store.modelEditId) requestCourseSeat(); };
 
   const clearReferenceLight = () => {
     if (!store.selectedRefLight) return;
@@ -124,6 +130,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
 
   return {
     ...edit.viewportCallbacks,
+    onEditTransformEnd() { edit.viewportCallbacks.onEditTransformEnd?.(); reseatCourse(); },
     onRideControlContextChange() { updateCmdSheet(); },
     onRideEvent(event) { sendRideEvent(event); },
     onUndo() { undo(); },
@@ -249,7 +256,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         brush.flattenMode, normal, flattenPlane, brush.smoothAmount / 100, brush.flattenAmount / 100);
       scheduleRebuild();
     },
-    onEndSculpt() { flattenPlane = null; pushPoint = null; },
+    onEndSculpt() { flattenPlane = null; pushPoint = null; reseatCourse(); },
     isGrabBrush() { return brush.op === 'grab'; },
     onBeginSculptGrab(point, quad) {
       grabBrush = createGrabBrushState(store.mdoc, point, brush.radius, quad, brush.falloff);
@@ -259,7 +266,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       applyGrabBrush(store.mdoc, grabBrush, delta);
       scheduleRebuild();
     },
-    onEndSculptGrab() { grabBrush = null; },
+    onEndSculptGrab() { grabBrush = null; reseatCourse(); },
     onPlaceProp(pos: V3, yaw: number, scale: number) {
       // A held paste drops its whole set about the anchor the ghost was carried by (docs/012).
       if (propClipboard().placing()) { propClipboard().place(pos, yaw, scale); return; }

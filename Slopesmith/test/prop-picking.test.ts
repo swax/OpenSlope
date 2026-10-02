@@ -98,6 +98,11 @@ check(viewportCursor('effects', false, 'rail') === RAIL_PLACEMENT_CURSOR
   && viewportCursor('effects', false, 'gem') === ''
   && viewportCursor('edit', false, 'rail') === '',
   'a motion path drawn in Effects mode borrows the rail cursor; no other mode shows one');
+// Info's reset course clicks a run out point by point — the same gesture again, so the same cursor, and only there.
+check(viewportCursor('info', false, 'course') === RAIL_PLACEMENT_CURSOR
+  && viewportCursor('props', false, 'course') === ''
+  && viewportCursor('info', false, 'rail') === '',
+  'a course being redrawn in Info wears the rail cursor; the course tool shows nothing elsewhere');
 
 const dom = new FakeDom();
 const scene = new THREE.Scene();

@@ -380,7 +380,7 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
   CoursePath: {
     type: 'object',
     description: 'The run: a LINE through the mountain the race follows — it does not itself shape terrain. '
-      + 'Knot 0 is where the start gate straddles; the last knot (or `finish`) is where the race is won. '
+      + 'Knot 0 (or `start`) is where the field is staged; the last knot (or `finish`) is where the race is won. '
       + 'Assign to the "course" register.',
     properties: {
       knots: {
@@ -389,7 +389,7 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
           type: 'object',
           properties: {
             pos: V3,
-            width: { type: 'number', description: 'Run floor width here, metres; at knot 0 the gate span.' },
+            width: { type: 'number', description: 'Run floor width here, metres; bounds the AI field (30 on a new run).' },
             wall: { type: 'number', description: 'Quarter-pipe wall height at each floor edge, metres.' },
             bank: { type: 'number', description: 'Roll of the cross-section, degrees; + raises rider\'s right.' },
             shoulder: { type: 'number', description: 'Flat shoulder beyond the wall tops, metres.' },

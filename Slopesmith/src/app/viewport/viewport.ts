@@ -118,6 +118,8 @@ import { createBridgePreviewLayer, type BridgePreviewLayer } from './tools/bridg
 import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch';
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
 import { createTrailToolLayer, type TrailToolLayer } from './tools/create-trail';
+import { createCourseDrawLayer, type CourseDrawHandlers, type CourseDrawLayer } from './tools/course-draw';
+import { fadeObject } from './shared/fade';
 import { createPointerRouter, type PointerRouter } from './input/pointer-router';
 import { setBackfaceTintVisible, tintBackfaces } from './mesh/backface-tint';
 import { setPropShadeSun } from './scene/prop-shade';
@@ -135,6 +137,9 @@ import { updateVisibleWorldMatrices } from './scene/visible-matrices';
  * texture. The authored PS2 rig does not use this exposure; propPreviewIntensity maps record 256 through
  * Three's PI-divided Lambert term and the prop shader performs the game's byte/sRGB-space modulation. */
 const STUDIO_TOTAL = 3.7;
+
+/** How much of the old course stays visible while Course ▸ reset course draws its replacement. */
+const COURSE_DRAW_FADE = 0.25;
 
 /** Stable scene-layer label for the low-frequency transparent census. Prefer semantic ownership over a GLTF
  * child mesh name so a field of riders reads as one cause rather than dozens of one-off primitives. */
@@ -213,6 +218,7 @@ export class Viewport {
   private createTubePreviewListener: (() => void) | null = null;
   readonly trailTool: TrailToolLayer;
   private createTrailPreviewListener: (() => void) | null = null;
+  readonly courseDraw: CourseDrawLayer; // Info's reset course: the run redrawn by clicking the terrain
   readonly cameraCtl: CameraController; // navigation (fly/orbit/twist/zoom/projection/view); `camera` is the THREE cam
   readonly rideCtl: RideLayer; // test ride (docs/016) + Play setup; owns the camera + input while riding
   readonly remotePlayers: RemotePlayersLayer; // camera/rider avatars for every other session on this mountain
@@ -560,7 +566,7 @@ export class Viewport {
 
     this.rails = createRailsLayer(this.stage, this.assets); // grind rails (docs/014); adds its own groups to the stage
     this.propLines = createPropLinesLayer(this.stage); // a prop line's path + node handles (docs/070)
-    this.courseMarkers = createCourseMarkersLayer(this.stage); // start gate / spawn points / finish line (course guide)
+    this.courseMarkers = createCourseMarkersLayer(this.stage); // start line / spawn points / finish line (course guide)
     this.peers = createPeersLayer(this.stage); // everybody else, in their own colours (docs/039)
     this.remotePlayers = createRemotePlayersLayer(this.stage);
     this.aiPathsLayer = createAiPathsLayer(this.stage); // the derived AI opponent lines (Info "Show AI paths")
@@ -619,6 +625,7 @@ export class Viewport {
       if (pointsChanged) this.cb.onCreateTrailPointsChange?.();
       this.createTrailPreviewListener?.();
     });
+    this.courseDraw = createCourseDrawLayer(this.stage, () => this.terrain);
     this.bridgePreview = createBridgePreviewLayer(this.stage, {
       preview: () => this.preview,
       edgeHandle: () => this.meshHandle(),
@@ -1058,7 +1065,7 @@ export class Viewport {
       cage: this.cageLayer, transforms: this.transforms,
       cameraCtl: this.cameraCtl, rideCtl: this.rideCtl, surgery: this.surgery, patchTool: this.patchTool,
       tubeTool: this.tubeTool, trailTool: this.trailTool, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
-      edgeExtrusion: this.edgeExtrusion, createEdge: this.createEdge, bridgePreview: this.bridgePreview,
+      courseDraw: this.courseDraw, edgeExtrusion: this.edgeExtrusion, createEdge: this.createEdge, bridgePreview: this.bridgePreview,
       gems: this.gems, screens: this.screens, props: this.props, lights: this.lights, rails: this.rails,
       propLines: this.propLines,
       refDecor: this.refDecor,
@@ -1432,7 +1439,7 @@ export class Viewport {
    * fixed-tick ride model; these bodies only need a floor on which to bounce and settle. The ray runs through
    * the ride's cached BVH (physics.ts `rideBVH`) — a plain Raycaster walk is linear over every triangle of
    * the mountain, tens of ms per body per frame on a full reference. */
-  private effectGroundAt(kind: 'authored' | 'reference', position: THREE.Vector3): THREE.Vector3 | null {
+  private effectGroundAt(kind: 'authored' | 'reference', position: THREE.Vector3, lift = 80, far = 240): THREE.Vector3 | null {
     const mesh = kind === 'reference' ? this.reference : this.terrain;
     if (!mesh) return null;
     // The same tree the ride probes against (mesh/surface-trees.ts), cached on the geometry, so whichever of
@@ -1441,11 +1448,18 @@ export class Viewport {
     if (!bvh) return null;
     mesh.updateWorldMatrix(true, false);
     const ray = this.effectGroundRay;
-    ray.origin.copy(position); ray.origin.y += 80;
+    ray.origin.copy(position); ray.origin.y += lift;
     ray.direction.set(0, -1, 0);
     ray.applyMatrix4(this.effectGroundToLocal.copy(mesh.matrixWorld).invert());
-    const hit = bvh.raycastFirst(ray, THREE.DoubleSide, 0, 240);
+    const hit = bvh.raycastFirst(ray, THREE.DoubleSide, 0, far);
     return hit ? hit.point.applyMatrix4(mesh.matrixWorld) : null;
+  }
+
+  /** The authored terrain's TOPMOST height at a data-space (x, z) — where a course knot or flag sits, by the same
+   *  topmost rule core/doc/course seatRunOnTerrain applies. Cast from far above, off the cached ride tree, so a
+   *  drag can ask on every move and a sculpt stroke can re-seat the whole run as it lifts. Null off the terrain. */
+  terrainTopAt(x: number, z: number): number | null {
+    return this.effectGroundAt('authored', new THREE.Vector3(x, 0, -z), 1e5, 2e5)?.y ?? null;
   }
 
   setReferenceEffects(data: ReferenceEffectsData | null) {
@@ -1788,6 +1802,7 @@ export class Viewport {
     if (m !== 'edit' && this.clipboardPlacement.active) this.setPasteTool(null); // clipboard placement is Edit-only too
     if (m !== 'edit' && this.weldTool.active) this.setWeldTool(false); // the target-weld gesture is Edit-only too
     if (m !== 'info') this.clearRefSelection(); // the whole-reference move handle is Info's
+    if (m !== 'info' && this.courseDraw.active) this.endCourseDraw(); // …and so is redrawing the course
     this.applyCourseGuideVisibility();          // Info may show both authored + reference course paths
     this.applyAiPathsVisibility();              // …and the AI-path overlay is mode-gated: Info's toggle, or Play's
 
@@ -1836,7 +1851,8 @@ export class Viewport {
       : kind === 'rail' ? this.rails.railArmed
       : kind === 'line' ? this.propLines.drawing
         : kind === 'gem' ? this.gems.gemArmed
-          : this.lights.lightPlacing;
+          : kind === 'course' ? this.courseDraw.active
+            : this.lights.lightPlacing;
   }
 
   /** Host-facing facade; the paint layer owns the amber painted-cell outline. */
@@ -2512,9 +2528,18 @@ export class Viewport {
       this.selection.cornerGroupHandleLast.set(p[0], p[1], p[2]);
       if (d[0] || d[1] || d[2]) this.cb.onMoveMixedEditSelection?.(d);
     }
-    else if (this.gizmoKind === 'knot') this.cb.onMoveKnot(this.gizmoKnot, p);
-    else if (this.gizmoKind === 'anchor' && this.gizmoAnchor)
-      this.cb.onMoveAnchor?.(this.gizmoAnchor, [p[0], p[1] - ANCHOR_HANDLE_LIFT, p[2]]); // the flag floats; the anchor is the ground point
+    // A knot and a flag slide over the hill rather than through it: their gizmo moves them across X/Z only
+    // (gizmo/transform) and the ground under them sets the height, so the run stays seated as it is dragged.
+    else if (this.gizmoKind === 'knot') {
+      const ground = this.terrainTopAt(p[0], p[2]);
+      if (ground !== null) { p[1] = ground; obj.position.y = ground; }
+      this.cb.onMoveKnot(this.gizmoKnot, p);
+    }
+    else if (this.gizmoKind === 'anchor' && this.gizmoAnchor) {
+      const ground = this.terrainTopAt(p[0], p[2]) ?? p[1] - ANCHOR_HANDLE_LIFT; // the flag floats; the anchor is the ground point
+      obj.position.y = ground + ANCHOR_HANDLE_LIFT;
+      this.cb.onMoveAnchor?.(this.gizmoAnchor, [p[0], ground, p[2]]);
+    }
     else if (this.gizmoKind === 'prop' && this.props.selectedProp !== null) this.cb.onMoveProp?.(this.props.selectedProp, p);
     else if (this.gizmoKind === 'props' && this.props.multiSelProps.length) {
       // the centre handle drives the whole set: report how far it moved since the last report (data space)
@@ -2636,6 +2661,29 @@ export class Viewport {
   removeLastCreateTrailPoint() { this.trailTool.removeLast(); }
   setCreateTrailSurfaceLift(value: number) { this.trailTool.setSurfaceLift(value); }
   setCreateTrailPreviewListener(listener: (() => void) | null) { this.createTrailPreviewListener = listener; listener?.(); }
+
+  /** Info ▸ Course ▸ reset course: arm clicking a new run onto the terrain. The knot gizmo goes — every click
+   *  is a placement now — and the course layer owns the points until the host commits or cancels them. */
+  beginCourseDraw(handlers: CourseDrawHandlers) {
+    if (this.gizmoKind === 'knot' || this.gizmoKind === 'anchor') this.detachGizmo();
+    this.courseDraw.begin(handlers);
+    this.setArmedPlacement('course');
+    this.applyCourseFade();
+  }
+  endCourseDraw() { this.courseDraw.end(); this.setArmedPlacement(null); this.applyCourseFade(); }
+
+  /** While a replacement is being drawn the run it replaces stays on screen for reference, faded back so the
+   *  new points read as the thing being made: its line, knots, markers and AI lines alike. */
+  private applyCourseFade() {
+    const factor = this.courseDraw.active ? COURSE_DRAW_FADE : 1;
+    fadeObject(this.spineLine, factor);
+    fadeObject(this.knotGroup, factor);
+    this.courseMarkers.setFade(factor);
+    this.aiPathsLayer.setFade(factor);
+  }
+  get courseDrawing(): boolean { return this.courseDraw.active; }
+  get courseDrawPoints(): readonly V3[] { return this.courseDraw.points; }
+  removeLastCourseDrawPoint() { this.courseDraw.removeLast(); }
 
   /** Host-facing facade; the placement layer owns the ghost and hit policy. */
   setPasteTool(clip: MeshVertexClipboard | null) {
@@ -2895,6 +2943,7 @@ export class Viewport {
         i === this.selected ? 0xff4d4d : this.selectedKnots.has(i) ? 0xffa43a : 0x71e858,
       );
     });
+    if (this.courseDraw.active) fadeObject(this.knotGroup, COURSE_DRAW_FADE); // a knot made since keeps the fade
     // keep the translate gizmo on the selected knot across rebuilds (a removed knot drops it)
     if (this.gizmoKind === 'knot') {
       if (this.selected !== null && this.knotMeshes[this.selected]) this.attachGizmo(this.knotMeshes[this.selected], 'knot', this.selected);

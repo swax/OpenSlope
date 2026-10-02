@@ -12,7 +12,7 @@ import { glintSizeClass } from '../lighting/glints';
 import { nativeSplineFields, railBezierSegments, railStyle, RAIL_STYLE_ICE } from '../rails/rails';
 import { deriveQuadMesh, type DerivedQuadMesh } from '../doc/mountain';
 import { quadControlPoints } from '../mesh/topology';
-import { aiLineRatings, aiPathLines, courseCenters, finishFrame, startFrame, startGateLines, startGateBoxes, DEFAULT_AI_SEED, DEFAULT_LINE_RATING, type GateBox } from '../doc/course';
+import { aiLineRatings, aiPathLines, courseCenters, finishFrame, startFrame, startGateLines, DEFAULT_AI_SEED, DEFAULT_LINE_RATING } from '../doc/course';
 import { generateTexture, sampleRgba, type Rgba } from '../paint/ground-textures';
 import { parseTexRef, texDestName } from '../paint/textures';
 import { orientUV } from '../paint/orientation';
@@ -58,12 +58,9 @@ export interface LevelFiles {
   /** Placement id -> per-instance lighting written into canonical Instances.json (docs/032 · lighting).
    *  Empty when lighting is disabled; the canonical serializer then writes neutral full-bright values. */
   propLights: Record<string, PropInstanceLight>;
-  /** Structured authored prop models in the same order as Props.obj. The canonical serializer writes them
-   *  into Models.json, Instances.json and Meshes/. */
-  propGroups: BakedPropGroup[];
-  /** The two staging-anchor markers (`Mdl_StageArea_Start_0` / `Mdl_StageArea_Finish_0`). Kept apart from
-   *  `propGroups` so they can be appended LAST, after every placed prop, leaving existing instance ordinals
-   *  where they were. */
+  /** The two staging-anchor markers (`Mdl_StageArea_Start_0` / `Mdl_StageArea_Finish_0`), the only prop models
+   *  the core writes. The export appends them LAST, after every placed prop, leaving existing instance
+   *  ordinals where they were. */
   anchorGroups: BakedPropGroup[];
   /** The stable quad id behind each Patches.json record, in that file's own order. The engine consumes an
    *  ordered patch array with no id column, so the id->ordinal join ships beside it in Slopesmith.json — which
@@ -511,15 +508,14 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
   const d = deriveQuadMesh(doc);
   const { patches, ids, texUsed, copies, sources } = quiltPatches(d);
 
-  // the run: its spine is the race/respawn path and hosts the start gate + per-mode start paths (core/doc/course —
-  // the same functions the viewport's start/finish preview draws, so the markers match the disc)
+  // the run: its spine is the race/respawn path and hosts the per-mode start paths (core/doc/course — the same
+  // functions the viewport's start/finish preview draws, so the markers match the disc)
   const main = doc.course;
   if (main.knots.length < 2) throw new Error('Mountain export needs a run of at least two knots (the AIP / spawn line).');
   const centers = courseCenters(main);
   const checkpoints: RaceLineCheckpoint[] = main.knots
     .filter(knot => (knot.checkpointBonus ?? 0) > 0)
     .map(knot => ({ pos: toRaw(knot.pos), bonusSeconds: Math.round(knot.checkpointBonus!) }));
-  const { left, right } = startFrame(main);
   const finishPos = finishFrame(main).pos;   // where DTF reaches zero: the run's tail, or its finish anchor
 
   // Bake the authored sun into original-form lightmap pages, and point each patch at its tile. The bake
@@ -529,10 +525,12 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
   const sun = doc.sun ?? DEFAULT_SUN;
   let lightmaps: Record<string, Rgba> = {};
   const propLights: Record<string, PropInstanceLight> = {};
-  const startGate = buildStartGate(left, right);
-  const stageAreas = buildStageAreaMarkers(startFrame(main).pos, finishPos, startGate.vertices);
+  // No start-gate model ships: a box arch did no gameplay work (the field stages through the start anchor and
+  // the SOP / AIP gate routes, and only a retail `Mdl_StartGate` takes the countdown's hide), and the staging
+  // plates are what keep Props.obj from being empty for a bundler that needs static geometry.
+  const stageAreas = buildStageAreaMarkers(startFrame(main).pos, finishPos);
   const text: Record<string, string> = {
-    'Props.obj': startGate.obj + stageAreas.obj,
+    'Props.obj': stageAreas.obj,
     'AIP.json': JSON.stringify(aipJson(AIP_PATH_NAME, centers,
       aiPathLines(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true),
       aiLineRatings(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true), finishPos, checkpoints)),
@@ -613,7 +611,6 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
     copyTextures: copies,
     textureSources: sources,
     propLights,
-    propGroups: [startGate.group],
     // Appended AFTER every placed prop (folder.ts), so adding the markers doesn't renumber the instances a
     // level already had — Props.obj tags each group `inst<n>` by position, and joins downstream key on it.
     anchorGroups: stageAreas.groups,
@@ -621,11 +618,8 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
   };
 }
 
-/** The gate's pillars + crossbar (core/doc/course startGateBoxes — the viewport previews the same three
- *  boxes) written as a Props.obj group (PropsBundle requires >= 1 visible static group). */
-function buildStartGate(left: V3, right: V3): { obj: string; group: BakedPropGroup; vertices: number } {
-  return boxesGroup('StartGate', 'Slopesmith start gate', startGateBoxes(left, right));
-}
+/** An axis-aligned box standing on `base`, its bottom-centre (it spans base.y .. base.y + size.y). */
+type PlateBox = { base: V3; size: V3 };
 
 /**
  * The engine's two staging anchors, as the placeholder instances it resolves them by: Tricky hard-codes the
@@ -635,15 +629,15 @@ function buildStartGate(left: V3, right: V3): { obj: string; group: BakedPropGro
  * these by name off Instances.json — works on our maps through the same path as an extraction.
  *
  * Each is a flat ~1 x 0.1 x 1 m plate at the anchor, the footprint retail's own markers carry. The finish
- * anchor is the podium/staging point; the finish LINE is where the race line's DTF reaches zero.
+ * anchor is the podium/staging point; the finish LINE is where the race line's DTF reaches zero. Being visible
+ * static geometry, the pair is also what keeps Props.obj non-empty on a mountain with nothing placed — Snowknife's
+ * prop bundle refuses a file with no static geometry.
  */
-function buildStageAreaMarkers(start: V3, finish: V3, vertexBase: number):
-  { obj: string; groups: BakedPropGroup[] } {
-  const plate = (pos: V3): GateBox => ({ base: [pos[0], pos[1], pos[2]], size: [1, 0.1, 1] });
-  const s = boxesGroup('Mdl_StageArea_Start_0', 'Slopesmith start staging anchor',
-    [plate(start)], toRaw(start), vertexBase);
+function buildStageAreaMarkers(start: V3, finish: V3): { obj: string; groups: BakedPropGroup[] } {
+  const plate = (pos: V3): PlateBox => ({ base: [pos[0], pos[1], pos[2]], size: [1, 0.1, 1] });
+  const s = boxesGroup('Mdl_StageArea_Start_0', 'Slopesmith start staging anchor', [plate(start)], toRaw(start));
   const f = boxesGroup('Mdl_StageArea_Finish_0', 'Slopesmith finish staging anchor',
-    [plate(finish)], toRaw(finish), vertexBase + s.vertices);
+    [plate(finish)], toRaw(finish), s.vertices);
   return { obj: s.obj + f.obj, groups: [s.group, f.group] };
 }
 
@@ -655,7 +649,7 @@ function buildStageAreaMarkers(start: V3, finish: V3, vertexBase: number):
  * `vertexBase` is how many `v` lines the file already holds: OBJ face indices are FILE-global while the baked
  * submesh's are group-local, so the two count differently once a file carries more than one group.
  */
-function boxesGroup(name: string, comment: string, boxes: GateBox[], origin?: number[], vertexBase = 0):
+function boxesGroup(name: string, comment: string, boxes: PlateBox[], origin?: number[], vertexBase = 0):
   { obj: string; group: BakedPropGroup; vertices: number } {
   const lines: string[] = [`# ${comment}`, `o ${name}`, 'usemtl mat_untextured'];
   const positions: number[] = [], indices: number[] = [];

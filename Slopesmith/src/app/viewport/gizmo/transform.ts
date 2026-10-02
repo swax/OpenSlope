@@ -281,6 +281,9 @@ export function createTransformLayer(
     if (!isCorner) {
       stage.gizmoRestrict = false;
       stage.gizmo.setSpace('world');
+      // A course knot or start / finish flag rides the terrain: the drag picks its X/Z and the ground under it
+      // is its height (Viewport.onGizmoChange), so a vertical handle would only fight the seat.
+      if (stage.gizmoKind === 'knot' || stage.gizmoKind === 'anchor') stage.gizmo.showY = false;
       // These remaining anchors carry no authored orientation, so clear any stale local rotation before Scale
       // (always local in TransformControls) reads it.
       if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || stage.gizmoKind === 'editmixed')

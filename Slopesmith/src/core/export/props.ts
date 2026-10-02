@@ -377,7 +377,7 @@ export function bakedPropClip(animation: PropModelAnimation, pose: Mat4):
  * Materials.json, exactly what the bundler resolves (MaterialBundle: mat_<id> → Materials[id].TexturePath →
  * a PNG in Textures/). Native TextureFlipbook frame lists and every referenced PNG are preserved, allowing
  * an attached texture-flip graph to survive through repackaging. A submesh whose material has no texture
- * emits `mat_untextured`, like the start gate.
+ * emits `mat_untextured`, like the staging plates.
  *
  * `scrollIndexOf` = the Scroll.json speed index for a prop carrying an authored UV-scroll effect, or null.
  * A scrolled prop's textured submeshes emit the shipped levels' scroll-variant tag (`mat_<id>_scr<k>`), the
@@ -624,7 +624,7 @@ export function bakeImportedProps(placements: readonly PlacedProp[], catalogue: 
  * Bake the authored rails' VISUAL tubes (docs/014): each rail's grind curve swept into the same low-poly tube
  * the viewport previews (core/rails/rail-mesh — one sweep, so what you see is what ships), skinned with
  * `railTubeTexture`: the rail's own pick, else its material's default borrowed off a shipped model (`skins`).
- * A rail with neither emits untextured (it reads as clay, like the start gate). The tube is decoration — the
+ * A rail with neither emits untextured (it reads as clay, like the staging plates). The tube is decoration — the
  * ridable grind is Splines.json.
  *
  * Which is why a rail can decline one. A motion path never had a tube, and a BARE grind rail is a rail that
@@ -692,7 +692,7 @@ export function bakeRailTubes(rails: readonly Rail[], vertexOffset: number, uvOf
         }
         groups.push({ name: supportName, subs: [{ material: 'mat_untextured', slot: -1, object: 0,
           positions, uvs: [], indices: Array.from(sp.indices) }] });
-        for (let k = 0; k < sp.indices.length; k += 3) { // untextured: position-only faces, like the start gate
+        for (let k = 0; k < sp.indices.length; k += 3) { // untextured: position-only faces, like the staging plates
           lines.push(`f ${vBase + sp.indices[k] + 1} ${vBase + sp.indices[k + 1] + 1} ${vBase + sp.indices[k + 2] + 1}`);
         }
         vBase += sp.positions.length / 3;
