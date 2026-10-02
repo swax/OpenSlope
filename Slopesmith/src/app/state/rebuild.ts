@@ -35,7 +35,7 @@ export function createRebuilder(deps: {
   /** Arm the undo debounce (history.scheduleCommit) — every mutation coalesces into one undo entry. */
   scheduleCommit: () => void;
   /** The actual rebuild: push the doc + selections into the viewport, derive lights, persist. */
-  render: () => void;
+  render: (edited: boolean) => void;
   /** A render threw (report it to the status line instead of blanking the frame loop). */
   onError: (e: unknown) => void;
   /** The deferred whole-mountain work — the occlusion re-bake and the mesh diagnostics. Armed by the host
@@ -44,6 +44,7 @@ export function createRebuilder(deps: {
   settleMs?: number;
 }) {
   let queued = false;
+  let edited = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const cancelSettle = () => {
@@ -63,7 +64,14 @@ export function createRebuilder(deps: {
   }
 
   function scheduleRebuild() {
+    edited = true;
     deps.scheduleCommit(); // every mutation funnels here -> coalesce a burst into one undo entry
+    scheduleRemoteRebuild();
+  }
+
+  /** Receiving a document must redraw it without creating a local edit or autosaving it back. */
+  function scheduleRemoteRebuild(replaced = false) {
+    if (replaced) edited = false; // queued work described the document that was replaced
     cancelSettle();        // something moved again; whatever was about to settle is out of date
     if (queued) return;
     queued = true;
@@ -79,7 +87,9 @@ export function createRebuilder(deps: {
   function flush() {
     if (!queued) return;
     queued = false;
-    try { deps.render(); } catch (e) { deps.onError(e); }
+    const wasEdited = edited;
+    edited = false;
+    try { deps.render(wasEdited); } catch (e) { deps.onError(e); }
   }
-  return { scheduleRebuild, scheduleSettle, flush, isPending: () => queued || settleTimer !== null };
+  return { scheduleRebuild, scheduleRemoteRebuild, scheduleSettle, flush, isPending: () => queued || settleTimer !== null };
 }
