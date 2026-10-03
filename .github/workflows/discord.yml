@@ -1,0 +1,127 @@
+name: Discord notifications
+
+on:
+  push:
+    branches: [main]
+  issues:
+    types: [opened, closed, reopened]
+  watch:
+    types: [started]
+  pull_request_target:
+    types: [opened, ready_for_review, reopened, closed]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# No checkout, dependencies, or GitHub token access is needed. The PR target
+# event permits fork notifications; NEVER check out or run PR code in this job.
+# Titles and commit messages stay data from the event file, never executable code.
+permissions: {}
+
+jobs:
+  notify:
+    # GitHub withholds secrets on Dependabot-triggered PR events. A maintainer
+    # merging or closing a dependency PR still generates a notification.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Post a compact update to development
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        # Store the channel's webhook URL as the repository Actions secret above.
+        # A manual run sends one connection-test message. Pushes are summarized
+        # in one line; issue edits and labels are intentionally quiet.
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { setTimeout as sleep } from 'node:timers/promises';
+
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const eventName = process.env.GITHUB_EVENT_NAME;
+          const repo = process.env.GITHUB_REPOSITORY;
+          const base = `https://github.com/${repo}`;
+          const clean = (value, limit = 140) => {
+            const line = String(value ?? '').split(/[\r\n]/, 1)[0]
+              .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').trim();
+            const short = line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
+            return short.replace(/([\\`*_{}\[\]()<>#|~])/g, '\\$1');
+          };
+          const actor = clean(event.sender?.login || process.env.GITHUB_ACTOR, 40);
+          let content;
+          if (eventName === 'push') {
+            if (event.deleted) process.exit(0);
+            const commits = event.commits || [];
+            const head = event.head_commit || commits.at(-1);
+            if (!head) process.exit(0);
+            const branch = clean(event.ref.replace(/^refs\/heads\//, ''), 60);
+            const count = Math.max(event.size || commits.length, 1);
+            const before = event.before;
+            const after = event.after;
+            const url = before && !/^0+$/.test(before)
+              ? `${base}/compare/${before}...${after}`
+              : `${base}/commit/${after}`;
+            const summary = event.forced ? 'force-pushed' : 'pushed';
+            content = `${branch} · ${actor} ${summary} [${count} commit${count === 1 ? '' : 's'}](<${url}>) · ${clean(head.message)}`;
+          } else if (eventName === 'issues') {
+            if (!['opened', 'closed', 'reopened'].includes(event.action)) process.exit(0);
+            content = `[#${event.issue.number}](<${base}/issues/${event.issue.number}>) ${event.action} by ${actor} · ${clean(event.issue.title)}`;
+          } else if (eventName === 'watch') {
+            if (event.action !== 'started') process.exit(0);
+            const count = event.repository?.stargazers_count;
+            const total = Number.isInteger(count) ? ` · ${count} total` : '';
+            content = `⭐ ${actor} starred [${clean(repo)}](<${base}>)${total}`;
+          } else if (eventName === 'pull_request_target') {
+            const pr = event.pull_request;
+            if (pr.draft || !['opened', 'ready_for_review', 'reopened', 'closed'].includes(event.action)) process.exit(0);
+            const action = pr.merged ? 'merged' : event.action === 'ready_for_review' ? 'ready for review' : event.action;
+            content = `[PR #${pr.number}](<${base}/pull/${pr.number}>) ${action} by ${actor} · ${clean(pr.title)}`;
+          } else if (eventName === 'release') {
+            if (event.action !== 'published' || event.release.draft) process.exit(0);
+            const release = event.release;
+            const label = release.prerelease ? 'Pre-release' : 'Release';
+            const tag = encodeURIComponent(release.tag_name);
+            content = `${label} [${clean(release.tag_name, 60)}](<${base}/releases/tag/${tag}>) published by ${actor} · ${clean(release.name || release.tag_name)}`;
+          } else if (eventName === 'workflow_dispatch') {
+            content = `[${clean(repo)}](<${base}>) connected · commits, issues, stars, PRs, and releases will appear here.`;
+          } else {
+            process.exit(0);
+          }
+
+          // Suppress link cards and all user/role/everyone pings, including text
+          // supplied by outside contributors in titles and commit messages.
+          const payload = { content, embeds: [], flags: 4, allowed_mentions: { parse: [] } };
+          const webhook = process.env.DISCORD_WEBHOOK_URL;
+          if (!webhook) throw new Error('Set the DISCORD_WEBHOOK_URL repository Actions secret.');
+          let url;
+          try { url = new URL(webhook); } catch { throw new Error('Invalid Discord webhook URL.'); }
+          if (url.origin !== 'https://discord.com' || !/^\/api(?:\/v\d+)?\/webhooks\/\d+\/[^/]+$/.test(url.pathname)) {
+            throw new Error('Expected a discord.com incoming webhook URL.');
+          }
+          url.searchParams.set('wait', 'true');
+          for (let attempt = 0; attempt < 4; attempt++) {
+            let response;
+            try {
+              response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(15000),
+              });
+            } catch {
+              // Never print the credential-bearing URL or transport exception.
+              throw new Error('Discord request failed or timed out; check the channel before rerunning.');
+            }
+            if (response.ok) {
+              console.log('Discord notification delivered.');
+              break;
+            }
+            if (attempt === 3 || (response.status !== 429 && response.status < 500)) {
+              throw new Error(`Discord rejected the notification (HTTP ${response.status}).`);
+            }
+            const retry = response.status === 429
+              ? Number((await response.json()).retry_after) || 1
+              : 2 ** attempt;
+            await sleep(Math.min(Math.max(retry, 1), 30) * 1000);
+          }
+          NODE
