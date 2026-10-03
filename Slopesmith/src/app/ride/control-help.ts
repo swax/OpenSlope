@@ -30,7 +30,7 @@ export function rideControlHelp(walking: boolean, firstPerson: boolean): RideCon
           ['E', 'recall + get on board'],
           switchView,
         ],
-        [['R', 'reset'], ['P', 'pause']],
+        [['R', 'reset'], ['P', 'pause'], ['Alt+Enter', 'hide / show editor UI']],
       ],
     };
   }
@@ -44,7 +44,7 @@ export function rideControlHelp(walking: boolean, firstPerson: boolean): RideCon
         ['Space', 'ollie · hold to charge'],
       ],
       [['E', 'get off board'], switchView, ...view],
-      [['R', 'respawn'], ['P', 'pause'], ['M / F8', 'mark / record']],
+      [['R', 'respawn'], ['P', 'pause'], ['M / F8', 'mark / record'], ['Alt+Enter', 'hide / show editor UI']],
     ],
   };
 }

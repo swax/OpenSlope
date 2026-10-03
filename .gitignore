@@ -47,6 +47,9 @@ __pycache__/
 # wrote it, and some of it is plotted from a retail level's own geometry.
 temp/
 
+# Local state left by setup tooling (SDK, logs, and imported content).
+/.openslope/
+
 # Optional local QuadWild-BiMDF checkout. It is a separate GPL repository with
 # non-redistributable optional dependencies, so keep it durable but unvendored.
 /quadwild-bimdf/

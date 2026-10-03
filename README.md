@@ -105,6 +105,11 @@ portable `Maps/<NAME>/` form and includes a `Repack.md` with the next commands f
 Slopesmith binds to your own machine by default. Its API can read and write projects and local maps,
 so do not expose the development server directly to the internet.
 
+To ride a course from a user-supplied PS2 disc image, follow the
+[import-to-browser guide](Snowknife/docs/browser-play.md). It covers the Snowknife build, importing one
+course, and selecting it in Slopesmith. Browser play reads the imported map directly; **no glTF build
+is required**.
+
 ## Run a private server
 
 Choose the setup that matches who needs access:

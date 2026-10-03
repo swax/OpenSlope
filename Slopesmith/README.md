@@ -103,6 +103,13 @@ remain local to each browser. Putting the movie onto authored course screens ins
 frame Three.js is allowed to sample, which YouTube's iframe does not provide; the
 [Jukebox guide](docs/063-video-bridge.md) describes the optional local media server that covers that case.
 
+### Play an imported course
+
+Follow the [import-to-browser guide](../Snowknife/docs/browser-play.md) to build Snowknife and populate
+the repository's `Maps/` folder. Slopesmith reads that output directly; no glTF conversion is needed.
+In **Scene ▸ Reference**, choose the imported mountain and wait for it to load. Then enter **Test**,
+select **Reference** as the ride target, and click **Play**.
+
 ## Editing workflow
 
 Every mode edits or observes the same mountain document:
@@ -149,7 +156,7 @@ SSX Mod Manager loose-level ZIPs can be converted directly into that reference c
 clean Tricky disc dump are available in the surrounding OpenSlope checkout:
 
 ```powershell
-npm run import:mod-map -- "C:\Mods\My Course.zip" "C:\discs\ssx-tricky-usa.iso" ALOHA MY_COURSE
+npm run import:mod-map -- "C:\Mods\My Course.zip" "C:\discs\ssx-tricky.iso" ALOHA MY_COURSE
 ```
 
 The command infers the replaced course slot from `DATA/MODELS/<slot>.map`, rebuilds the native level archive

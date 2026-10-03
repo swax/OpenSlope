@@ -73,6 +73,8 @@ export interface RideHudOpts {
   touchControls?: boolean;
   /** Ordinary coarse-pointer rides retain a DOM Stop button outside the hideable touch diagram. */
   persistentExit?: boolean;
+  /** Immersive WebXR owns its presentation and must not expose the flat ride's fullscreen control. */
+  fullscreen?: boolean;
 }
 
 /** The ride's on-screen layer: the speed/grade/sink read-out, the FPS + perf chip, and the touch overlay
@@ -101,6 +103,9 @@ export function createRideHud(o: RideHudOpts) {
   // evidence of a touchscreen: a Quest controller ray can be the browser's coarse primary pointer.
   let touchUi: HTMLDivElement | null = null;
   let persistentExitEl: HTMLButtonElement | null = null;
+  let fullscreenEl: HTMLButtonElement | null = null;
+  /** Desktop fullscreen fills the browser viewport without changing the browser window. */
+  let expanded = false;
   let viewBtnEl!: HTMLElement;
   let boardBtnEl!: HTMLElement;
   let boostBtnEl!: HTMLElement;
@@ -504,12 +509,10 @@ export function createRideHud(o: RideHudOpts) {
           `</div>` +
         `</div>` +
       `</div>` +
-      // Top-right, out of the thumbs' arc: fullscreen and a manual camera-view toggle. Stop is a separate DOM
-      // button above this complete hideable diagram, so switching to a pad can never remove the only way out.
+      // Top-right, out of the thumbs' arc: a manual camera-view toggle. Fullscreen and Stop are separate DOM
+      // buttons so they remain available when the touch diagram is hidden.
       `<div style="position:absolute;display:flex;gap:${px(8)}px;pointer-events:none;z-index:2;` +
         `right:calc(86px + env(safe-area-inset-right,0px));top:var(--ride-hud-top, calc(var(--bar-h, 46px) + 8px))">` +
-        `<div data-fs style="${face};width:${tap(44, TAP_MIN_CHIP_W)}px;height:${tap(36, TAP_MIN_CHIP_H)}px;` +
-          `border-radius:9px;font-size:${tap(17, 15)}px">⛶</div>` +
         `<div data-view role="button" aria-label="Switch to first person" title="Switch to first person" style="${face};` +
           `width:${tap(52, TAP_MIN_CHIP_W)}px;height:${tap(36, TAP_MIN_CHIP_H)}px;border-radius:9px;` +
           `font-size:${tap(12, TAP_MIN_FONT)}px"><span data-action>1ST</span></div>` +
@@ -538,8 +541,25 @@ export function createRideHud(o: RideHudOpts) {
     tapBtn(viewBtnEl, () => o.toggleView());
     tapBtn(boardBtnEl, () => o.toggleBoard());
     tapBtn(q('[data-b]'), () => o.respawn());
-    tapBtn(q('[data-fs]'), () => toggleFullscreen());
-    if (isStandalone()) q('[data-fs]').style.display = 'none'; // already chrome-less from the home-screen icon
+    if (o.fullscreen !== false) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.fs = '';
+      button.textContent = '⛶';
+      button.style.cssText = `${face};position:absolute;z-index:23;` +
+        'right:calc(var(--side-w, 0px) + 10px + env(safe-area-inset-right,0px));' +
+        'top:var(--ride-hud-top, calc(var(--bar-h, 46px) + 8px));' +
+        `width:${tap(44, TAP_MIN_CHIP_W)}px;height:${tap(36, TAP_MIN_CHIP_H)}px;` +
+        `padding:0;border-radius:9px;font-size:${tap(17, 15)}px;cursor:pointer`;
+      button.addEventListener('pointerdown', e => e.stopPropagation());
+      button.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); toggleFullscreen(); });
+      o.container.appendChild(button);
+      fullscreenEl = button;
+      updateFullscreenButton();
+      document.addEventListener('fullscreenchange', updateFullscreenButton);
+      document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+      window.addEventListener('keydown', onFullscreenKey);
+    }
     padBtnEls = {
       ollie: aBtnEl, boost: boostBtnEl,
       board: boardBtnEl, respawn: q('[data-b]'),
@@ -590,6 +610,7 @@ export function createRideHud(o: RideHudOpts) {
     if (!touchControlsAllowed || !touchUi || touchUi.style.display === 'block') return;
     touchUi.style.display = 'block';
     document.body.classList.add('os-touch-riding');
+    updateFullscreenButton();
     // the speed read-out is sized for a desktop viewport; 38px is a tenth of a landscape phone's height
     const mph = hud?.querySelector('[data-mph]') as HTMLElement | null;
     if (mph) mph.style.fontSize = `${Math.round(38 * ui)}px`;
@@ -604,24 +625,73 @@ export function createRideHud(o: RideHudOpts) {
     if (mode === 'pad') {
       if (touchUi) touchUi.style.display = 'none';
     } else showTouchUi();
+    updateFullscreenButton();
   }
 
-  /** True when launched from a home-screen icon (or any installed-app display mode) — already chrome-less,
-   *  so the ⛶ chip has nothing to add and isn't built. */
+  /** Touch rides already hide editor chrome; their existing button controls the mobile browser instead. */
+  function usesBrowserFullscreen(): boolean {
+    return !expanded && primaryPointerIsCoarse() && document.body.classList.contains('os-touch-riding');
+  }
+
+  /** Installed apps and browser fullscreen are already chrome-less. */
   function isStandalone(): boolean {
     return window.matchMedia?.('(display-mode: standalone), (display-mode: fullscreen)').matches
       || (navigator as Navigator & { standalone?: boolean }).standalone === true;
   }
 
-  /** Fullscreen toggle for the ⛶ chip; webkit-prefixed fallbacks for iPad Safari. iPhone Safari has NO element
-   *  fullscreen at all — there the chip explains the Add to Home Screen path instead (the metas in index.html
-   *  make that launch chrome-less). Must run from a tap: a gamepad press carries no user activation. */
+  function isBrowserFullscreen(): boolean {
+    return !!(document.fullscreenElement
+      ?? (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement);
+  }
+
+  function updateFullscreenButton() {
+    if (!fullscreenEl) return;
+    const browserFullscreen = usesBrowserFullscreen();
+    const active = browserFullscreen ? isBrowserFullscreen() : expanded;
+    const label = active ? 'Exit fullscreen' : 'Enter fullscreen';
+    fullscreenEl.setAttribute('aria-label', label);
+    fullscreenEl.setAttribute('aria-pressed', String(active));
+    fullscreenEl.title = browserFullscreen ? label : `${label} (Alt+Enter) · ${expanded ? 'Show' : 'Hide'} editor UI`;
+    fullscreenEl.style.display = browserFullscreen && isStandalone() && !active ? 'none' : 'flex';
+    // With the editor hidden, share the top-right corner with Stop and the optional touch camera button.
+    if (expanded || browserFullscreen) {
+      const viewWidth = touchUi?.style.display === 'block'
+        ? Math.max(TAP_MIN_CHIP_W, Math.round(52 * ui)) + Math.round(8 * ui) : 0;
+      fullscreenEl.style.right = `calc(${86 + viewWidth}px + env(safe-area-inset-right,0px))`;
+    } else {
+      fullscreenEl.style.right = 'calc(var(--side-w, 0px) + 10px + env(safe-area-inset-right,0px))';
+    }
+  }
+
+  function onFullscreenKey(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing || e.key !== 'Enter' || !e.altKey
+      || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.matches?.('input, textarea, select') || target?.isContentEditable) return;
+    if (usesBrowserFullscreen() && isStandalone() && !isBrowserFullscreen()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.repeat) toggleFullscreen();
+  }
+
+  /** Desktop fullscreen hides editor chrome; F11 independently owns browser fullscreen. */
   function toggleFullscreen() {
+    if (!usesBrowserFullscreen()) {
+      expanded = !expanded;
+      document.body.classList.toggle('os-ride-fullscreen', expanded);
+      if (persistentExitEl) persistentExitEl.style.display =
+        expanded || primaryPointerIsCoarse() || lastRidePointerWasTouch() ? 'block' : 'none';
+      updateFullscreenButton();
+      return;
+    }
+    // Preserve mobile browser fullscreen, including iPad Safari's prefixed API and iPhone's home-screen hint.
     const doc = document as Document & {
       webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void;
     };
     if (!(document.fullscreenEnabled || doc.webkitFullscreenEnabled)) {
-      toast('iPhone can’t fullscreen a web page — Share → Add to Home Screen, then ride from the icon', 'warn', 6000);
+      toast(primaryPointerIsCoarse()
+        ? 'Fullscreen unavailable — on iPhone, Share → Add to Home Screen, then ride from the icon'
+        : 'Fullscreen is unavailable in this browser or window', 'warn', 6000);
       return;
     }
     if (doc.fullscreenElement ?? doc.webkitFullscreenElement) {
@@ -1030,6 +1100,7 @@ export function createRideHud(o: RideHudOpts) {
     pauseControlsVisible = paused;
     if (paused) showTouchUi();
     else if (inputMode === 'pad' && touchUi) touchUi.style.display = 'none';
+    updateFullscreenButton();
     countdownEl.style.display = label ? 'block' : 'none';
     countdownEl.textContent = label ?? '';
     countdownEl.style.top = paused ? 'auto' : '42%';
@@ -1105,9 +1176,12 @@ export function createRideHud(o: RideHudOpts) {
 
   function dispose() {
     o.releaseSource('touch');
-    document.body.classList.remove('os-touch-riding');
+    document.body.classList.remove('os-touch-riding', 'os-ride-fullscreen');
     window.removeEventListener('resize', onResize);
     window.removeEventListener('pointerdown', onTouchInput, true);
+    window.removeEventListener('keydown', onFullscreenKey);
+    document.removeEventListener('fullscreenchange', updateFullscreenButton);
+    document.removeEventListener('webkitfullscreenchange', updateFullscreenButton);
     hud?.remove();
     fpsEl?.remove();
     countdownEl?.remove();
@@ -1117,6 +1191,7 @@ export function createRideHud(o: RideHudOpts) {
     clockEl?.remove();
     touchUi?.remove();
     persistentExitEl?.remove();
+    fullscreenEl?.remove();
   }
 
   buildHud();

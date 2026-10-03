@@ -1,3 +1,12 @@
+/* Desktop ride fullscreen fills the browser window. Browser fullscreen (F11) remains independent. */
+body.os-riding.os-ride-fullscreen {
+  --ride-hud-top: calc(env(safe-area-inset-top, 0px) + 8px);
+}
+body.os-riding.os-ride-fullscreen #dock-top,
+body.os-riding.os-ride-fullscreen #dock-right,
+body.os-riding.os-ride-fullscreen #lowerleft,
+body.os-riding.os-ride-fullscreen #lowerright { display: none; }
+
 /* ---- mobile: top bar scrolls; the toolbox stays put as a wide panel under it on the RIGHT:
    content-height up to a cap with its sections scrolling inside. The nav gizmo keeps the upper-left
    corner and may sit behind the open panel on a narrow phone; collapsing the header reveals it.
