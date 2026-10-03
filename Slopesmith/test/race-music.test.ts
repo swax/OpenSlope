@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { blankMountain, migrateMountain } from '../src/core/doc/mountain';
 import { decodeMusicLink, musicEventRoutes, musicWalkAtLevel } from '../src/core/reference/music';
 import {
-  resolveMusicSampleNode, rideMusicMixTargets, rideMusicPlaybackEnabled,
+  pickReferenceRideSong, resolveMusicSampleNode, rideMusicMixTargets, rideMusicPlaybackEnabled,
 } from '../src/app/audio/ride-music';
 import { createStore } from '../src/app/state/store';
 import { exportLevel } from '../src/server/routes/export';
@@ -70,6 +70,12 @@ try {
   check(musicDefault.playMusicOn && !musicMuted.playMusicOn && musicDefault.playGameVolume === 1
     && gameQuiet.playGameVolume === 0.25,
   'Test audio options default audible and preserve explicit music mute / master volume');
+  check(Object.keys(musicDefault.playMusicSongs).length === 0,
+    'existing and new users default to Random on every course');
+  const musicSelected = createStore({ mdoc: doc, currentMode: 'play',
+    storedUi: { playMusicSongs: { GARI: 'smartbomb', ELYSIUM: 'downtime' } } });
+  check(musicSelected.playMusicSongs.GARI === 'smartbomb' && musicSelected.playMusicSongs.ELYSIUM === 'downtime',
+    'explicit song preferences restore independently for each course');
 
   outDir = mkdtempSync(join(tmpdir(), 'slopesmith-music-export-'));
   const result = await exportLevel(doc, { outDir, lighting: false });
@@ -118,6 +124,15 @@ try {
     'a legacy export leaves the hand-staged track where it is');
 
   const referenceIndex = await readReferenceMusicIndex('GARI');
+  const songs = referenceIndex.songs;
+  check(songs.length === 3 && songs.every((song, i) =>
+    pickReferenceRideSong(songs, '', () => (i + 0.5) / songs.length) === song.id),
+  'Random can select every song in the course playlist');
+  check(pickReferenceRideSong(songs, 'smartbomb', () => 0) === 'smartbomb',
+    'a specific song overrides Random even when it is not first in the playlist');
+  check(pickReferenceRideSong(songs, 'missing-song', () => 0.99) === songs.at(-1)?.id
+    && pickReferenceRideSong([], '') === null,
+  'unavailable saved songs fall back to Random and empty playlists stay silent');
   check(referenceIndex.environment?.Bank === 'Wind1' && referenceIndex.environment.Slot === 0
     && referenceIndex.environment.Volume === 0.15,
   'reference sound study reads the map-declared environment bed');

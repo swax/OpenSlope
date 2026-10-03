@@ -118,7 +118,10 @@ retained graph permits and where gameplay event dispatch can jump, while the liv
 current path level and when each event fires.
 
 Reference **Test** is the live simulation: a declared environment filler plays while the rider is off-board.
-Mounting starts the playlist's lead PathFinder song and crossfades it up over 1.5 seconds while fading the
+With **Test → Options → Music** enabled, **Song** defaults to **Random**, choosing from the reference
+course's playlist once per new run. A specific song can be selected, including during a ride; the choice is
+remembered per course. Muting, Jukebox playback, and dismounting/remounting keep the run's random choice.
+Mounting starts the selected PathFinder song and crossfades it up over 1.5 seconds while fading the
 environment out; dismounting reverses that mix. Intro stems remain the fallback for an extracted reference
 without `Audio/Environment.json`. Race links use the same 0–127 path level derived from speed, air and boost, and
 boost edges queue the same tier-one enter/exit events at a native chunk boundary. All decoded buffers use the

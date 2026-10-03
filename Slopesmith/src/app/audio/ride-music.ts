@@ -90,24 +90,31 @@ function resolveMusicEvent(graph: ReferenceMusicGraph, event: number, nodeIndex:
   return resolveMusicSampleNode(graph, router.target, pathLevel);
 }
 
-/** Warm the intro tier and the first two ordinary race chunks when a reference is selected. This keeps the
+/** An empty selection means Random. Missing saved songs also fall back to the current course's playlist. */
+export function pickReferenceRideSong(songs: ReferenceMusicIndex['songs'], selection = '', random = Math.random): string | null {
+  const selected = songs.find(song => song.id === selection);
+  return selected?.id ?? songs[Math.floor(random() * songs.length)]?.id ?? null;
+}
+
+/** Warm the intro tier and the first two ordinary chunks of each candidate when a reference is selected. This keeps the
  * first mount off the network/decode path without decoding hundreds of PathFinder chunks up front. */
-export function preloadReferenceRideMusic(level: string): void {
+export function preloadReferenceRideMusic(level: string, selection = ''): void {
   void referenceMusicIndex(level).then(async index => {
     if (!index) return;
     // The map-declared environment bed is Test's off-board layer. Intro stems remain available to the Sound
     // reference panel, and are only the runtime fallback for an older/external Maps folder with no declaration.
     if (index.environment) preloadAudio([referenceEnvironmentUrl(level, index.environment)]);
     else preloadAudio(index.intro?.stems.map(stem => referenceIntroMusicUrl(level, stem)) ?? []);
-    const song = index.songs[0]?.id;
-    if (!song) return;
-    const graph = await referenceMusicGraph(level, song);
-    if (!graph) return;
-    const first = resolveMusicSampleNode(graph, 0, 80);
-    if (first < 0) return;
-    const second = resolveMusicSampleNode(graph, pickLink(graph, first, 80), 80);
-    preloadAudio([first, second].filter(node => node >= 0)
-      .map(node => referenceRaceMusicUrl(level, song, graph.Nodes[node].Sample)));
+    const selected = index.songs.find(song => song.id === selection);
+    await Promise.all((selected ? [selected] : index.songs).map(async ({ id: song }) => {
+      const graph = await referenceMusicGraph(level, song);
+      if (!graph) return;
+      const first = resolveMusicSampleNode(graph, 0, 80);
+      if (first < 0) return;
+      const second = resolveMusicSampleNode(graph, pickLink(graph, first, 80), 80);
+      preloadAudio([first, second].filter(node => node >= 0)
+        .map(node => referenceRaceMusicUrl(level, song, graph.Nodes[node].Sample)));
+    }));
   });
 }
 
@@ -122,6 +129,7 @@ export interface RideMusicFrame {
   active: boolean;
   target: 'authored' | 'reference';
   referenceLevel: string;
+  referenceSong: string;
   authoredTrack: string | null;
   authoredArrangement: RaceMusicArrangement;
   authoredEnvironment: AuthoredEnvironmentBed | null;
@@ -174,6 +182,7 @@ export class RideMusicRuntime {
   private raceGraph: ReferenceMusicGraph | null = null;
   private raceLevel = '';
   private raceSong = '';
+  private referenceChoice: { key: string; song: string | null } | null = null;
   private customBuffer: AudioBuffer | null = null;
   private customArrangement: RaceMusicArrangement | null = null;
   private raceCurrent: Voice | null = null;
@@ -184,11 +193,17 @@ export class RideMusicRuntime {
   private pendingEvent = -1;
   private boostWasHeld = false;
 
+  /** Roll Random once per run; mute, Jukebox overrides, and getting off/on the board keep that choice. */
+  beginRun(): void {
+    this.stop();
+    this.referenceChoice = null;
+  }
+
   step(dt: number, frame: RideMusicFrame): void {
     if (!frame.active) { this.stop(); return; }
     resumeSharedAudio();
     const key = frame.target === 'reference'
-      ? `reference:${frame.referenceLevel}`
+      ? `reference:${frame.referenceLevel}:${frame.referenceSong}`
       : `authored:${frame.authoredTrack ?? ''}:${JSON.stringify(frame.authoredArrangement)}`
         + `:${JSON.stringify(frame.authoredEnvironment)}`;
     if (key !== this.configKey) this.configure(key, frame);
@@ -255,20 +270,24 @@ export class RideMusicRuntime {
     this.raceMaster.connect(destination);
     this.environmentMaster.connect(destination);
     const generation = this.generation;
-    if (frame.target === 'reference') void this.loadReference(frame.referenceLevel, generation);
+    if (frame.target === 'reference') void this.loadReference(frame.referenceLevel, frame.referenceSong, generation);
     else {
       if (frame.authoredTrack) void this.loadCustom(frame.authoredTrack, frame.authoredArrangement, generation);
       if (frame.authoredEnvironment) void this.loadAuthoredEnvironment(frame.authoredEnvironment, generation);
     }
   }
 
-  private async loadReference(level: string, generation: number): Promise<void> {
+  private async loadReference(level: string, selection: string, generation: number): Promise<void> {
     const index = await referenceMusicIndex(level);
     if (!index || generation !== this.generation || !this.context) return;
+    const key = `${level}:${selection}`;
+    if (this.referenceChoice?.key !== key)
+      this.referenceChoice = { key, song: pickReferenceRideSong(index.songs, selection) };
+    const song = this.referenceChoice.song;
     const [intro, graph, environment] = await Promise.all([
       Promise.all((index.environment ? [] : index.intro?.stems ?? [])
         .map(stem => sharedAudioBuffer(referenceIntroMusicUrl(level, stem)))),
-      index.songs[0] ? referenceMusicGraph(level, index.songs[0].id) : Promise.resolve(null),
+      song ? referenceMusicGraph(level, song) : Promise.resolve(null),
       index.environment ? sharedAudioBuffer(referenceEnvironmentUrl(level, index.environment)) : Promise.resolve(null),
     ]);
     if (generation !== this.generation || !this.context) return;
@@ -276,10 +295,10 @@ export class RideMusicRuntime {
     this.introBag = [];
     this.introBagAt = 0;
     if (environment && index.environment) this.startEnvironment(environment, index.environment.Volume);
-    if (index.songs[0] && graph) {
+    if (song && graph) {
       this.raceGraph = graph;
       this.raceLevel = level;
-      this.raceSong = index.songs[0].id;
+      this.raceSong = song;
     }
   }
 

@@ -636,6 +636,7 @@ const persistence = createPersistence({
     playRaceMode: store.playRaceMode,
     playAiPaths: store.playAiPathsOn, playAiMax: store.playAiMax, playCountdown: store.playCountdownOn,
     playSnow: store.playSnowAmount, playMusic: store.playMusicOn, playAnnouncer: store.playAnnouncerOn,
+    playMusicSongs: store.playMusicSongs,
     playGameVolume: store.playGameVolume,
     playTelemetry: store.playTelemetryOn, playBoardFx: store.playBoardFxOn,
     playColliders: store.playCollidersOn, playSmoothCutouts: store.playSmoothCutoutsOn,
@@ -2463,6 +2464,7 @@ async function boot() {
   viewport.setRideDrawDistance(store.playDrawDistance); // seed how far a ride draws (Test ▸ Draw distance)
   viewport.setRideSnow(store.playSnowAmount); // ...and how much snow it is ridden through (Test ▸ Snow)
   viewport.setRideMusic(store.playMusicOn); // ...and whether its environment/race-music handoff is audible
+  viewport.setRideMusicSongs(store.playMusicSongs);
   viewport.setRideAnnouncer(store.playAnnouncerOn);
   viewport.setRideGameVolume(store.playGameVolume); // ...and the master gain over every gameplay voice
   viewport.setRideBoardFx(store.playBoardFxOn); // ...and whether the local board cuts a wake + throws contact spray

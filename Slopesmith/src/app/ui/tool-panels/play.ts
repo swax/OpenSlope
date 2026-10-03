@@ -16,6 +16,7 @@ import { XR_RENDER_SCALE_STEP, xrEyeBufferNote, xrScaleMayBeCapped } from '../..
 import type { RaceMode } from '../../../core/doc/race';
 import { toast } from '../components/toast';
 import { resumeSharedAudio } from '../../audio/runtime';
+import { preloadReferenceRideMusic, referenceMusicIndex } from '../../audio/ride-music';
 import type { ToolsContext } from './widgets';
 import { preferImmersivePlay, primaryPointerIsCoarse } from '../../ride/input-modality';
 
@@ -460,9 +461,36 @@ export function buildPlayTools(ctx: ToolsContext) {
   tip(options.add({ music: store.playMusicOn }, 'music').name('Music')
     .onChange((v: boolean) => {
       if (v) resumeSharedAudio();
-      store.playMusicOn = v; viewport.setRideMusic(v); persistUi(); releaseKeyboard();
+      store.playMusicOn = v; viewport.setRideMusic(v); persistUi(); releaseKeyboard(); rebuildTools();
     }),
   'Play the map’s environment bed off-board and its race track mounted. Applies live.');
+  if (store.playMusicOn && store.playTarget === 'reference') {
+    const level = getRefLevel();
+    const choice = { song: store.playMusicSongs[level] ?? '' };
+    const songPicker = options.add(choice, 'song', { 'Loading…': choice.song }).name('Song').disable();
+    tip(songPicker, 'Random picks a song for each new run. Choose a song to keep playing it. Changes apply live.');
+    void referenceMusicIndex(level).then(index => {
+      // Rebuilding the panel or changing mountains can retire this control while the index is loading.
+      if (!songPicker.domElement.isConnected || getRefLevel() !== level) return;
+      const songs = index?.songs ?? [];
+      if (!songs.length) {
+        choice.song = '';
+        songPicker.options({ 'No songs available': '' });
+        return;
+      }
+      if (!songs.some(song => song.id === choice.song)) choice.song = '';
+      const labels: Record<string, string> = { Random: '' };
+      for (const song of songs) labels[song.title in labels ? `${song.title} (${song.id})` : song.title] = song.id;
+      songPicker.options(labels).enable().onChange((song: string) => {
+        resumeSharedAudio();
+        store.playMusicSongs[level] = song;
+        viewport.setRideMusicSongs(store.playMusicSongs);
+        preloadReferenceRideMusic(level, song);
+        persistUi();
+        releaseKeyboard();
+      });
+    });
+  }
   tip(options.add({ announcer: store.playAnnouncerOn }, 'announcer').name('Announcer')
     .onChange((v: boolean) => {
       if (v) resumeSharedAudio();
