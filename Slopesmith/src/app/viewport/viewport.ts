@@ -353,6 +353,7 @@ export class Viewport {
   private rideDrawDistance: DrawDistance = DEFAULT_DRAW_DISTANCE;
   /** Test's checkbox remains the user's preference while Jukebox playback temporarily wins the music mix. */
   private rideMusicChecked = true;
+  private rideMusicSongs: Readonly<Record<string, string>> = {};
   private jukeboxPlaying = false;
   private referenceBatchRefs: TexRef[] = [];
   private referenceBatchChunks: ReferenceBatchChunk[] = [];
@@ -725,6 +726,7 @@ export class Viewport {
       getBoardSound: () => normalizeBoardSound(this.meshDoc?.boardSound),
       getAnnouncer: () => normalizeAnnouncer(this.meshDoc?.announcer),
       getRaceMusic: () => this.meshDoc?.raceMusic ?? null,
+      getReferenceSong: () => this.rideMusicSongs[this.refLevel] ?? '',
       getRaceMusicArrangement: () => normalizeRaceMusicArrangement(this.meshDoc?.raceMusicArrangement,
         this.meshDoc?.raceMusic ? 'linear-loop' : 'retail-graph'),
       getEnvironmentBed: () => normalizeEnvironmentBed(this.meshDoc?.environmentBed),
@@ -1363,6 +1365,9 @@ export class Viewport {
     this.applyRideMusicPlayback();
   }
   setRideAnnouncer(on: boolean) { this.rideCtl.setAnnouncerEnabled(on); }
+  setRideMusicSongs(songs: Readonly<Record<string, string>>) {
+    this.rideMusicSongs = songs;
+  }
   private applyRideMusicPlayback() {
     this.rideCtl.setMusicEnabled(rideMusicPlaybackEnabled(this.rideMusicChecked, this.jukeboxPlaying));
   }
@@ -1418,7 +1423,7 @@ export class Viewport {
   }
 
   private preloadRideMusic(target: 'authored' | 'reference') {
-    if (target === 'reference') preloadReferenceRideMusic(this.refLevel);
+    if (target === 'reference') preloadReferenceRideMusic(this.refLevel, this.rideMusicSongs[this.refLevel]);
     else preloadAuthoredRideMusic(this.meshDoc?.raceMusic, normalizeEnvironmentBed(this.meshDoc?.environmentBed));
   }
   toggleRidePause() { this.rideCtl.togglePause(); }

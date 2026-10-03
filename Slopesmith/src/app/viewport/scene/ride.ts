@@ -97,6 +97,7 @@ export interface RideDeps {
   getAnnouncer(): AnnouncerSettings;
   /** Authored race master. Reference Test ignores it and follows the loaded level's own PathFinder playlist. */
   getRaceMusic(): string | null;
+  getReferenceSong(): string;
   getRaceMusicArrangement(): RaceMusicArrangement;
   /** Authored off-board silence filler; reference Test reads the loaded map's Audio/Environment.json. */
   getEnvironmentBed(): AuthoredEnvironmentBed | null;
@@ -257,6 +258,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       active: musicEnabled && (!!ride || !!xr?.presenting),
       target: playTarget,
       referenceLevel: deps.getRefLevel(),
+      referenceSong: deps.getReferenceSong(),
       authoredTrack: deps.getRaceMusic(),
       authoredArrangement: deps.getRaceMusicArrangement(),
       authoredEnvironment: deps.getEnvironmentBed(),
@@ -836,6 +838,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     const t = rideTarget(target);
     if (!t) return;
     takeEditorView();
+    music.beginRun();
     mountBoard(t, spawn, heading, onExit, ai, countdown, telemetry, touchControls);
   }
 
@@ -962,6 +965,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     if (ride || watching || xr) return false;
     const t = rideTarget(target);
     if (!t) return false;
+    music.beginRun();
     const at = new THREE.Vector3(spawn[0], spawn[1], spawn[2]);
     const facing = heading
       ? new THREE.Vector3(heading[0], heading[1], heading[2])

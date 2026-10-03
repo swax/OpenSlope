@@ -119,6 +119,7 @@ export type Store = {
   playCountdownOn: boolean;          // run a reference's recovered race-start lifecycle; default off for fast iteration
   playSnowAmount: number;            // how much snow a ride is taken through (docs/050): 0 clear .. 10 whiteout
   playMusicOn: boolean;              // environment off-board + race track on-board; persisted, default on
+  playMusicSongs: Record<string, string>; // reference song per course; absent/empty = Random
   playAnnouncerOn: boolean;          // local MC voice, independent of music
   playGameVolume: number;            // complete gameplay mix, normalized 0..1; zero is a live master mute
   playTelemetryOn: boolean;          // automatically capture the whole next ride; manual M/F8 capture remains available
@@ -370,6 +371,8 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     playCountdownOn: ui.playCountdown === true,
     playSnowAmount: snowAmount(ui.playSnow),
     playMusicOn: ui.playMusic !== false,
+    playMusicSongs: ui.playMusicSongs && typeof ui.playMusicSongs === 'object' && !Array.isArray(ui.playMusicSongs)
+      ? Object.fromEntries(Object.entries(ui.playMusicSongs).filter(([, song]) => typeof song === 'string')) : {},
     playAnnouncerOn: ui.playAnnouncer !== false,
     playGameVolume: typeof ui.playGameVolume === 'number' && Number.isFinite(ui.playGameVolume)
       ? Math.min(1, Math.max(0, ui.playGameVolume)) : 1,
