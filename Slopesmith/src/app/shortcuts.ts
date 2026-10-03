@@ -121,6 +121,8 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (typing) return; // let knot/param text fields handle their own keys
+    // Highlighted inspector text owns Copy/Cut even when the mesh or a prop also has a selection.
+    if (mod && (key === 'c' || key === 'x') && window.getSelection?.()?.toString()) return;
     // Ctrl+R: Loop Cut, Blender's key. Edit mode swallows it whether or not the tool can arm right now, so the
     // browser's reload never lands mid-edit; any other open tool finishes first (Esc), as with L / P.
     if (mod && !e.altKey && !e.shiftKey && key === 'r' && store.currentMode === 'edit') {
@@ -191,8 +193,8 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (mod && e.key.toLowerCase() === 'c' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); copySelectedVertices(); return; }
     if (mod && e.key.toLowerCase() === 'x' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); cutSelectedVertices(); return; }
     if (mod && e.key.toLowerCase() === 'v' && canPasteVertices()) { e.preventDefault(); pasteSelectedVertices(); return; }
-    // Prop selections in Props or Edit (docs/012). Text selected in a panel keeps the browser's copy.
-    if (mod && !e.altKey && (key === 'c' || key === 'x') && !window.getSelection?.()?.toString() && propClipboard.canCopy()) {
+    // Prop selections in Props or Edit (docs/012).
+    if (mod && !e.altKey && (key === 'c' || key === 'x') && propClipboard.canCopy()) {
       e.preventDefault(); if (key === 'c') propClipboard.copy(); else propClipboard.cut(); return;
     }
     if (mod && !e.altKey && key === 'v' && propClipboard.canPaste()) { e.preventDefault(); void propClipboard.paste(); return; }

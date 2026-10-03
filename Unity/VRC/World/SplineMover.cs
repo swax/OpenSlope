@@ -44,6 +44,8 @@ namespace OpenSlope.VrcPlugin
         private int _poseSeg = -1;  // segment the current rotation was built from (-1 = none yet)
         private int _poseDir;       // travel direction the current rotation was built from
 
+        public void ResetEffect() { gameObject.SetActive(true); enabled = true; Start(); }
+
         void Start()
         {
             if (Path == null || Path.Length < 2) { enabled = false; return; }

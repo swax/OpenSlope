@@ -896,7 +896,7 @@ export const UNAUTHORABLE_EFFECT_NODES: readonly UnauthorableEffectNode[] = [
   { semanticType: 'property.dead-node', label: 'Stop a node (other mode)',
     reason: 'A stop mode beyond the three that are worked out. Those three are listed separately above.' },
   { semanticType: 'property.node-tombstone-flagged', label: 'Stop for good (flagged)',
-    reason: 'What its extra flag adds over plain Stop the prop for good is not worked out.' },
+    reason: 'Imported variant that also kills detached particle emitters and spline movers. It is supported in Test but has no authoring template yet.' },
   { semanticType: 'property.anim-texture-flip', label: 'Anim texture flip',
     reason: 'Its settings are not worked out. Flipbook and Dwell screen are the two flip behaviours you can author.' },
   { semanticType: 'property.uv-scroll-texture-flip', label: 'UV scroll + flipbook',

@@ -83,7 +83,6 @@ import { readCourseEffectSoundBytes, readNamedEffectSoundBytes } from '../src/se
 import { levelSplinesFromNative } from '../src/server/routes/levels';
 import { referenceSplineIsGrindRail } from '../src/core/reference/terrain';
 import { readReferenceEffects } from '../src/server/routes/effects';
-import { crackedBreakTombstonesCollider } from '../src/app/viewport/scene/reference-effects';
 import { mapsRoot } from '../src/server/workspace-config';
 import { check, failures } from './check';
 
@@ -117,9 +116,9 @@ check(PICKUP_POP_SECONDS === PICKUP_POP_HOLD_SECONDS + PICKUP_GROW_SECONDS
   && Math.abs(pickupPopScale(PICKUP_POP_HOLD_SECONDS + PICKUP_GROW_SECONDS / 2) - 0.5) < 1e-9
   && pickupPopScale(PICKUP_POP_SECONDS) === 1,
   'pickup pop snaps away, holds, then follows the Unity smooth grow-back curve');
-check(ANIMATED_PROP_AUTO_RESET_SECONDS === 8 && BREAKABLE_RESPAWN_SECONDS === 12
+check(ANIMATED_PROP_AUTO_RESET_SECONDS === 8 && BREAKABLE_RESPAWN_SECONDS === 30
   && MOVABLE_PROP_RESPAWN_SECONDS === BREAKABLE_RESPAWN_SECONDS,
-  'Play publishes Unity\'s eight-second animation and twelve-second breakable timers, with movable convergence');
+  'Play publishes Unity\'s eight-second animation and thirty-second breakable timers, with movable convergence');
 
 check(JSON.stringify(effectPlayCommand({
   id: 'node:hud-test', mainType: 12, semanticType: 'hud.message',
@@ -327,7 +326,7 @@ const megapleSupportKill = megapleBreak?.graph.nodes
   .find(call => call?.target?.modelName === 'Mdl_Glass_Surface_4000');
 check(megapleCrack?.graph.nodes.some(node => node.semanticType === 'property.cracked')
   && megapleSupportKill?.target?.index === 126
-  && megapleSupportKill.graph?.nodes.some(crackedBreakTombstonesCollider),
+  && megapleSupportKill.graph?.nodes.some(node => effectPlayCommand(node)?.kind === 'instance-hide'),
   'Megaplex glass break calls the DeadNodeMode-2 tombstone on its separate invisible support collider');
 const merquerEffectPayload = await readReferenceEffects('MERQUER');
 const merquerEffectData: ReferenceEffectsData = {
@@ -1741,13 +1740,23 @@ check(authoredWorld.uvScroll?.uPerTick === -0.02 && authoredWorld.textureFlip?.s
 // --- Effect-slot latch columns: Slot3 region exit / Slot4 effect end [Trailmap: 150-logic §slot-columns] ---
 check(effectCircumstanceLabel('slot3') === 'Region exit' && effectCircumstanceLabel('slot4') === 'Effect end',
   'latch circumstance columns carry their recovered engine meanings');
-await withRetailFiles('ELYSIUM latch integration assertions',
+await withRetailFiles('ELYSIUM glass and latch integration assertions',
   ['ELYSIUM/Effects.json', 'ELYSIUM/Instances.json', 'ELYSIUM/Models.json'], async () => {
 const elysiumEffectPayload = await readReferenceEffects('ELYSIUM');
 const elysiumEffectData: ReferenceEffectsData = {
   ...elysiumEffectPayload,
   document: parseEffectsDocument(JSON.stringify(elysiumEffectPayload.document)),
 };
+const glassPane = elysiumEffectData.instances.find(instance => instance.name === 'Mdl_HalfPipeThing_GlassAwhole_5013')!;
+const glassBreak = referenceInstanceBindings(elysiumEffectData, glassPane)
+  .find(binding => binding.circumstance === 'collision')!.graph;
+const glassDebris = referenceInstanceEffectCall(elysiumEffectData, glassBreak.nodes[2]);
+check(glassBreak.nodes[0].payload.WaitTime === 0.05
+  && effectPlayCommand(glassBreak.nodes[1])?.kind === 'instance-hide'
+  && glassDebris?.target?.name === 'Mdl_HalfPipeThing_GlassA_5013'
+  && glassDebris.graph?.nodes.some(node => effectPlayCommand(node)?.kind === 'mesh-throw')
+  && !referenceImmediateBreakInstances(elysiumEffectData).has(glassPane.index),
+  'Elysium glass keeps its initial solid hit, then hides/disarms the intact pane and throws the broken twin');
 const irisDoor = elysiumEffectData.instances.find(instance => instance.name === 'Mdl_Elys_Door_5000')!;
 const irisSlot = referenceSlot(elysiumEffectData.document, irisDoor.effectSlotIndex)!;
 check(irisDoor.effectSlotIndex === 34 && effectSlotHoldsAtEnd(irisSlot)

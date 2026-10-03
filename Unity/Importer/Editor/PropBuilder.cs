@@ -129,6 +129,7 @@ namespace OpenSlope.Importer
             DestroyPrev(parent, "BreakableLogos");
             DestroyPrev(parent, "AnimatedProps");
             DestroyPrev(parent, "Locators");
+            DestroyPrev(parent, "EffectProps");
 
             var go = new GameObject("Props");
             go.transform.SetParent(parent, false);
@@ -291,6 +292,25 @@ namespace OpenSlope.Importer
                                                        Layers = rec.Layers });
                         break;
                     }
+                    case "effect":
+                    {
+                        var (gm, mats, slots) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Effect_{rec.Index}");
+                        var effectRoot = parent.Find("EffectProps");
+                        if (effectRoot == null) { var holder = new GameObject("EffectProps"); holder.transform.SetParent(parent, false); effectRoot = holder.transform; }
+                        var effect = new GameObject($"Effect_{rec.Index}_{rec.Model}");
+                        effect.transform.SetParent(effectRoot, false);
+                        effect.transform.localPosition = rec.Center;
+                        effect.AddComponent<MeshFilter>().sharedMesh = gm;
+                        var renderer = effect.AddComponent<MeshRenderer>(); renderer.sharedMaterials = mats;
+                        MarkMode(effect, rec.ModeMask);
+                        EffectLifecycleBuilder.Tag(effect, rec.Index);
+                        for (int slot = 0; slot < slots.Length; slot++)
+                        {
+                            _materials.Resolve(slots[slot], out _, out List<string> frames, out _, out float fps, out Vector2? dwell);
+                            if (frames != null) flip?.Add(renderer, slot, _materials.LoadFrames(frames), fps, dwell);
+                        }
+                        break;
+                    }
                     case "mover":
                     {
                         var (gm, mats, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Mover_{rec.Index}");
@@ -335,6 +355,22 @@ namespace OpenSlope.Importer
             int moverObjs = BuildMovers(parent, movers);
             int padObjs = BuildBoostPadDecals(parent, boostPads);
             int buttonObjs = BuildButtons(parent, buttons);
+            // Controlled soft props cannot share the combined wind mesh with their neighbours.
+            var controlledSoft = new HashSet<int>(reader.EffectTargets.ConvertAll(t => t.Index));
+            foreach (var flag in softFlags.FindAll(p => controlledSoft.Contains(p.Index)))
+            {
+                string name = "Flag_" + flag.Index;
+                BuildSoftBodies(parent, mesh, new List<PhysicsInst> { flag }, name, _cfg.WindFlagStrength, _cfg.WindFlagSpeed, _cfg.WindFlagFreq);
+                EffectLifecycleBuilder.Tag(parent.Find("SoftBodies/" + name).gameObject, flag.Index);
+            }
+            foreach (var fence in softFences.FindAll(p => controlledSoft.Contains(p.Index)))
+            {
+                string name = "Fence_" + fence.Index;
+                BuildSoftBodies(parent, mesh, new List<PhysicsInst> { fence }, name, _cfg.WindFenceStrength, _cfg.WindFenceSpeed, _cfg.WindFenceFreq);
+                EffectLifecycleBuilder.Tag(parent.Find("SoftBodies/" + name).gameObject, fence.Index);
+            }
+            softFlags.RemoveAll(p => controlledSoft.Contains(p.Index));
+            softFences.RemoveAll(p => controlledSoft.Contains(p.Index));
             int flagObjs = _cfg.EmitSoftBodies ? BuildSoftBodies(parent, mesh, softFlags, "Flags", _cfg.WindFlagStrength, _cfg.WindFlagSpeed, _cfg.WindFlagFreq) : 0;
             int fenceObjs = _cfg.EmitSoftBodies ? BuildSoftBodies(parent, mesh, softFences, "Fences", _cfg.WindFenceStrength, _cfg.WindFenceSpeed, _cfg.WindFenceFreq) : 0;
             // Animated BEFORE breakables: a roll-away cluster (docs/036 - the globe) renders its intact via the
@@ -579,6 +615,7 @@ namespace OpenSlope.Importer
                 if (sp.Mesh == null) continue;
 
                 var sgo = new GameObject($"Spin_{sp.Index}_{sp.Model}");
+                EffectLifecycleBuilder.Tag(sgo, sp.Index, detached: false);
                 sgo.transform.SetParent(spinRoot.transform, false);
                 MarkMode(sgo, sp.ModeMask);
                 sgo.transform.localPosition = sp.Center;
@@ -810,6 +847,7 @@ namespace OpenSlope.Importer
                 if (pp.Mesh == null) continue;
 
                 var pgo = new GameObject($"Phys_{pp.Index}_{pp.Model}");
+                EffectLifecycleBuilder.Tag(pgo, pp.Index, detached: false);
                 pgo.transform.SetParent(physRoot.transform, false);
                 MarkMode(pgo, pp.ModeMask);
                 pgo.transform.localPosition = pp.Center;
@@ -932,6 +970,7 @@ namespace OpenSlope.Importer
             {
                 if (mv.Mesh == null) continue;
                 var go = new GameObject($"Mover_{mv.Index}_{mv.Model}");
+                EffectLifecycleBuilder.Tag(go, mv.Index, detached: true);
                 go.transform.SetParent(root.transform, false);
                 MarkMode(go, mv.ModeMask);
                 go.transform.localPosition = mv.Center;
@@ -958,6 +997,7 @@ namespace OpenSlope.Importer
             {
                 if (pad.Mesh == null) continue;
                 var go = new GameObject($"Pad_{pad.Index}_{pad.Model}");
+                EffectLifecycleBuilder.Tag(go, pad.Index, detached: false);
                 go.transform.SetParent(root.transform, false);
                 MarkMode(go, pad.ModeMask);
                 go.transform.localPosition = pad.Center;
@@ -1003,6 +1043,7 @@ namespace OpenSlope.Importer
                 }
 
                 var go = new GameObject($"Button_{b.Index}_{b.Model}");
+                EffectLifecycleBuilder.Tag(go, b.Index, detached: false);
                 go.transform.SetParent(root.transform, false);
                 MarkMode(go, b.ModeMask);
                 go.transform.localPosition = b.Center;
@@ -1235,6 +1276,7 @@ namespace OpenSlope.Importer
                     }
 
                     var go = new GameObject(bk.Role + (bk.Role == LogoRole.Piece ? pieceIdx.ToString() : "") + "_" + bk.Index + "_" + bk.Model);
+                EffectLifecycleBuilder.Tag(go, bk.Index, detached: false);
                     go.transform.SetParent(cgo.transform, false);     // bk.Center is 0 -> meshes carry absolute root-local coords, aligned at localPos 0
                     MarkMode(go, bk.ModeMask);
                     go.transform.localPosition = bk.Center;            // ...except pieces, recentred on their own centroid so they can tumble
@@ -1779,6 +1821,7 @@ namespace OpenSlope.Importer
                 if (n == 0) continue;
 
                 var pgo = new GameObject($"Anim_{rec.Index}_{rec.Name}");
+                EffectLifecycleBuilder.Tag(pgo, rec.Index, detached: false);
                 pgo.transform.SetParent(root.transform, false);
                 pgo.transform.localPosition = rec.Center;
                 pgo.transform.localRotation = rec.Rotation;
@@ -1936,6 +1979,8 @@ namespace OpenSlope.Importer
                         box.isTrigger = true;
                         var tmk = tgo.AddComponent<AnimTriggerMarker>();
                         tmk.targetObject = animPropObj;
+                        tmk.delay = tb.Delay;
+                        tmk.sourceIndex = tb.SourceIndex;
                         tmk.poke = rec.DeltaGated;
                         tmk.combo = rec.Combo;
                         triggerVols++;

@@ -17,7 +17,7 @@ namespace OpenSlope.VrcPlugin
     /// LOD slots ship pointing at the same mesh) - the range gather alone is the bound. We don't need the spatial grid
     /// at ~119 objects, so this is the same range gate as a throttled per-object distance test.
     ///
-    /// RENDERER-level (we toggle <c>Renderer.enabled</c>, not <c>GameObject.SetActive</c>): a synced or Udon-driven
+    /// RENDERER-level (we toggle <c>Renderer.forceRenderingOff</c>, not <c>GameObject.SetActive</c>): a synced or Udon-driven
     /// prop keeps ticking + colliding while only its DRAW is gated, so culling can't cause a sync hiccup, and distant
     /// colliders never cost the board's short (~0.5 m) obstacle sweep anyway. Local + per-client (sync None). Built +
     /// wired by the importer (PropBuilder) / the OpenSlope/Optimize menu; the importer flattens every placed-object renderer in.
@@ -109,7 +109,7 @@ namespace OpenSlope.VrcPlugin
         {
             if (renderers == null) return;
             for (int i = 0; i < renderers.Length; i++)
-                if (renderers[i] != null && !renderers[i].enabled) renderers[i].enabled = true;
+                if (renderers[i] != null) renderers[i].forceRenderingOff = false;
             if (_on != null) for (int i = 0; i < _on.Length; i++) _on[i] = true;
             _drawn = renderers.Length;
         }
@@ -190,7 +190,7 @@ namespace OpenSlope.VrcPlugin
                 Renderer r = renderers[i];
                 if (r == null) continue;
                 bool want = (_pos[i] - pp).sqrMagnitude <= r2;
-                if (want != _on[i]) { r.enabled = want; _on[i] = want; _drawn += want ? 1 : -1; }
+                if (want != _on[i]) { r.forceRenderingOff = !want; _on[i] = want; _drawn += want ? 1 : -1; }
             }
             _cursor = end < count ? end : -1;
         }

@@ -15,7 +15,7 @@ namespace OpenSlope.Importer
         public AudioSource breakSound;       // break one-shot
         public ParticleSystem debris;        // shard/star burst
         public bool respawn = true;          // respawn after breaking
-        public float respawnDelay = 12f;     // seconds before respawn
+        public float respawnDelay = 30f;     // seconds before respawn
         public float minRideSpeed = 0f;      // minimum board speed to break
         public float breakVolume = 1f;       // break one-shot volume
         public bool growBackOnRestore = false; // grow back from nothing on respawn (star-burst breakables)

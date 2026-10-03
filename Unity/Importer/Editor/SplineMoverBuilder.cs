@@ -54,6 +54,7 @@ namespace OpenSlope.Importer
                 {
                     var target = i == 0 ? go : CloneRenderer(go, moversRoot, $"{CopyPrefix}{m.Index}_{i}");
                     if (target == null) continue;
+                    EffectLifecycleBuilder.Tag(target.gameObject, m.Index, detached: true);
                     if (i > 0) copies++;
                     // Reuse the marker if there is one: on a refresh, a second marker on the same prop would leave the
                     // wiring pass copying a stale one over the live behaviour.

@@ -33,6 +33,11 @@ body.os-xr-editing .sp-head, body.os-xr-editing .pl-head { flex-wrap: wrap; over
 }
 /* Effects supplies its own card surfaces; leave the surrounding toolbox transparent to the viewport. */
 #dock-right .lil-gui.lil-root.sp-effects-tools { --background-color: transparent; }
+/* lil-gui disables text selection at its root. Inspector content, guidance and readouts should be copyable;
+   controls with their own drag/click selection rules keep those rules. */
+.lil-gui .sp-effects-editor, .lil-gui .sp-gui-custom, .lil-gui .sp-detail {
+  user-select: text; -webkit-user-select: text;
+}
 /* Shared guidance notes are real text rows rather than disabled inputs, so they can use the full toolbox
    width and wrap in Reference and every other panel that uses the same note component. */
 .lil-gui .sp-note { margin: 3px var(--padding); padding: 6px 8px; box-sizing: border-box;

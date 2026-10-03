@@ -346,6 +346,7 @@ export class PropTextureCache {
    *  clock rather than a scheduled action, so Preview reaches it by ungating that clock for one host instead
    *  of by dispatching anything: the law it runs is the one the placement's own graph installed. */
   private previewMats = new Set<AnimatedPropMaterial>();
+  private stoppedMats = new WeakSet<AnimatedPropMaterial>();
   private worldEffectsEnabled = false;
   /**
    * 0 = three.js's ordinary double-sided shading; 1 = the PS2's.
@@ -805,7 +806,7 @@ export class PropTextureCache {
   controlMaterial(material: THREE.Material, receiver: MaterialControlReceiver, command: number,
     value: number): boolean {
     const animated = this.animatedByMaterial.get(material);
-    if (!animated) return false;
+    if (!animated || this.stoppedMats.has(animated)) return false;
     const flipEffect = animated.effect.textureFlip;
     if (receiver === 'texture-flip' && command === 2 && flipEffect && animated.flip
       && animated.frameTextures.length) {
@@ -828,6 +829,7 @@ export class PropTextureCache {
   resetMaterialControl(material: THREE.Material, receiver: MaterialControlReceiver) {
     const animated = this.animatedByMaterial.get(material);
     if (!animated) return;
+    this.stoppedMats.delete(animated);
     if (receiver === 'texture-flip' && animated.effect.textureFlip && animated.frameTextures.length) {
       animated.flip = createTextureFlipPlayback(animated.effect.textureFlip);
       setAnimatedMaterialFrame(animated, 0);
@@ -931,6 +933,7 @@ export class PropTextureCache {
     const step = Math.min(dt, 0.1);
     const wrap = (value: number) => ((value % 1) + 1) % 1;
     for (const animated of this.animatedMats.values()) {
+      if (this.stoppedMats.has(animated)) continue;
       const running = this.worldEffectsEnabled || this.previewMats.has(animated);
       const uv = animated.effect.uvScroll;
       if (running && uv && animated.uv) {
@@ -945,5 +948,13 @@ export class PropTextureCache {
         setAnimatedMaterialFrame(animated, animated.flip.frame);
       }
     }
+  }
+
+  /** Lifetime control is per private material receiver, including its native-lit draw variants. */
+  setMaterialEffectStopped(material: THREE.Material, stopped: boolean): void {
+    const animated = this.animatedByMaterial.get(material);
+    if (!animated) return;
+    if (stopped) this.stoppedMats.add(animated);
+    else this.stoppedMats.delete(animated);
   }
 }

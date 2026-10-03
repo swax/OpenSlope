@@ -24,6 +24,8 @@ namespace OpenSlope.VrcPlugin
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class AmbientEmitter : UdonSharpBehaviour
     {
+        [HideInInspector] public bool effectStopped;
+
         [Tooltip("The burst ParticleSystems this trigger sets off (one per SSX emitter layer).")]
         public ParticleSystem[] Systems;
 
@@ -156,6 +158,7 @@ namespace OpenSlope.VrcPlugin
 
         public override void OnDeserialization()
         {
+            if (effectStopped) return;
             if (!ContactDriven || SyncedContactSequence == _seenContactSequence) return;
             _seenContactSequence = SyncedContactSequence;
             int age = Networking.GetServerTimeInMilliseconds() - SyncedContactServerMs;
@@ -170,6 +173,8 @@ namespace OpenSlope.VrcPlugin
         // The re-fire gate lives in Trigger.
         public void Play()
         {
+            if (effectStopped) return;
+            if (effectStopped) return;
             AutoTestFireCount++;
             ApplyContactFrame();
             if (Systems != null)

@@ -213,6 +213,12 @@ namespace OpenSlope.VrcPlugin
         // Turn a runtime-gated rail on (or off). Called by RailGate when the rider crosses the trigger that makes a
         // MainType-25 rail grindable (the fallen tree). Cheap: flips a bool the lock-on query reads - no grid rebuild
         // (the gated rail's chords are already binned; the query just stops skipping them).
+        public bool IsRailEnabled(int rail)
+        {
+            if (!_ready) { Bake(); if (!_ready) return false; }
+            return _railEnabled != null && rail >= 0 && rail < _railEnabled.Length && _railEnabled[rail];
+        }
+
         public void SetRailEnabled(int rail, bool on)
         {
             if (!_ready) { Bake(); if (!_ready) return; }

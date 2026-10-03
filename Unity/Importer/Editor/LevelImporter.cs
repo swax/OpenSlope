@@ -287,6 +287,8 @@ namespace OpenSlope.Importer
             // Per-instance avatar lighting: a LightProbeGroup sampled from the same lights as the props.
             if (_cfg.BuildProbes) probes.Build(level.transform);
 
+            new EffectLifecycleBuilder(_cfg).Build(level.transform, flipAccum);
+
             // Flipbook animator: tag the Flipbooks object only if any animated slots were found. The targets reference the
             // Props mesh renderer built above, so this must run after props.Build; the platform wiring pass realizes it.
             if (flipAccum.Count > 0)

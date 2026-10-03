@@ -11,6 +11,9 @@ namespace OpenSlope.Importer
     public sealed class AnimTriggerMarker : Marker
     {
         public GameObject targetObject;   // the animated prop this trigger drives; PASS 2 resolves it to the prop behaviour
+        [ImporterOnly] public int sourceIndex = -1;
+        public float rearmDelay;
+        public float delay;
         public bool poke;                 // true = poke a delta-gated budget, false = play a triggered one-shot
         public bool combo;                // true = play a combo prop's reaction window (TriggerCombo); outranks `poke`
     }

@@ -201,6 +201,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
    * node, so the pose holds at the last frame instead of reverting [Trailmap: 150-logic §slot-columns]. */
   let refHoldAtEnd = new Set<number>();
   const animObjectPreviews = new Map<number, TriggeredAnimObjectPlayback>();
+  // Graph calls can install a budgeted receiver after the meshes have been built, even on a host with no
+  // persistent animation. Keep it per instance so shared draws and every submesh consume one clock.
+  const installedAnimDeltas = new Map<number, { effect: AnimObjectEffect; playback: AnimDeltaPlayback }>();
+  const stoppedInstanceEffects = new Set<number>();
   const animObjectScrubs = new Map<number, number>();
   let worldEffectsEnabled = false;
   let refLightData: LightRig | null = null;
@@ -280,6 +284,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     refEffectPropMeshes = [];
     refAnimatedMeshes = [];
     animObjectPreviews.clear();
+    installedAnimDeltas.clear();
     animObjectScrubs.clear();
     showAnimObjectPath(null);
     refControlledMaterials.clear();
@@ -1101,6 +1106,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   function resetRuntimeInstances() {
+    for (const index of stoppedInstanceEffects) setInstanceEffectsStopped(index, false);
     const changed = new Set([...runtimeVisibility.keys(), ...runtimeMatrices.keys(), ...runtimePieceMotions.keys(),
       ...runtimeInstanceCopies.keys()]);
     clearAllRuntimeInstanceCopies();
@@ -1209,6 +1215,12 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   /** Deliver a bound property-node control message to this native instance. The receiver—not the command
    * number—selects between controlled texture/UV state and AnimDelta clip budget. */
   function controlRuntimeInstanceProperty(sourceIndex: number, command: number, value: number): boolean {
+    const installed = installedAnimDeltas.get(sourceIndex);
+    if (installed) {
+      if (command !== 2) return false;
+      grantAnimDeltaPlayback(installed.playback, value);
+      return true;
+    }
     const materialControl = refMaterialControls.get(sourceIndex);
     if (materialControl) {
       let handled = false;
@@ -1263,6 +1275,22 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       && animated.sourceIndices.includes(sourceIndex));
   }
 
+  function instanceHasBudgetedAnimation(sourceIndex: number): boolean {
+    return installedAnimDeltas.has(sourceIndex) || refAnimatedMeshes.some(animated => animated.deltaGated
+      && animated.sourceIndices.includes(sourceIndex));
+  }
+
+  /** A constructor replaces the addressed receiver, starting frozen until command 2 grants clip frames. */
+  function startAnimDelta(sourceIndex: number, effect: AnimObjectEffect): boolean {
+    const animated = refAnimatedMeshes.find(candidate => candidate.sourceIndices.includes(sourceIndex));
+    if (!animated) return false;
+    animObjectPreviews.delete(sourceIndex);
+    installedAnimDeltas.set(sourceIndex, {
+      effect, playback: createAnimDeltaPlayback(effect, animated.clip.clipFrames, sourceIndex + 1),
+    });
+    return true;
+  }
+
   /** Does this native instance's installed material property expire on its own? Only a finite-Length
    *  TextureFlip does, and the graph runner uses it to decide what Preview may run outside Test. */
   function instanceHasPulseProperty(sourceIndex: number): boolean {
@@ -1271,6 +1299,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   function resetRuntimePropertyControls() {
+    for (const sourceIndex of [...installedAnimDeltas.keys()]) resetRuntimeInstanceEffects(sourceIndex);
     resetAnimatedMeshes(true);
     for (const [sourceIndex, materials] of refControlledMaterials) {
       const receiver = refMaterialControls.get(sourceIndex)?.receiver;
@@ -1280,7 +1309,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
 
   /** Restore one interaction-owned material/animation receiver without rewinding unrelated live props. */
   function resetRuntimeInstanceEffects(sourceIndex: number): boolean {
+    setInstanceEffectsStopped(sourceIndex, false);
     let handled = animObjectPreviews.delete(sourceIndex);
+    handled = installedAnimDeltas.delete(sourceIndex) || handled;
     const control = refMaterialControls.get(sourceIndex);
     if (control) for (const material of refControlledMaterials.get(sourceIndex) ?? []) {
       assets.propTex.resetMaterialControl(material, control.receiver);
@@ -1321,6 +1352,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const animated = refAnimatedMeshes.find(candidate => !candidate.deltaGated
       && candidate.sourceIndices.includes(sourceIndex));
     if (!animated) return false;
+    installedAnimDeltas.delete(sourceIndex);
     const existing = animObjectPreviews.get(sourceIndex);
     if (autoReturnDelay !== null && existing && retriggerTriggeredAnimObjectPlayback(existing)) return true;
     // A play-once clip on an Effect-end-latched slot keeps its finished node in the game, so its final frame
@@ -1356,8 +1388,14 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   function stepWorldEffects(dt: number) {
     if (dt <= 0) return;
     const previewFrames = new Map<number, number>();
+    const deltaFrames = new Map<number, number>();
+    for (const [sourceIndex, installed] of installedAnimDeltas) {
+      if (!stoppedInstanceEffects.has(sourceIndex))
+        deltaFrames.set(sourceIndex, stepAnimDeltaPlayback(installed.playback, installed.effect, dt));
+    }
     const endedPreviews = new Set<number>();
     for (const [sourceIndex, preview] of animObjectPreviews) {
+      if (stoppedInstanceEffects.has(sourceIndex)) continue;
       const sample = stepTriggeredAnimObjectPlayback(preview, dt);
       if (sample.done) { animObjectPreviews.delete(sourceIndex); endedPreviews.add(sourceIndex); }
       else previewFrames.set(sourceIndex, sample.frame);
@@ -1366,13 +1404,16 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       let changed = false;
       for (let i = 0; i < animated.playbacks.length; i++) {
         const sourceIndex = animated.sourceIndices[i];
+        if (stoppedInstanceEffects.has(sourceIndex)) continue;
         const previewFrame = previewFrames.get(sourceIndex);
+        const deltaFrame = deltaFrames.get(sourceIndex);
         const scrubFrame = animObjectScrubs.get(sourceIndex);
         let frame: number | null;
         let basis: number | null = null;
         const comboPlayback = isAnimComboEffect(animated.effect)
           ? animated.playbacks[i] as AnimComboPlayback | null : null;
         if (scrubFrame !== undefined) frame = scrubFrame;
+        else if (deltaFrame !== undefined) frame = deltaFrame;
         else if (previewFrame !== undefined) frame = previewFrame;
         // A triggered combo runs whether or not the ambient Effects toggle is on, for the same reason an
         // AnimDelta grant does: it is a one-shot something in the world asked for, not free-running motion.
@@ -1403,6 +1444,13 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       if (changed) animated.mesh.instanceMatrix.needsUpdate = true;
     }
     syncPropHighlightMatrix();
+  }
+
+  function setInstanceEffectsStopped(sourceIndex: number, stopped: boolean): void {
+    if (stopped) stoppedInstanceEffects.add(sourceIndex);
+    else stoppedInstanceEffects.delete(sourceIndex);
+    for (const material of refControlledMaterials.get(sourceIndex) ?? [])
+      assets.propTex.setMaterialEffectStopped(material, stopped);
   }
 
   /** Tint the reference props by the light rig: set each instance's `instanceColor` to a warm multiply where
@@ -2338,6 +2386,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     setRuntimeInstanceWorldMatrix, setRuntimeInstanceWorldCopies, setRuntimeInstanceVisible, runtimeInstancePieceIds,
     setRuntimeInstancePieceMotions, resetRuntimeInstances,
     controlRuntimeInstanceProperty, resetRuntimePropertyControls, resetRuntimeInstanceEffects, instanceHasPulseProperty,
+    startAnimDelta, instanceHasBudgetedAnimation,
+    setInstanceEffectsStopped,
     instanceHasTriggerableCombo,
     showLights, hasProps, hasLights, renderStats, sortTransparentProps, selectSource, clearSourceSelection,
     setCourse, showCourse, setAiPaths, showAiPaths,

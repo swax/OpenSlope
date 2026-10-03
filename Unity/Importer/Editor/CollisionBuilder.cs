@@ -150,6 +150,7 @@ namespace OpenSlope.Importer
                 bool hasCapsules = b.Capsules != null && b.Capsules.Count > 0;
                 if (!hasBoxes && !hasCapsules) continue;
                 var go = new GameObject("Body_" + b.InstanceIndex + "_" + SafeName(b.Name));
+                EffectLifecycleBuilder.Tag(go, b.InstanceIndex);
                 go.transform.SetParent(root.transform, false);
                 go.transform.localPosition = b.Center;
                 go.transform.localRotation = b.Rotation;
@@ -240,13 +241,14 @@ namespace OpenSlope.Importer
                 go.transform.SetParent(root.transform, false);
                 var mc = go.AddComponent<MeshCollider>();
                 mc.sharedMesh = mesh;
+                EffectLifecycleBuilder.Tag(go, b.InstanceIndex);
                 var bmk = go.AddComponent<PropBounceMarker>();
                 bmk.PlayerBounce = b.PlayerBounce; bmk.PlayerBounceAmmount = b.Amount;
                 bmk.SurfaceType = b.SurfaceType; bmk.InstanceCount = b.InstanceCount;
                 bmk.NativeMode = NativeCollision.TriangleProxy;   // a proxy mesh: met by the rider's limb spheres
                 if (AttachImpactSound(go, b.Sound, b.SoundClip)) withSound++;
                 MarkMode(go, b.ModeMask);
-                if (!string.IsNullOrEmpty(b.BreakCluster))
+                if (!string.IsNullOrEmpty(b.BreakCluster) && !b.BreakCluster.StartsWith("effect_"))
                 {
                     if (!supports.TryGetValue(b.BreakCluster, out var list))
                     { list = new List<Collider>(); supports[b.BreakCluster] = list; }
@@ -270,7 +272,9 @@ namespace OpenSlope.Importer
             foreach (var mk in parent.GetComponentsInChildren<BreakableLogoMarker>(true))
             {
                 if (string.IsNullOrEmpty(mk.clusterKey) || !supports.TryGetValue(mk.clusterKey, out var list)) continue;
-                mk.supportColliders = list.ToArray();
+                var combined = new List<Collider>(mk.supportColliders ?? new Collider[0]);
+                combined.AddRange(list);
+                mk.supportColliders = combined.ToArray();
                 wired++;
             }
             if (wired < supports.Count)
@@ -287,9 +291,11 @@ namespace OpenSlope.Importer
             var root = new GameObject(rootName);
             root.transform.SetParent(parent, false);
             int made = 0, withSound = 0;
+            var supports = new Dictionary<string, List<Collider>>();
             foreach (var b in boxes)
             {
                 var go = new GameObject(prefix + b.Name);
+                EffectLifecycleBuilder.Tag(go, b.InstanceIndex);
                 go.transform.SetParent(root.transform, false);
                 go.transform.localPosition = b.Center;
                 // Turned with the placement, like the mode-3 body holders below: the engine collides the
@@ -297,6 +303,11 @@ namespace OpenSlope.Importer
                 go.transform.localRotation = b.Rotation;
                 var box = go.AddComponent<BoxCollider>();
                 box.center = b.LocalCenter; box.size = b.Size; box.isTrigger = trigger;
+                if (!string.IsNullOrEmpty(b.BreakCluster) && !b.BreakCluster.StartsWith("effect_"))
+                {
+                    if (!supports.TryGetValue(b.BreakCluster, out var support)) supports[b.BreakCluster] = support = new List<Collider>();
+                    support.Add(box);
+                }
                 if (!trigger)
                 {
                     var marker = go.AddComponent<PropBounceMarker>();
@@ -312,6 +323,7 @@ namespace OpenSlope.Importer
                 MarkMode(go, b.ModeMask);
                 made++;
             }
+            WireBreakSupports(parent, supports);
             Debug.Log($"OpenSlope: {rootName} from bundle -> {made} box(es) ({withSound} with impact sound).");
             return made;
         }
@@ -336,6 +348,7 @@ namespace OpenSlope.Importer
                     grp = g.transform; groups[b.Sound] = grp;
                 }
                 var go = new GameObject("Leaf_" + b.Name);
+                EffectLifecycleBuilder.Tag(go, b.InstanceIndex);
                 go.transform.SetParent(grp, false);
                 if (foliageLayer >= 0) go.layer = foliageLayer;
                 go.transform.localPosition = b.Center;

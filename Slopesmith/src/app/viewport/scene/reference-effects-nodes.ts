@@ -48,15 +48,6 @@ export function crackedSurfaceSpec(node: EffectNode): { lifetimeSeconds: number;
   return { lifetimeSeconds: finiteOr(cracked.U0), strength: finiteOr(cracked.U1) };
 }
 
-/** DeadNodeMode 2 in a Cracked Trigger thread tombstones the addressed support instance's collision. This is
- * the exact Megaplex pairing: the visible pane fires MainType 7 at an invisible solid surface whose called
- * graph contains this node. Outside that thread it remains an ordinary node-lifetime tombstone. */
-export function crackedBreakTombstonesCollider(node: EffectNode): boolean {
-  if (node.semanticType === 'property.node-tombstone') return true;
-  const type0 = isObject(node.payload.type0) ? node.payload.type0 : null;
-  return node.mainType === 0 && type0?.SubType === 5 && type0.DeadNodeMode === 2;
-}
-
 export function boostVolumeSpec(node: EffectNode, world: (raw: THREE.Vector3) => THREE.Vector3,
   hostLocal: (raw: THREE.Vector3) => THREE.Vector3,
   worldPoint?: (raw: THREE.Vector3) => THREE.Vector3): BoostVolumeSpec | null {

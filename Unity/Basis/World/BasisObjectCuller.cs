@@ -10,7 +10,7 @@ namespace OpenSlope.BasisPlugin
     // (Trailmap/specs/400-rendering "placed objects gathered by range"): gather the placed objects within a camera RANGE and draw
     // only those; terrain keeps drawing into the fog past it, but objects are hard-gated at the range.
     //
-    // RENDERER-level (toggles Renderer.enabled, not GameObject.SetActive): a prop keeps ticking + colliding while only
+    // RENDERER-level (toggles Renderer.forceRenderingOff, not GameObject.SetActive): a prop keeps ticking + colliding while only
     // its DRAW is gated, so culling can't stall a networked/animated prop, and distant colliders never cost the board's
     // short obstacle sweep anyway. Local + per-client. Built + wired by the neutral importer (ObjectCullerSetup ->
     // ObjectCullerMarker) and realized here by BasisWiring; the Perf Board's "Cull distant geometry" checkbox
@@ -100,7 +100,7 @@ namespace OpenSlope.BasisPlugin
         {
             if (renderers == null) return;
             for (int i = 0; i < renderers.Length; i++)
-                if (renderers[i] != null && !renderers[i].enabled) renderers[i].enabled = true;
+                if (renderers[i] != null) renderers[i].forceRenderingOff = false;
             if (_on != null) for (int i = 0; i < _on.Length; i++) _on[i] = true;
             _drawn = renderers.Length;
         }
@@ -174,7 +174,7 @@ namespace OpenSlope.BasisPlugin
                 Renderer r = renderers[i];
                 if (r == null) continue;
                 bool want = (_pos[i] - p).sqrMagnitude <= r2;
-                if (want != _on[i]) { r.enabled = want; _on[i] = want; _drawn += want ? 1 : -1; }
+                if (want != _on[i]) { r.forceRenderingOff = !want; _on[i] = want; _drawn += want ? 1 : -1; }
             }
             _cursor = end < count ? end : -1;
         }

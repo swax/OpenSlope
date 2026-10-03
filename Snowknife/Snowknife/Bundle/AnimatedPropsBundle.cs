@@ -327,7 +327,22 @@ public static class AnimatedPropsBundle
                 {
                     if (ti < 0 || ti >= instances.Count) continue;
                     var box = TriggerBox(levelDir, models, instances[ti]);
-                    if (box != null) (rec.Triggers ??= new List<BundleManifest.AnimTriggerBox>()).Add(box);
+                    if (box != null)
+                    {
+                        box.SourceIndex = ti;
+                        var logic = SsfLogic.Load(levelDir);
+                        int slot = instances[ti].EffectSlotIndex;
+                        if (logic?.EffectSlots != null && slot >= 0 && slot < logic.EffectSlots.Length)
+                        {
+                            var command = EffectTimeline.Read(logic, logic.EffectSlots[slot].CollisionEffectSlot, ti)
+                                .FirstOrDefault(c => c.Target == idx && (c.Node.MainType == SsfMainType.AddDelta
+                                    || c.Node.MainType == SsfMainType.AddDelta9
+                                    || c.Node.MainType == SsfMainType.Property && c.Node.type0?.SubType is
+                                        SsfType0Sub.AnimObject or SsfType0Sub.AnimDelta or SsfType0Sub.AnimCombo));
+                            box.Delay = command.Delay;
+                        }
+                        (rec.Triggers ??= new List<BundleManifest.AnimTriggerBox>()).Add(box);
+                    }
                 }
 
             for (int k = 0; k < model.ModelObjects.Count; k++)

@@ -41,6 +41,8 @@ export interface GrindRailIn {
   surf: number;
   /** Metres from the authored curve toward rail-local up to the visible deck origin. */
   seat: number;
+  /** Read at every query so effect switches also release a rider already grinding this rail. */
+  enabled?: () => boolean;
 }
 
 /** The query's answer: the nearest curve point, its exact tangent, and the rider's rail-local offsets. */
@@ -69,6 +71,7 @@ export function railWindows(hit: GrindHit, b: number, scale = 1): boolean {
 
 interface Seg {
   rail: number; surf: number; seat: number;
+  enabled?: () => boolean;
   cp: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
   min: THREE.Vector3; max: THREE.Vector3; // control hull + BROAD_PAD (the curve lies inside its hull)
 }
@@ -80,7 +83,7 @@ export function createGrindRails(railsIn: GrindRailIn[]) {
       const min = cp[0].clone(), max = cp[0].clone();
       for (let i = 1; i < 4; i++) { min.min(cp[i]); max.max(cp[i]); }
       min.addScalar(-BROAD_PAD); max.addScalar(BROAD_PAD);
-      segs.push({ rail: r, surf: railsIn[r].surf, seat: railsIn[r].seat, cp, min, max });
+      segs.push({ rail: r, surf: railsIn[r].surf, seat: railsIn[r].seat, enabled: railsIn[r].enabled, cp, min, max });
     }
   }
 
@@ -113,6 +116,7 @@ export function createGrindRails(railsIn: GrindRailIn[]) {
   function query(pos: THREE.Vector3): GrindHit | null {
     let best: Seg | null = null; let bestT = 0; let bestD2 = Infinity;
     for (const seg of segs) {
+      if (seg.enabled && !seg.enabled()) continue;
       if (pos.x < seg.min.x || pos.x > seg.max.x || pos.y < seg.min.y || pos.y > seg.max.y
         || pos.z < seg.min.z || pos.z > seg.max.z) continue;
       for (let i = 0; i < 5; i++) bez(seg.cp, i / 4, coarse[i]);

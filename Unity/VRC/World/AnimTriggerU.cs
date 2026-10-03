@@ -60,6 +60,12 @@ namespace OpenSlope.VrcPlugin
 
         [HideInInspector] public int AutoTestFireCount;
 
+        public float delay;
+        public float rearmDelay;
+        private float _rearmAt = -999f;
+        private bool _pending;
+        private float _due;
+        void Update() { if (_pending && Time.time >= _due) { _pending = false; FireNow(); } }
         private float _last = -999f;
 
         public override void OnPlayerTriggerEnter(VRCPlayerApi player)
@@ -100,6 +106,14 @@ namespace OpenSlope.VrcPlugin
         // network-event target (runs on every client, including the sender, when FireTrigger broadcasts). Routes
         // to the consolidated manager slot when wired, else the legacy per-prop behaviour.
         public void Fire()
+        {
+            if (_pending || Time.time < _rearmAt) return;
+            _rearmAt = Time.time + rearmDelay;
+            if (delay > 0f) { _pending = true; _due = Time.time + delay; }
+            else FireNow();
+        }
+
+        void FireNow()
         {
             AutoTestFireCount++;
             if (manager != null && managerIndex >= 0)
