@@ -319,6 +319,7 @@ export class TestRide {
       exit: () => this.o.onExit(),
       touchControls: this.o.touchControls,
       persistentExit: !this.inVr,
+      fullscreen: !this.inVr,
     });
     this.gamepad = createRideGamepad({
       ...actions, setHold: this.input.setHold, setWalkHold: this.input.setWalkHold, setOllie: this.input.setOllie,

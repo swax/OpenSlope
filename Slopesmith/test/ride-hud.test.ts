@@ -74,7 +74,7 @@ assert.match(faces, /data-x[\s\S]*buttonCopy\('X', 'BOOST'\)/,
   'X boosts');
 assert.match(faces, /data-b[\s\S]*buttonCopy\('B', 'RESPAWN'\)/,
   'B respawns');
-const topActionsStart = hud.indexOf('data-fs');
+const topActionsStart = hud.indexOf('// Top-right');
 const topActions = hud.slice(topActionsStart, hud.indexOf('o.container.appendChild(el)', topActionsStart));
 assert.match(topActions, /data-view/,
   'the hideable touch diagram retains its manual 1ST/3RD camera button');

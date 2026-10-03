@@ -13,10 +13,13 @@ repack-time texture-slot reuse. It merges upstream periodically, and its README 
 
 ## Build and test
 
-Requires the .NET 10 SDK and the repository submodule:
+Requires the .NET 10 SDK selected by [`global.json`](../global.json) and the repository submodule.
+Run these commands from the **OpenSlope repository root**. `dotnet --version` must succeed there;
+if it reports a missing SDK, install the version named in `global.json`.
 
 ```powershell
-git submodule update --init
+git submodule update --init --recursive
+dotnet --version
 dotnet build Snowknife/Snowknife/Snowknife.csproj -c Debug
 dotnet test Snowknife/Snowknife.Tests/Snowknife.Tests.csproj
 ```
@@ -32,7 +35,11 @@ use your local disc-derived fixtures. See [Testing Snowknife](docs/testing.md).
 
 ## Core workflow
 
-A retail course follows three explicit stages:
+For **browser play**, Slopesmith reads the `import` output directly; `gltf` and `unity` are unnecessary.
+See the [import-to-browser guide](docs/browser-play.md) for commands that work without adding Snowknife
+to `PATH`, plus the steps to select and ride the course.
+
+For **glTF or Unity**, a retail course follows three explicit stages:
 
 ```powershell
 snowknife import     discs\ssx-tricky.iso <courseSlot> Maps\<LEVEL>

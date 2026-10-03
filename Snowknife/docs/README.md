@@ -7,6 +7,7 @@ Numbers are stable identifiers within the Snowknife documentation tree, not a co
 Gaps are intentional, and other components may reuse the same identifiers in their own trees.
 
 - [001 — CLI export pipeline](001-cli-export-pipeline.md)
+- [Import a course for browser play](browser-play.md) — checkout, build, import, and select a course in Slopesmith.
 - [015 — Audio extraction](015-audio-extraction.md)
 - [018 — Board assets](018-board-assets.md)
 - [034 — Bundle pipeline](034-bundle-pipeline.md)
