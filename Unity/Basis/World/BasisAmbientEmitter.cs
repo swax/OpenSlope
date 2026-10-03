@@ -24,6 +24,8 @@ namespace OpenSlope.BasisPlugin
     [RequireComponent(typeof(BoxCollider))]
     public class BasisAmbientEmitter : BasisNetEvent
     {
+        [HideInInspector] public bool effectStopped;
+
         public ParticleSystem[] Systems;   // the burst layers this trigger plays on contact
         public float MinInterval = 4f;     // seconds between re-fires
         public int EffectSlotIndex = -1;   // the SSX emit instance index (reference/debug)
@@ -44,6 +46,7 @@ namespace OpenSlope.BasisPlugin
 
         void Update()
         {
+            if (effectStopped) return;
             bool now = BasisLocalPlayerProbe.InsideBox(_volume);
             if (now && !_inside)
             {
@@ -141,6 +144,7 @@ namespace OpenSlope.BasisPlugin
 
         void Play()
         {
+            if (effectStopped) return;
             _last = Time.time;
             ApplyContactFrame();
             // Retail interactive-ambient gate: the spray loop is silent until the prop is first hit, then audible

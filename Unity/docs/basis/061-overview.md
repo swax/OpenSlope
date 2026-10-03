@@ -144,7 +144,7 @@ bundled Roslyn compiler on such projects (the CodeDom path still runs on 2022.3)
 4. **Runtime-test the interactive layer, then port the last markers.** The interactive systems (board, gems, physics
    props, breakables, animated textures, flight, boards) compile and are realized in the scene, but they exercise only
    at play, so they need a real in-world pass through the Basis app boot flow — the editor scene has no `BasisLocalPlayer`.
-   The markers that still have no Basis behaviour — the door/kicker/button trigger volumes, glint fade and
+   The markers that still have no Basis behaviour — button material pulses, glint fade and
    terrain patches among them — are reported by `BasisWiring`.
 
 ## Rideable board (MVP)

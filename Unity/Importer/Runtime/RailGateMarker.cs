@@ -13,7 +13,10 @@ namespace OpenSlope.Importer
     public sealed class RailGateMarker : Marker
     {
         public GameObject railNetworkObject;   // the grind-rail network object; PASS 2 resolves it to the rail behaviour
-        public int[] rails;                    // rail indices this gate makes grindable on cross
+        public GameObject[] animationObjects = new GameObject[0];
+        public int[] rails;
+        public float[] delays;
+        public bool[] railEnabled;                    // rail indices this gate makes grindable on cross
         public float Cooldown;                 // minimum seconds between re-fires
     }
 }

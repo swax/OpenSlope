@@ -68,9 +68,9 @@ public static class BundleExporter
         // as a single-instance bucket CollisionBundle stamps with the cluster, so the break can disable that one
         // pane's floor and nothing else.
         var breakSet = new HashSet<int>(breakMap
-            .Where(kv => kv.Value.ClusterKey.StartsWith("brk_", System.StringComparison.Ordinal) && kv.Value.Role != "support")
+            .Where(kv => kv.Value.ClusterKey.StartsWith("brk_", System.StringComparison.Ordinal) && kv.Value.Role != "support" && (kv.Value.BreakDelay <= 0 || kv.Value.Anim != null))
             .Select(kv => kv.Key));
-        var breakSupports = breakMap.Where(kv => kv.Value.Role == "support")
+        var breakSupports = breakMap.Where(kv => kv.Value.Role == "support" || kv.Value.BreakDelay > 0 && kv.Value.Anim == null)
             .ToDictionary(kv => kv.Key, kv => kv.Value.ClusterKey);
         var propsOpts = new PropsBundle.Opts { Scale = terrainOpts.Scale };
         // Spinning score pickups (trick-multiplier gems), data-derived from the SSF graph (a MainType-14 pickup
@@ -153,10 +153,17 @@ public static class BundleExporter
             || soft.Fences.Contains(idx) || boostPadTargets.Contains(idx));
         var pulseBoxes = AnimatedPropsBundle.TriggerBoxes(levelDir, instances, pulses.Values.SelectMany(l => l.Volumes));
         var pulseTimelines = TriggeredFlipClassifier.Timelines(levelDir, effectInstances, pulses);
+        var specializedEffects = new HashSet<int>(breakMap.Keys.Concat(gemTargets).Concat(boostPadTargets));
+        manifest.EffectLifecycle = EffectLifecycleBundle.Build(levelDir, effectInstances, specializedEffects);
+        var effectTargets = manifest.EffectLifecycle?.Targets.Select(t => t.Index).ToHashSet() ?? new HashSet<int>();
+        // Keep independently addressed collision out of the shared buckets. Effect_<index> is an internal
+        // collision-owner key; the manifest also carries the source index for importer binding.
+        foreach (int target in effectTargets)
+            if (!breakSupports.ContainsKey(target)) breakSupports[target] = "effect_" + target;
         var props = PropsBundle.Build(levelDir, propsOpts, breakMap, animSet, gating.HiddenInstances, rollerTargets, rollerData.Masses,
                                       moverTargets, soft.Flags, soft.Fences, gemTargets, boostPadTargets,
                                       burstLayers, spillSources, pulses, pulseBoxes, pulseTimelines,
-                                      raceHiddenInstances: gating.RaceHiddenInstances);
+                                      raceHiddenInstances: gating.RaceHiddenInstances, effectTargets: effectTargets);
         if (pulses.Count > 0)
         {
             var shape = pulseTimelines.Values.Select(t => string.Join("+", t.holds.Select(h => h.ToString("0.##")))).Distinct().ToList();

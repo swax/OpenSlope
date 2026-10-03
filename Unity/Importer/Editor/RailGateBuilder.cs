@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using UnityEditor;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace OpenSlope.Importer
@@ -57,7 +58,23 @@ namespace OpenSlope.Importer
                 var mk = go.AddComponent<RailGateMarker>();
                 mk.railNetworkObject = netObj;
                 mk.rails             = g.Rails;
+                mk.delays = g.Delays ?? new float[0];
+                mk.railEnabled = g.Enabled ?? new bool[0];
                 mk.Cooldown          = _cfg.RailGateCooldown;
+                // A tree and its grind rail share one transient sequence/reset. Independent animation reset
+                // timers leave a grindable rail floating after the tree has returned to its upright pose.
+                float lastDelay = 0f;
+                foreach (float delay in mk.delays) lastDelay = Mathf.Max(lastDelay, delay);
+                var animations = new List<GameObject>();
+                foreach (var trigger in root.GetComponentsInChildren<AnimTriggerMarker>(true))
+                {
+                    if (trigger.sourceIndex != g.Index || trigger.targetObject == null) continue;
+                    trigger.rearmDelay = lastDelay + 30f;
+                    var animation = trigger.targetObject.GetComponent<AnimatedPropMarker>();
+                    if (animation != null) animation.autoResetDelay = 0f;
+                    if (!animations.Contains(trigger.targetObject)) animations.Add(trigger.targetObject);
+                }
+                mk.animationObjects = animations.ToArray();
                 made++;
                 wired += g.Rails != null ? g.Rails.Length : 0;
             }

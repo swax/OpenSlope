@@ -124,6 +124,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   // Every placement's animated materials, controlled or shared. Preview needs to reach the shared ones too:
   // an ordinary scrolling prop keeps the ambient cache entry, and that entry is what its clock lives on.
   const effectPropMaterials = new Map<string, Set<THREE.Material>>();
+  const stoppedPropEffects = new Set<string>();
   let worldEffectsEnabled = false;
   let selectedProp: number | null = null;
   let multiSelProps: number[] = [];
@@ -1145,6 +1146,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   }
 
   function resetRuntimeProps() {
+    for (const id of stoppedPropEffects) setPropEffectsStopped(id, false);
     for (const [propId, { group, base }] of runtimeProps) {
       setRuntimePropPieceMotions(propId, null);
       group.visible = true; group.matrix.copy(base); group.matrixWorldNeedsUpdate = true;
@@ -1161,6 +1163,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
   /** Reset one interaction-owned receiver without disturbing another prop whose timer is still live. */
   function resetRuntimePropEffects(propId: string): boolean {
+    setPropEffectsStopped(propId, false);
     const target = runtimeProps.get(propId);
     if (!target) return false;
     let handled = false;
@@ -1288,7 +1291,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
   function stepWorldEffects(dt: number) {
     if (dt <= 0) return;
-    for (const target of runtimeProps.values()) for (const track of target.tracks) {
+    for (const [propId, target] of runtimeProps) for (const track of target.tracks) {
+      if (stoppedPropEffects.has(propId)) continue;
       let frame: number | null;
       if (track.scrub !== null) continue;   // a held pose is the author's; no player may advance it
       if (track.preview) {
@@ -1318,6 +1322,13 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
   function propAnimObjectClip(propId: string): PropModelClip | null {
     return runtimeProps.get(propId)?.tracks[0]?.clip ?? null;
+  }
+
+  function setPropEffectsStopped(propId: string, stopped: boolean): void {
+    if (stopped) stoppedPropEffects.add(propId);
+    else stoppedPropEffects.delete(propId);
+    for (const material of controlledPropMaterials.get(propId) ?? [])
+      assets.propTex.setMaterialEffectStopped(material, stopped);
   }
 
   /**
@@ -1510,6 +1521,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     setRuntimePropVisible, setRuntimePropWorldMatrix, runtimePropPieceIds, setRuntimePropPieceMotions,
     resetRuntimeProps,
     controlRuntimePropProperty, resetRuntimePropEffects, propHasPulseProperty, propHasTriggerableCombo,
+    setPropEffectsStopped,
     previewAnimObject, previewMaterialEffect, clearAnimObjectPreviews, startRuntimeAnimObject, clearRuntimeAnimObjects,
     setWorldEffectsEnabled, stepWorldEffects, propAnimObjectClip, setPropAnimObjectScrubFrame,
     propWorldSphere, setNormalArrows,

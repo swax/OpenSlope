@@ -26,6 +26,8 @@ namespace OpenSlope.BasisPlugin
     // material is instanced once and its _MainTex driven, functionally identical on screen.
     public class BasisFlipbookAnimator : MonoBehaviour
     {
+        [HideInInspector] public bool effectStopped;
+
         [Tooltip("Target renderer per flipbook slot (parallel arrays the importer fills).")]
         public Renderer[] Renderers;
         [Tooltip("Material-slot (submesh) index on the matching renderer.")]
@@ -132,6 +134,7 @@ namespace OpenSlope.BasisPlugin
 
         void Update()
         {
+            if (effectStopped) return;
             if (!_ready) return;
             float t = Time.time;
             int n = _groups;

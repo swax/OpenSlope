@@ -41,8 +41,10 @@ namespace OpenSlope.Importer
                 }
 
                 Transform parent = IsCannon(emitter.Name) ? cannons.transform : flares.transform;
-                if (p6.BuildGroup(parent, $"Emit_{emitter.Index}_{emitter.Name}", emitter.Layers,
-                    continuous: true, interactive: false) == null) continue;
+                var system = p6.BuildGroup(parent, $"Emit_{emitter.Index}_{emitter.Name}", emitter.Layers,
+                    continuous: true, interactive: false);
+                if (system == null) continue;
+                EffectLifecycleBuilder.Tag(system.gameObject, emitter.Index, detached: true);
                 emitters++;
                 layers += emitter.Layers.Count;
             }

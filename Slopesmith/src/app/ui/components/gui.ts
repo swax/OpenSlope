@@ -47,7 +47,9 @@ export function steps(g: GUI, items: readonly (readonly [action: string, text: s
 /** A selected-item information row. Unlike the blue `note` prompt/header, this is styled as a neutral slate
  *  readout card; an optional short label gives metric rows (size / drop / area) their two-column caption. */
 export function detail(g: GUI, text: string, name = '') {
-  const controller = g.add({ x: text }, 'x').name(name).disable();
+  const controller = g.add({ x: text }, 'x').name(name);
+  // Read-only inputs still accept focus, selection and copy; disabled controllers suppress pointer events.
+  controller.domElement.querySelector('input')!.readOnly = true;
   controller.domElement.classList.add('sp-detail');
   return controller;
 }
@@ -55,7 +57,8 @@ export function detail(g: GUI, text: string, name = '') {
 /** A read-only detail whose value follows live scene state without rebuilding the panel (for example, a
  *  selected light's position while its viewport gizmo is being dragged). */
 export function liveDetail(g: GUI, value: () => string, name = '') {
-  const controller = g.add({ get x() { return value(); } }, 'x').name(name).disable().listen();
+  const controller = g.add({ get x() { return value(); } }, 'x').name(name).listen();
+  controller.domElement.querySelector('input')!.readOnly = true;
   controller.domElement.classList.add('sp-detail');
   return controller;
 }

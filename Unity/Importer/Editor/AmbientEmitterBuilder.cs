@@ -34,6 +34,7 @@ namespace OpenSlope.Importer
 
                 var trigger = new GameObject($"Ambient_{emitter.Index}_{emitter.Name}");
                 trigger.transform.SetParent(ambientRoot.transform, false);
+                EffectLifecycleBuilder.Tag(trigger, emitter.Index);
                 trigger.transform.localPosition = emitter.TriggerCenter;
 
                 bool authoredTrigger = emitter.Name != null &&
@@ -49,6 +50,7 @@ namespace OpenSlope.Importer
                 var system = p6.BuildGroup(ambientRoot.transform, $"Effect_{emitter.Index}", emitter.Layers,
                     continuous: false, interactive: true);
                 if (system == null) { Object.DestroyImmediate(trigger); continue; }
+                EffectLifecycleBuilder.Tag(system.gameObject, emitter.Index, detached: true);
 
                 float interval = emitter.Repeatable ? Mathf.Max(0.25f, emitter.MinInterval) : _cfg.AmbientCooldown;
                 if (emitter.Repeatable) repeatable++;

@@ -234,7 +234,9 @@ The ride runtime currently applies:
 - MainType 17 timed speed boost through the existing boosted cap/thrust path;
 - MainType 18 trick-window state and MainType 14 max-not-stack score multiplier, both visible in the ride HUD;
 - MainType 24 teleport through its stable destination-instance reference and the board's warp path;
-- graph-driven source hide / hidden-twin reveal for breakable chains.
+- graph-driven source hide / hidden-twin reveal for breakable chains. DeadNode modes 2–4 hide the host and
+  retire its ride collider; a preceding Wait preserves the initial solid impact (including Elysium glass).
+  The intact pane and called debris restore together on the shared breakable timer.
 
 The **MainType-0 boost family** is deliberately absent from that list, because a collision dispatch is the
 wrong shape for it. These are containment volumes: the engine re-tests which riders are inside the host's
@@ -256,12 +258,19 @@ end — crossing any `Mdl_Trigger_iristrigger` volume runs `MainType 7 → effec
 open clip plays once, and the door stays open through slot 34's two empty latch columns
 [Trailmap: 150-logic §slot-columns].
 
-Persistent Sub257 `AnimDelta` installs a frozen native model-clip player. MainType 3/9 control command 2 is
+Sub257 `AnimDelta` installs a frozen native model-clip player, either from a persistent graph or from a later
+graph call. MainType 3/9 control command 2 is
 delivered to that instance's installed receiver and grants `value / 30` seconds of animation budget. This covers
 ELYSIUM's up/down kickers: the landing-trigger graph grants one 1-second half-cycle to all three ramps, while the
 centre ramp's persistent graph supplies its extra half-cycle and can therefore sit opposite the locked outside pair.
 The receiver check is deliberate—command 2 is not globally an animation opcode and remains ignored for instances
 without an AnimDelta property.
+
+MESA's fireworks trigger installs these receivers on both falling trees' trunks and foliage, then grants their
+clips enough budget to fall. Preview and Test both follow the call's one-second delay and hold the spent pose.
+Each instance owns one clock shared by all its drawn submeshes. Stop Preview restores the original placement;
+the Test breakable-chain reset restores the trees and rails together. The browser regression in
+`test/budgeted-animation.test.ts` checks drawn mesh transforms, sibling isolation, pauses, and resets.
 
 Reference Play also invokes the retail `StartCountDown` lifecycle function when present. That function installs
 the otherwise-unattached start light's Sub11 `TexFlip` receiver and follows its native Wait chain (1.0 seconds,
@@ -294,6 +303,9 @@ only** setting; setup hides their render and ride collider even on a fresh mount
 and canonical export writes LTG state 2 for the Unity/PS2 pipelines. Raw state 1 is inspectable on reference
 props but is not offered as a general race-only authoring choice. Stopping or starting another run restores
 the reference world before applying the new mode.
+Mode-entry graphs do not arm the thirty-second breakable respawn timer, including through nested function and
+instance calls. Actual interaction resets resolve imported instance IDs before checking mode presence, so they
+cannot reveal an excluded rail model while its grind spline remains disabled.
 
 Persistent emitters retain the camera/rider budgets above. Play installs continuous flag and spline-motion
 properties even when the editor Effects view toggle is off. Reference hidden instances keep zero-scale textured
@@ -333,6 +345,32 @@ That accidental keep-everything is exactly what a populated **Region exit** latc
 objects carrying it (the iris door, Mesa's fallen tree trunks) behave faithfully; everything else stays animated
 where the original would have snapped back to its rest pose. When the region lifecycle lands, column 3 is the
 authored opt-out to read [Trailmap: 150-logic §slot-columns].
+
+Node lifetime commands stop the addressed prop's installed motion, model/material clock, and counter.
+Modes 0/1 leave the prop visible and collidable; modes 2–4 also hide and disarm it. Mode 3 additionally kills
+detached emitters and spline movers (including extra render copies), and repeated ambient scans cannot restart
+them. Explicit constructors can install again, and Test/interaction resets restore the host's persistent effects.
+Material receivers reached by a stop, including a call from another prop, receive private material variants.
+MainType-25 rail switches update the live grind query after their authored waits. Initially inactive splines can
+be enabled, and disabling an active rail releases the rider. Test reset restores the original/mode-specific state.
+
+Useful manual checks with Snowknife imports from a retail disc:
+
+| Map | Find this reference prop | Check in Test |
+| --- | --- | --- |
+| ELYSIUM | `Mdl_HalfPipeThing_GlassAwhole_5013` (3112) | Hit the intact pane: bounce, then disappear after 0.05 s; pass through the opening. `_GlassA_5013` (3116) is its debris twin. |
+| MESA | `Mdl_Trigger_Fireworks_5001` (2171), near `Mdl_TreeTrunk_EvergreenB_Fall_0` / `_1` | Preview or cross the trigger: trunks and foliage start falling after 1 s. In Test, splines 87/88 become grindable at 3.56 s; trees and rails reset together after 30 s. Stop Preview restores the standing trees. |
+| ALOHA | `Mdl_Trigger_topDissapear_1000` (1258), in the start area | Cross the disappear trigger. Fire pots `Mdl_Structure_Firepot_1006` (814) and `_1001` (918) disappear and their flames expire, without fresh particles continuing in mid-air. |
+| MERQUER | `Mdl_Subway_Train_1000` (344) | Persistent spline-motion smoke test: train continues normally, including across leaving/re-entering Test. |
+
+For visible Stop/Pause checks, give an authored prop a persistent Flag or UV scroll and a Collision effect
+containing Wait then Stop/Pause. Contact should stop only that prop while leaving it visible and collidable;
+restarting Test restores the animation. Retail maps do not author modes 0/1. The `dead-destroy` and `dead-pause`
+AUTOTEST1 cells exercise the same commands against a Debounce node, whose lifetime is less visible.
+
+Import each additional course into an unused folder with `snowknife import <disc.iso> MESA Maps/MESA`, then
+`snowknife gltf Maps/MESA MESA`; substitute `ALOHA` or `MERQUER` for those courses. Load the resulting reference
+map in Slopesmith and search its prop names above to locate each test area.
 
 This is not a byte-for-byte PS2 renderer. It intentionally caps particles, uses proximity bounds for trigger hosts
 with no rendered shape, and keeps the higher-risk motion approximations visual-only rather than mutating the ride's

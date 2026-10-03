@@ -329,7 +329,8 @@ export function referenceMaterialControls(data: ReferenceEffectsData | null | un
   const hasBoundControl = (owner: EffectGraph | EffectFunction, seen = new Set<string>()): boolean => {
     if (seen.has(owner.id)) return false;
     seen.add(owner.id);
-    if (owner.nodes.some(node => node.mainType === 3 || node.mainType === 9)) return true;
+    if (owner.nodes.some(node => node.mainType === 3 || node.mainType === 9
+      || node.semanticType?.startsWith('property.node-') || node.semanticType === 'property.breakable-kill')) return true;
     return owner.nodes.some(node => {
       const fn = node.references?.function ? functions.get(node.references.function) : null;
       return !!fn && hasBoundControl(fn, seen);

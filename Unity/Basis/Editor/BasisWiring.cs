@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using UnityEditor;
@@ -27,7 +28,7 @@ namespace OpenSlope.BasisPlugin
     // physics props (PhysicsPropMarker -> BasisPhysicsProp, crash bags / path markers), and the breakable logos /
     // signs / balloons (BreakableLogoMarker -> BasisBreakableLogo, the ride-through mesh-swap + piece throw), the
     // animated model-clip props (AnimatedPropMarker -> BasisAnimatedProp: the free-run bridge + the break-owned
-    // roll-aways; the door/kicker TRIGGER volumes, AnimTriggerMarker/AnimPokerMarker, are still unported), and the
+    // roll-aways), their door/kicker triggers and idle pokers, spline movers, timed rail gates, lifecycle targets, and the
     // animated textures (FlipbookMarker -> BasisFlipbookAnimator, the crowd / sign / LCD flipbooks). The field-copy
     // mirrors VrcWiring.CopyFieldsByName exactly (the marker seam is platform-agnostic), minus the Udon proxy push - a
     // Basis behaviour is a plain component.
@@ -46,6 +47,10 @@ namespace OpenSlope.BasisPlugin
             Realize<ModeVisibilityMarker, BasisModeVisibility>(root);
             Realize<SpinnerMarker, BasisSpinnerManager>(root);   // gems: the one-Update spin manager
             Realize<GemMarker, BasisGemPickup>(root);            // gems: per-gem pop/chime/regrow on contact
+            Realize<RailGateMarker, BasisRailGate>(root);
+            Realize<SplineMoverMarker, BasisSplineMover>(root);
+            Realize<AnimTriggerMarker, BasisAnimTrigger>(root);
+            Realize<AnimPokerMarker, BasisAnimPoker>(root);
             Realize<RailMarker, BasisRailNetwork>(root);         // grind rails (+ course path) the board queries
             Realize<ResetZoneMarker, BasisResetZone>(root);      // authored OOB boundary volumes (reset the rider)
             Realize<TeleportMarker, BasisTeleport>(root);        // teleport portals (warp player/board to the exit)
@@ -57,12 +62,15 @@ namespace OpenSlope.BasisPlugin
             Realize<ContactSoundMarker, BasisContactSound>(root);// pass-through authored prop hit sounds
             Realize<BreakableLogoMarker, BasisBreakableLogo>(root);// breakable logos / signs / balloons (ride-through mesh-swap + throw)
             Realize<AnimatedPropMarker, BasisAnimatedProp>(root);// model-clip props (bridge free-run; break-owned roll-aways, docs/036/038)
-            Realize<FlipbookMarker, BasisFlipbookAnimator>(root);// animated textures (crowd / signs / LCD flipbooks, grouped by material)
+            Realize<FlipbookMarker, BasisFlipbookAnimator>(root);
+            Realize<EffectTargetMarker, BasisEffectTarget>(root);
+            Realize<EffectTriggerMarker, BasisEffectTrigger>(root);// animated textures (crowd / signs / LCD flipbooks, grouped by material)
+
+            ResolveEffectLifecycle(root);
 
             // PASS 2: resolve each roll-away breakable's rollAnimObject (docs/036 - the globe sign) to the realized
             // animated prop on it, so the breakable can Trigger() the roll at the hit and ResetToStart() it on respawn.
-            // (AnimTriggerMarker / AnimPokerMarker / ButtonMarker stay unported: the door/kicker/button trigger
-            // volumes are reported below. A Basis button still reads its rest colour - that is the shared material.)
+            // ButtonMarker remains unported: its material pulse is separate from the now-wired model trigger.
             foreach (var mk in root.GetComponentsInChildren<BreakableLogoMarker>(true))
             {
                 if (mk.rollAnimObject == null) continue;
@@ -85,8 +93,27 @@ namespace OpenSlope.BasisPlugin
                 body.spill = brk;
             }
 
+            foreach (var marker in root.GetComponentsInChildren<RailGateMarker>(true))
+            {
+                var gate = marker.GetComponent<BasisRailGate>();
+                gate.railNetwork = marker.railNetworkObject != null ? marker.railNetworkObject.GetComponent<BasisRailNetwork>() : null;
+                gate.animations = marker.animationObjects.Where(o => o != null).Select(o => o.GetComponent<BasisAnimatedProp>()).Where(a => a != null).ToArray();
+            }
+            foreach (var marker in root.GetComponentsInChildren<AnimTriggerMarker>(true))
+                marker.GetComponent<BasisAnimTrigger>().target = marker.targetObject != null ? marker.targetObject.GetComponent<BasisAnimatedProp>() : null;
+            foreach (var marker in root.GetComponentsInChildren<AnimPokerMarker>(true))
+                marker.GetComponent<BasisAnimPoker>().targets = marker.targetObjects.Where(o => o != null).Select(o => o.GetComponent<BasisAnimatedProp>()).Where(p => p != null).ToArray();
+
             // PASS 3: strip ONLY the markers we realized (the un-ported ones stay for the report + their future realizer).
             int cleared = 0;
+            cleared += ClearMarkers<EffectIdentityMarker>(root);
+            cleared += ClearMarkers<EffectTargetMarker>(root);
+            cleared += ClearMarkers<EffectTriggerMarker>(root);
+            cleared += ClearMarkers<RailGateMarker>(root);
+            cleared += ClearMarkers<SplineMoverMarker>(root);
+            cleared += ClearMarkers<AnimTriggerMarker>(root);
+            cleared += ClearMarkers<AnimPokerMarker>(root);
+
             cleared += ClearMarkers<FireworkMarker>(root);
             cleared += ClearMarkers<AmbientEmitterMarker>(root);
             cleared += ClearMarkers<ModeVisibilityMarker>(root);
@@ -109,6 +136,25 @@ namespace OpenSlope.BasisPlugin
 
             // Report whatever markers remain unrealized (the scaffold), so it's obvious what's left to port.
             ReportUnrealized(root, cleared);
+        }
+
+        static void ResolveEffectLifecycle(GameObject root)
+        {
+            foreach (var marker in root.GetComponentsInChildren<EffectTargetMarker>(true))
+            {
+                var target = marker.GetComponent<BasisEffectTarget>();
+                target.animations = marker.installedObjects.SelectMany(o => o.GetComponentsInChildren<BasisAnimatedProp>(true)).Distinct().ToArray();
+                target.flipbooks = marker.installedObjects.SelectMany(o => o.GetComponentsInChildren<BasisFlipbookAnimator>(true)).Distinct().ToArray();
+                target.ambient = marker.installedObjects.SelectMany(o => o.GetComponentsInChildren<BasisAmbientEmitter>(true)).Distinct().ToArray();
+                target.movers = marker.detachedObjects.SelectMany(o => o.GetComponentsInChildren<BasisSplineMover>(true)).Distinct().ToArray();
+
+            }
+            foreach (var marker in root.GetComponentsInChildren<EffectTriggerMarker>(true))
+            {
+                var trigger = marker.GetComponent<BasisEffectTrigger>();
+                trigger.targets = marker.targetObjects.Select(o => o != null ? o.GetComponent<BasisEffectTarget>() : null).ToArray();
+
+            }
         }
 
         // PASS 1 helper: attach behaviour B to every object carrying marker M and copy the marker's fields onto it by name.

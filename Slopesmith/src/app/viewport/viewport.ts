@@ -734,6 +734,7 @@ export class Viewport {
       getRefLaps: () => this.refLaps,
       getRaceMode: () => this.raceMode,
       getModeDisabledRails: (target, mode) => this.referenceEffects.modeDisabledRails(target, mode),
+      getRailEnabled: (target, id, initial) => this.referenceEffects.railEnabled(target, id, initial),
       getShowoffSeconds: () => this.meshDoc?.showoffSeconds ?? DEFAULT_SHOWOFF_SECONDS,
       getRefShowoffSeconds: () => this.refShowoffSeconds,
       getAuthoredPropColliders: () => this.props.rideColliders(),
@@ -890,6 +891,10 @@ export class Viewport {
         if (object.kind === 'reference') this.refDecor.resetRuntimeInstanceEffects(object.index);
         else this.props.resetRuntimePropEffects(object.id);
       },
+      setObjectEffectsStopped: (object, stopped) => {
+        if (object.kind === 'reference') this.refDecor.setInstanceEffectsStopped(object.index, stopped);
+        else this.props.setPropEffectsStopped(object.id, stopped);
+      },
       resetSceneRuntime: () => {
         this.refDecor.resetRuntimeInstances();
         this.refDecor.resetRuntimePropertyControls();
@@ -908,6 +913,10 @@ export class Viewport {
       hasTriggerableCombo: object => object.kind === 'reference'
         ? this.refDecor.instanceHasTriggerableCombo(object.index)
         : this.props.propHasTriggerableCombo(object.id),
+      hasBudgetedAnimation: object => object.kind === 'reference'
+        && this.refDecor.instanceHasBudgetedAnimation(object.index),
+      startAnimDelta: (object, effect) => object.kind === 'reference'
+        && this.refDecor.startAnimDelta(object.index, effect),
       previewAnimObject: (object, effect, autoReturnDelay) => object.kind === 'reference'
         ? this.refDecor.previewAnimObject(object.index, effect, autoReturnDelay)
         : this.props.previewAnimObject(object.id, effect, autoReturnDelay),

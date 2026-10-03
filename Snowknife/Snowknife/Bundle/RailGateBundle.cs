@@ -26,38 +26,22 @@ public static class RailGateBundle
         var root = SsfLogic.Load(levelDir);
         if (root?.EffectSlots == null || root.EffectHeaders == null) return null;
 
-        // header index -> the rail-network indices its MainType-25 enables turn on (only splines that became rails).
-        var railsByHeader = new Dictionary<int, List<int>>();
-        for (int h = 0; h < root.EffectHeaders.Length; h++)
-        {
-            var effs = root.EffectHeaders[h].Effects;
-            if (effs == null) continue;
-            foreach (var e in effs)
-            {
-                if (e == null || e.MainType != SsfMainType.ToggleRail || e.Spline == null || e.Spline.Effect == 0) continue;
-                if (!splineToRail.TryGetValue(e.Spline.SplineIndex, out int rail)) continue;   // enabled a spline that isn't a baked rail - skip
-                if (!railsByHeader.TryGetValue(h, out var list)) { list = new List<int>(); railsByHeader[h] = list; }
-                if (!list.Contains(rail)) list.Add(rail);
-            }
-        }
-        if (railsByHeader.Count == 0) return null;
-
-        // trigger instance = the one whose EffectSlot's CollisionEffectSlot is a MainType-25 header. Collect the box
-        // verts for all such triggers in one Props.obj pass, then AABB them.
-        var triggerHeader = new Dictionary<int, int>();   // instance -> the header it fires
+        var commandsByInstance = new Dictionary<int, List<EffectTimeline.Command>>();
         for (int i = 0; i < instances.Count; i++)
         {
-            int e = instances[i].EffectSlotIndex;
-            if (e < 0 || e >= root.EffectSlots.Length) continue;
-            int ce = root.EffectSlots[e].CollisionEffectSlot;
-            if (ce >= 0 && railsByHeader.ContainsKey(ce)) triggerHeader[i] = ce;
+            int slot = instances[i].EffectSlotIndex;
+            if (slot < 0 || slot >= root.EffectSlots.Length) continue;
+            var commands = EffectTimeline.Read(root, root.EffectSlots[slot].CollisionEffectSlot, i)
+                .Where(c => c.Node.MainType == SsfMainType.ToggleRail && c.Node.Spline != null
+                    && splineToRail.ContainsKey(c.Node.Spline.SplineIndex)).ToList();
+            if (commands.Count > 0) commandsByInstance[i] = commands;
         }
-        if (triggerHeader.Count == 0) return null;
+        if (commandsByInstance.Count == 0) return null;
 
-        var groups = ParticleBundle.WalkPropsGroups(levelDir, triggerHeader.ContainsKey);
+        var groups = ParticleBundle.WalkPropsGroups(levelDir, commandsByInstance.ContainsKey);
 
         var info = new BundleManifest.RailGatesInfo();
-        foreach (var (inst, header) in triggerHeader.OrderBy(kv => kv.Key))
+        foreach (var (inst, commands) in commandsByInstance.OrderBy(kv => kv.Key))
         {
             var it = instances[inst];
             Vector3 center, size;
@@ -78,7 +62,9 @@ public static class RailGateBundle
             {
                 Index = inst, Name = it.InstanceName ?? "",
                 Center = BundleSpace.Xyz(center), Size = BundleSpace.Xyz(size),
-                Rails = railsByHeader[header].ToArray(),
+                Rails = commands.Select(c => splineToRail[c.Node.Spline!.SplineIndex]).ToArray(),
+                Delays = commands.Select(c => c.Delay).ToArray(),
+                Enabled = commands.Select(c => c.Node.Spline!.Effect != 0).ToArray(),
             });
         }
         if (info.Gates.Count == 0) return null;

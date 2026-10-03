@@ -17,6 +17,7 @@ Shader "OpenSlope/UnlitDoubleSided"
 {
     Properties
     {
+        [HideInInspector] _EffectTime ("Effect clock override", Float) = -1
         _MainTex ("Texture", 2D) = "white" {}
         // Texture-ARRAY batching (_TEXARRAY): the importer collapses a combined mesh's many per-texture
         // submeshes into ONE draw by stacking their (tiling) textures as slices of a Texture2DArray and
@@ -140,6 +141,7 @@ Shader "OpenSlope/UnlitDoubleSided"
             #pragma multi_compile_fog
             #include "UnityCG.cginc"
             #include "../../Importer/Shaders/UvScroll.hlsl"
+            float _EffectTime;
 
             struct appdata
             {
@@ -251,7 +253,7 @@ Shader "OpenSlope/UnlitDoubleSided"
                 // UV0.w (0 = anchored base, 1 = free tip). World-phase so neighbouring flags/fences ripple out of
                 // sync; converted back to object space so the amount is world-consistent under the level's scale.
                 float _wgt = v.uv.w;
-                float _wt = _Time.y * _WindSpeed;
+                float _wt = (_EffectTime >= 0 ? _EffectTime : _Time.y) * _WindSpeed;
                 float3 _wwp = mul(unity_ObjectToWorld, v.vertex).xyz;
                 float _ws = (_wwp.x + _wwp.z) * _WindFreq + _wt;
                 float3 _woff = float3(sin(_ws) + sin(_ws * 2.3) * 0.35, 0.0, cos(_ws * 1.7) * 0.5) * (_WindStrength * _wgt);
@@ -260,7 +262,7 @@ Shader "OpenSlope/UnlitDoubleSided"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 // The shared evaluator preserves native modes, active/pause intervals and finite lifetime.
                 o.uv = TRANSFORM_TEX(v.uv.xy, _MainTex)
-                     + UvScrollElapsed(_Time.y, _ScrollCycle) * _ScrollSpeed.xy;
+                     + UvScrollElapsed((_EffectTime >= 0 ? _EffectTime : _Time.y), _ScrollCycle) * _ScrollSpeed.xy;
                 o.uv2 = v.uv1;                               // lightmap atlas UV (per-patch tile)
                 o.color = v.color;
                 #if defined(_CROWD)
@@ -273,7 +275,7 @@ Shader "OpenSlope/UnlitDoubleSided"
                 // same frame, so interpolation is constant across the billboard.
                 {
                     uint _cseed = ((uint)(v.uv1.y + 0.5)) * 16u + ((uint)(v.uv1.x + 0.5));   // stand ordinal * 16 + cell
-                    uint _ct = (uint)(_Time.y * _CrowdStepHz) + (CrowdHash(_cseed) & 255u); // steps + random start phase
+                    uint _ct = (uint)((_EffectTime >= 0 ? _EffectTime : _Time.y) * _CrowdStepHz) + (CrowdHash(_cseed) & 255u); // steps + random start phase
                     uint _cw = _ct >> 4;                                                        // 16-step cycle ordinal
                     uint _ccyc = CrowdHash(_cseed ^ (_cw * 0x9E3779B9u));                    // fresh roll per cycle
                     uint _cthr = (uint)(_CrowdRestProb * 256.0);

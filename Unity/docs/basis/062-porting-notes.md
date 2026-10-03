@@ -17,7 +17,8 @@ To land a new behaviour: give it the same public field names as its marker (the 
 `Realize<>` line and one `ClearMarkers<>` line. This differs from `VrcWiring`, which realizes everything and strips all
 markers; the Basis pass is partial by design, one subsystem at a time. Realized: FX/audio, gems, rails, course-flow
 (reset zones / teleports / boost pads / boost volumes), the object culler, physics props, prop bounce, contact sounds,
-breakables, animated props, and animated textures. Still reported (un-ported): the door/kicker/button trigger volumes,
+breakables, animated props and their door/kicker triggers, idle pokers, animated textures, spline movers, timed rail
+gates, and [effect lifecycle targets](../unity/064-effect-lifecycle.md). Still reported (un-ported): button material pulses,
 glint-fade, and terrain-patches.
 
 **Glint-fade is the one un-ported marker with a visible cost.** The shared importer builds a `OpenSlope/FlareHalo` billboard per

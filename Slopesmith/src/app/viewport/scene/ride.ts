@@ -110,6 +110,7 @@ export interface RideDeps {
   getRaceMode(): RaceMode;
   /** Rail ids/native indices whose MainType-25 candidacy the selected mode function clears. */
   getModeDisabledRails?(target: 'authored' | 'reference', mode: RaceMode): ReadonlySet<number | string>;
+  getRailEnabled?(target: 'authored' | 'reference', id: number | string, initial: boolean): boolean;
   /** Seconds a showoff run on each target starts with: the document's own, and the loaded reference level's
    *  (its slot's, from retail's table). Unused by a race, which counts up from zero. */
   getShowoffSeconds(): number;
@@ -398,17 +399,18 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    * pushed through the world root's chirality flip so the physics grinds exactly the curve the visible tube
    * is swept along. Null when the course has no rails.
    *
-   * A `startsOff` rail is left out for the same reason it exports at a non-grind style: it is not in the rail
-   * query until an effect switches it in, and no preview here runs a MainType-25 toggle. So the test ride
-   * refuses it exactly as the console would on the same run — untick "starts off" to grind it while authoring.
+   * Keep initially disabled curves in the network: their live candidacy callback lets a MainType-25 effect
+   * enable them later. The same query drives acquisition and staying on a rail, so switching off also releases it.
    */
   function authoredGrindRails(): GrindRails | null {
     stage.worldRoot.updateWorldMatrix(true, false);
     const m = stage.worldRoot.matrixWorld;
     const disabled = deps.getModeDisabledRails?.('authored', deps.getRaceMode()) ?? new Set();
     const railsIn = deps.getRails()
-      .filter(r => !isMotionPath(r) && !railStartsOff(r) && (!r.id || !disabled.has(r.id)))
       .map(r => ({
+        enabled: () => deps.getRailEnabled?.('authored', r.id ?? '',
+          !isMotionPath(r) && !railStartsOff(r) && !disabled.has(r.id ?? ''))
+          ?? (!isMotionPath(r) && !railStartsOff(r) && !disabled.has(r.id ?? '')),
         surf: railStyle(r),
         // Only Slopesmith's generated pipe is centred on its spline. Bare curves are laid directly on the
         // intended contact line, just like extracted retail splines.
@@ -436,8 +438,10 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     const m = reference.matrixWorld;
     const disabled = deps.getModeDisabledRails?.('reference', deps.getRaceMode()) ?? new Set();
     const railsIn = raw
-      .filter(s => referenceSplineIsGrindRail(s) && !disabled.has(s.originalIndex))
       .map(s => ({
+        enabled: () => deps.getRailEnabled?.('reference', s.originalIndex,
+          referenceSplineIsGrindRail(s) && !disabled.has(s.originalIndex))
+          ?? (referenceSplineIsGrindRail(s) && !disabled.has(s.originalIndex)),
         surf: s.style,
         // Retail authored the rider clearance into the spline itself; the engine adds no fixed rail height.
         seat: 0,

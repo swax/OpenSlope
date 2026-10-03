@@ -66,6 +66,8 @@ assembly registration order and shuffle on recompile.
 
 The ClientSim automation contract and runner are documented in
 [VRChat autotest](docs/vrchat/055-clientsim-autotest.md).
+Glass, disappearing props, fire pots, movers, and timed rail checks are listed in
+[Effect lifecycle](docs/unity/064-effect-lifecycle.md), including the local maps and source instance names.
 
 ## What is here
 

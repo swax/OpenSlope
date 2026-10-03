@@ -46,6 +46,8 @@ namespace OpenSlope.VrcPlugin
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class AnimatedPropU : UdonSharpBehaviour
     {
+        [HideInInspector] public bool effectStopped;
+
         [Header("Clip (from the SSF AnimObject params)")]
         [Tooltip("Clip length in seconds (model AnimTime / 30).")]
         public float clipLength = 3f;
@@ -149,6 +151,7 @@ namespace OpenSlope.VrcPlugin
         // just extend the hold timer. Called by a trigger volume's AnimTriggerU. No-op on a non-triggered prop.
         public void Trigger()
         {
+            if (effectStopped) return;
             if (!triggered) return;
             if (_u >= 1f) { _endSince = Time.time; _dir = 0; }
             else _dir = 1;
@@ -187,6 +190,7 @@ namespace OpenSlope.VrcPlugin
         // volume's AnimTriggerU or the idle AnimPokerU. No-op on a non-gated prop.
         public void Poke()
         {
+            if (effectStopped) return;
             if (deltaGated) _budget += pokeSeconds;
         }
 
@@ -196,6 +200,7 @@ namespace OpenSlope.VrcPlugin
         // Called by a trigger volume's AnimTriggerU - for the retail barriers, the prop's own.
         public void TriggerCombo()
         {
+            if (effectStopped) return;
             if (!combo || _comboOn || _comboDone || _snapPos == null) return;   // _snapPos null = Start has not run
             int n = segTransforms == null ? 0 : segTransforms.Length;
             for (int i = 0; i < n; i++)
@@ -228,6 +233,7 @@ namespace OpenSlope.VrcPlugin
 
         void Update()
         {
+            if (effectStopped) return;
             int n = segTransforms == null ? 0 : segTransforms.Length;
             if (n == 0 || clipLength <= 0f) return;
 

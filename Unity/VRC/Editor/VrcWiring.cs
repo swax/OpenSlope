@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using UnityEditor;
@@ -62,12 +63,16 @@ namespace OpenSlope.VrcPlugin
             Realize<ButtonMarker, ButtonU>(root);            // ride-over buttons: latch a button's material red -> green
             Realize<AnimPokerMarker, AnimPokerU>(root);       // the prop cross-refs are resolved in PASS 2
             Realize<FlipbookMarker, FlipbookAnimator>(root);
+            Realize<EffectTargetMarker, EffectTarget>(root);
+            Realize<EffectTriggerMarker, EffectTrigger>(root);
             Realize<ObjectCullerMarker, ObjectCuller>(root);
             Realize<TerrainPatchesMarker, TerrainPatches>(root);
             Realize<GlintFadeMarker, GlintFade>(root);    // light-glint source-visibility fade (LightGlows root)
             Realize<SunGlareFadeMarker, SunGlareFade>(root);   // sun-glare source-visibility fade (SunGodRays object)
             Realize<HudMessageDisplayMarker, HudMessageDisplay>(root);
             Realize<HudMessageMarker, HudMessageTrigger>(root);
+
+            ResolveEffectLifecycle(root);
 
             // PASS 2: resolve the GameObject cross-references onto the realized behaviours (every network/prop now exists).
             ResolveRailGates(root);
@@ -86,6 +91,25 @@ namespace OpenSlope.VrcPlugin
 
             AssetDatabase.SaveAssets();
             if (cleared > 0) Debug.Log($"OpenSlope wiring: realized + cleared {cleared} marker(s).");
+        }
+
+        static void ResolveEffectLifecycle(GameObject root)
+        {
+            foreach (var marker in root.GetComponentsInChildren<EffectTargetMarker>(true))
+            {
+                var target = marker.GetComponent<EffectTarget>();
+                target.animations = marker.installedObjects.SelectMany(o => o.GetComponentsInChildren<AnimatedPropU>(true)).Distinct().ToArray();
+                target.flipbooks = marker.installedObjects.SelectMany(o => o.GetComponentsInChildren<FlipbookAnimator>(true)).Distinct().ToArray();
+                target.ambient = marker.installedObjects.SelectMany(o => o.GetComponentsInChildren<AmbientEmitter>(true)).Distinct().ToArray();
+                target.movers = marker.detachedObjects.SelectMany(o => o.GetComponentsInChildren<SplineMover>(true)).Distinct().ToArray();
+                UdonTools.Push(target);
+            }
+            foreach (var marker in root.GetComponentsInChildren<EffectTriggerMarker>(true))
+            {
+                var trigger = marker.GetComponent<EffectTrigger>();
+                trigger.targets = marker.targetObjects.Select(o => o != null ? o.GetComponent<EffectTarget>() : null).ToArray();
+                UdonTools.Push(trigger);
+            }
         }
 
         // PASS 1 helper: attach behaviour B to every object carrying marker M and copy the marker's fields onto it. The
@@ -143,6 +167,7 @@ namespace OpenSlope.VrcPlugin
                 var net = mk.railNetworkObject != null ? mk.railNetworkObject.GetComponent<RailNetwork>() : null;
                 if (net == null) { Debug.LogWarning($"OpenSlope wiring: rail gate '{mk.name}' could not resolve its rail network - it will do nothing."); continue; }
                 gate.railNetwork = net;
+                gate.animations = mk.animationObjects.Where(o => o != null).Select(o => o.GetComponent<AnimatedPropU>()).Where(a => a != null).ToArray();
                 UdonTools.Push(gate);
             }
         }

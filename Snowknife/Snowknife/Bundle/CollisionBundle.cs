@@ -83,6 +83,8 @@ public static class CollisionBundle
         if (o.BuildContactSounds)
             BuildContactSoundBoxes(levelDir, instances, o, info, breakable, animated, physics,
                 hiddenByHideShowOff, hiddenByHideRace);
+        foreach (var box in info.ComputedBounds.Concat(info.ContactSounds))
+            if (breakSupports.TryGetValue(box.InstanceIndex, out var owner)) box.BreakCluster = owner;
         return (nodes, info);
     }
 
@@ -91,6 +93,7 @@ public static class CollisionBundle
     {
         public string Name = ""; public bool PlayerBounce; public float Amount; public int Sound = -1;
         public int SurfaceType = -1; public string? SoundClip; public int InstanceCount; public int ModeMask = 7;
+        public int InstanceIndex = -1;
         public string? BreakCluster;   // set = this bucket is ONE breakable's support collider (Unity docs/036)
         public bool ResetOnContact;    // set = hitting this bucket resets the rider; its node name carries the "_R" tag
         public readonly List<Vector3> Verts = new();
@@ -189,6 +192,7 @@ public static class CollisionBundle
                 Node = node, PlayerBounce = b.PlayerBounce, PlayerBounceAmmount = b.Amount,
                 InstanceCount = b.InstanceCount, CollisonSound = b.Sound, SurfaceType = b.SurfaceType,
                 SoundClip = b.SoundClip, BreakCluster = b.BreakCluster, ModeMask = b.ModeMask,
+                InstanceIndex = b.InstanceIndex,
                 ResetOnContact = b.ResetOnContact,
             });
             colliders++; tris += b.Tris.Count / 3;
@@ -240,7 +244,7 @@ public static class CollisionBundle
             if (resetHost) label += "_R";   // must stay LAST: the board tests the name's tail
             b = new Bucket { Name = label, PlayerBounce = bounce, Amount = amount, Sound = snd,
                              SurfaceType = surface, SoundClip = soundClip, BreakCluster = supportCluster,
-                             ModeMask = modeMask, ResetOnContact = resetHost };
+                             ModeMask = modeMask, ResetOnContact = resetHost, InstanceIndex = supportCluster != null ? idx : -1 };
             buckets[key] = b; order.Add(b);
         }
         return b;
@@ -560,7 +564,7 @@ public static class CollisionBundle
             string nm = string.IsNullOrEmpty(instances[i].InstanceName) ? ("inst" + i) : instances[i].InstanceName!;
             outList.Add(new BundleManifest.BoxInfo
             {
-                Name = nm,
+                Name = nm, InstanceIndex = i,
                 Center = BundleSpace.Xyz(BundleSpace.MeshPt(instances[i].Location)),
                 // Same convention as the mode-3 body records above: the rotation is conjugated by the X mirror
                 // and a local point mirrors as M p.

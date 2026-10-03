@@ -31,6 +31,7 @@
     "Teleports": { "$ref": "#/$defs/teleports" },
     "HudMessages": { "$ref": "#/$defs/hudMessages" },
     "RailGates": { "$ref": "#/$defs/railGates" },
+    "EffectLifecycle": { "$ref": "#/$defs/effectLifecycle" },
     "Audio": { "$ref": "#/$defs/audio" },
     "Probes": { "$ref": "#/$defs/probes" },
     "Sun": { "$ref": "#/$defs/sun" },
@@ -39,6 +40,100 @@
     "Race": { "$ref": "#/$defs/race" }
   },
   "$defs": {
+    "effectAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Target",
+        "Mode",
+        "Delay"
+      ],
+      "properties": {
+        "Target": {
+          "type": "integer"
+        },
+        "Mode": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "Delay": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "effectTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Index",
+        "Name"
+      ],
+      "properties": {
+        "Index": {
+          "type": "integer"
+        },
+        "Name": {
+          "type": "string"
+        }
+      }
+    },
+    "effectTrigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Index",
+        "Center",
+        "Size",
+        "Actions"
+      ],
+      "properties": {
+        "Index": {
+          "type": "integer"
+        },
+        "Name": {
+          "type": "string"
+        },
+        "Center": {
+          "$ref": "#/$defs/vec3"
+        },
+        "Size": {
+          "$ref": "#/$defs/vec3"
+        },
+        "OneShot": {
+          "type": "boolean"
+        },
+        "Actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effectAction"
+          }
+        }
+      }
+    },
+    "effectLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Targets",
+        "Triggers"
+      ],
+      "properties": {
+        "Targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effectTarget"
+          }
+        },
+        "Triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effectTrigger"
+          }
+        }
+      }
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
@@ -180,6 +275,7 @@
       "additionalProperties": false,
       "required": ["Node", "PlayerBounce", "PlayerBounceAmmount", "InstanceCount", "CollisonSound"],
       "properties": {
+        "InstanceIndex": {"type": "integer", "minimum": -1},
         "Node": { "type": "string", "minLength": 1 },
         "ModeMask": { "type": "integer", "minimum": 0, "maximum": 7 },
         "PlayerBounce": { "type": "boolean" },
@@ -197,6 +293,8 @@
       "additionalProperties": false,
       "required": ["Name", "Center", "Size", "CollisonSound"],
       "properties": {
+        "InstanceIndex": {"type": "integer", "minimum": -1},
+        "BreakCluster": {"type": ["string", "null"]},
         "Name": { "type": "string" },
         "ModeMask": { "type": "integer", "minimum": 0, "maximum": 7 },
         "Center": { "$ref": "#/$defs/vec3" },
@@ -367,6 +465,8 @@
       "additionalProperties": false,
       "required": ["Center", "Size", "Rotation"],
       "properties": {
+        "SourceIndex": { "type": "integer", "minimum": -1 },
+        "Delay": {"type": "number", "minimum": 0},
         "Center": { "$ref": "#/$defs/vec3" },
         "Size": { "$ref": "#/$defs/vec3" },
         "Rotation": { "$ref": "#/$defs/vec4" },
@@ -791,6 +891,8 @@
       "additionalProperties": false,
       "required": ["Index", "Name", "Center", "Size", "Rails"],
       "properties": {
+        "Delays": {"type": "array", "items": {"type": "number", "minimum": 0}},
+        "Enabled": {"type": "array", "items": {"type": "boolean"}},
         "Index": { "type": "integer", "minimum": 0 },
         "Name": { "type": "string" },
         "Center": { "$ref": "#/$defs/vec3" },

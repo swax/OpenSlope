@@ -109,7 +109,7 @@ public static class PropsBundle
                                Dictionary<int, TriggeredFlipClassifier.Pulse>? pulses = null,
                                Dictionary<int, BundleManifest.AnimTriggerBox>? pulseBoxes = null,
                                Dictionary<int, (int[] frames, float[] holds)>? pulseTimelines = null,
-                               HashSet<int>? raceHiddenInstances = null)
+                               HashSet<int>? raceHiddenInstances = null, HashSet<int>? effectTargets = null)
     {
         string objPath = Path.Combine(levelDir, "Props.obj");
         if (!File.Exists(objPath)) throw new FileNotFoundException($"Props.obj not found in '{levelDir}'.");
@@ -380,14 +380,15 @@ public static class PropsBundle
                             // precedence, like the pads: a button is never another kind.
                             bool isButton = curVisible && !isBreak && !isSpin && !isPhys && !isMover && !isFlag && !isFence
                                             && !isPad && pulses != null && pulses.ContainsKey(n);
-                            if (isBreak || isSpin || isPhys || isMover || isFlag || isFence || isPad || isButton)
+                            bool isEffect = curVisible && effectTargets != null && effectTargets.Contains(n);
+                            if (isBreak || isSpin || isPhys || isMover || isFlag || isFence || isPad || isButton || isEffect)
                             {
                                 int modeMask = ModeMaskForInstance(inst.LTGState == 2, hiddenInstances.Contains(n), raceHiddenInstances.Contains(n));
                                 curDiv = new DivAccum
                                 {
                                     Index = n, Model = model, Inst = inst,
                                     ModeMask = modeMask,
-                                    Kind = isBreak ? "breakable" : isSpin ? "spinner" : isPhys ? "physics" : isMover ? "mover" : isFlag ? "softflag" : isFence ? "softfence" : isPad ? "boostpad" : "button",
+                                    Kind = isBreak ? "breakable" : isSpin ? "spinner" : isPhys ? "physics" : isMover ? "mover" : isFlag ? "softflag" : isFence ? "softfence" : isPad ? "boostpad" : isButton ? "button" : "effect",
                                     Triggers = isButton ? PulseTriggers(pulses![n], pulseBoxes) : null,
                                     PulseFrames = isButton && pulseTimelines != null && pulseTimelines.TryGetValue(n, out var tl) ? tl.frames : null,
                                     PulseHolds = isButton && pulseTimelines != null && pulseTimelines.TryGetValue(n, out var tl2) ? tl2.holds : null,

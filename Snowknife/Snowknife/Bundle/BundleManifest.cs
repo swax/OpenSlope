@@ -39,6 +39,7 @@ public sealed class BundleManifest
     public TeleportsInfo? Teleports { get; set; }
     public HudMessagesInfo? HudMessages { get; set; }
     public RailGatesInfo? RailGates { get; set; }
+    public EffectLifecycleInfo? EffectLifecycle { get; set; }
     public AudioInfo? Audio { get; set; }
     public ProbesInfo? Probes { get; set; }
     public SunInfo? Sun { get; set; }
@@ -544,6 +545,8 @@ public sealed class BundleManifest
     // space - the importer makes a BoxCollider(isTrigger) at Center/Rotation with this Size.
     public sealed class AnimTriggerBox
     {
+        public int SourceIndex { get; set; } = -1;
+        public float Delay { get; set; }
         public float[] Center { get; set; } = new float[3];
         public float[] Size { get; set; } = new float[3];
         public float[] Rotation { get; set; } = { 0f, 0f, 0f, 1f };
@@ -677,6 +680,33 @@ public sealed class BundleManifest
         public float[] Center { get; set; } = new float[3];   // SSX mesh space (X negated, cm) - trigger box centre
         public float[] Size { get; set; } = new float[3];     // trigger box extents (importer inflates for a reliable cross)
         public int[] Rails { get; set; } = System.Array.Empty<int>();   // rail-network indices this gate enables (into Paths.Rails)
+        public float[] Delays { get; set; } = Array.Empty<float>();
+        public bool[] Enabled { get; set; } = Array.Empty<bool>();
+    }
+    public sealed class EffectLifecycleInfo
+    {
+        public List<EffectTargetInfo> Targets { get; set; } = new();
+        public List<EffectTriggerInfo> Triggers { get; set; } = new();
+    }
+    public sealed class EffectTargetInfo
+    {
+        public int Index { get; set; }
+        public string Name { get; set; } = "";
+    }
+    public sealed class EffectTriggerInfo
+    {
+        public int Index { get; set; }
+        public string Name { get; set; } = "";
+        public float[] Center { get; set; } = new float[3];
+        public float[] Size { get; set; } = new float[3];
+        public bool OneShot { get; set; }
+        public List<EffectActionInfo> Actions { get; set; } = new();
+    }
+    public sealed class EffectActionInfo
+    {
+        public int Target { get; set; }
+        public int Mode { get; set; }
+        public float Delay { get; set; }
     }
     public sealed class PolyInfo
     {
@@ -739,6 +769,7 @@ public sealed class BundleManifest
     }
     public sealed class BucketInfo
     {
+        public int InstanceIndex { get; set; } = -1;
         public string Node { get; set; } = "";   // collision.glb node name
         public int ModeMask { get; set; } = 7;   // race=1, show-off=2, freeride=4
         public bool PlayerBounce { get; set; }
@@ -760,6 +791,8 @@ public sealed class BundleManifest
     }
     public sealed class BoxInfo
     {
+        public int InstanceIndex { get; set; } = -1;
+        public string? BreakCluster { get; set; }
         public string Name { get; set; } = "";
         public int ModeMask { get; set; } = 7;   // presence of this instance's render + contact shape
         public float[] Center { get; set; } = new float[3];  // SSX mesh space (X negated, cm) - placed under the Level child

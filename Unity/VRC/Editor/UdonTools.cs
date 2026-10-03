@@ -36,7 +36,7 @@ namespace OpenSlope.VrcPlugin
             typeof(FireworkTrigger), typeof(FlipbookAnimator), typeof(RailNetwork), typeof(TerrainPatches),
             typeof(BreakableLogoU), typeof(AnimatedPropU), typeof(AnimTriggerU), typeof(BoostPad),
             typeof(Teleport), typeof(RailGate), typeof(SnowfallU), typeof(ObjectCuller),
-            typeof(AmbientEmitter), typeof(ResetZone), typeof(BoostVolume), typeof(SplineMover),
+            typeof(AmbientEmitter), typeof(ResetZone), typeof(BoostVolume), typeof(SplineMover), typeof(EffectTarget), typeof(EffectTrigger),
             typeof(AnimPokerU), typeof(AnimatedPropManager), typeof(GlintFade), typeof(SunGlareFade), typeof(ProximityAudio),
             typeof(HitGatedLoops), typeof(ButtonU), typeof(ModeVisibility),
             typeof(HudMessageDisplay), typeof(HudMessageTrigger),

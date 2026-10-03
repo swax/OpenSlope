@@ -16,7 +16,7 @@ namespace OpenSlope.Importer
         // safely like the other placed objects - and they're the biggest uncovered draw group otherwise (docs/053). NB the
         // spline movers (the subway) are deliberately NOT here: the culler caches positions at Start, so a moving prop would
         // gate against a stale position.
-        static readonly string[] Roots = { "Spinners", "BreakableLogos", "Physics", "AnimatedProps", "Emitters" };
+        static readonly string[] Roots = { "Spinners", "BreakableLogos", "Physics", "AnimatedProps", "Emitters", "EffectProps" };
 
         // Returns the renderer count wired (0 if nothing to cull / the program asset isn't ready yet). The OFF ranges +
         // fog params (docs/unity/006) drive the two-tier cull toggle + the cull-range-tracking distance fog on the realized

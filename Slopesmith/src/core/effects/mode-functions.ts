@@ -42,10 +42,9 @@ export function effectModeNodes(document: EffectsDocument, mode: RaceMode): Effe
  * Stable instance resource ids disabled by the selected mode entry point.
  *
  * Retail's `HideShowOff` / `HideRace` leaves express presence through MainType 7 calls into a tiny
- * DeadNode graph. That graph is not the ordinary MainType-7 `property.breakable-kill` shape, so a preview
- * that merely dispatches it stops the target's node without removing the target draw. At mode select the
- * call edge itself is the useful authored fact: every reached instance target belongs to the content set the
- * selected mode disables. Snowknife uses the same leaf targets to bake Unity's mode masks.
+ * DeadNode graph. Mode presence must remain separate from transient effect playback so a breakable respawn
+ * cannot restore a target that this mode excludes. Every reached instance target belongs to the content set
+ * the selected mode disables. Snowknife uses the same leaf targets to bake Unity's mode masks.
  */
 export function effectModeHiddenInstanceIds(document: EffectsDocument, mode: RaceMode): Set<string> {
   const hidden = new Set<string>();

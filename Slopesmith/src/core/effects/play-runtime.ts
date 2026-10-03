@@ -102,7 +102,9 @@ export type EffectPlayCommand =
   | { kind: 'teleport'; instance: string | null }
   | { kind: 'directional-boost'; target: number; rate: number; direction: V3 }
   | { kind: 'property-control'; command: number; value: number }
-  | { kind: 'instance-hide' }
+  | { kind: 'node-stop'; destroy: boolean }
+  | { kind: 'instance-hide'; killDetached: boolean }
+  | { kind: 'rail-toggle'; spline: string; enabled: boolean }
   | { kind: 'roller'; mass: number; direction: V3 }
   | { kind: 'mesh-throw'; frameStep: number; duration: number; direction: V3; velocityScale: V3; directionScale: number }
   | { kind: 'fence-flex'; amount: number }
@@ -122,7 +124,7 @@ export const PICKUP_GROW_SECONDS = 1.2;
 export const PICKUP_POP_SECONDS = PICKUP_POP_HOLD_SECONDS + PICKUP_GROW_SECONDS;
 /** Unity's transient-world convergence timers (AnimatedPropU / BreakableLogoU). */
 export const ANIMATED_PROP_AUTO_RESET_SECONDS = 8;
-export const BREAKABLE_RESPAWN_SECONDS = 12;
+export const BREAKABLE_RESPAWN_SECONDS = 30;
 /** Shared-world convergence extension: unlike a persistent retail Roller, a knocked Slopesmith prop returns
  * home with the breakable cycle so a missed event or late join cannot leave clients permanently divergent. */
 export const MOVABLE_PROP_RESPAWN_SECONDS = BREAKABLE_RESPAWN_SECONDS;
@@ -281,7 +283,16 @@ export function effectPlayCommand(node: EffectNode): EffectPlayCommand | null {
     case 'rider.trick-window':
       return { kind: 'trick-boost', seconds: Math.max(0, finite(node.payload.type18)) };
     case 'rider.teleport': return { kind: 'teleport', instance: node.references?.instance ?? null };
-    case 'property.breakable-kill': return { kind: 'instance-hide' };
+    // DeadNode modes 2–4 hide the instance and disarm its collision, including ordinary collision chains
+    // such as Elysium's delayed glass break [Trailmap: 230-deadnode-modes]. Modes 0/1 only affect its node.
+    case 'property.node-destroy': return { kind: 'node-stop', destroy: true };
+    case 'property.node-pause': return { kind: 'node-stop', destroy: false };
+    case 'property.node-tombstone':
+    case 'property.breakable-kill': return { kind: 'instance-hide', killDetached: false };
+    case 'property.node-tombstone-flagged': return { kind: 'instance-hide', killDetached: true };
+    case 'spline.toggle': return node.references?.spline
+      ? { kind: 'rail-toggle', spline: node.references.spline, enabled: finite(object(node.payload.Spline)?.Effect) !== 0 }
+      : null;
     case 'property.roller': {
       const roller = object(type0?.type0Sub0);
       const mass = finite(roller?.U0);

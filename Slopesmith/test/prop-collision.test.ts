@@ -14,7 +14,7 @@ import { RIDER_BODY_R, RIDER_BODY_Y, RIDER_TORSO_Y } from '../src/app/ride/physi
 import type { RideTelemetryEvent, RideTelemetryTick } from '../src/app/ride/telemetry';
 import { readPhysicsBodyMassProps, readPhysicsBodySpheres } from '../src/server/routes/props';
 import {
-  crackedBreakTombstonesCollider, localRideEffectSubject, playProximityRadius,
+  localRideEffectSubject, playProximityRadius,
 } from '../src/app/viewport/scene/reference-effects';
 import { createRideColliderOverlay } from '../src/app/viewport/scene/ride-collider-overlay';
 import { PropTextureCache } from '../src/app/props/textures';
@@ -32,15 +32,6 @@ assert.equal(playProximityRadius('trigger', 100), 101,
   'trigger circumstances retain their rendered-bounds proximity volume');
 assert.equal(playProximityRadius('trigger', 100, true), null,
   'an explicitly dispatched trigger column cannot also fire from rider proximity');
-
-assert.equal(crackedBreakTombstonesCollider({
-  id: 'support-kill', mainType: 0, semanticType: 'property.node-tombstone', references: {},
-  payload: { type0: { SubType: 5, DeadNodeMode: 2 } },
-}), true, 'a cracked-break DeadNodeMode-2 call identifies the invisible support collider it tombstones');
-assert.equal(crackedBreakTombstonesCollider({
-  id: 'ordinary-kill', mainType: 0, semanticType: 'property.breakable-kill', references: {},
-  payload: { type0: { SubType: 5, DeadNodeMode: 4 } },
-}), false, 'the cracked tombstone path stays distinct from the already-handled breakable kill');
 
 assert.equal(localRideEffectSubject(null), null,
   'the local human remains the null rider subject used by the ride layer');

@@ -424,7 +424,7 @@ namespace OpenSlope.Importer
         public string BreakLogoScanlineMatch = "Mdl_Lcdscan";               // the scrolling scanline overlay (hidden on break, like the game)
         public float  BreakLogoTriggerInflate = 60f;   // SSX units (~0.6 m) the pass-through trigger box GROWS beyond the screen bounds on every side, so a fast rider reliably catches the thin panel
         public bool   BreakLogoRespawn        = true;  // re-arm the screen after a break (persistent free-roam world stays whole; you can break it again)
-        public float  BreakLogoRespawnDelay   = 12f;   // seconds before a broken screen restores (respawn only)
+        public float  BreakLogoRespawnDelay   = 30f;   // seconds before a broken screen restores (respawn only)
         public float  BreakLogoMinRideSpeed   = 0f;    // min board speed (m/s) to break while riding; 0 = any contact (you ride through it). Walking always breaks on contact
         // What the break LOOKS like. In the real game the screen DISAPPEARS, shattering into shards that burst away -
         // it does NOT visibly swap to a "broken" picture. SSX's Mdl_Lcd_ScreenLogoBroken twin is in fact near-identical

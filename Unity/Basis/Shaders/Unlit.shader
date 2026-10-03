@@ -20,6 +20,7 @@ Shader "OpenSlope/UnlitDoubleSided"
 {
     Properties
     {
+        [HideInInspector] _EffectTime ("Effect clock override", Float) = -1
         _MainTex ("Texture", 2D) = "white" {}
         [Toggle(_TEXARRAY)] _UseTexArray ("Use Texture Array (batched)", Float) = 0
         _MainTexArray ("Texture Array", 2DArray) = "" {}
@@ -135,6 +136,7 @@ Shader "OpenSlope/UnlitDoubleSided"
             TEXTURE2D(_LightmapTex);        SAMPLER(sampler_LightmapTex);
 
             CBUFFER_START(UnityPerMaterial)
+                float _EffectTime;
                 float4 _MainTex_ST;
                 float  _Cutoff;
                 float  _LightmapGain, _LightmapStrength, _LightmapContrast;
@@ -193,7 +195,7 @@ Shader "OpenSlope/UnlitDoubleSided"
                 // in UV0.w (0 = anchored base, 1 = free tip). World-phased so neighbours ripple out of sync;
                 // converted back to object space so the amount stays world-consistent under the level scale.
                 float _wgt = v.uv.w;
-                float _wt = _Time.y * _WindSpeed;
+                float _wt = (_EffectTime >= 0 ? _EffectTime : _Time.y) * _WindSpeed;
                 float3 _wwp = mul(GetObjectToWorldMatrix(), float4(posOS, 1.0)).xyz;
                 float _ws = (_wwp.x + _wwp.z) * _WindFreq + _wt;
                 float3 _woff = float3(sin(_ws) + sin(_ws * 2.3) * 0.35, 0.0, cos(_ws * 1.7) * 0.5) * (_WindStrength * _wgt);
@@ -202,7 +204,7 @@ Shader "OpenSlope/UnlitDoubleSided"
 
                 o.positionCS = TransformObjectToHClip(posOS);
                 o.uv = TRANSFORM_TEX(v.uv.xy, _MainTex)
-                     + UvScrollElapsed(_Time.y, _ScrollCycle) * _ScrollSpeed.xy;
+                     + UvScrollElapsed((_EffectTime >= 0 ? _EffectTime : _Time.y), _ScrollCycle) * _ScrollSpeed.xy;
                 o.uv2 = v.uv1;
                 o.color = v.color;
                 o.fogCoord = ComputeFogFactor(o.positionCS.z);

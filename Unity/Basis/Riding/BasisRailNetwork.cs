@@ -192,6 +192,12 @@ namespace OpenSlope.BasisPlugin
 
         // Turn a runtime-gated rail on (or off). Called by a rail gate when the rider crosses the trigger that makes a
         // MainType-25 rail grindable. Cheap: flips a bool the lock-on query reads - no grid rebuild.
+        public bool IsRailEnabled(int rail)
+        {
+            if (!_ready) { Bake(); if (!_ready) return false; }
+            return _railEnabled != null && rail >= 0 && rail < _railEnabled.Length && _railEnabled[rail];
+        }
+
         public void SetRailEnabled(int rail, bool on)
         {
             if (!_ready) { Bake(); if (!_ready) return; }

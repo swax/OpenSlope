@@ -25,6 +25,8 @@ namespace OpenSlope.BasisPlugin
     // add this by hand - the importer builds the hierarchy and BasisWiring copies every field.
     public class BasisAnimatedProp : MonoBehaviour
     {
+        [HideInInspector] public bool effectStopped;
+
         [Header("Clip (from the SSF AnimObject params)")]
         public float clipLength = 3f;
         [Tooltip("1 = wrap loop, 2 = ping-pong, anything else = play once and hold the last pose.")]
@@ -108,6 +110,7 @@ namespace OpenSlope.BasisPlugin
         // Fire the prop's one-shot (open the door / start the roll-away). No-op on a non-triggered prop.
         public void Trigger()
         {
+            if (effectStopped) return;
             if (!triggered) return;
             if (_u >= 1f) { _endSince = Time.time; _dir = 0; }
             else _dir = 1;
@@ -144,6 +147,7 @@ namespace OpenSlope.BasisPlugin
         // Grant a delta-gated prop pokeSeconds of clip budget (the SSF AddDelta). No-op on a non-gated prop.
         public void Poke()
         {
+            if (effectStopped) return;
             if (deltaGated) _budget += pokeSeconds;
         }
 
@@ -151,6 +155,7 @@ namespace OpenSlope.BasisPlugin
         // Refused while one runs or after an end mode has latched it, as the engine's own guard refuses it.
         public void TriggerCombo()
         {
+            if (effectStopped) return;
             if (!combo || _comboOn || _comboDone || _snapPos == null) return;   // _snapPos null = Start has not run
             int n = segTransforms == null ? 0 : segTransforms.Length;
             for (int i = 0; i < n; i++)
@@ -176,6 +181,7 @@ namespace OpenSlope.BasisPlugin
 
         void Update()
         {
+            if (effectStopped) return;
             int n = segTransforms == null ? 0 : segTransforms.Length;
             if (n == 0 || clipLength <= 0f) return;
 

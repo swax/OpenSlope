@@ -86,7 +86,7 @@ namespace OpenSlope.BasisPlugin
         public bool respawn = true;
 
         [Tooltip("Seconds after a break before the screen restores (respawn only).")]
-        public float respawnDelay = 12f;
+        public float respawnDelay = 30f;
 
         [Header("Grow-back on respawn (star-burst breakables)")]
         [Tooltip("On respawn, GROW the restored prop back from nothing (like the trick gems) instead of popping it in " +

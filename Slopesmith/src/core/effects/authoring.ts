@@ -763,21 +763,41 @@ export function authoredPropMaterialControl(document: EffectsDocument | null | u
   if (!document || !propId) return null;
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   const slot = attachment ? document.slots.find(item => item.id === attachment.slot) : null;
-  if (!slot) return null;
   let crackedControl: MaterialControl | null = null;
+  let installedControl: MaterialControl | null = null;
+  let hasControl = false;
+  const seen = new Set<string>();
+  const inspect = (graph: { id: string; nodes: EffectNode[] } | null | undefined): void => {
+    if (!graph || seen.has(graph.id)) return;
+    seen.add(graph.id);
+    installedControl ??= materialControlFromGraph(graph);
+    for (const node of graph.nodes) {
+      hasControl ||= node.mainType === 3 || node.mainType === 9
+        || !!node.semanticType?.startsWith('property.node-') || node.semanticType === 'property.breakable-kill';
+      if (node.references?.function)
+        inspect(document.functions.find(fn => fn.id === node.references!.function));
+    }
+  };
   for (const circumstance of MATERIAL_CIRCUMSTANCE_ORDER) {
-    const graphId = slot.circumstances[circumstance];
+    const graphId = slot?.circumstances[circumstance];
     const graph = graphId ? document.graphs.find(item => item.id === graphId) : null;
-    const control = materialControlFromGraph(graph);
-    // A receiver only earns a material of its own when its graph also carries the bound-node op that writes
-    // one. Authored graphs send that op directly; the reference path additionally follows shared functions,
-    // which authoring has no way to build.
-    if (control && graph!.nodes.some(node => node.mainType === 3 || node.mainType === 9)) return control;
+    inspect(graph);
     // Crack's intact -> cracked texture selection is implicit in the native handler, not a TextureFlip node in
     // the graph. Remember it as the fallback receiver so this placement gets a private two-frame material.
     if (circumstance === 'collision') crackedControl = crackedMaterialControlFromGraph(graph);
   }
-  return crackedControl;
+  // A switch can stop another prop's receiver. Give that target its own material even when its own slot
+  // contains only the always-running constructor, or stopping it also freezes unrelated placements.
+  const targets = new Set(document.instances.filter(instance => {
+    const extension = instance.extensions?.slopesmith;
+    return extension && typeof extension === 'object' && !Array.isArray(extension)
+      && extension.placement === propId;
+  }).map(instance => instance.id));
+  for (const owner of [...document.graphs, ...document.functions]) for (const node of owner.nodes) {
+    if (node.mainType !== 7 || !targets.has(node.references?.instance ?? '')) continue;
+    inspect(document.graphs.find(graph => graph.id === node.references?.effectGraph));
+  }
+  return hasControl && installedControl ? installedControl : crackedControl;
 }
 
 /** Compatibility helper for callers interested only in the recovered UV scroll. */

@@ -20,7 +20,7 @@ import {
   type EffectCounterState,
 } from '../../../core/effects/counter';
 import {
-  animComboFromNode, animObjectFromNode, materialWorldEffectsFromNode, type AnimObjectEffect,
+  animComboFromNode, animDeltaFromNode, animObjectFromNode, materialWorldEffectsFromNode, type AnimObjectEffect,
 } from '../../../core/effects/world-effects';
 import { resolveCollisionSound, type CollisionSoundBank } from '../../../core/effects/collision-sound';
 import { authoredEffectBindings, createEmptyEffectsDocument, effectGraphHasTimerEmitter, effectNodeSoundFile, emitterWorldPosition, particleEmitterFields } from '../../../core/effects/authoring';
@@ -80,14 +80,14 @@ import {
 } from './prop-sound';
 import type { PropInstance } from '../../../core/reference/props';
 import {
-  boostVolumeSpec, crackedBreakTombstonesCollider, crackedSurfaceSpec, numberField,
+  boostVolumeSpec, crackedSurfaceSpec, numberField,
   playProximityRadius,
 } from './reference-effects-nodes';
 import {
   applyInvInertia, composeMotion, mulberry32, randomUnitVector, sampleSplinePath, splinePoseMatrices,
 } from './reference-effects-motion';
 
-export { boostVolumeSpec, crackedBreakTombstonesCollider, crackedSurfaceSpec, playProximityRadius };
+export { boostVolumeSpec, crackedSurfaceSpec, playProximityRadius };
 
 const MAX_PARTICLE_HEADS = 2400;
 // P6 draws U1 trail copies for every logical particle. The largest retail volley is seven launchers x 200 heads
@@ -131,9 +131,7 @@ type RunSubject = number | null | 'remote';
 export function localRideEffectSubject(subject: RunSubject): number | null | undefined {
   return subject === 'remote' ? undefined : subject;
 }
-/** A Cracked node's Trigger chain gives DeadNodeMode 2 one additional, measured job: on a called invisible
- * support twin it tombstones that twin's collision. Keep the cause on the thread so ordinary tombstones in
- * unrelated collision graphs retain their existing node-lifetime meaning. */
+/** Cracked surfaces share a restore deadline with their trigger chain even when it has no explicit kill. */
 type RunCause = 'ordinary' | 'cracked-break';
 export type EffectRuntimeObject = { kind: 'reference'; index: number } | { kind: 'authored'; id: string };
 const runtimeObjectKey = (object: EffectRuntimeObject | RideObstacleObject) => object.kind === 'reference'
@@ -181,6 +179,8 @@ export interface EffectsPlayHooks {
   restoreRideObject?(object: EffectRuntimeObject): void;
   /** Restore one host's material/animation receivers without rewinding any other live interaction. */
   resetObjectEffects?(object: EffectRuntimeObject): void;
+  /** Freeze only this host's installed model/material receiver at its current pose. */
+  setObjectEffectsStopped?(object: EffectRuntimeObject, stopped: boolean): void;
   resetSceneRuntime?(): void;
   groundAt?(object: EffectRuntimeObject, position: THREE.Vector3): THREE.Vector3 | null;
   objectRadius?(object: EffectRuntimeObject): number | null;
@@ -197,6 +197,9 @@ export interface EffectsPlayHooks {
    *  Unlike the material receivers above, a combo restores ITSELF — the window runs once and ends — which is
    *  why Preview is allowed to fire one without owning a reset. */
   hasTriggerableCombo?(object: EffectRuntimeObject): boolean;
+  /** Budgeted model clips hold their pose; Preview owns restoring their receiver when stopped. */
+  hasBudgetedAnimation?(object: EffectRuntimeObject): boolean;
+  startAnimDelta?(object: EffectRuntimeObject, effect: AnimObjectEffect): boolean;
   /** Inspector-only model-clip preview, owned by the prop renderer that has the recovered model curves. */
   previewAnimObject?(object: EffectRuntimeObject, effect: AnimObjectEffect,
     autoReturnDelay?: number | null): boolean;
@@ -639,6 +642,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const pieceThrows = new Map<string, PieceThrow>();
   const flexMotions = new Map<string, FlexMotion>();
   const splineMotions = new Map<string, SplineMotion>();
+  const stoppedNodes = new Map<string, RuntimeHost>();
+  const killedDetached = new Set<string>();
+  const railSwitches = new Map<string, { enabled: boolean; host: string }>();
   /** Per-host transient restores. Re-arming the same host replaces its prior due time. */
   const interactionResets = new Map<string, InteractionReset>();
   /** Pickup hosts currently inside Unity's snap-away / hold / grow-back cycle. */
@@ -835,9 +841,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    * HideShowOff/HideRace targets cannot be replayed into a mode where they were never instantiated. */
   function hostIsPresentInPlayMode(host: RuntimeHost, mode: RaceMode): boolean {
     const hidden = effectModeHiddenInstanceIds(host.document, mode);
-    const hiddenByMode = host.reference
-      ? hidden.has(`instance:${host.reference.instance.index}`)
-      : [...hidden].some(stableId => authoredHostByInstance(host.document, stableId)?.key === host.key);
+    const reference = host.reference;
+    // Imported instance IDs are zero-padded. Resolve them exactly as mode setup does instead of rebuilding
+    // an unpadded ID, which allowed a later interaction reset to resurrect mode-hidden rail models.
+    const hiddenByMode = [...hidden].some(stableId => reference
+      ? referenceInstanceByStableId(reference.data, stableId)?.index === reference.instance.index
+      : authoredHostByInstance(host.document, stableId)?.key === host.key);
     let showoffOnly = false;
     if (host.reference) showoffOnly = nativeInstanceIsShowoffOnly(host.reference.instance);
     else if (host.object.kind === 'authored') {
@@ -1039,6 +1048,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    * but it cannot instantiate a Showoff-only gem or an explicitly hidden Race/Showoff target. */
   function restoreInteractionHost(reset: InteractionReset): void {
     const { host } = reset;
+    stoppedNodes.delete(host.key);
+    killedDetached.delete(host.key);
+    hooks.setObjectEffectsStopped?.(host.object, false);
+    for (const [key, state] of railSwitches) if (state.host === host.key) railSwitches.delete(key);
     dynamicBodies.delete(host.key);
     pieceThrows.delete(host.key);
     flexMotions.delete(host.key);
@@ -1055,6 +1068,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     if (hostIsPresentInPlayMode(host, playMode)) {
       setHostVisible(host, null);
       hooks.restoreRideObject?.(host.object);
+      for (const binding of playBindings(host.object.kind))
+        if (binding.host.key === host.key && binding.circumstance === 'persistent')
+          installPersistentGraph(binding.host, binding.graph);
     } else {
       setHostVisible(host, false);
       hooks.retireRideObject?.(host.object);
@@ -1083,9 +1099,15 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function clearPreviewSceneRuntime() {
+    const hadHosts = previewSceneHosts.size > 0;
     for (const host of previewSceneHosts.values()) {
+      stoppedNodes.delete(host.key);
+      killedDetached.delete(host.key);
+      hooks.setObjectEffectsStopped?.(host.object, false);
+      hooks.resetObjectEffects?.(host.object);
       dynamicBodies.delete(host.key);
       pieceThrows.delete(host.key);
+      flexMotions.delete(host.key);
       setHostPieceMotions(host, null);
       setHostWorldMatrix(host, null);
       setHostWorldCopies(host, null);
@@ -1093,9 +1115,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     }
     previewSceneHosts.clear();
     previewSceneResetAt = -1;
+    if (hadHosts) installWorldPersistentMotions();
   }
 
   function clearPlayRuntime(resetScene = true) {
+    for (const host of stoppedNodes.values()) hooks.setObjectEffectsStopped?.(host.object, false);
+    stoppedNodes.clear(); killedDetached.clear(); railSwitches.clear();
     clearRuntimeSource('play');
     // A full scene/data reset also drops ambient or direct-preview movers. Their host transforms are reset by the
     // renderer hook below, but renderer-owned route-line geometry still needs explicit GPU disposal here.
@@ -1174,7 +1199,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       host = authoredHostByInstance(document, referencedInstance)
         ?? (authoredProps[0] ? authoredHost(document, authoredProps[0]) : null);
     }
-    if (host) scheduleGraph(host, { id: fn.id, name: fn.name, nodes: fn.nodes }, elapsed, 0, 'play');
+    // Mode setup is persistent configuration, even when it calls the same DeadNode graph as a breakable.
+    // An explicit null propagates through nested calls so none of its hosts acquire a respawn deadline.
+    if (host) scheduleGraph(host, { id: fn.id, name: fn.name, nodes: fn.nodes }, elapsed, 0,
+      'play', false, null, 'ordinary', null, null);
   }
 
   /**
@@ -1233,6 +1261,35 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       } else if (spline.id.startsWith('spline:')) out.add(spline.id.slice('spline:'.length));
     }
     return out;
+  }
+
+  function railEnabled(target: 'authored' | 'reference', id: number | string, initial: boolean): boolean {
+    return railSwitches.get(`${target}:${id}`)?.enabled ?? initial;
+  }
+
+  function installNode(host: RuntimeHost): void {
+    if (!stoppedNodes.delete(host.key)) return;
+    dynamicBodies.delete(host.key); pieceThrows.delete(host.key); flexMotions.delete(host.key);
+    playCounters.delete(host.key);
+    hooks.setObjectEffectsStopped?.(host.object, false);
+    hooks.resetObjectEffects?.(host.object);
+  }
+
+  function stopNode(host: RuntimeHost, destroy: boolean, killDetached = false): void {
+    stoppedNodes.set(host.key, host);
+    hooks.setObjectEffectsStopped?.(host.object, true);
+    if (destroy) {
+      dynamicBodies.delete(host.key); pieceThrows.delete(host.key); flexMotions.delete(host.key);
+      playCounters.delete(host.key);
+    }
+    if (!killDetached) return;
+    killedDetached.add(host.key);
+    const motion = splineMotions.get(host.key);
+    if (motion) disposeSplineLine(motion);
+    splineMotions.delete(host.key);
+    setHostWorldCopies(host, null);
+    for (const [key, emitter] of continuousEmitters)
+      if (emitter.host.key === host.key) continuousEmitters.delete(key);
   }
 
   /**
@@ -1337,8 +1394,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     seen.add(visitKey);
     for (const node of graph.nodes) {
       const command = effectPlayCommand(node);
-      if (command?.kind === 'instance-hide' || command?.kind === 'mesh-throw'
-        || crackedBreakTombstonesCollider(node)) return true;
+      if (command?.kind === 'instance-hide' || command?.kind === 'mesh-throw') return true;
       if (node.mainType === 7) {
         const called = calledInstance(host, node);
         if (called && graphHasBreakableAction(called.host, called.graph, seen)) return true;
@@ -1388,9 +1444,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     collisionContact: CollisionEmitterContact | null = null) {
     if (source === 'play' && breakableResetAt !== null)
       armInteractionReset(host, breakableResetAt, 'breakable');
-    if (source === 'play' && cause === 'cracked-break' && crackedBreakTombstonesCollider(node))
-      hooks.retireRideObject?.(host.object);
+    // Repeated ambient scans are not new constructors after a kill. Explicit graph calls can install again.
+    if (continuous && killedDetached.has(host.key)) return;
     if (node.mainType === 2 && particleEmitterFields(node)) {
+      killedDetached.delete(host.key);
       spawnEmitter(host, node, source, continuous, collisionContact); return;
     }
     if (node.mainType === 8) {
@@ -1412,10 +1469,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       return;
     }
     if (source === 'play') {
+      if ((node.mainType === 3 || node.mainType === 9) && stoppedNodes.has(host.key)) return;
       // A Counter reached here rather than through the Play-start installer — a persistent graph that also
       // carries an emitter, say. Seed it only if it is not already installed: re-running the graph must not
       // wipe the inputs already ticked off.
       const install = effectCounterInstall(node);
+      if (install !== null && !continuous) installNode(host);
       if (install !== null && !playCounters.has(host.key)) {
         playCounters.set(host.key, newEffectCounter(install));
         counterLog(`${host.key} installed late from a scheduled graph · needs ${install}`);
@@ -1449,13 +1508,24 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         }
       }
     }
+    const animDelta = animDeltaFromNode(node);
+    if (animDelta && (source === 'preview' || source === 'play')) {
+      installNode(host);
+      const started = hooks.startAnimDelta?.(host.object, animDelta);
+      if (source === 'preview') {
+        if (started) markPreviewSceneHost(host, Number.POSITIVE_INFINITY);
+        else spawnPulse(host.position(), 0xb66cff, 0.9, source);
+      }
+      return;
+    }
     // A combo node's PERSISTENT behaviour is its idle window, which is an ordinary model clip; the reaction
     // belongs to the trigger command, not to this node. So Preview runs the idle half and nothing else, the
     // same split Model clip (budgeted) and Grant clip budget already have.
     const animObject = animObjectFromNode(node) ?? animComboFromNode(node);
     if (animObject && (source === 'preview' || source === 'play')) {
+      installNode(host);
       // Unity holds an ordinary triggered prop at its far pose for eight seconds, then runs it backward to rest.
-      // Break-owned animation is different: its enclosing BreakableLogo restore rewinds it at twelve seconds.
+      // Break-owned animation is rewound by its enclosing breakable-chain reset.
       const autoReturnDelay = source === 'play' && breakableResetAt === null
         ? ANIMATED_PROP_AUTO_RESET_SECONDS : null;
       if (!hooks.previewAnimObject?.(host.object, animObject, autoReturnDelay) && source === 'preview')
@@ -1466,13 +1536,15 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     // ungating the host's own material — the law the renderer already built from this node. Test and the
     // ambient toggle keep their existing owners; this is the manual Preview's half of the same wiring the
     // model clip above has, and without it a UV scroll answers ▶ Preview effect with nothing but a ring.
-    if (source === 'preview' && materialWorldEffectsFromNode(node)) {
+    if ((source === 'preview' || source === 'play') && materialWorldEffectsFromNode(node)) {
+      installNode(host);
+      if (source === 'play') return;
       if (!hooks.previewMaterialEffect?.(host.object)) spawnPulse(host.position(), 0xb66cff, 0.9, source);
       return;
     }
     const playCommand = effectPlayCommand(node);
     const previewVisual = source === 'preview' && playCommand
-      && (playCommand.kind === 'instance-hide' || playCommand.kind === 'mesh-throw'
+      && (playCommand.kind === 'instance-hide' || playCommand.kind === 'node-stop' || playCommand.kind === 'mesh-throw'
         || playCommand.kind === 'roller' || playCommand.kind === 'spline-motion');
     // A bound-node command is addressed to whatever material property is installed on the host, and Preview
     // may run one exactly when the scene can put that material back afterwards. Two ways it can: a one-shot
@@ -1481,8 +1553,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     // case: its receiver is a phase-only UV scroll, and the phase this writes is the whole visible effect.
     const previewControl = source === 'preview' && playCommand?.kind === 'property-control'
       && (!!hooks.hasPulseProperty?.(host.object) || !!hooks.previewMaterialEffect?.(host.object)
+        || (playCommand.command === 2 && !!hooks.hasBudgetedAnimation?.(host.object))
         || (playCommand.command === 3 && !!hooks.hasTriggerableCombo?.(host.object)));
     if (playCommand && (source === 'play' || previewVisual || previewControl)) {
+      if (previewControl && playCommand.kind === 'property-control' && playCommand.command === 2
+        && hooks.hasBudgetedAnimation?.(host.object)) markPreviewSceneHost(host, Number.POSITIVE_INFINITY);
       if (previewVisual) markPreviewSceneHost(host,
         playCommand.kind === 'mesh-throw' ? Math.max(0.6, playCommand.duration + 0.35)
           : playCommand.kind === 'roller' ? ROLLER_PREVIEW_SECONDS
@@ -1539,6 +1614,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         // reads it for. What it must not be is a second way to move the rider.
         return;
       case 'property-control': {
+        if (stoppedNodes.has(host.key)) return;
         const taken = hooks.controlProperty?.(host.object, command.command, command.value) ?? false;
         controlLog(`${host.key} command ${command.command} value ${command.value} (${source})`
           + ` · ${taken ? 'delivered' : 'NO RECEIVER on this prop — nothing took it'}`);
@@ -1556,18 +1632,28 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         return;
       }
       case 'instance-hide':
+        stopNode(host, true, command.killDetached);
         setHostVisible(host, false);
         if (source === 'play') hooks.retireRideObject?.(host.object);
         return;
+      case 'node-stop': stopNode(host, command.destroy); return;
+      case 'rail-toggle': {
+        const spline = host.document.splines.find(item => item.id === command.spline);
+        const id = host.object.kind === 'reference' ? spline?.originalIndex
+          : command.spline.startsWith('spline:') ? command.spline.slice('spline:'.length) : undefined;
+        if (id !== undefined) railSwitches.set(`${host.object.kind}:${id}`, { enabled: command.enabled, host: host.key });
+        return;
+      }
       case 'roller':
+        installNode(host);
         if (source === 'play' && breakableResetAt === null)
           armInteractionReset(host, elapsed + MOVABLE_PROP_RESPAWN_SECONDS, 'movable');
         startRoller(host, command, source);
         return;
-      case 'mesh-throw': startMeshThrow(host, command); return;
-      case 'fence-flex': startFenceFlex(host, command.amount); return;
-      case 'flag-wave': startFlagWave(host, command.amplitude, command.wavelength); return;
-      case 'spline-motion': startSplineMotion(host, command, source); return;
+      case 'mesh-throw': installNode(host); startMeshThrow(host, command); return;
+      case 'fence-flex': installNode(host); startFenceFlex(host, command.amount); return;
+      case 'flag-wave': installNode(host); startFlagWave(host, command.amplitude, command.wavelength); return;
+      case 'spline-motion': killedDetached.delete(host.key); startSplineMotion(host, command, source); return;
     }
   }
 
@@ -2579,6 +2665,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       }
       const animObject = animObjectFromNode(node) ?? animComboFromNode(node);
       if (animObject && hooks.startAnimObject?.(host.object, animObject)) continue;
+      const animDelta = animDeltaFromNode(node);
+      if (animDelta && hooks.startAnimDelta?.(host.object, animDelta)) continue;
       const command = effectPlayCommand(node);
       if (command?.kind === 'flag-wave' || command?.kind === 'spline-motion'
         || command?.kind === 'property-control') {
@@ -2601,7 +2689,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    * instance/function hand-offs as Play, but install only spline movers here: model/material effects have their
    * own render-layer clocks and control messages remain gameplay/runtime operations. */
   function installAmbientSplineGraph(host: RuntimeHost, graph: EffectGraph, depth = 0) {
-    if (depth > MAX_GRAPH_DEPTH) return;
+    if (depth > MAX_GRAPH_DEPTH || killedDetached.has(host.key)) return;
     for (const node of graph.nodes) {
       const command = effectPlayCommand(node);
       if (command?.kind === 'spline-motion') {
@@ -2836,6 +2924,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function stepDynamicBodies(dt: number) {
     for (const [key, body] of dynamicBodies) {
+      if (stoppedNodes.has(key)) continue;
       body.age += dt;
       if (body.age >= body.duration) {
         dynamicBodies.delete(key);
@@ -2867,6 +2956,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function stepPieceThrows(dt: number) {
     for (const [key, body] of pieceThrows) {
+      if (stoppedNodes.has(key)) continue;
       body.age += dt;
       if (body.age >= body.duration) {
         pieceThrows.delete(key);
@@ -2887,6 +2977,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function stepFlexMotions(dt: number) {
     const worldUp = new THREE.Vector3(0, 1, 0);
     for (const motion of flexMotions.values()) {
+      if (stoppedNodes.has(motion.host.key)) continue;
       let angle: number;
       if (motion.kind === 'flag') {
         motion.phase += motion.velocity * dt;
@@ -3123,6 +3214,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     isPlaying: () => activePlayTarget !== null,
     step, beginPlay, endPlay, applyRideEvent, propCollision, shovedBodySamples, boostVolumeSpecs, resetVolumeKeys,
     modeDisabledRails,
+    railEnabled,
     crackedSurfaceSpecs, onCrackedChange, onCrackedBreak,
     raceCountdown: () => referenceRaceCountdown(data),
     instanceWorldPosition(index: number): THREE.Vector3 | null {

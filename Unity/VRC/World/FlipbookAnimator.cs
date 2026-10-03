@@ -36,6 +36,8 @@ namespace OpenSlope.VrcPlugin
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class FlipbookAnimator : UdonSharpBehaviour
     {
+        [HideInInspector] public bool effectStopped;
+
         [Tooltip("Target renderer per flipbook slot (parallel arrays the importer fills).")]
         public Renderer[] Renderers;
         [Tooltip("Material-slot (submesh) index on the matching renderer.")]
@@ -143,6 +145,7 @@ namespace OpenSlope.VrcPlugin
 
         void Update()
         {
+            if (effectStopped) return;
             if (!_ready) return;
             float t = Time.time;   // Udon has no Time.timeAsDouble; float is fine for a cosmetic flipbook
             int n = _groups;

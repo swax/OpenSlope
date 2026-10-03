@@ -60,9 +60,9 @@ public static class BreakableClassifier
     // instant breakable.
     public sealed class Member { public string ClusterKey = ""; public string Role = ""; public bool IsDebris; public float[]? Throw; public float[]? BurstColor; public float[]? Anim; public float BreakDelay; public int BreakSound = -1; public float CrackStrength; public float CrackLifetime; public int CrackSound = -1; }
 
-    // Does a type0 node mark the prop as a break action? Two observed break actions, both DISTINCT from look-alikes:
-    //  - Sub5 with DeadNodeMode==4: the hard kill the fences/hole-covers use to hide the intact. NOT Sub5/Dead2,
-    //    which is what a SPEED-BOOST pad's effect carries (it's not a break) - so the DeadNodeMode==4 is load-bearing.
+    // Specialized mesh-break classification: mode 4 tags fences/hole-covers as breakables. Modes 2/3 also
+    // hide their source, but do not by themselves imply shards or a debris burst; EffectLifecycleBundle
+    // preserves those ordinary hides, while boost pads keep their specialized pop/regrow behavior.
     //  - Sub20: mesh-throw (Unity docs/036). On branches it animates the source itself; on revealed _Junk twins it throws
     //    the broken pieces. NOT 11 (TextureFlip) / 12 (Fence flex) - persistent, non-break.
     static bool IsBreakAction(SsfType0 t) => (t.SubType == SsfType0Sub.DeadNode && t.DeadNodeMode == 4) || t.SubType == SsfType0Sub.MeshAnim;
@@ -114,6 +114,11 @@ public static class BreakableClassifier
             // carrier) is always the intact screen (CollsionMode-2 pass-through; RE-confirmed, uniform on all levels).
             string cluster = (viaFunction ? "lcd_" : "brk_") + i;
             Set(map, i, cluster, "intact", reveals.Count == 0, throwParams);
+            // Keep the contact response until the authored hide command, including the short glass impact wait.
+            var hide = EffectTimeline.Read(root, ce, i).FirstOrDefault(c => c.Target == i
+                && c.Node.MainType == SsfMainType.Property
+                && c.Node.type0 is { SubType: SsfType0Sub.DeadNode, DeadNodeMode: >= 2 and <= 4 });
+            if (hide.Node != null) map[i].BreakDelay = hide.Delay;
             foreach (int t in reveals) Set(map, t, cluster, "broken", false, throwParams);
             foreach (int t in hides) if (t != i) Set(map, t, cluster, "scanline", false, throwParams);
 

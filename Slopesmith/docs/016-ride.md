@@ -2020,9 +2020,9 @@ to author the same simulated field.
 These are deliberately self-healing states, not permanent world edits. An ordinary triggered door or animated prop
 runs to its far pose, holds for Unity's **8 seconds**, then reverses to rest; another trigger while it is open extends
 that hold, and one during the return turns it around from its current pose. A breakable cluster or glass pane restores
-all of its touched hosts after Unity's **12 seconds**—visibility, thrown pieces, material/animation state and Play
+all of its touched hosts after **30 seconds**—visibility, thrown pieces, material/animation state and Play
 colliders—and a fragile pane gets its full crack strength and contact gate back. Knocked Roller bodies also return
-home on that 12-second cycle in Slopesmith. That last rule intentionally goes beyond Unity's generic Roller (Unity only
+home on that 30-second cycle in Slopesmith. That last rule intentionally goes beyond Unity's generic Roller (Unity only
 teleports its paired hydrant lids home): it prevents a missed event or a late join from leaving one browser with a
 permanently moved prop. Gems and pad pickups retain their existing snap-away, **0.5-second hold + 1.2-second grow-back**.
 Particles and fence flex already expire on their own. Consequently, once interactions stop, every connected client

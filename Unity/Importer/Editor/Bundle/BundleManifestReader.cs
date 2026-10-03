@@ -56,6 +56,7 @@ namespace OpenSlope.Importer
         public readonly List<Box> ContactSounds = new List<Box>();       // authored ride-through sound triggers
         public class Bucket
         {
+            public int InstanceIndex = -1;
             public string Node;
             public int ModeMask = 7;
             public bool PlayerBounce;
@@ -71,6 +72,8 @@ namespace OpenSlope.Importer
         }
         public class Box
         {
+            public int InstanceIndex = -1;
+            public string BreakCluster;
             public string Name;
             public int ModeMask = 7;
             public Vector3 Center;
@@ -272,6 +275,8 @@ namespace OpenSlope.Importer
         }
         public class AnimTriggerBox
         {
+            public int SourceIndex = -1;
+            public float Delay;
             public Vector3 Center;       // unscaled mesh space (placed under the level root, like the prop pivots)
             public Vector3 Size;
             [JsonProperty("Rotation")] float[] _rotation;
@@ -523,7 +528,18 @@ namespace OpenSlope.Importer
         {
             public int Index; public string Name;
             public Vector3 Center; public Vector3 Size;   // root-local mesh space; importer inflates the trigger box
+            public float[] Delays; public bool[] Enabled;
             public int[] Rails;                           // rail-network indices this gate enables (into the rail network)
+        }
+
+        public readonly List<EffectTarget> EffectTargets = new List<EffectTarget>();
+        public readonly List<EffectTrigger> EffectTriggers = new List<EffectTrigger>();
+        public class EffectTarget { public int Index; public string Name; }
+        public class EffectAction { public int Target; public int Mode; public float Delay; }
+        public class EffectTrigger
+        {
+            public int Index; public string Name; public Vector3 Center; public Vector3 Size;
+            public bool OneShot; public List<EffectAction> Actions;
         }
 
         // ---- teleports (spec 390): MainType-24 portal pairs (start volume -> destination instance) ----
@@ -683,6 +699,8 @@ namespace OpenSlope.Importer
                 if (j["Teleports"]?["Teleports"] is JArray tp) Teleports.AddRange(tp.ToObject<List<Teleport>>(ser));
                 if (j["HudMessages"]?["Messages"] is JArray hm) HudMessages.AddRange(hm.ToObject<List<HudMessage>>(ser));
 
+                if (j["EffectLifecycle"]?["Targets"] is JArray et) EffectTargets.AddRange(et.ToObject<List<EffectTarget>>(ser));
+                if (j["EffectLifecycle"]?["Triggers"] is JArray eg) EffectTriggers.AddRange(eg.ToObject<List<EffectTrigger>>(ser));
                 if (j["RailGates"]?["Gates"] is JArray rg) RailGates.AddRange(rg.ToObject<List<RailGate>>(ser));
 
                 if (j["Billboards"]?["Screens"] is JArray bbs) BillboardScreens.AddRange(bbs.ToObject<List<BillboardScreen>>(ser));

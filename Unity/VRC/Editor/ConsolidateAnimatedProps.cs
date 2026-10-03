@@ -32,7 +32,12 @@ namespace OpenSlope.VrcPlugin
         [MenuItem("OpenSlope/Optimize/Consolidate Animated Props", false, 501)]
         public static void Run()
         {
-            var props = Object.FindObjectsOfType<AnimatedPropU>(true).OrderBy(HierarchyPath).ToArray();
+            var controlled = new HashSet<AnimatedPropU>();
+            foreach (var target in Object.FindObjectsOfType<EffectTarget>(true))
+                if (target.animations != null) foreach (var animation in target.animations) if (animation != null) controlled.Add(animation);
+            foreach (var gate in Object.FindObjectsOfType<RailGate>(true))
+                if (gate.animations != null) foreach (var animation in gate.animations) if (animation != null) controlled.Add(animation);
+            var props = Object.FindObjectsOfType<AnimatedPropU>(true).Where(p => !controlled.Contains(p)).OrderBy(HierarchyPath).ToArray();
             if (props.Length == 0) { Debug.Log("OpenSlope: no AnimatedPropU in the scene - nothing to consolidate."); return; }
 
             bool created;
