@@ -19,6 +19,12 @@
 /* Idle Props mode is a simple launcher: one full-width action per row. Selection details hide it. */
 .sp-prop-launchers { padding: 8px 2px 2px; }
 .sp-prop-launcher-stack { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.sp-prop-launcher-section { border-top: 1px solid #2c3e50; padding-top: 3px; }
+.sp-prop-launcher-section > summary { padding: 5px 3px; color: #9fb3c8; font-size: 11px;
+  font-weight: 600; cursor: pointer; }
+.sp-prop-launcher-section > summary:hover { color: #eaf6ff; }
+.sp-prop-launcher-section > summary:focus-visible { outline: 1px solid #6ee7a8; outline-offset: 1px; }
+.sp-prop-launcher-items { display: flex; flex-direction: column; gap: 4px; padding-bottom: 5px; }
 .sp-prop-launcher { display: flex; width: 100%; align-items: center; justify-content: flex-start; gap: 7px; }
 /* borderless gizmo control (projection toggle): label + glyph sitting straight on the viewport */
 .sp-gizmo-btn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0;

@@ -43,8 +43,18 @@ function buildGemTools(ctx: ToolsContext) {
   const gem = store.selectedGem === null ? undefined
     : store.mdoc.gems?.find(entry => entry.id === store.selectedGem);
   if (gem) {
+    gui.add({ props: () => ctx.goToGemToolbox(gem.id!, 'props') }, 'props').name('Prop settings');
+    gui.add({ effects: () => ctx.goToGemToolbox(gem.id!, 'effects') }, 'effects').name('Effects');
+    const section = ctx.editSection('gem-settings', 'Gem');
+    for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
+      const position = {
+        get value() { return gem.pos[index]; },
+        set value(v: number) { if (Number.isFinite(v)) gem.pos[index] = v; },
+      };
+      section.add(position, 'value').name(`position ${axis} (m)`).listen().onChange(scheduleRebuild);
+    }
     gem.value ??= 2;
-    tip(gui.add(gem, 'value', GEM_TIERS).name('tier').onChange(scheduleRebuild),
+    tip(section.add(gem, 'value', GEM_TIERS).name('tier').onChange(scheduleRebuild),
       'This gem’s crystal + the trick-score multiplier it awards.');
     gui.add({ del: () => deleteSelectedGem() }, 'del').name('✕ delete gem');
     placementCancelButton(ctx);
@@ -55,6 +65,10 @@ function buildGemTools(ctx: ToolsContext) {
   tip(gui.add(gemTool, 'spacing', 1, 20, 0.5).name('row spacing (m)'), 'Gap between gems when you drag a row.');
   tip(gui.add(gemTool, 'value', GEM_TIERS).name('tier').onChange(rearm),
     'The crystal new gems drop as — and the trick-score multiplier they award.');
+  for (const label of ['Prop settings', 'Effects']) {
+    const action = gui.add({ open: () => {} }, 'open').name(label).disable();
+    tip(action, 'Place a gem first to open its settings.');
+  }
   placementCancelButton(ctx);
 }
 

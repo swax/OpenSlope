@@ -217,7 +217,7 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     for (const [id, names] of Object.entries(groups)) (bakedGroups[id] ??= []).push(...names);
   };
   // placement stable id → the object hierarchy its geometry moves under, for the packer to write as native
-  // ModelObjects. Only an imported GLB carrying a clip produces one.
+  // ModelObjects. Imported clips and upgraded gem props preserve their animation here.
   const propClips: BakedPropClips = {};
   // Imported GLB props (docs/032) bake from the Custom catalogue rather than a source level's prop table, so
   // they take their own pass below; everything else goes through the reference-prop bake.
@@ -235,6 +235,7 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     });
     const { obj: startObj, v, vt } = objCounts();
     const bake = bakePlacedProps(expanded, geometryOf, combiner, v, vt, scrollIndexOf);
+    Object.assign(propClips, bake.propClips);
     if (bake.obj) {
       files.text['Props.obj'] = startObj + bake.obj;
       propGroups.push(...bake.groups);

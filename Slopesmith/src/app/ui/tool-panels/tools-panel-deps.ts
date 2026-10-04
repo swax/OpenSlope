@@ -166,4 +166,6 @@ export type ToolsPanelDeps = {
   /** Jump to Effects mode; the mode switch carries the current Props selection to its effect host. A native
    * reference caller can ask to follow its first resolved Run edge directly to the receiving prop/effect. */
   goToEffects: (target?: { sourceIndex: number; called: true }) => void;
+  selectSpecialProp: (id: string) => void;
+  goToGemToolbox: (id: string, mode: 'props' | 'effects') => void;
 };

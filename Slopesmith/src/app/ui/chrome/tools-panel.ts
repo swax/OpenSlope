@@ -14,6 +14,7 @@ import { buildSculptTools } from '../tool-panels/sculpt';
 import { buildPlayTools } from '../tool-panels/play';
 import { createPropTools } from '../tool-panels/props';
 import { buildTrickTools } from '../tool-panels/tricks';
+import { buildSpecialPropTools } from '../tool-panels/special';
 import { createCreateTools } from '../tool-panels/create';
 import { createMeshSelectTools } from '../tool-panels/mesh-selection';
 import { createRetopologyTools } from '../tool-panels/retopology';
@@ -240,7 +241,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       && store.selectedScreen === null && store.selectedRefScreen === null
       // A HELD tool has replaced the launcher with its own panel, and its cancel is the way back — leaving the
       // Prop Library toggle above it would offer a second exit that puts nothing down.
-      && !store.railDrawing && !store.lineDrawing && !store.gemArmed && !viewport.lightPlacing;
+      && !store.armedProp && !store.railDrawing && !store.lineDrawing && !store.gemArmed && !viewport.lightPlacing;
   }
 
   function buildMixedEditSelectionTools() {
@@ -336,7 +337,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       else if (store.railDrawing || store.selectedRail !== null || store.selectedGem !== null || store.gemArmed) buildTrickTools(ctx);
       else if (store.selectedLight !== null || store.selectedRefLight !== null) propTools.buildLightTools();
       else if (viewport.lightPlacing) propTools.buildLightPlacementTools(); // a held light presets before the click
-      else propTools.buildPropTools();
+      else if (!buildSpecialPropTools(ctx)) propTools.buildPropTools();
       return;
     }
     if (viewport.edgeExtrusionStaged) { buildExtrudePlacementTools(ctx); return; }

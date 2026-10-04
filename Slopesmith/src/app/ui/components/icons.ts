@@ -121,7 +121,19 @@ export const VIEW_ICON = {
   props: svg(PROP_BOX_ICON_BODY), // box (props on/off)
   lights: svg('<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/>'), // light, sound, video + effect emitters
   addRail: svg(withPlus(RAIL_ICON_BODY)),     // two rails + ties, + badge (add rail)
+  addRailSpline: svg(withPlus('<path d="M3 18c5 0 4-12 9-12s4 8 9 8"/><path d="m4 15 2 5m5-16 2 5m6 2 2 5"/>')),
+  addMotionPath: svg(withPlus('<path d="M4 18c9 0 1-12 10-12h5m-3-3 3 3-3 3"/><circle cx="4" cy="18" r="2"/>')),
+  addTrigger: svg(withPlus(PROP_BOX_ICON_BODY)),
+  addFog: svg(withPlus('<path d="M3 7h18M5 12h14M3 17h18"/>')),
   addGem: svg(withPlus(GEM_ICON_BODY)),       // faceted gem, + badge (add gem)
+  addSpeedBoost: svg(withPlus(EFFECT_BOLT_ICON_BODY)),
+  addReset: svg(withPlus('<path d="M4 9a8 8 0 1 1 1 9M4 3v6h6"/>')),
+  addTeleport: svg(withPlus('<ellipse cx="12" cy="12" rx="5" ry="9"/><path d="M2 12h12m-3-3 3 3-3 3"/>')),
+  addDestination: svg(withPlus('<circle cx="12" cy="12" r="6"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>')),
+  addWind: svg(withPlus('<path d="M3 7h12c5 0 5-5 1-5M3 12h15c5 0 5 6 1 6M3 17h7"/>')),
+  addLift: svg(withPlus('<path d="M6 21h12M12 18V3m-5 5 5-5 5 5"/>')),
+  addTime: svg(withPlus('<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>')),
+  addTrickBoost: svg(withPlus('<path d="M7 5a8 8 0 1 1-3 8M3 4l4 1-1 4"/><path d="m9 12 3-3 3 3-3 3Z"/>')),
   addLight: svg(withPlus(BULB_ICON_BODY)),    // light bulb, + badge (add light)
   addScreen: svg(withPlus(SCREEN_ICON_BODY)), // billboard panel, + badge (add video screen)
   addSheet: svg(withPlus(SHEET_ICON_BODY)),   // fence panel, + badge (add sheet — docs/071)

@@ -73,7 +73,7 @@ drops the tube and ships the curve alone. That is the shape every original rail 
 along art that was going to be there anyway — a fallen trunk, a handrail model, the lip of a roof.
 
 - **Add rail pipe** (Props ▸ Prop Tools) draws both at once, which is the convenience.
-- **Add rail spline** (Effects ▸ Effect scenery) draws the curve alone, over a prop already placed.
+- **Add rail spline** (Props ▸ Paths & rails) opens the Effects spline editor to draw the curve alone, over a prop already placed.
 - **build pipe** in the Tricks tools moves an existing rail between the two.
 
 Those are two controls, **material** and **build pipe**, because they answer two independent questions. The
@@ -131,7 +131,7 @@ guide from z-fighting while real terrain in front still occludes it.
 ## Motion paths
 
 Effects such as subway trains and gondolas need a native spline without creating a rideable or visible rail.
-The Effects home panel therefore places a dedicated **motion path** beside **Add fog volume**. It uses the
+**Props ▸ Paths & rails ▸ Add motion path** opens the dedicated Effects path editor. It uses the
 same point-chain drawing, node dragging, name, height, and stable-ID machinery as grind rails, but appears as
 a purple guide only in Effects mode. It does not enter the editor/Unity grind network, bake a tube or support
 geometry into `Props.obj`, or appear under the Props-mode Tricks filter.

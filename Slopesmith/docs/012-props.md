@@ -18,6 +18,55 @@ The staged plan, all built:
    turn / size / delete; exported **textured** into `Props.obj` (+ `Materials.json` + copied tiles) so props
    ship with their real look.
 
+## Special prop shortcuts
+
+The idle Props launcher is the shared home for adding world objects. Its buttons are grouped into
+collapsible **Pickups & boosts**, **Paths & rails**, **Scenery & atmosphere**, and **Zones & travel**
+sections under **Special effect-backed props**, with **Standard static props** and its **Prop Library**
+above them. Both use the same header styling as the Effects **World objects** panel.
+**Add speed boost** and **Add trick boost** sit beside **Add gem**.
+Each picks up the corresponding pad model from an extracted course and uses normal prop placement:
+click to place, turn and size in Tools, Esc to cancel. If the library has no matching pad, the editor
+explains that a course containing boost pads must be imported first.
+
+**Add trigger box** sits with the gameplay zones; **Add rail pipe**, **Add rail spline**, and
+**Add motion path** share the paths section; **Add fog volume** sits with sheets, lights and screens.
+Trigger boxes and fog banks start near the current view target. These shortcuts open the existing
+trigger, fog or spline editor in Effects mode, keeping its selection and drawing tools. The Effects
+home panel has one **Add objects in Props** link instead of a separate creation menu.
+Presets configure ordinary props and effects, and their standard inspectors remain available;
+fog volumes and splines retain their own native data and dedicated editors.
+
+Pads start with ride-through bounding-box contact in both race modes, scrolling arrows, and the
+Effects catalogue's five-second speed or trick boost. The compact toolbox edits the duration before
+or after placement. Pads stamped with the same preset share an effect slot; the toolbox notes when
+changes will affect multiple placements. They use the existing Test and export effect paths.
+
+The launcher also adds **Reset zone**, **Teleport entrance**, **Teleport destination**, **Wind zone**,
+and **Vertical lift** at the current view target. Each opens its own compact toolbox. These are ordinary
+invisible trigger props, visible and selectable as boxes in Props and Effects modes. Move, turn and
+resize them with the gizmo or numeric controls. Reset zones start as wide, shallow catch volumes;
+wind controls expose strength, target speed and world-space direction; lifts expose target world
+height, strength and upward speed. Rotating a wind box does not rotate its world-space push direction.
+
+Adding a teleport entrance creates and pairs a destination 20 metres beside it. The destination picker
+can redirect an entrance to another placed prop; multiple entrances can share a destination. Pairing
+uses stable prop IDs and survives moving, renaming, reordering and saving. **Go to destination** and
+the destination's entrance buttons navigate between them. A destination is an invisible, non-contact
+marker; its position and heading determine arrival, using the native teleport's roughly 3 m side offset.
+
+Every placed special has **Prop settings** and **Effects** links. The standard Prop inspector and Effects
+editor link back to the compact settings and edit the same document fields. Older props carrying the
+corresponding effects are recognized too. Opening either link on an existing gem upgrades that gem to an
+ordinary prop with its native crystal, Showoff-only contact, spin, pickup particles and collection chain.
+The original gem record is replaced, so it is rendered and exported once. **Prop settings** opens the full
+inspector (transform, collision, lighting, sounds and materials), and **Effects** opens the actual attached
+graphs and node controls. The upgrade is undoable. Other legacy gems and the click/drag-row placement tool
+continue to work as before. Changing the score node can now change its award independently of the crystal.
+
+**Time bonus (unavailable)** explains why it cannot yet create a prop: its native effect encoding and
+export path have not been verified. The launcher does not create a nonfunctional placeholder.
+
 ## Where props live in an extracted level
 
 `snowknife import` writes the prop render, contact, material, and sound inputs the view reads from `Maps/<LEVEL>/`:

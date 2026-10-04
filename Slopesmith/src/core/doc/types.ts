@@ -581,6 +581,8 @@ export interface PlacedProp {
    *  per-axis extent in editor metres. It remains a placed prop so the existing stable-ID attachment join
    *  can compile its collision graph onto the packed native instance. */
   effectTrigger?: { size: V3 };
+  /** Compact task-specific inspector; geometry and effects remain ordinary editable prop data. */
+  specialKind?: import('../props/special').SpecialPropKind;
   /** Exact editable collision profile. Absent only in legacy documents, where the old Solid/effect rules are
    *  inferred until the first collision edit materializes this record. */
   nativeCollision?: NativeCollisionProfile;

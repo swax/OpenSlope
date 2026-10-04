@@ -393,14 +393,14 @@ and that surface row's cruise target; **Shape** says pipe or bare independently.
 A **bare** rail has no geometry in Props mode to send anyone to (docs/014): the
 grind and the pipe are unrelated records on disc, so a rail can perfectly well be
 the curve alone, laid along a fallen trunk or a handrail model that already has
-the shape. **Add rail spline**, beside *Add motion path* in **Effect scenery**,
+the shape. **Add rail spline**, beside *Add motion path* in **Props ▸ Paths & rails**,
 draws one — and because the curve is all there is, this panel keeps the whole of
 it: ground offset, extend, trim, delete, on exactly the shared point-chain
 actions a motion path uses. Delete follows the same line: it removes a bare rail
 and declines a piped one.
 
-That is also why the Effects-mode rail spline exists here rather than in the
-Tricks tools. Most reasons to lay a grind over existing art are effect-shaped —
+The creation shortcut lives in Props, while the detailed spline editor remains here.
+Most reasons to lay a grind over existing art are effect-shaped —
 the trunk that becomes grindable when the tree comes down — and a spline with
 nothing drawn on it is only visible in this mode's guide layer to begin with.
 
@@ -566,8 +566,8 @@ authoring workflow:
   be a trigger; put the contact on a second placement and reach the mover with
   **Run on another prop**. (A mover can also be stopped: it destroys itself the
   frame it finds instance flag `0x0800` set on its host, and clearing the flag
-  again will not bring it back.) In the Effects home panel choose **+ Add motion path** beside
-  **+ Add fog volume**, click at least two points on the mountain, then add Spline
+  again will not bring it back.) Choose **Props ▸ Paths & rails ▸ Add motion path**,
+  click at least two points on the mountain in its Effects editor, then add Spline
   mover to the prop. The route field keeps a stable path ID while
   speed, end behavior, orientation, instance count, and yaw offset remain
   semantic fields. **Show route line** generically exposes the native `U6` line-draw

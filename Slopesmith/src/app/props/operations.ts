@@ -2,6 +2,9 @@ import type { PlacedProp, PropBehaviour, V3 } from '../../core/doc/types';
 import { AUTHORED_MODEL_LEVEL, authoredModelLevelProps, findModelByNumber } from '../../core/doc/models';
 import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
+import type { NativeArt } from '../../core/export/provider';
+import { boostPadPreset, type BoostPadKind } from '../../core/props/boost-pad';
+import { promoteGem } from '../../core/props/gem';
 import {
   applyBehaviour, groupMemberDefaults, instanceBehaviour, resolvePropDefaults, sameBehaviour, sanitizePropBehaviour,
   stampBehaviour, type ResolvedPropDefaults, type StampBehaviour,
@@ -62,11 +65,16 @@ export function createPropOps(deps: PropOpsDeps) {
    * The effect follows the same source (docs/069 · Effects): the model's portable effect, the instance's own, or
    * — with `placementId` — the copied placement's effect slot, which the copies then share.
    */
-  type ArmFrom = { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string };
+  type ArmFrom = { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string;
+    preset?: ReturnType<typeof boostPadPreset> };
 
   function armBehaviour(level: string, model: number, from: ArmFrom):
-    Pick<ArmedProp, 'behaviour' | 'from' | 'effect'> {
+    Pick<ArmedProp, 'behaviour' | 'from' | 'effect' | 'specialKind'> {
+    if (from.preset) return { behaviour: structuredClone(from.preset.behaviour), from: 'preset',
+      specialKind: from.preset.effect.key.startsWith('boost-pad:speed') ? 'speed-boost' : 'trick-boost',
+      effect: { kind: 'template', template: structuredClone(from.preset.effect) } };
     if (from.behaviour) return { behaviour: stampBehaviour(level, from.behaviour), from: 'placement',
+      specialKind: store.mdoc.props?.find(prop => prop.id === from.placementId)?.specialKind,
       ...withEffect(placementEffect(from.placementId)) };
     const props = propLevels.get(level);
     const source = typeof from.sourceIndex === 'number'
@@ -337,7 +345,9 @@ export function createPropOps(deps: PropOpsDeps) {
    * placement's own slot — and then whatever effects the model declared for itself, so a snow gun goes down
    * already throwing snow. One path for a single drop and for a prop line's members (docs/070).
    */
-  function stampHeldEffects(id: string, armed: Pick<ArmedProp, 'level' | 'model' | 'name' | 'effect' | 'effectOff'>) {
+  function stampHeldEffects(id: string, armed: Pick<ArmedProp, 'level' | 'model' | 'name' | 'effect' | 'effectOff' | 'specialKind'>) {
+    const prop = store.mdoc.props?.find(item => item.id === id);
+    if (prop && armed.specialKind) prop.specialKind = armed.specialKind;
     // Before the declared effects, so a copy of an imported prop shares its source's effect rather than growing
     // a slot of its own.
     const held = armed.effect;
@@ -394,6 +404,40 @@ export function createPropOps(deps: PropOpsDeps) {
     if (store.currentMode !== 'props') setMode('props'); else { scheduleRebuild(); rebuildTools(); updateCmdSheet(); }
     propLib.highlight(level, model);
     toast(`${shortPropName(name)} — click to place · Alt+scroll or ← → turns it · Esc puts it down`, 'info');
+  }
+
+  /** Quick placement of a visible pad with its contact and boost already wired. */
+  async function armBoostPad(kind: BoostPadKind) {
+    try {
+      const art = await fetchJson<NativeArt>('/api/props/native-art');
+      const pad = art.boostPads?.[kind];
+      if (!pad) {
+        toast(`No ${kind} boost pad model is available. Import a course with boost pads first.`, 'err');
+        return;
+      }
+      await ensurePropLevel(pad.level);
+      await armProp(pad.level, pad.model, pad.name, {
+        preset: boostPadPreset(kind, propDefaults(pad.level, pad.model).behaviour),
+      });
+    } catch (e) { toast(`Boost pad load failed: ${e}`, 'err'); }
+  }
+
+  async function editableGem(id: string): Promise<PlacedProp | null> {
+    const doc = store.mdoc;
+    const gem = doc.gems?.find(item => item.id === id);
+    if (!gem) return null;
+    try {
+      const art = await fetchJson<NativeArt>('/api/props/native-art');
+      const tier = (gem.value ?? 2) >= 5 ? 5 : (gem.value ?? 2) >= 3 ? 3 : 2;
+      const source = art.gemTiers.find(item => item.tier === tier);
+      if (!art.gemLevel || !source?.effect) throw new Error('Import a course with this gem’s model and effects first.');
+      const library = await ensurePropLevel(art.gemLevel);
+      const model = library.models.find(item => item.id === source.model);
+      if (!model?.subs.length) throw new Error('The gem model has no geometry.');
+      if (store.mdoc !== doc || !doc.gems?.includes(gem)) return null;
+      return promoteGem(doc, id, { level: art.gemLevel, model: source.model, name: model.name },
+        propDefaults(art.gemLevel, source.model).behaviour, source.effect);
+    } catch (e) { toast(`Could not open gem tools: ${e instanceof Error ? e.message : e}`, 'err'); return null; }
   }
 
   /** Pick up a GROUP (from the Library's Groups section, or middle-clicking a placed group): arm the whole
@@ -541,7 +585,7 @@ export function createPropOps(deps: PropOpsDeps) {
     shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
     ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
     reloadImportedProps,
-    armProp, armGroupById, disarmProp, deselectPropOrLight,
+    armProp, armBoostPad, editableGem, armGroupById, disarmProp, deselectPropOrLight,
     deleteSelectedProp, deleteMultiSelProps, removeFromMultiSel, identifyMultiProp,
   };
 }
