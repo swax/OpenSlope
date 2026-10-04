@@ -11,7 +11,7 @@ import {
 } from '../../core/props/defaults';
 import {
   attachEffectTemplateToProp, attachEffectToProp, attachModelEffectsToProp, createEmptyEffectsDocument,
-  detachEffectFromProp, effectAttachments,
+  detachEffectFromProp, effectAttachments, nextPlacedPropId,
 } from '../../core/effects/authoring';
 import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
 import type { UvScrollEffect } from '../../core/effects/world-effects';
@@ -58,7 +58,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /**
    * What a held prop will stamp (docs/069), by how it was picked up:
-   *  - `behaviour`: copying a placement (MMB on it, or its ＋ place) — its own settings, exactly;
+   *  - `behaviour`: copying a placement (MMB, or a replacement pick) — its own settings, exactly;
    *  - `sourceIndex`: an exact reference instance (MMB on the reference, or its inspector's ＋ place) — that
    *    instance's own contact, surface, hit sound, self-lighting and mode layer;
    *  - neither: a library pick — the MODEL's defaults.
@@ -377,6 +377,71 @@ export function createPropOps(deps: PropOpsDeps) {
     return take(armed);
   }
 
+  type Replacement = { doc: Store['mdoc']; selection: (PlacedProp | undefined)[]; targets: PlacedProp[] };
+  let replacement: Replacement | null = null;
+
+  function replacementSelection() {
+    const indices = store.multiSel.length ? store.multiSel : store.selectedProp === null ? [] : [store.selectedProp];
+    return [...new Set(indices)].map(index => store.mdoc.props?.[index]);
+  }
+
+  /** A replacement belongs to this document and selection, never to reused array indices after undo. */
+  function isReplacingProp(): boolean {
+    const request = replacement;
+    if (!request) return false;
+    const selection = replacementSelection();
+    if (store.currentMode !== 'props' || store.mdoc !== request.doc
+      || selection.length !== request.selection.length
+      || selection.some(prop => !request.selection.includes(prop)) || store.armedProp) replacement = null;
+    return replacement !== null;
+  }
+
+  function replaceSelectedProp() {
+    const selection = replacementSelection();
+    const targets = selection.filter((prop): prop is PlacedProp => !!prop && !prop.line && !isEffectTriggerProp(prop));
+    if (!targets.length) return;
+    // The multi-selection inspector is also available after narrowing an Edit marquee to props.
+    if (store.currentMode !== 'props') setMode('props');
+    pickInterceptor = null;
+    replacement = { doc: store.mdoc, selection, targets };
+    rebuildTools(); updateCmdSheet();
+  }
+
+  function cancelPropReplacement() {
+    if (!replacement) return;
+    replacement = null;
+    rebuildTools(); updateCmdSheet();
+  }
+
+  /** Consume even a cancelled request, so a late asset load cannot arm a prop or replace another target. */
+  function finishReplacement(request: Replacement | null, armed: ArmedProp, sourceId?: string): boolean {
+    if (!request) return false;
+    if (!isReplacingProp() || replacement !== request) return true;
+    replacement = null;
+    const { targets, doc } = request;
+    let replaced = 0;
+    for (const target of targets) {
+      // Picking a member of the selection uses it as the source for the others, leaving its own effects intact.
+      if (sourceId && sourceId === target.id) continue;
+      target.id ??= nextPlacedPropId(doc.props ?? []);
+      target.level = armed.level;
+      target.model = armed.model;
+      target.name = armed.name;
+      if (armed.group) target.group = armed.group; else delete target.group;
+      if (armed.specialKind) target.specialKind = armed.specialKind; else delete target.specialKind;
+      applyBehaviour(target, armed.behaviour);
+      if (doc.effects) detachEffectFromProp(doc.effects, target.id);
+      stampHeldEffects(target.id, armed);
+      replaced++;
+    }
+    if (replaced) {
+      scheduleRebuild();
+      toast(`Replaced ${replaced} prop${replaced === 1 ? '' : 's'} with ${shortPropName(armed.name)} — undo restores the original${replaced === 1 ? '' : 's'}.`, 'ok');
+    }
+    rebuildTools(); updateCmdSheet();
+    return true;
+  }
+
   /** Leave prop-line drawing and drop a line selection (docs/070): holding something new ends both. */
   function leavePropLine() {
     store.lineDrawing = false; viewport.setLineDrawing(false);
@@ -387,8 +452,10 @@ export function createPropOps(deps: PropOpsDeps) {
    *  any placed-prop selection (so the preview shows what you're now holding), and jump to Props mode. The
    *  viewport shows it as a ghost under the cursor; a click drops it, Esc puts it down. */
   async function armProp(level: string, model: number, name: string, from: ArmFrom = {}) {
+    const request = isReplacingProp() ? replacement : null;
     try { await ensurePropLevel(level); } catch (e) { toast(`props load failed: ${e}`, 'err'); return; }
     const armed: ArmedProp = { level, model, name, ...armBehaviour(level, model, from) };
+    if (finishReplacement(request, armed, from.placementId)) return;
     if (intercepted(armed)) return;
     store.armedProp = armed;
     leavePropLine();
@@ -444,6 +511,7 @@ export function createPropOps(deps: PropOpsDeps) {
    *  assembly for placement — the ghost previews every member; a click drops ONE placement that carries them
    *  all (docs/015). The armed leader model is what the placement stores / previews. */
   async function armGroupById(level: string, id: string, from: ArmFrom = {}) {
+    const request = isReplacingProp() ? replacement : null;
     let def: GroupDef | undefined;
     try {
       await ensurePropLevel(level); // members render from the same level payload
@@ -458,6 +526,7 @@ export function createPropOps(deps: PropOpsDeps) {
         ? { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' as const,
           ...withEffect(placementEffect(from.placementId)) }
         : { behaviour: groupDefaults(level, def), from: 'defaults' as const }) };
+    if (finishReplacement(request, armed, from.placementId)) return;
     if (intercepted(armed)) return;
     store.armedProp = armed;
     leavePropLine();
@@ -478,6 +547,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /** Put the held prop down (Esc in placement mode): back to select mode, where clicks grab placed props. */
   function disarmProp() {
+    cancelPropReplacement();
     if (!store.armedProp) return;
     store.armedProp = null;
     viewport.setPropArmed(null);
@@ -489,6 +559,7 @@ export function createPropOps(deps: PropOpsDeps) {
    *  visible Deselect action and Props-mode Escape, so reference callbacks, viewport decoration and the idle
    *  launcher return together. */
   function deselectPropOrLight() {
+    replacement = null;
     const selected = store.selectedProp !== null || store.multiSel.length > 0 || store.selectedRefProp !== null
       || store.selectedLight !== null || store.selectedRefLight !== null || store.selectedScreen !== null
       || store.selectedRefScreen !== null || store.selectedLine !== null;
@@ -511,6 +582,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /** Remove the selected placed prop (Delete key or the Tools button). */
   function deleteSelectedProp() {
+    replacement = null;
     if (store.selectedProp === null || !store.mdoc.props) return;
     const id = store.mdoc.props[store.selectedProp]?.id;
     if (id && store.mdoc.effects) detachEffectFromProp(store.mdoc.effects, id);
@@ -526,6 +598,7 @@ export function createPropOps(deps: PropOpsDeps) {
   /** Remove every box-selected prop (Delete key or the Tools button). Spliced highest-index first so the
    *  remaining doc indices stay valid while the set drains. */
   function deleteMultiSelProps() {
+    replacement = null;
     if (!store.multiSel.length || !store.mdoc.props) return;
     for (const i of [...store.multiSel].sort((a, b) => b - a)) {
       const id = store.mdoc.props[i]?.id;
@@ -582,6 +655,7 @@ export function createPropOps(deps: PropOpsDeps) {
     modelDeclarations,
     propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     stampHeldEffects, interceptNextPick,
+    replaceSelectedProp, cancelPropReplacement, isReplacingProp,
     shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
     ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
     reloadImportedProps,

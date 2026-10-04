@@ -360,6 +360,42 @@ dom.dispatch('pointerdown', { button: 1 });
 dom.dispatch('pointerup', { button: 1 });
 check(pickedPlacedProp === 7, 'Props middle-click selects the model and arms prop placement');
 
+// Replace picks through the normal world geometry without changing the target selection or moving its gizmo.
+{
+  props.propArm = null;
+  selected = 3;
+  pickedPlacedProp = null;
+  const placedBefore = placed;
+  stage.cb.isReplacingProp = () => true;
+  stage.gizmo.axis = 'X';
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(pickedPlacedProp === 7 && selected === 3 && placed === placedBefore,
+    'Replace: LMB picks a world prop ahead of the gizmo and preserves the target');
+  stage.gizmo.axis = null;
+  let pickedReference: string | null = null;
+  stage.cb.onPickReferenceProp = (level: string, model: number) => { pickedReference = `${level}:${model}`; };
+  placedPropGroup.visible = false;
+  refSceneryGroup.visible = true;
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(pickedReference === 'TEST:1' && selected === 3,
+    'Replace: LMB accepts a reference-world prop without selecting it');
+  pickedReference = null;
+  terrain.position.z = 4;
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(pickedReference === null && selected === 3, 'Replace cannot sample a prop hidden behind terrain');
+  terrain.position.z = -5;
+  refSceneryGroup.visible = false;
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(selected === 3 && placed === placedBefore, 'Replace: empty terrain keeps the target and places nothing');
+  stage.cb.isReplacingProp = () => false;
+  placedPropGroup.visible = true;
+  props.propArm = { level: 'TEST', model: 1, baseOffset: 0 };
+}
+
 // After an in-place terrain edit, the preview's refit pick tree knows the new surface but a stock mesh
 // raycast can still reject it against the old bounding sphere. Drive the real ghost + wheel + click path.
 {

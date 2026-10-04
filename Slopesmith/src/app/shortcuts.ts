@@ -335,6 +335,7 @@ export function installShortcuts(deps: ShortcutDeps) {
         }
         deselectEdit(); return;
       }
+      if (store.currentMode === 'props' && propOps.isReplacingProp()) { propOps.cancelPropReplacement(); return; }
       if (store.currentMode === 'props' && store.armedProp) { propOps.disarmProp(); return; }
       if (store.currentMode === 'props' && propClipboard.placing()) { propClipboard.cancel(); return; } // …and a held paste
       if (store.currentMode === 'paint' && store.paintBrush) { disarmBrush(); return; }

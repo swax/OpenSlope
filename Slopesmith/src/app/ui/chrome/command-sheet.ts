@@ -12,6 +12,7 @@ export type CommandSheetDeps = {
   pastePlacing: () => boolean;
   /** Props mode is holding a paste (docs/012). */
   propPastePlacing: () => boolean;
+  isReplacingProp: () => boolean;
   /** Scene ▸ Course ▸ reset course is clicking out a new run. */
   courseDrawing: () => boolean;
   canRotateSelection: () => boolean;
@@ -106,7 +107,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
       ? (courseDrawing()
         ? helpPanel('Scene Mode — drawing the course', [['LMB', 'add a point'], ['LMB last point / Enter', 'finish'],
           ['Backspace', 'remove last point'], ['Esc', 'cancel']])
-        : helpPanel('Scene Mode — course', [['LMB point', 'select + move'], ['drag', 'box-select points'], ['Del', 'delete selected points'], ['Esc', 'deselect']]))
+        : helpPanel('Scene Mode — course', [['LMB point', 'select + move'], ['drag', 'box-select points'], ['⇧ drag', 'add boxed points'], ['Del', 'delete selected points'], ['Esc', 'deselect']]))
       : store.currentMode === 'play'
         ? (store.placingStart
           ? helpPanel('Test Mode — set start', [['LMB', 'place the ride start'], ['Esc', 'cancel']])
@@ -119,7 +120,9 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         ? helpPanel('Effects Mode — select', [['LMB', 'select'], ['Ctrl/Cmd+LMB', 'select many'],
           ['gizmo', 'move / resize'], ['Del', 'remove authored'], ['Esc', 'deselect']])
       : store.currentMode === 'props'
-        ? (store.lineDrawing
+        ? (deps.isReplacingProp()
+          ? helpPanel('Props Mode — replace', [['LMB prop', 'use as replacement'], ['Library', 'choose replacement'], ['Esc', 'cancel replacement']])
+          : store.lineDrawing
           ? helpPanel('Props Mode — laying a path', [['LMB', 'add a point'], ['Enter / Esc', 'finish']])
           : store.selectedLine !== null
           ? (() => {
@@ -132,7 +135,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
           ? helpPanel('Props Mode — placing', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['MMB', 'select + arm prop'], ['Esc', 'put down']])
           : propPastePlacing()
           ? helpPanel('Props Mode — paste', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['Esc', 'cancel']])
-          : helpPanel('Props Mode — select', [['LMB', 'select'], ['drag', 'box-select many'], ['MMB', 'select + arm prop'],
+          : helpPanel('Props Mode — select', [['LMB', 'select'], ['drag', 'box-select many'], ['⇧ drag', 'add boxed props'], ['MMB', 'select + arm prop'],
             ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),
             ['Ctrl+C / X / V', 'copy / cut / paste'], ['Del', 'remove'], ['Esc', 'deselect']]))
         : store.currentMode === 'edit' && edgeExtrusionStaged()
