@@ -58,7 +58,9 @@ export function effectTemplateLabel(template: PropEffectTemplate): string {
   const words = new Set<string>();
   for (const nodes of Object.values(template.circumstances))
     for (const node of nodes ?? []) {
-      const word = EFFECT_KIND_LABELS.get(node.semanticType ?? '');
+      const word = node.semanticType === 'rider.boost' ? 'speed boost'
+        : node.semanticType === 'trick.boost' ? 'trick boost'
+          : EFFECT_KIND_LABELS.get(node.semanticType ?? '');
       if (word) words.add(word);
     }
   return [...words].join(' · ') || 'effect';

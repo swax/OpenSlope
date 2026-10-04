@@ -286,7 +286,7 @@ export class Palette {
     libBar.className = 'sc-bar';
     this.libBtn.className = 'sc-openlib';
     this.libBtn.type = 'button';
-    this.libBtn.innerHTML = `${LIB_SVG}<span>Texture Library</span>`;
+    this.libBtn.innerHTML = `${LIB_SVG}<span>Open Texture Library</span>`;
     tooltip(this.libBtn, 'Show / hide the Texture Library — the level’s texture tiles, at the bottom of the screen.');
     this.libBtn.onclick = () => this.cb.onToggleLibrary?.();
     const libGrow = document.createElement('span');
@@ -352,7 +352,11 @@ export class Palette {
 
   /** Reflect the Texture Library's open/closed state on the "Texture Library" toggle (its pressed highlight).
    *  The host keeps this in sync when the Library is opened / folded via either this button or its own caret. */
-  setLibraryOpen(on: boolean) { this.libBtn.classList.toggle('on', on); }
+  setLibraryOpen(on: boolean) {
+    this.libBtn.classList.toggle('on', on);
+    this.libBtn.querySelector('span')!.textContent = `${on ? 'Hide' : 'Open'} Texture Library`;
+    this.libBtn.setAttribute('aria-expanded', String(on));
+  }
 
   /** The top-bar F toggle: draw the pink art F (1/3 tile, centred) on the preview and every pad cell. */
   setShowF(on: boolean) {

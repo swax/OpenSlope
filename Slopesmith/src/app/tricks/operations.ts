@@ -8,6 +8,10 @@ import { tooltip } from '../ui/components/tooltip';
 import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
 import { freeScreen } from '../props/screens';
+import type { BoostPadKind } from '../../core/props/boost-pad';
+import type { SpecialZoneKind } from '../../core/props/special';
+import type { EffectSceneryKind } from '../effects/editor';
+import { section as toolSection } from '../effects/editor-widgets';
 
 /**
  * The trick tools (docs/014): rails + gems. Arming a tool drops into Props mode, where clicks place — a rail
@@ -24,6 +28,9 @@ export type TrickToolsDeps = {
   ensurePropLevel: (level: string) => Promise<LevelProps>;
   toggleTricks: () => void;
   armLight: () => void;
+  armBoostPad: (kind: BoostPadKind) => Promise<void>;
+  addSpecialZone: (kind: SpecialZoneKind) => void;
+  addEffectScenery: (kind: EffectSceneryKind) => void;
   /** Turn the Sources view on: video screens are drawn there, so one added while it is off is invisible. */
   revealScreens: () => void;
   /** Start a blank sheet (docs/071): a textured surface laid along a path. */
@@ -224,7 +231,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
   }
 
   // The special-add tools, docked in the idle Prop Tools launcher under the Prop Library button: Add rail
-  // pipe, Add gem, Add light and Add screen. Each fills its own row and arms its tool right there in Props mode;
+  // pipe, gems, boost pads, lights, screens and sheets. Each fills its own row in Props mode;
   // the active tool shows pressed (syncAddTrickBtns).
   function propToolBtn(icon: string, text: string, title: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
@@ -240,11 +247,17 @@ export function createTrickTools(deps: TrickToolsDeps) {
     return b;
   }
   const addRailBtn = propToolBtn(VIEW_ICON.addRail, 'Add rail pipe',
-    'Add rail pipe — lay a grind rail with its own tube: click points on the mountain and the rail splines between them, floated at a height you set. Enter / Esc finishes. Click a rail to edit its points / height / material. For the grind curve WITHOUT a tube — laid along a prop that already has the shape — use Add rail spline in Effects view.',
+    'Add rail pipe — lay a grind rail with its own tube: click points on the mountain and the rail splines between them, floated at a height you set. Enter / Esc finishes. Click a rail to edit its points / height / material. Add rail spline in this section lays the grind curve along existing props without building a tube.',
     () => armRail());
   const addGemBtn = propToolBtn(VIEW_ICON.addGem, 'Add gem',
     'Add gem — place gem pickups: click to drop one, drag to lay a spaced row. Tune float height / row spacing / value in Tools.',
     () => armGem());
+  const addSpeedBoostBtn = propToolBtn(VIEW_ICON.addSpeedBoost, 'Add speed boost',
+    'Place a speed boost pad. Click the mountain to place it; turn and size it like a prop. Starts with a five-second boost, editable in Effects.',
+    () => void deps.armBoostPad('speed'));
+  const addTrickBoostBtn = propToolBtn(VIEW_ICON.addTrickBoost, 'Add trick boost',
+    'Place a trick boost pad. Click the mountain to place it; turn and size it like a prop. Starts with a five-second trick window, editable in Effects.',
+    () => void deps.armBoostPad('trick'));
   const addLightBtn = propToolBtn(VIEW_ICON.addLight, 'Add light',
     'Add light — drop a free coloured light on the course, then click the mountain to place it. Tune its colour / brightness / reach (and spot cone) in Tools.',
     () => armLight());
@@ -258,14 +271,57 @@ export function createTrickTools(deps: TrickToolsDeps) {
     + 'the mountain; neighbouring pieces share their edges exactly, like the shipped fences. Give it a tile in its '
     + 'panel — or pick a shipped sheet in the Prop Library to start from its look.',
     () => addSheet());
+  const addTriggerBtn = propToolBtn(VIEW_ICON.addTrigger, 'Add trigger box',
+    'Place an invisible, resizable box where you are looking, with an empty collision effect. Opens its effect toolbox to configure what happens when a rider enters.',
+    () => deps.addEffectScenery('trigger'));
+  const addFogBtn = propToolBtn(VIEW_ICON.addFog, 'Add fog volume',
+    'Place a fog bank above where you are looking and open its position, scale and particle-volume settings.',
+    () => deps.addEffectScenery('fog'));
+  const addMotionPathBtn = propToolBtn(VIEW_ICON.addMotionPath, 'Add motion path',
+    'Draw an invisible route for a moving prop. Opens the path editor in Effects; click points, then Enter or Esc to finish.',
+    () => deps.addEffectScenery('motion-path'));
+  const addRailSplineBtn = propToolBtn(VIEW_ICON.addRailSpline, 'Add rail spline',
+    'Draw a grindable curve along existing scenery without building a tube. Opens the spline editor in Effects; click points, then Enter or Esc to finish.',
+    () => deps.addEffectScenery('rail-spline'));
   const addTrickRow = document.createElement('div');
   addTrickRow.className = 'sp-prop-launcher-stack';
-  addTrickRow.append(addRailBtn, addGemBtn, addLightBtn, addScreenBtn, addSheetBtn);
-  propLibToggle.appendChild(addTrickRow); // sits directly below the Prop Library button in the same persistent header
+  const zoneButtons = ([
+    ['reset-zone', 'Add reset zone', VIEW_ICON.addReset, 'Add a broad, thin reset volume. Riders touching it return to the course.'],
+    ['teleport-entrance', 'Add teleport entrance', VIEW_ICON.addTeleport, 'Add a teleport entrance and its paired destination. Choose or move the destination in its settings.'],
+    ['teleport-destination', 'Add teleport destination', VIEW_ICON.addDestination, 'Add an invisible destination marker. Pair entrances with it in their settings.'],
+    ['wind-zone', 'Add wind zone', VIEW_ICON.addWind, 'Add an invisible box that pushes riders in a chosen world direction while they are inside.'],
+    ['vertical-lift', 'Add vertical lift', VIEW_ICON.addLift, 'Add an air shaft that carries riders up to a target height.'],
+  ] as const).map(([kind, label, icon, hint]) => propToolBtn(icon, label, hint, () => deps.addSpecialZone(kind)));
+  const timeBonusBtn = propToolBtn(VIEW_ICON.addTime, 'Time bonus (unavailable)',
+    'Time bonus authoring is unavailable: the native award format and units are not established.',
+    () => toast('Time bonuses are not available yet: their native award format and units still need verification.', 'info'));
+  function addSection(label: string, buttons: HTMLButtonElement[]) {
+    const section = document.createElement('details');
+    section.className = 'sp-prop-launcher-section';
+    section.open = true;
+    const title = document.createElement('summary');
+    title.textContent = label;
+    const content = document.createElement('div');
+    content.className = 'sp-prop-launcher-items';
+    content.append(...buttons);
+    section.append(title, content);
+    addTrickRow.appendChild(section);
+  }
+  addSection('Pickups & boosts', [addGemBtn, addSpeedBoostBtn, addTrickBoostBtn, timeBonusBtn]);
+  addSection('Paths & rails', [addRailBtn, addRailSplineBtn, addMotionPathBtn]);
+  addSection('Scenery & atmosphere', [addSheetBtn, addLightBtn, addScreenBtn, addFogBtn]);
+  addSection('Zones & travel', [addTriggerBtn, ...zoneButtons]);
+  const specialPropsSection = toolSection('Special effect-backed props');
+  specialPropsSection.body.appendChild(addTrickRow);
+  propLibToggle.appendChild(specialPropsSection.root);
   /** Reflect the armed special-add tool on the Add rail pipe / gem / light buttons' pressed highlight. */
   function syncAddTrickBtns() {
     addRailBtn.classList.toggle('on', store.trickTool === 'rail');
     addGemBtn.classList.toggle('on', store.trickTool === 'gem');
+    const held = store.armedProp?.effect;
+    const key = held?.kind === 'template' ? held.template.key : null;
+    addSpeedBoostBtn.classList.toggle('on', !!key?.startsWith('boost-pad:speed'));
+    addTrickBoostBtn.classList.toggle('on', !!key?.startsWith('boost-pad:trick'));
     addLightBtn.classList.toggle('on', viewport.lightPlacing);
   }
 

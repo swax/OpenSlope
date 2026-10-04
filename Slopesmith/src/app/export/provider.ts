@@ -94,7 +94,9 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
       for (const [index, payload] of payloads.entries()) {
         if (!payload) continue;
         for (const model of decodeProps(payload).models)
-          geometry.set(`${safeDataName(levels[index])}:${model.id}`, { subs: model.subs });
+          geometry.set(`${safeDataName(levels[index])}:${model.id}`, {
+            subs: model.subs, rotation: model.rotation, animation: model.animation,
+          });
       }
       const lookup: GeometryLookup = (level, model) =>
         geometry.get(`${safeDataName(level)}:${model}`) ?? null;

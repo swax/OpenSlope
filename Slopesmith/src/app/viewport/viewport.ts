@@ -1810,6 +1810,7 @@ export class Viewport {
   set mode(m: Mode) {
     if (m !== 'edit' && this.edgeExtrusion.active) this.edgeExtrusion.cancel();
     this._mode = m;
+    this.props.showTriggerProps(m === 'props');
     this.syncPlayLightingVisibility();
     this.createEdge.setDiagnosticsVisible(m === 'edit');
     if (m === 'edit') this.refreshTJunctionDiagnostics();

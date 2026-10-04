@@ -8,6 +8,7 @@ import { runInWorker } from '../worker-pool';
 import type { EffectFunction, EffectGraph, EffectNode, EffectsDocument } from '../../core/effects/document';
 import { rollerNodeMass } from '../../core/effects/authoring';
 import { referenceEffectDefaults } from '../../core/props/effect-defaults';
+import { gemEffectTemplate } from '../../core/props/gem';
 import {
   combinePropAlphaModes, propAlphaMode,
   type PropAlphaMode, type PropModelAnimation, type PropModelCurve, type PropModelRotation, type PropsPayload,
@@ -1046,7 +1047,7 @@ const RAIL_SKIN_MODELS: Record<RailMaterialKey, RegExp> = {
 
 /**
  * The native art a from-scratch mountain borrows: each rail material's default tube skin and the three gem
- * tier crystals, and which extracted level supplies each.
+ * tier crystals and boost-pad models, and which extracted level supplies each.
  *
  * Every answer comes off a level's own `Models.json`, data derived with no filename guess: a rail skin is the
  * first textured MeshData binding of the first model matching `RAIL_SKIN_MODELS`, the crystals are
@@ -1061,6 +1062,7 @@ const RAIL_SKIN_MODELS: Record<RailMaterialKey, RegExp> = {
 export async function nativeArtSource(): Promise<NativeArt> {
   const tables = await readMaterialTables();
   const railSkins: RailSkins = {};
+  const boostPads: NonNullable<NativeArt['boostPads']> = {};
   let gems: { level: string; tiers: NativeArt['gemTiers'] } | null = null;
   const keys = Object.keys(RAIL_SKIN_MODELS) as RailMaterialKey[];
   for (const level of await levelsWithProps()) {
@@ -1073,9 +1075,28 @@ export async function nativeArtSource(): Promise<NativeArt> {
     }
     const tiers = gemTiersOf(models);
     if (tiers.length > (gems?.tiers.length ?? 0)) gems = { level, tiers };
-    if (gems?.tiers.length === 3 && keys.every(key => railSkins[key])) break;
+    for (const kind of ['speed', 'trick'] as const) {
+      if (boostPads[kind]) continue;
+      const pattern = kind === 'speed' ? /^Mdl_SpeedBoost(?:_|$)/i : /^Mdl_TrickBoost(?:_|$)/i;
+      const model = models.findIndex(candidate => pattern.test(candidate.ModelName ?? ''));
+      if (model >= 0) boostPads[kind] = { level, model, name: models[model].ModelName! };
+    }
+    if (gems?.tiers.length === 3 && keys.every(key => railSkins[key]) && boostPads.speed && boostPads.trick) break;
   }
-  return { gemLevel: gems?.level ?? '', gemTiers: gems?.tiers ?? [], railSkins };
+  if (gems) {
+    const dir = join(mapsRoot(), safeDataName(gems.level));
+    const [effects, instances] = await Promise.all([
+      readEffectsDocument(dir), readJsonOr<InstancesJson | null>(join(dir, 'Instances.json'), null),
+    ]);
+    if (effects) for (const tier of gems.tiers) {
+      for (const instance of instances?.Instances ?? []) {
+        if (instance.ModelID !== tier.model) continue;
+        const template = gemEffectTemplate(gems.level, effects, instance.EffectSlotIndex ?? -1);
+        if (template) { tier.effect = template; break; }
+      }
+    }
+  }
+  return { gemLevel: gems?.level ?? '', gemTiers: gems?.tiers ?? [], railSkins, boostPads };
 }
 
 /** The gem tier crystals one level ships, by ModelID. */

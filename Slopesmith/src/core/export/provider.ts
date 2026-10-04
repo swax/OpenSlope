@@ -83,15 +83,17 @@ export interface ModelRef {
   model: number;
 }
 
-/** The shipped art a from-scratch mountain borrows for its rails and gems, each piece off whichever extracted
+/** The shipped art a from-scratch mountain borrows for its rails, gems and boost pads, each piece off whichever extracted
  *  level ships it. */
 export interface NativeArt {
   /** The level the gem crystals come from; '' when no extracted level ships them. */
   gemLevel: string;
   /** The tier crystals (2 / 3 / 5) and the ModelIDs carrying them; empty when no level has gem models. */
-  gemTiers: { tier: number; model: number }[];
+  gemTiers: { tier: number; model: number; effect?: import('../props/effect-defaults').PropEffectTemplate }[];
   /** Each rail material's default tube texture, read off a shipped model's own material. */
   railSkins: RailSkins;
+  /** Visible boost-pad models, when extracted art is available. Optional for older providers. */
+  boostPads?: Partial<Record<'speed' | 'trick', ModelRef & { name: string }>>;
 }
 
 export interface StagedRaceMusic {

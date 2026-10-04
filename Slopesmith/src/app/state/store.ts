@@ -1,4 +1,4 @@
-import type { V3 } from '../../core/doc/types';
+import type { PlacedProp, V3 } from '../../core/doc/types';
 import type { StampBehaviour } from '../../core/props/defaults';
 import type { PropEffectTemplate } from '../../core/props/effect-defaults';
 import type { EffectCircumstance } from '../../core/effects/authoring-contract';
@@ -80,12 +80,14 @@ type RefPropRef = { level: string; model: number; name: string;
 type RefLightRef = { level: string; light: RigLight };
 type RefScreenRef = { level: string; screen: ReferenceScreenPickDetails };
 export type ArmedProp = { level: string; model: number; name: string; group?: string;
+  /** Retain a special prop's inspector and export behavior when making another placement. */
+  specialKind?: PlacedProp['specialKind'];
   /** What every stamp copies (docs/069): contact, surface, mode layer, sounds, self-lighting — always with a
    *  complete collision profile. Editable in the held prop's panel before placing. */
   behaviour: StampBehaviour;
   /** Where `behaviour` came from: the model's defaults (a library pick), a reference instance's own facts, or a
-   *  placement being copied. */
-  from: 'defaults' | 'instance' | 'placement';
+   *  placement being copied, or a special-add preset. */
+  from: 'defaults' | 'instance' | 'placement' | 'preset';
   /** The effect each stamp is given (docs/069 · Effects), when there is one: the model's or the picked instance's
    *  portable effect, or the effect slot of the placement being copied, which the copy then shares. */
   effect?: HeldEffect;
@@ -98,6 +100,8 @@ export type HeldEffect =
   | { kind: 'slot'; slot: string; circumstance: EffectCircumstance };
 
 export type Store = {
+  /** Advanced prop inspector override, scoped to one selected object or held preset. */
+  specialPropView?: string;
   mdoc: EditDoc;                     // the active document — a quad mesh; the generators' lattice is promoted before it lands here
   selected: number | null;           // selected knot on the mountain's run
   selectedKnots: number[];           // Info-mode box-selected course knots (bulk delete; single picks use selected)

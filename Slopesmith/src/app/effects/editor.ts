@@ -117,6 +117,7 @@ import { segmented } from '../ui/components/controls';
 import { toast } from '../ui/components/toast';
 import { ACTION_ICON, MODE_ICON } from '../ui/components/icons';
 import { EffectHostPreview } from './host-preview';
+import { specialPropKind } from '../../core/props/special';
 import { openSoundLibrary } from './sound-library';
 import {
   attachedReferenceInstances,
@@ -171,6 +172,8 @@ import {
   treeActionMenu,
 } from './editor-widgets';
 
+export type EffectSceneryKind = 'trigger' | 'fog' | 'motion-path' | 'rail-spline';
+
 export interface EffectsEditorDeps {
   store: Store;
   viewport: Viewport;
@@ -180,6 +183,9 @@ export interface EffectsEditorDeps {
   /** Jump to Props mode with this effect's host selected — an authored placement by doc index, or a
    *  native reference instance by original Instances.json index. The host owns the mode switch. */
   goToProp: (target: { propIndex: number } | { sourceIndex: number }) => void;
+  goToSpecialProp: (id: string) => void;
+  /** Open the shared object launcher in Props mode. */
+  goToPropTools: () => void;
   /** Hand a grind rail to the Tricks tools in Props view, still selected. The host owns the mode switch. */
   goToRail: (index: number) => void;
 }
@@ -572,8 +578,8 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function addFogVolume(): void {
     const list = volumes();
-    const start = store.mdoc.course.knots[0]?.pos ?? [0, 0, 0];
-    const volume = createFogVolume([start[0], start[1] + 12, start[2]], list);
+    const target = viewport.controls.target;
+    const volume = createFogVolume([target.x, target.y + 12, -target.z], list);
     list.push(volume);
     selectParticleVolume('authored', list.length - 1, volume.id);
     dirty();
@@ -581,7 +587,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function addEffectTrigger(): void {
     const list = props();
-    const start = store.mdoc.course.knots[0]?.pos ?? [0, 0, 0];
+    const target = viewport.controls.target;
     const ordinal = list.filter(isEffectTriggerProp).length + 1;
     const id = nextPlacedPropId(list, 'trigger');
     const prop: PlacedProp = {
@@ -589,7 +595,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       level: EFFECT_TRIGGER_LEVEL,
       model: 0,
       name: `Trigger ${ordinal}`,
-      pos: [start[0], start[1] + DEFAULT_EFFECT_TRIGGER_SIZE[1] / 2, start[2]],
+      pos: [target.x, target.y + DEFAULT_EFFECT_TRIGGER_SIZE[1] / 2, -target.z],
       yaw: 0,
       scale: 1,
       effectTrigger: { size: [...DEFAULT_EFFECT_TRIGGER_SIZE] },
@@ -663,6 +669,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       height: 1.5, style: RAIL_STYLE_METAL, bare: true });
     beginDrawing(rails.length - 1);
     toast('click along the shape you want to grind — Enter / Esc to finish', 'info');
+  }
+
+  /** Props owns the creation menu; these objects retain their existing dedicated editors and draw tools. */
+  function addScenery(kind: EffectSceneryKind): void {
+    if (!active || store.currentMode !== 'effects') return;
+    if (kind === 'trigger') addEffectTrigger();
+    else if (kind === 'fog') addFogVolume();
+    else if (kind === 'motion-path') addMotionPath();
+    else addRailSpline();
   }
 
   /** Arm the point-chain gesture on a freshly added spline and select it, so its panel is already open. */
@@ -1003,19 +1018,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const triggers = props().filter(isEffectTriggerProp);
     const puffs = list.reduce((count, volume) => count
       + volume.objects.reduce((subtotal, object) => subtotal + object.puffs.length, 0), 0);
-    const s = section('Effect scenery');
+    const s = section('World objects');
     s.body.append(el('div', 'sp-fx-summary', `${triggers.length} triggers · ${list.length} fog volumes · ${puffs} puffs · `
       + `${paths.length} motion paths · ${bare.length} rail splines`),
       el('div', 'sp-fx-note', 'Trigger boxes carry collision effects, and motion paths are the invisible routes '
-        + 'moving props travel along. Both show purple in Effects mode, as do fog banks — everything this mode '
-        + 'owns. Grind rails show red: the course owns those, and this mode only switches them into and out '
-        + 'of the rail network.'));
+        + 'moving props travel along. They and fog banks show purple in Effects mode. '
+        + 'Grind rails show red. Add these objects from Props, then use their settings or Effects to configure them.'));
     const actions = el('div', 'sp-fx-actions');
-    actions.append(button('+ Add trigger', 'Place a movable, resizable trigger box with an empty collision effect already attached.', addEffectTrigger),
-      button('+ Add fog volume', 'Place a fog bank above the course start.', addFogVolume),
-      button('+ Add motion path', 'Draw a motion path for a moving prop. It is invisible and cannot be grinded.', addMotionPath),
-      button('+ Add rail spline', 'Draw a grindable curve with no tube of its own — the spline alone, laid along '
-        + 'a prop that already has the shape. Add rail pipe in Props view draws the tube as well.', addRailSpline));
+    actions.appendChild(button('Add objects in Props',
+      'Open pickups, zones, paths, rails, scenery and atmosphere tools.', deps.goToPropTools));
     s.body.appendChild(actions);
     return s.root;
   }
@@ -2036,6 +2047,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const s = section(prop.name);
     const attachment = effectAttachments(doc).find(item => item.enabled && item.target.id === selectedAuthoredPropId);
     const slot = attachment ? doc.slots.find(item => item.id === attachment.slot) : null;
+    const special = specialPropKind(prop, doc);
+    if (special || isEffectTriggerProp(prop)) {
+      const navigation = el('div', 'sp-fx-actions sp-fx-selection-nav');
+      navigation.appendChild(navigationButton('Prop settings', MODE_ICON.props,
+        'Open the standard prop inspector for this object.', () => goToProp({ propIndex: props().indexOf(prop) })));
+      if (special) navigation.appendChild(navigationButton('Special settings', MODE_ICON.props,
+        'Return to this special prop’s compact settings.', () => deps.goToSpecialProp(prop.id!)));
+      s.body.appendChild(navigation);
+    }
     if (isEffectTriggerProp(prop)) {
       const size = clampEffectTriggerSize(prop.effectTrigger.size);
       const setSize = (axis: 0 | 1 | 2, value: number) => {
@@ -2067,7 +2087,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         render();
       });
       s.body.append(row('Transform', transform.el), el('div', 'sp-fx-note',
-        'The box is invisible in game. Riding through it runs the collision effect below.'));
+        special === 'teleport-destination'
+          ? 'Invisible arrival marker. Choose it from a teleport entrance’s destination setting.'
+          : 'The box is invisible in game. Riding through it runs the collision effect below.'));
       s.body.appendChild(hostPreview.showTrigger());
       const triggerActions = el('div', 'sp-fx-actions');
       triggerActions.append(button('Focus trigger', 'Frame this trigger volume in the viewport.', () => {
@@ -2136,7 +2158,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const bindings = attachmentBindings(doc, attachment);
     const actions = el('div', 'sp-fx-actions');
     const propIndex = props().findIndex(item => item.id === selectedAuthoredPropId);
-    if (propIndex >= 0 && !isEffectTriggerProp(prop)) {
+    if (propIndex >= 0 && !isEffectTriggerProp(prop) && !special) {
       s.body.appendChild(hostPreview.showModel(prop.level, prop.model));
       const navigation = el('div', 'sp-fx-actions sp-fx-selection-nav');
       navigation.append(navigationButton('Go to prop', MODE_ICON.props,
@@ -2294,9 +2316,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function mapGuidePanel(): HTMLElement {
     const s = section(`${mountainName()} effects map`);
     s.body.appendChild(el('div', 'sp-fx-note',
-      'Props with effects, trigger boxes, fog banks, and motion paths are highlighted purple — the things this '
-      + 'mode owns. Every grind rail draws its curve in red: those belong to the course, and this mode only '
-      + 'switches them on and off. Click one to edit it; Ctrl/Cmd-click to select several props at once.'));
+      'Props with effects, trigger boxes, fog banks, and motion paths are highlighted purple. '
+      + 'Grind rails draw their curves in red. Click an object to configure its effects or settings; '
+      + 'Ctrl/Cmd-click to select several props at once. Use Props to add world objects.'));
     return s.root;
   }
 
@@ -3627,7 +3649,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   }
 
   root.style.display = 'none';
-  return { el: root, render, setActive, setReferenceState, moveSelectedEmitter, deleteSelection, clearSelection,
+  return { el: root, render, setActive, setReferenceState, moveSelectedEmitter, deleteSelection, clearSelection, addScenery,
     selectAuthoredPropEffect, selectReferencePropEffect, selectReferenceCalledEffect,
     selectParticleVolume, selectCourseSpline, selectReferenceSpline,
     get referenceReady() { return referenceState.status === 'ready'; },

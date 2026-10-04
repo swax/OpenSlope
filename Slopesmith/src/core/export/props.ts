@@ -7,7 +7,7 @@ import { effectTriggerWorldSize, isEffectTriggerProp } from '../effects/trigger-
 import { placedPropSolid } from '../props/contact';
 import { placementQuat, rotateByPlacement } from '../props/pose';
 import { propModelAnimationHasIdentityRoot,
-  type LevelProps, type PropModelAnimation, type PropModelAnimationObject } from '../reference/props';
+  type LevelProps, type PropModelAnimation, type PropModelAnimationObject, type PropModelRotation } from '../reference/props';
 import { safeDataName } from './names';
 import type { MaterialCombiner } from './materials';
 
@@ -24,6 +24,7 @@ import type { MaterialCombiner } from './materials';
 /** The minimum a bake needs off a submesh. A level's parsed `Meshes/` and the imported catalogue's decoded
  *  `PropSub` (typed arrays, docs/032) both satisfy it. */
 export interface GeomSub {
+  object?: number;
   /** MaterialID (index into the source level's Materials[]); -1 when the mesh has no material. */
   mat: number;
   positions: ArrayLike<number>;
@@ -34,6 +35,8 @@ export interface GeomSub {
 /** One source-level model's per-material submeshes, model-local raw cm. */
 export interface ModelGeometry {
   subs: readonly GeomSub[];
+  rotation?: PropModelRotation;
+  animation?: PropModelAnimation;
 }
 
 /** A (level, model) → geometry lookup, resolved before the bake so the emission loops stay synchronous. */
@@ -386,10 +389,11 @@ export function bakedPropClip(animation: PropModelAnimation, pose: Mat4):
 export function bakePlacedProps(props: readonly (PlacedProp & { memberKey?: string })[], geometryOf: GeometryLookup,
                                 combiner: MaterialCombiner, vertexOffset = 0, uvOffset = 0,
                                 scrollIndexOf?: (prop: PlacedProp) => number | null):
-                                { obj: string; bakedGroups: BakedGroups; groups: BakedPropGroup[] } {
+                                { obj: string; bakedGroups: BakedGroups; groups: BakedPropGroup[]; propClips: BakedPropClips } {
   const bakedGroups: BakedGroups = {};
   const groups: BakedPropGroup[] = [];
-  if (!props.length) return { obj: '', bakedGroups, groups };
+  const propClips: BakedPropClips = {};
+  if (!props.length) return { obj: '', bakedGroups, groups, propClips };
 
   const lines: string[] = ['# Slopesmith placed props'];
   let vBase = vertexOffset;
@@ -405,12 +409,27 @@ export function bakePlacedProps(props: readonly (PlacedProp & { memberKey?: stri
     if (p.memberKey) (bakedGroups[p.memberKey] ??= []).push(groupName);
     lines.push(`o ${groupName}`);
     const group: BakedPropGroup = { name: groupName, subs: [] };
+    // Gems opened in the normal toolboxes keep the native spin when exported as ordinary props.
+    // Compact rotation clips move the complete, already-rest-posed geometry about the model origin.
+    const compact = mg.rotation;
+    const channels: NonNullable<PropModelAnimationObject['channels']> = [null, null, null, null, null, null];
+    if (compact) {
+      for (const axis of [0, 1, 2] as const) channels[axis] = compact.translation?.[axis] ?? null;
+      if (compact.axis !== undefined) channels[3 + compact.axis] = compact.segments ?? null;
+    }
+    const animation = mg.animation ?? (compact ? { clipFrames: compact.clipFrames, objects: [{
+      parent: -1, restPosition: [0, 0, 0] as V3, restRotation: [0, 0, 0, 1] as [number, number, number, number],
+      restScale: [1, 1, 1] as V3, baseEuler: [0, 0, 0] as V3, channels,
+    }] } : undefined);
+    const motion = p.specialKind === 'gem' && animation ? bakedPropClip(animation, placementMatrix(p)) : null;
+    if (motion && p.id) propClips[p.id] = motion.clip;
     ({ vBase, vtBase } = emitPosedSubs(lines, group, mg.subs, placementMatrix(p),
-      sub => combiner.resolveSlot(p.level, sub.mat), scrollIndexOf?.(p) ?? null, vBase, vtBase));
+      sub => combiner.resolveSlot(p.level, sub.mat), scrollIndexOf?.(p) ?? null, vBase, vtBase,
+      motion ? sub => motion.tagOf(compact ? 0 : sub.object) : undefined));
     if (group.subs.length) groups.push(group);
   });
-  if (lines.length <= 1) return { obj: '', bakedGroups, groups };
-  return { obj: '\n' + lines.join('\n') + '\n', bakedGroups, groups };
+  if (lines.length <= 1) return { obj: '', bakedGroups, groups, propClips };
+  return { obj: '\n' + lines.join('\n') + '\n', bakedGroups, groups, propClips };
 }
 
 /** Bake Effects-authored trigger volumes as centred world-space boxes. Their `EffectTrigger_` group name is

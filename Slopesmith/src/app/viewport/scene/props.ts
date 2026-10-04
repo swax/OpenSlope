@@ -133,6 +133,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
    *  rather than for the -1 a file-backed emitter would otherwise read as. */
   let hitGatedClaims: readonly string[] = [];
   let effectPropsVisible = false;
+  let triggerPropsVisible = false;
   let effectPropIds = new Set<string>();
   let selectedEffectPropIds = new Set<string>();
   let effectTriggerMeshes: THREE.Mesh[] = [];        // authored trigger boxes draw only in Effects mode
@@ -830,7 +831,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         box.scale.set(size[0], size[1], size[2]);
         box.userData.propIndex = i;
         box.userData.effectTrigger = true;
-        box.visible = effectPropsVisible;
+        box.visible = effectPropsVisible || triggerPropsVisible;
         effectTriggerMeshes.push(box);
         group.userData.effectTrigger = true;
         group.add(box);
@@ -1084,7 +1085,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       && selected.size === selectedEffectPropIds.size
       && [...selected].every(id => selectedEffectPropIds.has(id))) return;
     effectPropsVisible = on;
-    for (const mesh of effectTriggerMeshes) mesh.visible = on;
+    for (const mesh of effectTriggerMeshes) mesh.visible = on || triggerPropsVisible;
     effectPropIds = next;
     selectedEffectPropIds = selected;
     rebuildEffectPropOutlines(lastPlacedProps);
@@ -1491,7 +1492,13 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   propMoveHandle.visible = false;
   stage.scene.add(propMoveHandle); // scene-root anchor, Z negated by hand like the other nodes
 
+  function showTriggerProps(on: boolean) {
+    triggerPropsVisible = on;
+    for (const mesh of effectTriggerMeshes) mesh.visible = on || effectPropsVisible;
+  }
+
   return {
+    showTriggerProps,
     /** Point props at the terrain's baked ground light (null to put them back on the studio rig). */
     setGroundLightSource(fn: ((p: V3) => number | null) | null): void {
       groundLightAt = fn;

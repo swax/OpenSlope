@@ -17,6 +17,8 @@ import { createPropOps } from './props/operations';
 import { createPropClipboard } from './props/clipboard';
 import { createPropLineOps } from './props/lines';
 import { createTrickTools } from './tricks/operations';
+import { section as toolSection } from './effects/editor-widgets';
+import { createSpecialPropOps } from './props/special';
 import { Palette } from './paint/palette';
 import { tooltip } from './ui/components/tooltip';
 import { Viewport, type Mode, type ShadeMode, type ViewState } from './viewport/viewport';
@@ -544,12 +546,18 @@ propLibToggle.style.display = 'none';
 const propLibBtn = document.createElement('button');
 propLibBtn.type = 'button';
 propLibBtn.className = 'sp-btn sp-prop-launcher';
-propLibBtn.innerHTML = `${PROP_LIB_ICON}<span>Prop Library</span>`;
+propLibBtn.innerHTML = `${PROP_LIB_ICON}<span>Open Prop Library</span>`;
 tooltip(propLibBtn, 'Show / hide the Prop Library — the reference world’s placeable props, at the bottom of the screen.');
 propLibBtn.onclick = () => setPropLibWanted(!store.propLibWanted); // open intent is remembered across Props visits
-propLibToggle.appendChild(propLibBtn);
-/** Reflect the Prop Library's open intent on the Prop Tools "Prop Library" toggle (its pressed highlight). */
-function syncPropLibBtn() { propLibBtn.classList.toggle('on', store.propLibWanted); }
+const standardPropsSection = toolSection('Standard static props');
+standardPropsSection.body.appendChild(propLibBtn);
+propLibToggle.appendChild(standardPropsSection.root);
+/** Reflect the library's open state in the button's next action and pressed highlight. */
+function syncPropLibBtn() {
+  propLibBtn.classList.toggle('on', store.propLibWanted);
+  propLibBtn.querySelector('span')!.textContent = `${store.propLibWanted ? 'Hide' : 'Open'} Prop Library`;
+  propLibBtn.setAttribute('aria-expanded', String(store.propLibWanted));
+}
 
 // The pull-up tabs at the bottom edge (class DockTab): while a library is hidden in its own mode, a small
 // handle in the middle of the bottom edge says what is folded away down there and brings it back. Without one
@@ -956,7 +964,14 @@ const history = createHistory({
   onRestore: restoreDoc,
   // Undo of an ordinary edit re-asserts register values onto the live document, so the host only has to
   // render what it already holds (docs/039).
-  onRefresh: () => scheduleRebuild(),
+  onRefresh: () => {
+    // Register undo replaces prop/effect records too. Rebind their inspectors, including when undoing a
+    // legacy gem's upgrade removes the selected prop entirely.
+    if (store.selectedProp !== null && !store.mdoc.props?.[store.selectedProp]) store.selectedProp = null;
+    if (store.selectedGem && !store.mdoc.gems?.some(gem => gem.id === store.selectedGem)) store.selectedGem = null;
+    scheduleRebuild();
+    if (store.currentMode === 'props' || store.currentMode === 'effects') rebuildTools();
+  },
   refreshButtons: refreshHistButtons,
   registers: () => registerSync,
 });
@@ -1117,6 +1132,8 @@ const propLines = createPropLineOps({
 });
 const effects = createEffectsEditor({
   store, viewport, scheduleRebuild, goToProp, goToRail,
+  goToSpecialProp: id => specialProps.select(id),
+  goToPropTools,
   loadPropLevel: propOps.ensurePropLevel,
 });
 effectsEditor = effects;
@@ -1243,9 +1260,21 @@ function deleteSelectedLight() {
 // resolve, and the Add rail pipe / gem / light row it docks under the Prop Library toggle (the light itself is
 // armLight above — lights are rig territory, the row just hosts its button). The tools panel is created
 // later, so it's reached through an accessor closure.
+const specialProps = createSpecialPropOps({
+  store, viewport, cancelPlacement: () => { viewport.setLightArmed(false); trickTools.cancelTrickTools(); }, setMode,
+  scheduleRebuild, rebuildTools: () => rebuildTools(),
+});
 const trickTools = createTrickTools({
   store, viewport, gemTool, propLibToggle,
   ensurePropLevel: propOps.ensurePropLevel,
+  armBoostPad: propOps.armBoostPad,
+  addSpecialZone: specialProps.add,
+  addEffectScenery: kind => {
+    goToPropTools();
+    setMode('effects');
+    effects.clearSelection();
+    effects.addScenery(kind);
+  },
   toggleTricks, armLight, revealScreens, setMode,
   addSheet: () => propLines.startBlankSheet(), // docs/071
   scheduleRebuild,
@@ -1637,6 +1666,14 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   },
   effects,
   goToEffects,
+  selectSpecialProp: specialProps.select,
+  goToGemToolbox: async (id, mode) => {
+    const prop = await propOps.editableGem(id);
+    if (!prop) return;
+    specialProps.select(prop.id!);
+    if (mode === 'effects') goToEffects();
+    else { store.specialPropView = `prop:${prop.id}`; rebuildTools(); }
+  },
 });
 // The test-ride setup + launch glue lives in play/play.ts. Play calls the tools panel's rebuildTools /
 // updateCmdSheet, and the tools panel wires its Play buttons to play's actions — a mutual dependency, so play
@@ -1757,6 +1794,17 @@ function toggleFOverlay() {
 
 // ================= mode switching =================
 
+/** All object creation starts at the Props launcher, with no stale inspector or held placement. */
+function goToPropTools() {
+  trickTools.cancelTrickTools();
+  propOps.disarmProp();
+  propOps.deselectPropOrLight();
+  viewport.setLightArmed(false);
+  effects.clearSelection();
+  setMode('props');
+  scheduleRebuild();
+}
+
 /** Effects mode's "Go to prop": jump to Props mode with the effect's host selected — an authored placement
  *  (by doc index) seats its normal amber selection + gizmo; a native instance becomes the read-only
  *  reference pick. The camera stays where it is — jumping modes is not a reframe. */
@@ -1764,6 +1812,7 @@ function goToProp(target: { propIndex: number } | { sourceIndex: number }) {
   if ('propIndex' in target) {
     store.selectedRefProp = null;
     store.selectedProp = target.propIndex;
+    store.specialPropView = `prop:${store.mdoc.props?.[target.propIndex]?.id}`;
     store.multiSel = [];
     setMode('props');
     scheduleRebuild(); // the re-render seats the amber outline + gizmo on the placement

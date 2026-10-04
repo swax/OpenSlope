@@ -53,6 +53,7 @@ import {
 import { rotateByPlacement, writePropRotation } from '../../../core/props/pose';
 import { describeProp, ownGeometry } from '../../../core/props/kind';
 import { openBlenderGuide } from '../../props/blender-bridge';
+import { isEffectTriggerProp } from '../../../core/effects/trigger-volume';
 
 /**
  * One contact & collision vocabulary for both prop inspectors. The authored panel spends it on editable
@@ -945,7 +946,11 @@ export function createPropTools(ctx: ToolsContext) {
         .map(node => node ? rollerNodeMass(node) : null).find(value => value !== null) ?? null;
       detail(section, `${effectTemplateLabel(held.template)}${mass !== null ? ` · mass ${mass}` : ''}`, 'effect');
       const name = shortPropName(armed.name);
-      const [line, more] = armed.from === 'instance'
+      const [line, more] = armed.from === 'preset'
+        ? ['Boost effect with scrolling arrows.',
+          'Each placed pad carries this effect. Select a pad and open Effects to change the duration. '
+          + 'Pads of the same kind share an effect, so editing it changes them together.']
+        : armed.from === 'instance'
         ? [`This ${name}’s own effect.`, 'Middle-clicking a prop in the reference level takes that copy’s effect.']
         : [`${held.matching === held.total ? `All ${held.total}` : `${held.matching} of ${held.total}`} placed `
             + `${name} in ${armed.level} carry it.`,
@@ -969,6 +974,8 @@ export function createPropTools(ctx: ToolsContext) {
   /** One line on where the held prop's settings came from, and a detail for the info badge. */
   function heldProvenance(armed: ArmedProp, resolved: ResolvedPropDefaults): [string, string] {
     const name = shortPropName(armed.name);
+    if (armed.from === 'preset') return ['Boost pad preset: ride-through contact in both race modes.',
+      'The pad carries its boost effect when placed. Turn and size it here; tune its effect after placing.'];
     if (armed.group) {
       if (armed.from === 'placement') return [`Copying a placed ${name}: its settings, member by member.`,
         '“use model defaults” switches back to what each member’s own model starts with.'];
@@ -1019,7 +1026,8 @@ export function createPropTools(ctx: ToolsContext) {
     const [provenance, more] = heldProvenance(armed, resolved);
     note(aboutSection, provenance, more);
     const edited = () => armed.from === 'defaults' && (!sameBehaviour(armed.behaviour, defaults) || !!armed.effectOff);
-    const statusText = () => armed.from === 'placement' ? 'copy of a placed prop'
+    const statusText = () => armed.from === 'preset' ? 'boost pad preset'
+      : armed.from === 'placement' ? 'copy of a placed prop'
       : armed.from === 'instance' ? 'copy of a reference prop'
         : edited() ? 'changed — not saved' : 'model defaults';
     const status = detail(aboutSection, statusText(), 'next placement');
@@ -1124,13 +1132,26 @@ export function createPropTools(ctx: ToolsContext) {
       // Transform, which answered "where is it" for something you did not yet know the nature of — and the
       // nature is what decides every action below: whether the mesh tools can touch it, whether reshaping
       // costs you its texture mapping, and what survives a trip through Blender (docs/046).
-      if (!def) {
+      if (!def && !isEffectTriggerProp(prop)) {
         const about = describeProp(propFactsOf(prop));
         const kindSection = editSection('props-kind', about.label, false);
         detail(kindSection, about.detail);
         note(kindSection, about.note);
       }
       const transformSection = editSection('props-authored-transform', 'Transform', false);
+      for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
+        const position = {
+          get value() { return prop.pos[index]; },
+          set value(v: number) { if (Number.isFinite(v)) prop.pos[index] = v; },
+        };
+        transformSection.add(position, 'value').name(`position ${axis} (m)`).listen().onChange(scheduleRebuild);
+      }
+      if (isEffectTriggerProp(prop)) for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
+        const size = { value: prop.effectTrigger.size[index] };
+        transformSection.add(size, 'value', 0.5, 1000, 0.5).name(`box ${axis} (m)`).onChange((value: number) => {
+          prop.effectTrigger!.size[index] = Math.max(0.5, value); scheduleRebuild();
+        });
+      }
       tip(transformSection.add(prop, 'yaw', 0, 360, 1).name('turn (°)').onChange(scheduleRebuild), 'Spin the prop about vertical.');
       // Tilt: the same two angles the gizmo's red / blue rings drive, typed. They live in the document as
       // optional fields, so the sliders read through a proxy that writes zero back out as "absent" — an
@@ -1184,6 +1205,10 @@ export function createPropTools(ctx: ToolsContext) {
         .name(def ? '＋ place group' : '＋ place prop'),
       `Put a copy of this ${def ? 'group' : 'prop'} on the cursor, then move over the terrain and click to place it.`);
       actionRows.push(placeAction.domElement);
+      if (isEffectTriggerProp(prop)) {
+        placeAction.disable();
+        tip(placeAction, 'Use copy and paste to duplicate a trigger volume and its effects.');
+      }
       // The author's own model can take this placement's settings as its defaults (docs/069): tune one on the
       // mountain, then every new one starts that way.
       if (ownGeometry(prop.level) && !prop.group) {
@@ -1219,7 +1244,7 @@ export function createPropTools(ctx: ToolsContext) {
         + 'GLB as the no-install route.');
         actionRows.push(blender.domElement);
       }
-      if (!prop.group) {
+      if (!prop.group && !isEffectTriggerProp(prop)) {
         const revise = tip(gui.add({ revise: () => modelEdit.createRevision(store.selectedProp!) }, 'revise')
           .name('⧉ revise prop (v2)'),
         'Copy this prop to your library as “<name> v2” and point THIS placement at it.',
@@ -1710,7 +1735,8 @@ export function createPropTools(ctx: ToolsContext) {
     // Every card for a PLACED prop names which placement it is, the same way the box-selection list already
     // did: the Effects panel identifies a prop by its number, so clicking one has to answer that question too
     // rather than making you open its effect to find out which of twenty identical panes you are holding.
-    if (sel) propPreview.show(sel.level, sel.model, shortPropName(sel.name), propLevels.get(sel.level), defOfPlaced(sel),
+    if (isEffectTriggerProp(sel)) propPreview.hide();
+    else if (sel) propPreview.show(sel.level, sel.model, shortPropName(sel.name), propLevels.get(sel.level), defOfPlaced(sel),
       sel.id ?? `#${store.selectedProp}`);
     // a prop line shows the model it lays out, named by the line (docs/070)
     else if (store.selectedLine !== null && ctx.propLines.selected()) {

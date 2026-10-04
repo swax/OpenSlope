@@ -368,8 +368,8 @@ export const EFFECT_TEMPLATES: readonly EffectTemplate[] = [
       + 'CHECK THE MODEL HAS A CLIP. On a model with no animation this still installs and runs, moving nothing, '
       + 'and nothing anywhere says so. The Play window shown below is how you tell: a real clip has a window '
       + 'longer than zero.\n\n'
-      + 'Only an imported model brings its animation through to the disc. A model borrowed from an extracted '
-      + 'level arrives with an empty window however many frames it claims.',
+      + 'Imported models and gem props preserve their animation on export. Other models borrowed from an '
+      + 'extracted level arrive with an empty window however many frames they claim.',
     nodes: [{ mainType: 0, semanticType: 'property.anim-object',
       payload: { type0: { SubType: 256, type0Sub256: { U0: 1, U1: -1, U2: -1, U3: 30, U4: 0, U5: 1, U6: 0, U7: 3 } } }, references: {} }] },
   // The Elysium iris door's recipe, self-contained on one prop: contact plays the model's own clip ONCE
