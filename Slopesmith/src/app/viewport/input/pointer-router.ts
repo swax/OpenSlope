@@ -123,9 +123,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** RMB remains the third-person look fallback only when no highlighted Play target consumes the press. */
   let rideOrbitMouse = false;
   // props select mode defers the LMB press: a still click selects on release, a drag becomes the marquee
-  let propClickPending: { x: number; y: number } | null = null;
+  let propClickPending: { x: number; y: number; shift: boolean } | null = null;
   // Info uses the same click-or-marquee contract for authored course knots.
-  let infoClickPending: { x: number; y: number } | null = null;
+  let infoClickPending: { x: number; y: number; shift: boolean } | null = null;
   // mountain Edit (cage on) defers the LMB press the same way: a still click selects a control point / edge /
   // face / prop, while a drag resolves every enabled family. Modifiers survive pointer wobble/release.
   let editClickPending: { x: number; y: number; shift: boolean; ctrl: boolean } | null = null;
@@ -635,8 +635,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
 
   /** Props-mode middle-click copy: pick up whatever prop is under the cursor — a placed
    *  prop (arm its model to place more) or a reference-world prop (arm a copy). Nearest hit wins. */
-  function pickPropAtPointer() {
-    const pick = layers.scenePicking.pick({ props: 'standard' });
+  function pickPropAtPointer(occludeWithSurfaces = false) {
+    const pick = layers.scenePicking.pick({ props: 'standard', occludeWithSurfaces, surfaceEpsilon: 1e-3 });
     if (pick?.target !== 'prop') return;
     if (pick.source === 'authored') stage.cb.onPickPlacedProp?.(pick.propIndex);
     else stage.cb.onPickReferenceProp?.(pick.level, pick.model, pick.name, pick.sourceIndex);
@@ -999,6 +999,13 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (e.button === 1) { layers.cameraCtl.seatTargetAhead(); mmbDown = access.mode() === 'paint' || access.mode() === 'props' ? { x: e.clientX, y: e.clientY } : null; }
     }
     if (e.button !== 0) return; // MMB (pan) handled by OrbitControls; ignore here
+    // Replace owns the click before gizmos and marquee selection can move or deselect its target.
+    if (access.mode() === 'props' && stage.cb.isReplacingProp?.()) {
+      stage.castAt(e);
+      pickPropAtPointer(true);
+      e.stopImmediatePropagation();
+      return;
+    }
     // a press on a gizmo handle is the gizmo's to drive (it set .axis on the preceding hover) - defer to
     // it. But not when hover-gating disabled the gizmo because the cursor is over a tangent nub: nubs
     // win over the corner's gizmo handles underneath them, so let the press fall through to the nub.
@@ -1061,7 +1068,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // Info: defer the press so a still click keeps ordinary knot/reference selection while a drag can
     // rubber-band several authored course knots for bulk deletion.
     if (access.mode() === 'info') {
-      infoClickPending = { x: e.clientX, y: e.clientY };
+      infoClickPending = { x: e.clientX, y: e.clientY, shift: e.shiftKey };
       (e.target as Element).setPointerCapture?.(e.pointerId);
       return;
     }
@@ -1070,7 +1077,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // props select mode (nothing armed): defer the press — a still click selects on release (pointerUp),
     // a drag past the tap threshold rubber-bands a multi-selection instead (see pointerMove).
     if (access.mode() === 'props' && !layers.props.propArm && !layers.rails.railArmed && !layers.lights.lightArmed) {
-      propClickPending = { x: e.clientX, y: e.clientY };
+      propClickPending = { x: e.clientX, y: e.clientY, shift: e.shiftKey };
       (e.target as Element).setPointerCapture?.(e.pointerId);
       return;
     }
@@ -1520,7 +1527,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (Math.hypot(e.clientX - infoClickPending.x, e.clientY - infoClickPending.y) > 4) {
         const r = stage.container.getBoundingClientRect();
         marqueeKind = 'knots';
-        marqueeSelectionMode = 'replace';
+        marqueeSelectionMode = infoClickPending.shift ? 'add' : 'replace';
         marquee = { x0: infoClickPending.x - r.left, y0: infoClickPending.y - r.top };
         infoClickPending = null;
         stage.marqueeEl.style.display = 'block';
@@ -1534,7 +1541,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (Math.hypot(e.clientX - propClickPending.x, e.clientY - propClickPending.y) > 4) {
         const r = stage.container.getBoundingClientRect();
         marqueeKind = 'props';
-        marqueeSelectionMode = 'replace';
+        marqueeSelectionMode = propClickPending.shift ? 'add' : 'replace';
         marquee = { x0: propClickPending.x - r.left, y0: propClickPending.y - r.top };
         propClickPending = null;
         stage.marqueeEl.style.display = 'block';
@@ -1702,6 +1709,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
     if (marquee) {
       const kind = marqueeKind;
+      const additive = e.shiftKey || marqueeSelectionMode === 'add';
       const propIndices = kind === 'props' ? propsInMarquee() : [];
       const knotIndices = kind === 'knots' ? knotsInMarquee() : [];
       if (kind === 'edit') {
@@ -1711,10 +1719,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       hideMarquee();
       stage.controls.enabled = true;
       (e.target as Element).releasePointerCapture?.(e.pointerId);
-      if (kind === 'props') stage.cb.onSelectProps?.(propIndices);
+      if (kind === 'props') stage.cb.onSelectProps?.(propIndices, additive);
       else if (kind === 'knots') {
         host.clearRefSelection();
-        stage.cb.onSelectKnots?.(knotIndices);
+        stage.cb.onSelectKnots?.(knotIndices, additive);
       }
       return;
     }

@@ -20,6 +20,7 @@ import { toast } from './ui/components/toast';
 import type { RotationSnapStep, SnapStep, Viewport, ViewportCallbacks } from './viewport/viewport';
 import { shortcutForMode } from './mode-shortcuts';
 import { nextPlacedPropId } from '../core/effects/authoring';
+import { isEffectTriggerProp } from '../core/effects/trigger-volume';
 import { nextGemId, nextLightId } from '../core/doc/ids';
 import type { RigLight } from '../core/reference/lights';
 import { placedPropCollisionProfile } from '../core/props/contact';
@@ -189,9 +190,11 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       updateCmdSheet();
       scheduleRebuild();
     },
-    onSelectKnots(indices) {
+    onSelectKnots(indices, additive = false) {
+      if (additive && !indices.length) return;
+      const current = store.selectedKnots.length ? store.selectedKnots : store.selected === null ? [] : [store.selected];
       store.selected = null;
-      store.selectedKnots = [...new Set(indices)].sort((a, b) => a - b);
+      store.selectedKnots = [...new Set([...(additive ? current : []), ...indices])].sort((a, b) => a - b);
       if (store.selectedKnots.length) selectScene('course');
       refreshSelection();
       updateCmdSheet();
@@ -320,14 +323,17 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (p?.effectTrigger) p.effectTrigger.size = size;
       scheduleRebuild();
     },
-    onSelectProps(indices: number[]) { // box-select drag finished (empty = dragged over nothing, clearing the set)
+    onSelectProps(indices, additive = false) {
+      if (additive && !indices.length) return;
+      const current = store.multiSel.length ? store.multiSel : store.selectedProp === null ? [] : [store.selectedProp];
       resetGizmoMode();
-      store.multiSel = indices;
-      if (indices.length) {
-        store.selectedProp = null; store.selectedLight = null; store.selectedRail = null; store.selectedNode = null;
+      store.multiSel = [...new Set([...(additive ? current : []), ...indices])].sort((a, b) => a - b);
+      store.selectedProp = null;
+      if (store.multiSel.length) {
+        store.selectedLight = null; store.selectedRail = null; store.selectedNode = null;
         store.selectedGem = null; clearScreenState(); clearLineState(); clearReferenceLight();
       }
-      viewport().setPlacedPropSelection(store.selectedProp, indices);
+      viewport().setPlacedPropSelection(null, store.multiSel);
       if (store.currentMode === 'props') rebuildTools();
     },
     onMoveProps(delta: V3) { // the multi-selection's centre gizmo moved: carry every member along
@@ -357,9 +363,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     onPickReferenceProp(level: string, model: number, name: string, sourceIndex?: number) {
       void propOps().armProp(level, model, name, { sourceIndex });
     }, // MMB a ref prop → hold an exact instance-derived copy
+    isReplacingProp: () => propOps().isReplacingProp(),
     onPickPlacedProp(i: number) { // MMB a placed prop → hold its model (or its whole group) to place more
       const p = store.mdoc.props?.[i];
-      if (!p) return;
+      if (!p || isEffectTriggerProp(p)) return;
       // The copy carries everything the placement does — its sounds and self-lighting too, not only contact.
       const behaviour = { ...behaviourOf(p), nativeCollision: structuredClone(placedPropCollisionProfile(p)) };
       const from = { behaviour, ...(p.id ? { placementId: p.id } : {}) }; // …and shares its effect (docs/069)

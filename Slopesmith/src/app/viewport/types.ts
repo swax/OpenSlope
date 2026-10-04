@@ -273,8 +273,8 @@ export interface ViewportCallbacks {
   /** Edit mode: a plain click landed on nothing selectable (empty space or the model-session's read-only
    *  mountain backdrop). Ends an unlocked model edit session — the host applies the lock / armed-tool rules. */
   onEditClickAway?(): void;
-  /** Info-mode course marquee finished: replace the bulk knot selection with these course indices. */
-  onSelectKnots?(indices: number[]): void;
+  /** Info-mode course marquee finished: replace the selection, or add these course indices with Shift. */
+  onSelectKnots?(indices: number[], additive?: boolean): void;
   onMoveKnot(index: number, pos: V3): void;
   /** A start/finish flag was dragged: `pos` is the GROUND point it now marks (the handle's lift removed).
    *  Stores an anchor on the run, which is what takes the endpoint off the line's ends. */
@@ -436,8 +436,9 @@ export interface ViewportCallbacks {
   /** Effects mode: resize one generated trigger box independently on each authored axis. */
   onResizeEffectTrigger?(index: number, size: V3): void;
   /** Props select mode: a box-select drag finished — the doc indices of every placed prop whose origin
-   *  projected inside the rectangle (empty = the drag covered nothing, clearing the set). */
-  onSelectProps?(indices: number[]): void;
+   *  projected inside the rectangle. Shift adds to the existing selection, including an existing single pick;
+   *  an empty additive drag leaves the selection unchanged. */
+  onSelectProps?(indices: number[], additive?: boolean): void;
   /** Props mode: the multi-selection's centre gizmo was dragged — move EVERY selected prop by this
    *  data-space delta (the host owns the index set). */
   onMoveProps?(delta: V3): void;
@@ -450,6 +451,8 @@ export interface ViewportCallbacks {
   onPickReferenceProp?(level: string, model: number, name: string, sourceIndex?: number): void;
   /** Props mode: a middle-click copied a placed prop — arm its model to place more. */
   onPickPlacedProp?(index: number): void;
+  /** Replacement uses an ordinary world click as a prop pick while retaining the target selection. */
+  isReplacingProp?(): boolean;
   /** Props select mode: a reference-world prop was clicked — a READ-ONLY selection (outline + preview card;
    *  no gizmo, the reference can't be edited). All-null clears it. */
   /** `inst` = the picked INSTANCE's decoded contact + audio data — instance data, so it rides the pick

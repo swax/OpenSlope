@@ -97,6 +97,9 @@ export type ToolsPanelDeps = {
     from?: { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string }) => Promise<void>;
   armGroupById: (level: string, id: string, from?: { behaviour?: PropBehaviour; placementId?: string }) => Promise<void>;
   deselectPropOrLight: () => void;
+  replaceSelectedProp: () => void;
+  cancelPropReplacement: () => void;
+  isReplacingProp: () => boolean;
   // prop defaults (docs/069)
   propDefaults: (level: string, model: number) => ResolvedPropDefaults;
   /** What a group picked from the library stamps: each member its own model's defaults. */

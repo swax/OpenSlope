@@ -1619,6 +1619,9 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   shortPropName: propOps.shortPropName, propBaseOffset: propOps.propBaseOffset,
   armProp: propOps.armProp, armGroupById: propOps.armGroupById,
   deselectPropOrLight: propOps.deselectPropOrLight,
+  replaceSelectedProp: () => { propOps.replaceSelectedProp(); setPropLibWanted(true); },
+  cancelPropReplacement: propOps.cancelPropReplacement,
+  isReplacingProp: propOps.isReplacingProp,
   propDefaults: propOps.propDefaults, groupDefaults: propOps.groupDefaults, modelEffect: propOps.modelEffect,
   placementsOfModel: propOps.placementsOfModel,
   saveModelDefaults: propOps.saveModelDefaults, applyBehaviourToPlaced: propOps.applyBehaviourToPlaced,
@@ -1878,6 +1881,7 @@ function goToEffects(target?: { sourceIndex: number; called: true }): void {
 }
 
 function setMode(m: Mode) {
+  propOps.cancelPropReplacement();
   usersMode.setActive(false); // Users is its own mode: picking a numbered one leaves it (docs/038)
   usersBar.refresh();
   library.cancelPick(); // a texture pick belongs to the session that raised it, not to the next mode

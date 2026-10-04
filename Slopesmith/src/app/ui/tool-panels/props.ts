@@ -156,7 +156,7 @@ export function createPropTools(ctx: ToolsContext) {
   const {
     gui, store, viewport, persistUi, multiList, propPreview, scheduleRebuild, rebuildTools,
     defOfPlaced, placedBaseOffset, shortPropName, propLevels, groupDefIdx,
-    armProp, armGroupById, deselectPropOrLight, lightTool,
+    armProp, deselectPropOrLight, lightTool,
     propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     deleteSelectedProp, deleteMultiSelProps, propClipboard, deleteSelectedLight, deleteSelectedScreen, revealScreens,
     modelEdit, editSection, goToEffects,
@@ -1115,6 +1115,16 @@ export function createPropTools(ctx: ToolsContext) {
     // rebuild and stop anything left over, so changing selection or deselecting silences it rather than
     // leaving a sound running with no way to reach it.
     syncLoopOwner();
+    if (ctx.isReplacingProp()) {
+      const count = store.multiSel.length || 1;
+      note(gui, `Click a prop in the world or the Prop Library to replace ${count === 1 ? 'the selected prop' : `the ${count} selected props`}.`);
+      note(gui, 'Each prop keeps its position, rotation and size. The chosen prop supplies its settings and effects.');
+      if (store.multiSel.some(i => store.mdoc.props?.[i]?.line || isEffectTriggerProp(store.mdoc.props?.[i])))
+        note(gui, 'Trigger volumes and prop-line members stay unchanged.');
+      tip(gui.add({ cancel: ctx.cancelPropReplacement }, 'cancel').name('◀ cancel replacement (Esc)'),
+        'Keep the original props and return to the selection’s properties.');
+      return;
+    }
     if (store.multiSel.length) { buildMultiPropTools(); return; }
     const prop = store.selectedProp !== null ? store.mdoc.props?.[store.selectedProp] : undefined;
     if (prop) {
@@ -1189,25 +1199,16 @@ export function createPropTools(ctx: ToolsContext) {
       const emitterSection = addEmitterSection(host);
       const lightingSection = addLightingSection(host);
       const { contactSection } = addContactSection(host);
-      // ＋ place copies EVERYTHING this placement carries — its sounds and self-lighting as well as its contact,
-      // and a group's per-member settings. Read when clicked, not when the panel was built: some edits (mode
-      // layer, self-lit) do not rebuild it. A legacy placement with no stored profile copies its inferred one.
+      // Saved defaults read the live placement; a legacy placement materializes its inferred profile.
       const copied = () => ({ ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision
         ?? placedPropCollisionProfile(prop, authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
           typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile)) });
       // a group's component list rides the preview card above
-      const placeAction = tip(gui.add({ place: () => {
-        // …and shares its effect, if it carries one (docs/069 · Effects).
-        const from = { behaviour: copied(), ...(prop.id ? { placementId: prop.id } : {}) };
-        if (prop.group) void armGroupById(prop.level, prop.group, from);
-        else void armProp(prop.level, prop.model, prop.name, from);
-      } }, 'place')
-        .name(def ? '＋ place group' : '＋ place prop'),
-      `Put a copy of this ${def ? 'group' : 'prop'} on the cursor, then move over the terrain and click to place it.`);
-      actionRows.push(placeAction.domElement);
-      if (isEffectTriggerProp(prop)) {
-        placeAction.disable();
-        tip(placeAction, 'Use copy and paste to duplicate a trigger volume and its effects.');
+      if (!isEffectTriggerProp(prop)) {
+        const replaceAction = tip(gui.add({ replace: ctx.replaceSelectedProp }, 'replace').name('⇄ replace prop'),
+          'Click a prop in the world or the Prop Library to replace this one, keeping its position, rotation and size.',
+          'The replacement takes the chosen prop’s settings and effects. Esc cancels; undo restores the original.');
+        actionRows.push(replaceAction.domElement);
       }
       // The author's own model can take this placement's settings as its defaults (docs/069): tune one on the
       // mountain, then every new one starts that way.
@@ -1223,7 +1224,7 @@ export function createPropTools(ctx: ToolsContext) {
           + 'settings until you apply the defaults to them from the held prop’s panel.');
         actionRows.push(saveDefaults.domElement);
       }
-      // ⧉ revise prop sits directly under ＋ place prop and means ONE thing whatever is selected: put a v2 of
+      // ⧉ revise prop sits directly under ⇄ replace prop and means ONE thing whatever is selected: put a v2 of
       // this prop in your library and point this placement at it. What differs is only which library it can
       // land in — a tiled prop forks as a tiled prop, everything else lands textured, keeping its UVs.
       if (prop.level === AUTHORED_MODEL_LEVEL) {
@@ -1655,6 +1656,14 @@ export function createPropTools(ctx: ToolsContext) {
   function buildMultiPropTools() {
     multiList.show(store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })));
     // Shared by Props mode and an Edit marquee narrowed to props.
+    if (store.multiSel.some(i => {
+      const prop = store.mdoc.props?.[i];
+      return prop && !prop.line && !isEffectTriggerProp(prop);
+    })) {
+      tip(gui.add({ replace: ctx.replaceSelectedProp }, 'replace').name('⇄ replace prop'),
+        'Choose one prop in the world or the Prop Library to replace the selected props, keeping each position, rotation and size.',
+        'The chosen prop supplies its settings and effects. Trigger volumes and prop-line members stay unchanged. Undo restores the whole set.');
+    }
     if (propClipboard.canCopy()) {
       tip(gui.add({ copy: propClipboard.copy }, 'copy').name(`⧉ copy ${plural(store.multiSel.length)} (Ctrl+C)`),
         'Copy the set; Ctrl+V holds it on the cursor to place.');

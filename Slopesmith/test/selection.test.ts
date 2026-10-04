@@ -476,6 +476,21 @@ for (const reverse of [false, true]) {
   check(store.edgeSel.every(edge => typeof edge[0] === 'string') && store.cellSel.every(cell => typeof cell === 'string'),
     'mixed marquee: mesh indices are converted to stable names before entering the store');
 
+  const selectionSnapshot = () => JSON.stringify({ points: store.controlSel, edges: store.edgeSel, patches: store.cellSel, props: store.multiSel });
+  const originalSelection = selectionSnapshot();
+  session.viewportCallbacks.onSelectEditMarquee?.({ points: pointIds, edges, patches, props: [0, 1] }, 'add');
+  check(selectionSnapshot() === originalSelection,
+    'Shift marquee: overlapping vertices, edges, patches and props stay selected without duplicates');
+  session.viewportCallbacks.onSelectEditMarquee?.({ points: [], edges: [], patches: [], props: [] }, 'add');
+  check(selectionSnapshot() === originalSelection, 'Shift marquee: an empty rectangle retains every selected family');
+  session.viewportCallbacks.onSelectEditMarquee?.({
+    points: [pointIds[0], { kind: 'vertex', vertex: vertexName(store.mdoc, 3)! }],
+    edges: [edges[0], [3, 4]], patches: [patches[0], 3], props: [1],
+  }, 'add');
+  check(store.controlSel.length === 3 && store.edgeSel.length === 3 && store.cellSel.length === 3
+    && store.multiSel.join(',') === '0,1', 'Shift marquee: new mesh components join the existing selection across all families');
+  session.viewportCallbacks.onSelectEditMarquee?.({ points: pointIds, edges, patches, props: [0, 1] }, 'replace');
+
   const overlapVertex = 2;
   const overlapBefore = getVertex(store.mdoc, overlapVertex);
   const propBefore = [...store.mdoc.props[0].pos] as V3;

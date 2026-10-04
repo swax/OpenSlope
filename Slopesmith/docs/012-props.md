@@ -18,6 +18,21 @@ The staged plan, all built:
    turn / size / delete; exported **textured** into `Props.obj` (+ `Materials.json` + copied tiles) so props
    ship with their real look.
 
+## Replacing a placed prop
+
+Select a placed prop and choose **Replace prop** in its properties. Click another prop in the world
+or choose a prop or group from the Prop Library. The target keeps its position, rotation, size, identity
+and labels; its model, settings and effects come from the chosen prop. The source is unchanged.
+Clicking the target itself keeps it unchanged. **Cancel replacement** or **Esc** returns to its properties
+without changing it; undo restores a completed replacement. Reference-world props can supply a replacement
+but remain read-only targets. Prop lines use their existing **Swap prop** action.
+
+The multi-selection panel also offers **Replace prop**. One world or library pick replaces every selected
+ordinary prop or group, preserving each placement's transform, identity and labels. The set stays selected,
+and one undo restores the whole replacement. Picking a member of the set uses it for the others and leaves
+that source unchanged. Trigger volumes and prop-line members are left alone. From Edit's prop-only
+multi-selection, the button enters Props mode to pick the replacement.
+
 ## Special prop shortcuts
 
 The idle Props launcher is the shared home for adding world objects. Its buttons are grouped into
@@ -256,7 +271,9 @@ the knot state is already empty, rather than scheduling a full `renderDoc` merel
 
 **Multi-select** (select mode): a **left-drag** rubber-bands a box — the press is deferred, so a still
 click still selects on release while a drag past the tap threshold draws the marquee — and every placed
-prop whose origin projects inside becomes one selection set. Each member shows the amber outline, and the
+prop whose origin projects inside becomes one selection set. **Shift+left-drag** adds the boxed props to
+the current selection, including a single selected prop. Overlapping props stay selected, and an empty
+Shift-drag changes nothing. A plain drag replaces the set. Each member shows the amber outline, and
 the one gizmo parks at the set's **centroid**; dragging it moves every member by the same data-space
 delta (the viewport reports deltas via `onMoveProps`, the host applies them to its `multiSel` indices).
 Rotating the set turns it **rigidly** about that centroid — each member's origin swings and its own
