@@ -172,8 +172,10 @@ The existing scene stays visible until the synchronous geometry/picking replacem
 one frame coalesce, and identical topology broadcasts, claim rejections, catch-ups and whole-document drift
 repairs do not replace or redraw the map twice. A rejected local geometry edit produces one brief, non-modal
 notice, even when its winning snapshot already arrived; successful edits and ordinary remote updates stay quiet.
-Full-document replacements still reset undo history: old snapshot entries cannot safely restore over
-another participant's work. Initial loads and project switches keep their progressive loading experience.
+A whole-document replacement — a drift repair, an outside write, a catch-up the log cannot reach — still
+resets undo history: old snapshot entries cannot safely restore over another participant's work. Somebody
+else's topology delta does not (see *Topology travels as a delta*). Initial loads and project switches keep
+their progressive loading experience.
 
 Terrain-only snapshots leave the Scene category launcher, Sound panel and Course controls intact, preserving
 focus, expanded sections and an active board-sound preview. Preserved controls resolve the current document
@@ -191,6 +193,411 @@ core — is tempting because `src/core/` is deterministic and fs-free. It is rej
 front of every subdivide, and it makes core version skew between installs a correctness bug rather than a
 cosmetic one. Either way, participants compare document and core versions when they join, and a mismatched
 install joins read-only rather than writing geometry the others would evaluate differently.
+
+### Topology travels as a delta, named by id
+
+*Implemented; the design was revised through two rounds of review before the wire protocol changed.*
+
+Until stable ids existed, a claim had to carry the claimant's whole document, because nothing smaller could
+describe what a renumbering did. Four costs followed from that, and bandwidth was only the first:
+
+- Every claim and every relay was the size of the mountain, whatever the operation touched.
+- Every receiver digested the whole document twice to recognise an identical snapshot, rebuilt its shadow from
+  scratch, and then swapped the scene.
+- The room cleared its log on every topology change, because no log entry could describe one. Anybody who
+  reconnected across a topology edit, however small, got the whole document back.
+- A whole-document replacement reset every other participant's undo history, since nothing could say which
+  of their entries survived it.
+
+Stable ids, tombstones and id-keyed registers (stages 1 and 2) remove the reason for all four. A topology edit
+can now be stated as which names went, which arrived, and how the survivors are wired. That statement is
+relative to a structure every replica already agrees on, which the drift digest's topology section confirms.
+
+| Message | Before | With deltas |
+|---|---|---|
+| `claim` (client → room) | `ids`, `at`, `document` | `ids`, `at`, `delta`, `changes` |
+| `claim` (won) | `ok`, `at` | unchanged |
+| `claim` (lost) | `document`, or an `error` instead of any answer | always a `claim`: `steps`, or `document` for a log gap or drift |
+| `topology` (relay) | `document` | `delta`, `changes` |
+| `caught-up` | `changes`, or `document` after any topology change | `steps`; `document` for a log gap or an outside write |
+
+Measured on synthetic grids with `src/core/doc/topology-delta.ts`. Over real sockets, `test/sync.test.ts`
+sees a delete claim of about 290 bytes against a 282 KB document.
+
+| | 64×64 (4,225 vertices, 4,096 quads) | 141×141 (20,164 vertices, 19,881 quads) |
+|---|---|---|
+| Whole document | 407 KB | 2.04 MB |
+| Delete one interior quad | 160 B | 163 B |
+| Loop cut across the grid | 13.3 KB delta + 4.4 KB registers | 30.9 KB delta + 9.7 KB registers |
+| Hash one delta result | 4.0 ms | 19.1 ms |
+| One full digest (a receiver used to run two) | 12.2 ms | 47.8 ms |
+
+#### What a delta says
+
+```ts
+/** One stretch of the new order: a run of the previous order kept as it stood, or one element written whole. */
+type VertexRun = [from: number, count: number] | [id: string, x: number, y: number, z: number];
+type QuadRun = [from: number, count: number] | [id: string, a: string, b: string, c: string, d: string];
+
+interface TopologyDelta {
+  vertices: VertexRun[];                             // the new vertex order
+  quads: QuadRun[];                                  // the new quad order; written quads name corners by id
+  freeEdges: [string, string][] | null;              // always carried
+  tJunctions: { vertex: string; edge: [string, string]; t: number }[] | null;   // always carried
+  tombstones?: { keep: number; add: string[] } | null;                         // when they changed
+  nextId: number;
+  structure: string;                                 // the topology-section hash the result must have
+}
+```
+
+**Presence is part of the structure.** In every optional field, `null` means the result has no such field, `[]`
+means it has an empty one, and an absent key means "as the base had it". The two are not interchangeable:
+`structuralDocument` keeps an empty list and drops an absent one, so they hash differently, and real code
+produces both — a rewrite writes `tJunctions: []`, `migrateMountain` deletes an empty free-edge list.
+
+Removal is implicit: whatever the runs do not keep is gone. A separate `retired` list would state the same
+fact a second time, and the two statements could disagree. What the document *records* about a removal, its
+tombstones, is carried explicitly as the length of the old list that stands plus the names appended to it. An
+ordinary operation keeps the whole list and appends. When undo brings names back, they are removed from the
+list, which a delta states as the common prefix that stands plus the tail after it.
+
+**Array order is part of the structure.** A delta cannot be just a set of additions and removals, because the
+order of the arrays is data. Digest sections chunk vertices and quads by index, `Patches.json` is ordinal, and
+two replicas holding the same ids in a different order are reported as drifted. So the new order is spelled
+out as runs over the old one:
+
+- `[from, count]` keeps a stretch of the previous order exactly as it stood.
+- A run that starts with a string writes one element whole: a vertex with its position, or a quad with its
+  four corners named by vertex id.
+
+A quad that was rewired is written whole under its own id. A surviving vertex is never written; if it moved,
+its position travels as a register like any other.
+
+The runs are a general permutation encoding, so correctness does not depend on how an operation orders its
+output. Size does. Most operations compact survivors in order and append what they mint, so a delete is two or
+three runs and a loop cut is one run plus the new elements. A surface cut or an edge-crossing weld inserts each
+new piece right after its source, which costs about two runs per cell it crosses. A retopology rebuilds both
+arrays and degrades to one run per element.
+
+That last case can make a claim *larger* than the document. Register keys name geometry by id, so they run
+two or three times longer than the index keys a stored document uses. It is accepted: whole-surface rewrites
+are rare, they are bounded by the socket's burst allowance, and a second claim format for them would be a
+second path to keep correct.
+
+Free edges and T-junctions are both short lists, so both are carried every time. That means neither list in
+the result depends on the claimant's base holding exactly the room's copy. This matters most for T-junctions:
+each replica re-seats them from its own geometry on every render, so a replica's list can legitimately differ
+from the room's between claims (see *Not in scope*). Carrying the claimant's list makes the claimant's own
+seating authoritative.
+
+**A delta checks itself.** `structure` is the hash of the topology section the result must have, which is the
+same section the drift digest compares. Whoever applies a delta (the room or a replica) recomputes that hash.
+A mismatch means the delta was applied to a different base from the one it was written against. That is
+drift, and it gets the drift answer: the whole document.
+
+The hash covers ids, wiring, free edges, the T-node association, tombstones, `nextId`, `kind` and `version`. It
+does not cover positions or channel values; the idle drift check still does. Beyond the hash, applying a delta
+refuses malformed input instead of throwing:
+
+- runs must be in range, and no element may be kept twice;
+- a written quad has four corners and is a valid cell (`isValidCell`: a proper quad or an `[A,B,C,C]` wedge),
+  and every corner names a vertex the result has;
+- no id may appear twice among the vertices, or twice among the quads;
+- no id may be both live and tombstoned;
+- `nextId` may not go below the base's.
+
+The sender hashes its own result, so the hash catches a wrong base, not a buggy claimant. The validations
+above are what limit the damage a buggy claimant can do.
+
+#### The claim and the room
+
+The claim becomes `{ t: 'claim', ids, at, delta, changes, batch }`. The meaning of `ids` and `at` does not
+change: the compare-and-swap covers the ids the operation consumed, checked against the last sequence the
+claimant saw.
+
+`changes` is the register difference the claimant's tick would have sent anyway: the same `differences()`
+pass, read off the document after the operation. Two kinds of entry are left out because the delta already
+says them:
+
+- positions of the vertices the delta writes;
+- clears of registers whose key names an id the delta removed.
+
+That second rule is about *ids*, not edges. A rewrite that dissolves an edge between two surviving vertices
+drops its crease, and that clear must travel. Otherwise the crease stays hidden on every receiver and comes
+back if the edge ever forms again, which is the silent-crease failure described under stable identity.
+
+The claim reply lists the keys of `changes` the room refused. A participant's `g/name` assignment is one of
+them unless it manages the map, as in an ordinary batch.
+
+The acceptance rule does not change. A claim loses if an id it names has been consumed since `at`, or if `at`
+predates the last topology change or the retained log. Today the stale-base rule already implies the id rule,
+since any id stamped after `at` means a topology change after `at`. The id comparison is kept because it is
+what will decide claims once the stale-base rule can be relaxed (see *Not in scope*).
+
+A claim that passes is applied to the room's own document instead of replacing it: first the delta (verifying
+the structure hash), then the claimant's `changes`, **in arrival order and nothing more**. Some other
+participant may have written a register after the claimant applied its operation but before the claim
+arrived; the claim lands after that write and wins, as any later write does. That is last-writer-wins in
+arrival order, the rule every ordinary assignment already follows.
+
+The whole-document claim worked differently: it adopted the claimant's document and then replayed everything
+since `at` over it, so the concurrent writer won. That replay was also wrong in a second way. It re-applied the
+claimant's own batches over its claim, and it re-applied other people's writes over the claimant's own later
+batches. Both moved the room to a value nobody held, and only a drift check repaired it.
+
+Arrival order is exact only if every replica resolves concurrent writes the same way. That is the rule under
+*Absolute values on the wire*: a replica never lets an arriving value replace a write of its own that is still
+unacknowledged. A claim extends what counts as unacknowledged. The registers in an outstanding claim's
+`changes` are in flight just as an unacknowledged batch's are. The same holds for relays applied with a delta,
+for catch-up steps, and for a repair.
+
+The rule has one exception. The room can refuse a write instead of landing it: a non-manager's rename, or a
+value a register cannot hold. Then the room keeps the relayed value, so the replica remembers the last value it
+skipped for each register it had in flight. If the acknowledgement lists that register as refused, the replica
+applies the remembered value. A refused whole object also releases the skipped values of its fields. Once
+nothing is in flight for a register, the replica forgets what it skipped for it.
+
+The claim takes one sequence number, stamps its ids, forces a snapshot, and **enters the log** as
+`{ at, delta, changes }`. In that entry, `changes` lists the claimant's assignments that moved the document.
+The relay is the same entry: `{ t: 'topology', at, delta, changes, by }`.
+
+**Every claim gets a `claim` answer.** A claim the room could not read used to be answered with `error`, and
+the client then waited for a `claim` that never came: its outstanding claim never cleared, and the tick and the
+drift check stopped for good. Now every claim is answered with a `claim`, including a malformed delta, too many
+ids or changes, and a claim in the old whole-document form from a client that omits its versions. The
+answer is `ok`, lost with `steps`, or lost with `document`. Claim `changes` have their own size limit, since a
+subdivide can carry more inherited attributes than the ordinary batch limit of 4,096.
+
+#### Catch-up keeps the log
+
+Log entries no longer describe structures that stop existing, so a topology change no longer clears the log.
+`caught-up` carries `steps`, which a replica applies in order:
+
+- the registers landed since the reconnecting tab's sequence, merged into one step between topology entries;
+- each topology entry as a step of its own.
+
+The whole document is reserved for the two things a log cannot express:
+
+- **A sequence older than the retained tail.**
+- **A document replaced from outside the room**: an import, a restore, a write by another process. The room
+  records the sequence at which it adopted such a write, and any catch-up from before it is answered with the
+  document.
+
+The log itself is kept across outside writes. Claims built before an outside write are settled by the
+structure hash: if the write changed topology, the claim's base is not the room's and it is answered with the
+document. If it did not, the claim applies like any other.
+
+The `revision` push that announces an outside write carries no sequence, so a tab that adopted it still
+reports the older sequence. On its next reconnect it is handed the same document once more. It installs that
+copy without a redraw, because the document already matches. Putting a sequence on `revision` would avoid the
+extra copy, but the tab that made the write is deliberately left out of that push, so it would still need
+another route.
+
+This closed an older gap. A tab that was away during an outside write used to be caught up with the registers
+on either side of it, and kept the old mountain until the idle drift check noticed. A room that adopts a newer
+revision off disk on a snapshot conflict still tells nobody until their idle check.
+
+Between a reconnecting tab's `watch` and its `caught-up`, the room may relay changes that the catch-up then
+repeats. They can also overtake it. A relay sequenced during the join's awaits arrives *before* the steps that
+precede it. For registers the repeat is harmless, but a repeated delta does not apply cleanly.
+
+So the client buffers relays for the map it is rejoining. When `caught-up` arrives, it applies the steps, then
+any buffered relay sequenced after them. In practice there are none, because every buffered relay is covered
+by the catch-up. A join that fails answers with `error` instead of `caught-up`. That ends the buffering and
+applies the buffered relays in order, leaving the drift check to settle the rest.
+
+A fresh page catches up from sequence 0 over a stored snapshot that may already contain some topology steps.
+Replaying one fails its hash and falls back to the whole document. That costs no more than before, when any
+topology change since the room opened sent the whole document anyway.
+
+#### Receivers
+
+A replica applies a delta to its own live document, verifies the hash, and absorbs the `changes`, skipping
+registers it has in flight. The result is a new document object, so the editor's same-map swap can still
+compare before with after. That object shares no container that a register write mutates in place. The shadow
+drops the registers of geometry that went and gains what arrived; nothing is rebuilt from scratch.
+
+**A replica installs whatever the room sends exactly as it arrives**: a delta's result, or a whole document from
+a repair, a catch-up, a rejection or a revision. The editor used to pass every synced document back through
+`migrateMountain`. That function edits its argument in place: it deletes an empty free-edge list, reorients
+and dedupes free edges, infers T-nodes when the list is absent, and drops records near an edge end. The
+replica then took the edited copy as the room's structure. With deltas the room holds the claimant's output
+as produced, which need not be a fixed point of that function, so a re-migrated replica would hold a base the
+room does not have, and every claim it made would fail the hash. The server already normalises a document
+once, when it reads one off disk or from a save; that is the only place it happens.
+
+After a whole document is installed, any batch still in flight is re-written onto it. In-flight batches carry
+their values, not only their keys. A batch still unacknowledged when the document arrives was sequenced after
+the document was produced, so the room holds its values and the document does not.
+
+Unsent local edits on surviving geometry survive by construction, because the delta is applied to the
+document that holds them instead of replacing it. An unsent edit to a register named in the relay's `changes`
+yields to it, as it would to an ordinary relay. An unsent edit on geometry that went retires quietly, as
+today.
+
+If a delta fails to apply or to verify, the replica asks the room for the topology section, which is the whole
+document. That is the drift path, taken immediately instead of at the next idle check. Until the document
+arrives the replica sends nothing and ignores further topology relays. If the socket drops before it arrives,
+the replica asks again after catching up, and it asks again whenever it joins a room. A request sent just
+after a project switch can reach the server before the new room is open and go unanswered.
+
+Three states need a deliberate answer:
+
+- **One of this replica's own claims is outstanding.** The room answers on one ordered socket, so any topology
+  relay arriving now was sequenced ahead of that claim. The claim will lose on the stale-base rule, and its
+  rejection will carry this relay among its steps. The relay is ignored here instead of being applied to a
+  document it was not written against.
+- **The socket drops while a claim is outstanding.** The answer is lost with the socket, and the room may or
+  may not have taken the claim. The replica settles it with the whole document after it catches up.
+- **A whole document is adopted from outside the register path while a claim is outstanding.** This happens on
+  a `revision` push or a project switch. The claim's answer can no longer be applied to the document the
+  replica holds, so when it comes the replica settles that claim with the whole document too. A drift repair
+  that arrives while a claim is outstanding is ignored, because the claim's answer will settle the replica.
+- **A local topology edit has not been claimed yet.** It happened inside the current 40 ms tick. The relay was
+  sequenced first, so the local edit has lost. The replica rewinds to the structure and registers the room
+  holds, applies the relay, and shows the same rejection notice a lost claim shows. This edit used to
+  disappear silently. Unsent register edits from the same tick go with it, because they cannot be told
+  apart from what the operation produced.
+
+Topology claims wait while held changes await a reconnection decision, so a claim never leaves held values
+out of the room.
+
+#### The loser
+
+A rejection carries `steps` instead of the room's document: everything sequenced since the loser's `at`,
+including its own batches that were in flight when it claimed and the winner's topology. The loser kept what
+the room held when it claimed (its structure and a copy of its shadow). It rebuilds that document and applies
+the steps. It lands on the room's state without the whole mountain crossing the wire, and without passing
+back through its own geometry.
+
+Edits the loser made while its claim was outstanding are not lost with it, as long as they were register edits.
+The tick held them back, so they are exactly the difference between its document and its shadow. They are
+re-asserted onto the rebuilt document, where those naming geometry that no longer exists retire quietly, and
+they are sent at once. A drift check taken before they were sent would find them missing from the room and
+repair them away.
+
+That only holds while the loser's structure is still the one it claimed. A second operation, or an undo, made
+while the claim was outstanding has register effects that belong to a structure the rebuild discards: moved
+corners, inherited paint, every value a restore puts back. Re-asserting those would half-apply an operation.
+So if the structure moved after the claim, those edits are discarded with it, as in the rewind case.
+
+The whole document is still the answer in two cases: a claim older than the retained log or than an outside
+write, and a delta that failed to apply or verify at the room. In the second case the claimant's base was not
+the room's, which is drift.
+
+#### Undo
+
+A remote topology change no longer resets anyone's undo history.
+
+- **Register entries survive.** They name registers by stable id, so they outlast another author's
+  renumbering the same way they outlast a remote register write. A re-assertion that names geometry which has
+  since gone retires quietly.
+- **Whole-document entries do not.** These are the entries a participant's own topology edits record.
+  Restoring either side of one would put back a structure that no longer exists and erase the remote change.
+
+So every structural arrival — a relay, a topology step in a catch-up, a lost claim, a rewind — drops
+whole-document entries from both stacks, keeps every register entry, and rebases the history's baseline on the
+new document. That happens synchronously with the swap, so the arrival can never be sealed into the next entry
+as a local change.
+
+A participant's own topology edits made before the arrival can therefore no longer be undone. That includes
+one still inside the 350 ms commit debounce. It cannot be helped: neither side of such an entry exists any
+more.
+
+Undoing your own topology edit otherwise works as before: it restores the document on the other side of the
+edit, and that restore claims like any other topology edit, now as a delta. Register entries now outlive
+other people's topology changes, so a restore must not hand out an id twice, which it used to. Undoing an
+operation rolled `nextId` back and forgot the names the operation minted without tombstoning them, so the next
+operation minted the same names for different geometry. Somebody's surviving register entry, or an edit still
+in flight, would then land on that new geometry.
+
+So a restore keeps the document's identity moving forward:
+
+- `nextId` stays at the higher of the current and the restored value;
+- every name the restore removes is tombstoned;
+- every name it brings back is no longer tombstoned.
+
+The room refuses a delta that lowers `nextId`. This holds alone as well as shared, and it is what `nextId`
+already promises: no id is ever handed out twice. Surviving tombstones keep their order and newly retired names
+follow them, so the delta's prefix stays long. A list the rule empties is removed, not left as `[]`, as
+`retireMeshIds` already does.
+
+After a restore, the history measures its baseline off the document the restore produced, not the snapshot it
+asked for. Otherwise the carried-forward identity would look like a fresh edit at the next commit, and that
+phantom entry would wipe the redo stack.
+
+Undoing a topology edit still re-asserts every register value in the restored document, so it can erase
+register work other people did in the meantime. The follow-up is to make topology undo an inverse delta plus
+register priors.
+
+#### Compatibility
+
+The claim, the relay, the rejection and the catch-up all change shape, so `CORE_VERSION` moves.
+
+- **An older bundle on a newer server** joins read-only on the version mismatch, so it never claims. It would
+  not understand a delta, so the room sends that session the whole document as its topology relay, and catches
+  it up with the whole document whenever a topology step is in range.
+- **A newer bundle on an older server** still accepts a whole-document `topology` relay and adopts it as
+  today.
+
+#### Not in scope
+
+- **Merging concurrent topology.** With deltas, the room could in principle apply a claim built on an older
+  structure when its ids are disjoint from everything consumed since. Two things prevent that today:
+  - Every install mints from the document's shared `nextId` under the constant `INSTALL_ID = 'local'`, so two
+    concurrent claimants mint the same names.
+  - The claim set covers what an operation consumed or rewired, but not the existing corners a newly added
+    quad attaches to. Two extrusions off the same edge would name disjoint ids, and both would win.
+
+  The stale-base rule stays until ids are minted per participant and the claim also covers what an operation
+  attaches to.
+- **Holding a topology edit made while disconnected.** It is not sent, and the drift repair reverts it on
+  reconnect, as today.
+- **Telling connected tabs about a snapshot-conflict adoption.** They learn at their next idle drift check, as
+  today.
+- **T-node drift between claims.** A replica's render can drop a T-node record, for instance when a vertex is
+  dragged to the end of its host edge, and the tick takes that as derived bookkeeping, as it does today. The
+  room keeps the old association until somebody's next claim carries the new one. In the meantime an idle
+  drift check can fetch the whole document. Claiming such changes was considered and set aside, because every
+  replica re-seats the same arrival:
+  - the replicas race N identical claims;
+  - each claim advances the stale-base sequence, so real claims lose with a false notice;
+  - each arrival counts as structural, so it drops everyone's topology undo.
+
+  A fix needs a non-structural update that takes no stale-base sequence.
+- **Handing a fresh page the live document with its sequence.** A page loads the stored snapshot, which can
+  lag the room by one snapshot write, and then joins at the room's head. It can therefore hold less than the
+  sequence it claims until its idle drift check repairs it. A topology claim it makes in that window fails the
+  hash and is answered with the document. The old whole-document claim would instead have overwritten what it
+  missed. Loading the room's live document along with its sequence would close this window, and would also
+  avoid the replay described under catch-up.
+- **Rendering a topology change incrementally.** A renumbering still re-tessellates. Stage 6 owns that.
+
+#### Tests
+
+"Identical" below means the same canonical structure (including T-node `t`) and the same registers. It does
+not mean byte-identical JSON: crease keys enumerate in a different order on each side, and an emptied channel
+is `{}` on one side and absent on the other. The digest ignores both.
+
+- `test/sync-delta.test.ts` (new, core): round-trips deltas across the real operations, and the result must be
+  identical to the operated document, including the crease case above. Operations covered: delete, loop cut,
+  cell edge insert, flip, dissolve, weld, edge rip, append, an edge-dissolving rewrite, and an undo that
+  resurrects names. It also checks run compactness, refusal of a delta written against another base,
+  malformed input, and identity carried forward across a restore.
+- `test/room-digest.test.ts`: the lazy-digest equalities hold across a delta claim. The log survives the
+  claim, catch-up across it returns steps, and an outside write turns an earlier catch-up into the document.
+- `test/sync.test.ts`:
+  - bounds a claim's size in bytes against the document's;
+  - has a loser revert from steps, with no document;
+  - catches up a third replica that reconnects across a topology edit, from the log;
+  - forces a structural divergence to show the resync;
+  - writes a register the claimant also sets in its claim, and shows that every replica ends on the room's
+    value.
+- `test/sync-context.test.ts`: the relay ignored during an outstanding claim, the single rejection notice, the
+  rewind of an unclaimed local edit, a claim outstanding across a disconnect, the skip of an in-flight register
+  and its refused exception, and history keeping register entries while dropping whole-document entries
+  without leaving a phantom entry behind a restore.
+- `test/sync-browser.test.ts`: a local edit made before a remote topology change can still be undone after it.
 
 ## Drift detection and repair
 
@@ -308,7 +715,7 @@ merge-repair logic is the signal to stop and adopt Yjs rather than reimplement i
 2. **Register decomposition and canonical two-level hashing**, still single-writer. Entirely testable offline,
    with no networking involved.
 3. **Register sync and presence.** Free-for-all editing works at this point.
-4. **Topology compare-and-swap claims.**
+4. **Topology compare-and-swap claims**, carried as id-based deltas.
 5. **Per-participant undo.**
 6. **Incremental rebuild**, so a remote change updates the affected patches instead of re-tessellating and
    re-baking the mountain. `010` names this as a cost owed regardless of approach, and with several editors it

@@ -29,9 +29,10 @@ import {
   type Awareness, type PresenceChange, type PresenceEntry, type SessionMember,
 } from './presence';
 import {
-  assign, changesSince, claimTopology, closeRoom, discardRoom, joinRoom, landedFrom, noteLanded, onWire,
-  roomDigest, roomFor, roomSection, type RegisterAssignment,
+  assign, claimTopology, closeRoom, discardRoom, joinRoom, landedFrom, noteLanded, onWire, roomDigest, roomFor,
+  roomSection, stepsSince, type RegisterAssignment, type RoomStep,
 } from './room';
+import type { TopologyDelta } from '../../core/doc/topology-delta';
 import { awarenessPolicyFor, type AwarenessPolicy } from './awareness-policy';
 import { CAPACITY_CLOSE_CODE, CAPACITY_CLOSE_REASON, reservePlayerSeat } from './capacity';
 import { sanitizePlayerPose } from '../../core/session/player-pose';
@@ -88,7 +89,8 @@ export const SESSION_PATH = '/api/session';
  * "the same document" to mean the same mountain.
  */
 export const DOCUMENT_VERSION = 3;
-export const CORE_VERSION = '2';
+/** '3': topology travels as an id-based delta rather than a whole document (docs/039). */
+export const CORE_VERSION = '3';
 
 /** A normal editor peaks around forty channel messages a second (25 Hz registers + 12.5 Hz awareness). The
  * burst leaves room for topology and reconnect catch-up without letting one socket monopolise the event loop. */
@@ -102,6 +104,9 @@ const RIDE_EVENTS_PER_SECOND = 12;
 const RIDE_EVENT_BURST = 24;
 const MAX_ASSIGNMENTS = 4096;
 const MAX_CLAIM_IDS = 100_000;
+/** A topology claim carries the registers its operation produced — a subdivide's children each inheriting
+ *  paint, texture and the rest — so it is bounded like its id set rather than like an ordinary batch. */
+const MAX_CLAIM_ASSIGNMENTS = 200_000;
 /** Catch account-file changes made by the separate CLI process as well as in-process admin actions. */
 const ACCESS_RECHECK_MS = 30_000;
 
@@ -121,8 +126,8 @@ export type ClientMessage =
   | { t: 'screen-observe'; sessionId: string | null; active?: boolean }
   /** Absolute register assignments — the whole of an ordinary edit. */
   | { t: 'assign'; changes: RegisterAssignment[]; batch?: number }
-  /** A topology edit, compare-and-swapping the ids it consumes. */
-  | { t: 'claim'; ids: string[]; at: number; document: EditDoc; batch?: number }
+  /** A topology edit, compare-and-swapping the ids it consumes: the delta it made and the registers with it. */
+  | { t: 'claim'; ids: string[]; at: number; delta: TopologyDelta; changes: RegisterAssignment[]; batch?: number }
   /** This replica's two-level digest, for the drift check. */
   | { t: 'digest'; root: string; sections: Record<string, string> }
   /** Refetch exactly the sections that diverged. */
@@ -155,20 +160,25 @@ export type ServerMessage =
   | { t: 'sync'; projectId: string; at: number; changes: RegisterAssignment[]; by: string }
   /** How a batch of this tab's own assignments turned out. */
   | { t: 'landed'; batch: number; at: number; retired: string[]; refused: string[] }
-  /** How a topology claim turned out. A loser is handed the document that won, so it moves from its own
-   *  optimistic state straight to the authoritative one rather than back through the state it started in. */
-  | { t: 'claim'; batch: number; ok: boolean; at: number; document?: EditDoc; by?: string }
-  /** Somebody else's accepted topology, whole — topology renumbers, so nothing smaller would do. */
-  | { t: 'topology'; projectId: string; at: number; document: EditDoc; by: string }
+  /** How a topology claim turned out — every claim gets one. A loser is handed what was sequenced since its base,
+   *  or the document when the log cannot say it, so it moves from its own optimistic geometry to the
+   *  authoritative geometry in one step rather than back through the state it started in. */
+  | { t: 'claim'; batch: number; ok: boolean; at: number; refused?: string[]; steps?: RoomStep[]; document?: EditDoc }
+  /** Somebody else's accepted topology, as the delta it made and the registers with it. A session on an older
+   *  core is sent the document instead, which is all it can read. */
+  | { t: 'topology'; projectId: string; at: number; delta?: TopologyDelta; changes?: RegisterAssignment[];
+    document?: EditDoc; by: string }
   /** The room's digest, answering a drift check. */
   | { t: 'digest'; projectId: string; at: number; root: string; sections: Record<string, string> }
   /** The repair: one divergent section's registers, or the document when what diverged was the topology. */
   | { t: 'sections'; projectId: string; at: number; registers: RegisterAssignment[]; document?: EditDoc }
-  /** What everybody the caught-up client missed did while it was away, so it can be told rather than guess, and
-   *  the highest of its own batches the room had answered before it rejoined, so a batch whose acknowledgement
-   *  died with the old socket is not replayed over somebody's later write. */
-  | { t: 'caught-up'; projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc;
-    landed: number }
+  /** What everybody the caught-up client missed did while it was away, so it can be told rather than guess:
+   *  the steps to replay, or the document when the log cannot say it. A session on an older core is sent the
+   *  flat assignments it reads, or the document whenever a topology step is in range. And the highest of its own
+   *  batches the room had answered before it rejoined, so a batch whose acknowledgement died with the old socket
+   *  is not replayed over somebody's later write. */
+  | { t: 'caught-up'; projectId: string; at: number; steps?: RoomStep[]; changes?: RegisterAssignment[];
+    document?: EditDoc; landed: number }
   /** The disposable states that changed during one room window, encoded once and shared by every socket. */
   | { t: 'awareness-batch'; projectId: string; peers: AwarenessPeer[] }
   /** The cadence browsers on this room should use when publishing disposable awareness. */
@@ -529,12 +539,27 @@ async function joinMap(sessionId: string, wanted: string | null,
     ...(refusal ? { reason: refusal } : {}),
   });
   if (asked.at === undefined) { session.at = room.at; return; }
-  const missed = changesSince(room, asked.at);
+  const missed = stepsSince(room, asked.at);
   session.at = room.at;
-  send(sessionId, missed === null
-    ? { t: 'caught-up', projectId: wanted, at: room.at, changes: [], document: room.doc, landed }
-    : { t: 'caught-up', projectId: wanted, at: room.at, changes: onWire(missed), landed });
+  if (missed === null || (olderCore(session) && missed.some(step => step.delta))) {
+    send(sessionId, { t: 'caught-up', projectId: wanted, at: room.at, document: room.doc, landed });
+  } else if (olderCore(session)) {
+    send(sessionId, {
+      t: 'caught-up', projectId: wanted, at: room.at, changes: onWire(missed.flatMap(step => step.changes)), landed,
+    });
+  } else {
+    send(sessionId, { t: 'caught-up', projectId: wanted, at: room.at, steps: stepsOnWire(missed), landed });
+  }
 }
+
+/** A session running an older bundle, which reads topology only as whole documents. It joined read-only on the
+ *  version mismatch, so it never claims; it only has to be able to follow. */
+const olderCore = (session: { coreVersion?: string }): boolean =>
+  session.coreVersion !== undefined && session.coreVersion !== CORE_VERSION;
+
+/** Steps as they go out, each step's assignments carrying a clear as the key alone (`onWire`). */
+const stepsOnWire = (steps: readonly RoomStep[]): RoomStep[] =>
+  steps.map(step => ({ ...(step.delta ? { delta: step.delta } : {}), changes: onWire(step.changes) }));
 
 // ---- what a client says ----
 
@@ -542,8 +567,8 @@ const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
 /** An assignment list as it must arrive: pairs of a key and whatever value that register holds. */
-function assignments(value: unknown): RegisterAssignment[] | null {
-  if (!Array.isArray(value) || value.length > MAX_ASSIGNMENTS) return null;
+function assignments(value: unknown, limit = MAX_ASSIGNMENTS): RegisterAssignment[] | null {
+  if (!Array.isArray(value) || value.length > limit) return null;
   const out: RegisterAssignment[] = [];
   for (const change of value) {
     if (!Array.isArray(change) || typeof change[0] !== 'string') return null;
@@ -583,34 +608,55 @@ function onAssign(sessionId: string, message: Extract<ClientMessage, { t: 'assig
 function onClaim(sessionId: string, message: Extract<ClientMessage, { t: 'claim' }>): void {
   const session = sessionById(sessionId);
   const projectId = session?.projectId;
-  if (!session || !projectId) { send(sessionId, { t: 'error', message: 'Open a map before editing it.' }); return; }
-  if (!session.writable) { send(sessionId, { t: 'error', message: 'This tab is following read-only.' }); return; }
-  const room = roomFor(projectId);
-  if (!room) { send(sessionId, { t: 'error', message: 'This map is not open on the server.' }); return; }
-  if (!message.document || typeof message.document !== 'object') {
-    send(sessionId, { t: 'error', message: 'A topology claim carries the mountain it produced.' });
+  const batch = message.batch ?? 0;
+  const room = projectId ? roomFor(projectId) : undefined;
+  if (!session || !projectId || !room) {
+    // Still a claim answer: the client waits on exactly that before it sends anything else. With no room there
+    // is no document to hand back; its drift check settles whatever it applied once it is on a map again.
+    send(sessionId, { t: 'error', message: projectId ? 'This map is not open on the server.' : 'Open a map before editing it.' });
+    send(sessionId, { t: 'claim', batch, ok: false, at: room?.at ?? 0 });
+    return;
+  }
+  // Every claim is answered with a claim, refusals included: a client waits on exactly that answer before it
+  // sends anything else, so an error in its place would leave it silent for good. A refusal hands back the
+  // document, which settles whatever the client had applied optimistically.
+  const refuse = (why: string): void => {
+    send(sessionId, { t: 'error', message: why });
+    send(sessionId, { t: 'claim', batch, ok: false, at: room.at, document: room.doc });
+  };
+  if (!session.writable) { refuse('This tab is following read-only.'); return; }
+  if (!message.delta || typeof message.delta !== 'object') {
+    refuse('A topology claim carries the delta it produced.');
     return;
   }
   const ids = strings(message.ids);
-  if (ids.length > MAX_CLAIM_IDS) {
-    send(sessionId, { t: 'error', message: `A topology claim may name at most ${MAX_CLAIM_IDS} ids.` });
-    return;
-  }
-  const document = session.managesProject
-    ? message.document : { ...message.document, name: room.doc.name };
-  const held = claimTopology(room, { ids, at: Number(message.at) || 0, document });
+  if (ids.length > MAX_CLAIM_IDS) { refuse(`A topology claim may name at most ${MAX_CLAIM_IDS} ids.`); return; }
+  const changes = assignments(message.changes ?? [], MAX_CLAIM_ASSIGNMENTS);
+  if (!changes) { refuse('A topology claim\'s registers were not a set of assignments.'); return; }
+  const renameKey = globalRegister('name');
+  const refusedRename = session.managesProject ? [] : changes.filter(([key]) => key === renameKey);
+  const allowed = refusedRename.length ? changes.filter(([key]) => key !== renameKey) : changes;
+  const held = claimTopology(room, { ids, at: Number(message.at) || 0, delta: message.delta, changes: allowed },
+    session.member.username);
   session.at = held.at;
+  noteLanded(room, session.replica, batch);
   if (!held.ok) {
     // The loser is handed what won, so it goes from its own optimistic geometry to the authoritative geometry
     // in one step rather than back through the geometry it started with.
-    send(sessionId, { t: 'claim', batch: message.batch ?? 0, ok: false, at: held.at, document: held.document });
+    send(sessionId, 'steps' in held
+      ? { t: 'claim', batch, ok: false, at: held.at, steps: stepsOnWire(held.steps) }
+      : { t: 'claim', batch, ok: false, at: held.at, document: held.document });
     return;
   }
-  send(sessionId, { t: 'claim', batch: message.batch ?? 0, ok: true, at: held.at });
+  const refused = [...held.refused, ...refusedRename.map(([key]) => key)];
+  send(sessionId, { t: 'claim', batch, ok: true, at: held.at, ...(refused.length ? { refused } : {}) });
   noteWriter(sessionId);
-  relay(projectId, sessionId, {
-    t: 'topology', projectId, at: held.at, document: held.document, by: session.member.username,
-  });
+  const by = session.member.username;
+  const current = sessionsOn(projectId).filter(other => !olderCore(other));
+  const older = sessionsOn(projectId).filter(olderCore);
+  sendMany(current, { t: 'topology', projectId, at: held.at, delta: held.delta, changes: onWire(held.changes), by },
+    { except: sessionId });
+  if (older.length) sendMany(older, { t: 'topology', projectId, at: held.at, document: room.doc, by }, { except: sessionId });
 }
 
 /**

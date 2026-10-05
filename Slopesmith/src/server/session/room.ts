@@ -5,9 +5,10 @@ import {
   digestDocument, textHash, updateDigest, TOPOLOGY_SECTION, type DocumentDigest,
 } from '../../core/doc/digest';
 import {
-  applyRegisters, globalRegister, objectFieldOf, objectFieldRegisters, readRegister, sectionRegisters,
-  writeRegister, type RegisterKey, type RegisterValue,
+  globalRegister, objectFieldOf, objectFieldRegisters, readRegister, sectionRegisters, writeRegister,
+  type RegisterKey, type RegisterValue,
 } from '../../core/doc/registers';
+import { applyTopologyDelta, type TopologyDelta } from '../../core/doc/topology-delta';
 import {
   ProjectConflictError, onProjectWritten, openProject, saveRoomDocument, type ProjectSnapshot,
 } from '../projects';
@@ -29,13 +30,15 @@ const log = createLogger('room');
  *
  * TOPOLOGY is the exception, because two people subdividing one quad do not produce a merge, they produce
  * non-manifold geometry. It takes an implicit compare-and-swap over the ids it consumes rather than a lease:
- * one round trip, nothing held, nothing to release.
+ * one round trip, nothing held, nothing to release. What a claim carries is a DELTA named by stable id —
+ * which names went, which arrived, how the survivors are wired — so it lands on the room's own document and
+ * enters the log like any other change (docs/039, *Topology travels as a delta*).
  *
  * ## One sequence, not a version vector
  *
  * The room is the sequencer. Every accepted change — an assignment batch or a topology claim — takes the next
  * number, and a participant's whole idea of "where I am" is that one number. It is what a topology claim is
- * compared against, what a rebase replays from, and what a reconnecting client says it last saw. There is no
+ * compared against, what a catch-up starts from, and what a reconnecting client says it last saw. There is no
  * per-participant clock anywhere, which is deliberate: writing version vectors is the signal to stop building
  * this by hand and adopt Yjs instead (docs/039).
  *
@@ -63,9 +66,9 @@ export interface RoomPolicy {
    *  rate, which is as much work as a crash is allowed to cost. */
   snapshotChanges: number;
   /**
-   * How many accepted batches the room keeps, so a topology claim taken against a slightly stale replica can
-   * be rebased onto what has landed since. Five hundred batches is twenty seconds of one person dragging;
-   * a claim older than that is answered with the document instead, which is a resync rather than a rebase.
+   * How many accepted changes the room keeps, so a reconnecting tab — or the loser of a topology race — can be
+   * handed what it missed rather than the whole mountain. Five hundred is twenty seconds of one person
+   * dragging; a sequence older than that is answered with the document instead, which is a resync.
    */
   logLimit: number;
 }
@@ -107,10 +110,25 @@ export interface AssignResult {
   refused: RegisterKey[];
 }
 
-/** A topology claim's outcome. Losing hands back the document that won, so the loser moves from its
- *  optimistic state straight to the authoritative one rather than back through the state it started in. */
+/** One accepted change, as the room logs it and a replica replays it: assignments, or a topology delta followed
+ *  by the assignments that came with it. */
+export interface RoomStep {
+  changes: RegisterAssignment[];
+  delta?: TopologyDelta;
+}
+
+/**
+ * A topology claim's outcome.
+ *
+ * A winner is told what entered the log, which is exactly what everybody else is relayed. A loser is handed
+ * what the room sequenced since the claim's base — the winner's topology among it — so it rebuilds that base
+ * and moves straight onto the authoritative state rather than back through its own. The whole document is
+ * the answer only when the log cannot say it: a base older than the retained tail or an outside write, or a
+ * delta that did not land on the room's structure, which is drift.
+ */
 export type ClaimResult =
-  | { ok: true; at: number; document: EditDoc }
+  | { ok: true; at: number; delta: TopologyDelta; changes: RegisterAssignment[]; refused: RegisterKey[] }
+  | { ok: false; at: number; steps: RoomStep[] }
   | { ok: false; at: number; document: EditDoc };
 
 export interface Room {
@@ -145,11 +163,14 @@ export interface Room {
    * work, which is the exact thing a scoped revert exists to avoid.
    */
   authors: Map<RegisterKey, string>;
-  /** The sequence the last accepted topology change took, so a claim built on an older structure is told to
-   *  resync rather than having two structures merged. */
+  /** The sequence the last accepted topology change took, so a claim built on an older structure loses rather
+   *  than having two structures merged. */
   topologyAt: number;
-  /** The accepted batches still retained, oldest first, for rebasing a claim onto what landed under it. */
-  log: { at: number; changes: RegisterAssignment[] }[];
+  /** The sequence at which the room last adopted a document from outside — an import, a restore, a write by
+   *  another process. No log entry can describe that, so a catch-up from before it is the document. */
+  replacedAt: number;
+  /** The accepted changes still retained, oldest first: what a reconnecting tab or a losing claim is handed. */
+  log: (RoomStep & { at: number })[];
   /**
    * The highest batch number each replica has had answered here, by the name the replica gives itself
    * (`noteLanded`).
@@ -180,14 +201,21 @@ function watchExternalWrites(): void {
   watchingWrites ??= onProjectWritten(({ snapshot }) => {
     const room = rooms.get(snapshot.project.id);
     if (!room || snapshot.project.revision <= room.wrote) return;
-    adopt(room, snapshot.document);
     // The revision the room now stands on, not just the document. `takeSnapshot` writes AGAINST `wrote`, so a
     // room that adopted the new document while still claiming the old revision conflicts with the very write
     // it just adopted — and its conflict path drops the snapshot, silently discarding every assignment made
     // since. Adopting in-process has to leave the room in the same state the conflict path leaves it in.
-    room.wrote = snapshot.project.revision;
-    room.at++;
+    adoptOutsideWrite(room, snapshot.document, snapshot.project.revision);
   });
+}
+
+/** A document that replaced the mountain rather than assigning to it, taken from outside the room. It takes a
+ *  sequence number like any change, and marks the point a catch-up can no longer be rebuilt across. */
+function adoptOutsideWrite(room: Room, doc: EditDoc, revision: number): void {
+  adopt(room, doc);
+  room.wrote = revision;
+  room.at++;
+  room.replacedAt = room.at;
 }
 
 function adopt(room: Room, doc: EditDoc): void {
@@ -207,7 +235,8 @@ export async function joinRoom(projectId: string): Promise<Room> {
   const open = openProject(projectId).then(snapshot => {
     const made: Room = {
       projectId, doc: snapshot.document, digest: null, stale: new Set(),
-      at: 0, stamps: new Map(), authors: new Map(), topologyAt: 0, log: [], landed: new Map(), since: 0, timer: null,
+      at: 0, stamps: new Map(), authors: new Map(), topologyAt: 0, replacedAt: 0, log: [], landed: new Map(),
+      since: 0, timer: null,
       writing: null, wrote: snapshot.project.revision,
     };
     rooms.set(projectId, made);
@@ -306,7 +335,7 @@ const LANDED_REPLICAS = 1024;
  * One socket is answered in the order it sends and one replica numbers its batches upwards, so the highest batch
  * answered says every earlier batch from that socket was answered too. That holds per socket rather than per
  * replica, which is why it is read back when the replica rejoins and before the new socket has sent anything
- * (`joinMap` in `channel.ts`).
+ * (`joinMap` in `channel.ts`). Topology claims take their numbers from the same count, so answering one counts.
  */
 export function noteLanded(room: Room, replica: string, batch: number): void {
   if (!replica || !(batch > 0)) return;
@@ -319,14 +348,30 @@ export function noteLanded(room: Room, replica: string, batch: number): void {
 /** The highest batch a replica has had answered here, or 0 for one this room has not heard from. */
 export const landedFrom = (room: Room, replica: string): number => room.landed.get(replica) ?? 0;
 
-/** The assignments the room has accepted since a given sequence — what a reconnecting participant is caught
- *  up with, or null when the tail no longer reaches back that far and it needs the document instead. */
-export function changesSince(room: Room, at: number): RegisterAssignment[] | null {
+/** The oldest sequence the retained log can rebuild from. */
+const retainedFrom = (room: Room): number => room.log.length ? room.log[0].at - 1 : room.at;
+
+/**
+ * What the room has sequenced since a given sequence, as steps to replay in order — what a reconnecting tab is
+ * caught up with and what a losing claim is answered with — or null when only the document can say it.
+ *
+ * Topology entries stay in the log now that a delta can describe them, so a tab that was away across a
+ * topology edit is handed the edit rather than the mountain. Assignments between two topology entries merge
+ * into one step. Null means the tail no longer reaches back that far, or the room adopted a document from
+ * outside since then.
+ */
+export function stepsSince(room: Room, at: number): RoomStep[] | null {
   if (at >= room.at) return [];
-  if (at < room.topologyAt) return null;
-  const retained = room.log.length ? room.log[0].at - 1 : room.at;
-  if (at < retained) return null;
-  return room.log.filter(entry => entry.at > at).flatMap(entry => entry.changes);
+  if (at < room.replacedAt || at < retainedFrom(room)) return null;
+  const steps: RoomStep[] = [];
+  for (const entry of room.log) {
+    if (entry.at <= at) continue;
+    const last = steps[steps.length - 1];
+    if (entry.delta) steps.push({ delta: entry.delta, changes: [...entry.changes] });
+    else if (last && !last.delta) last.changes.push(...entry.changes);
+    else steps.push({ changes: [...entry.changes] });
+  }
+  return steps;
 }
 
 // ---- scoped revert: putting part of a map back (docs/040) -------------------------------------------------
@@ -385,45 +430,58 @@ export function planRevert(room: Room, was: EditDoc, request: RevertRequest = {}
  * Take the ids a topology edit consumes, or lose the race.
  *
  * The comparison is one scalar against one map: the claimant says which sequence it last saw, and the claim
- * stands unless some id it names has been consumed by a topology edit since. That is what makes the claim
- * cover exactly the geometry the operation touches — two people subdividing quads at opposite ends of the
- * mountain name disjoint ids and both win — without anybody holding anything.
+ * stands unless some id it names has been consumed by a topology edit since. A claim built on a structure
+ * older than the last topology change loses as well — reconciling two structures is the merge engine docs/039
+ * says to adopt Yjs for rather than write — and today that rule already implies the first. The id comparison
+ * stays because it is what will decide claims once concurrent topology can be merged.
  *
- * A winner's document is its own replica, which may be a few coalescing ticks behind. So it is adopted as the
- * new base and the assignments that landed under it are replayed on top; an assignment for something the
- * topology edit removed retires quietly, which is exactly what a late edit for deleted geometry is. A claim
- * older than the retained log cannot be rebased and is refused with the room's document, which resyncs it.
+ * A claim that stands is applied to the room's own document rather than adopted over it: the delta, its
+ * structure hash checked, then the claimant's assignments — in arrival order and nothing more, so a register
+ * somebody wrote under the claim is overwritten by it exactly as a later batch would overwrite it. The claim
+ * takes one sequence number and enters the log, so a tab that reconnects across it is handed the delta.
  */
 export function claimTopology(room: Room,
-  claim: { ids: readonly string[]; at: number; document: EditDoc }): ClaimResult {
-  const lost = (): ClaimResult => ({ ok: false, at: room.at, document: room.doc });
-  // The claim itself: an id this operation consumes that another operation has consumed since.
+  claim: { ids: readonly string[]; at: number; delta: unknown; changes: readonly RegisterAssignment[] },
+  by = ''): ClaimResult {
+  // Drift: the claimant's base is not the room's structure, so only the whole document can settle it.
+  const drifted = (): ClaimResult => ({ ok: false, at: room.at, document: room.doc });
+  const lost = (): ClaimResult => {
+    const steps = stepsSince(room, claim.at);
+    return steps ? { ok: false, at: room.at, steps } : drifted();
+  };
   for (const id of claim.ids) {
     const stamped = room.stamps.get(id);
     if (stamped !== undefined && stamped > claim.at) return lost();
   }
-  // And the limit of what a claim can be rebased onto. A base that predates a topology change the claimant
-  // never saw is a second structure, and reconciling two structures is the merge engine docs/039 says to
-  // adopt Yjs for rather than write; the same goes for a base older than the retained tail. Both are answered
-  // with the document, which is a resync rather than a merge.
-  const retained = room.log.length ? room.log[0].at - 1 : room.at;
-  if (claim.at < room.topologyAt || claim.at < retained) return lost();
+  if (claim.at < room.topologyAt || claim.at < retainedFrom(room)) return lost();
 
-  const replaying = changesSince(room, claim.at) ?? [];
-  adopt(room, claim.document);
-  // The claimant's document is its own replica, so whatever landed under it is replayed on top. An assignment
-  // naming geometry this operation removed retires quietly, which is exactly what a late edit for deleted
-  // geometry is.
-  applyRegisters(room.doc, replaying);
+  const applied = applyTopologyDelta(room.doc, claim.delta);
+  if (!applied.ok) {
+    log.warn(`${room.projectId}: a topology delta did not land on the room's structure — ${applied.error}`);
+    return drifted();
+  }
+  const doc = applied.applied.doc;
+  const landed: RegisterAssignment[] = [];
+  const refused: RegisterKey[] = [];
+  for (const [key, value] of claim.changes) {
+    const held = readRegister(doc, key);
+    const outcome = writeRegister(doc, key, value);
+    if (outcome === 'refused') refused.push(key);
+    if (outcome !== 'landed' || holdsAlready(held, value)) continue;
+    landed.push([key, value]);
+    if (by) credit(room, key, held, value, by);
+  }
+  // A replaced structure renumbers the chunks, so nothing about the old digest carries over.
+  adopt(room, doc);
   room.at++;
   room.topologyAt = room.at;
   for (const id of claim.ids) room.stamps.set(id, room.at);
-  // `adopt` already let the digest go; the replay above landed on the new structure, which is the whole of it.
-  // The tail described a structure that no longer exists, so it is not something a later claim may replay.
-  room.log = [];
+  const delta = claim.delta as TopologyDelta;
+  room.log.push({ at: room.at, delta, changes: landed });
+  if (room.log.length > roomPolicy.logLimit) room.log.shift();
   room.since = roomPolicy.snapshotChanges;
   scheduleSnapshot(room);
-  return { ok: true, at: room.at, document: room.doc };
+  return { ok: true, at: room.at, delta, changes: landed, refused };
 }
 
 // ---- drift detection and repair (docs/039) ----------------------------------------------------------------
@@ -477,9 +535,8 @@ export function takeSnapshot(room: Room): Promise<unknown> {
         snapshot = await saveRoomDocument(room.projectId, room.doc, room.wrote);
       } catch (error) {
         if (!(error instanceof ProjectConflictError)) { room.since = pending; throw error; }
-        adopt(room, error.snapshot.document);
-        room.wrote = error.snapshot.project.revision;
-        room.at++;                       // participants resync onto what landed rather than onto what we held
+        // Participants resync onto what landed rather than onto what we held.
+        adoptOutsideWrite(room, error.snapshot.document, error.snapshot.project.revision);
         log.warn(`${room.projectId} moved on to revision ${room.wrote} outside this server — `
           + 'adopted it and dropped this snapshot');
         return;

@@ -2289,7 +2289,10 @@ function setSyncedDocument(document: EditDoc) {
   viewport.cancelDocumentGesture();
   cancelPastePlacement(false);
   cancelBridge(false, false);
-  store.mdoc = migrateMountain(document);
+  // Installed exactly as the room holds it. The server normalises a document once, when it reads one, and a
+  // replica that normalised the room's copy again would hold a structure the room does not, so its next
+  // topology delta would be written against a base nobody else has (docs/039).
+  store.mdoc = document;
   syncSunPending ||= JSON.stringify([before.sun, before.glare]) !== JSON.stringify([store.mdoc.sun, store.mdoc.glare]);
   syncSkyPending ||= JSON.stringify(before.skybox) !== JSON.stringify(store.mdoc.skybox);
   refreshModelEditTarget(store);
@@ -2305,6 +2308,14 @@ function setSyncedDocument(document: EditDoc) {
 
 function queueSyncedDocument() {
   history.reset(); // whole-document undo entries cannot safely survive another author's topology
+  syncDocumentPending = true;
+  scheduleRemoteRebuild(true);
+}
+
+/** Somebody else's topology, landed as a delta. Unlike a whole-document replacement it keeps this participant's
+ *  register undo: those entries name registers by stable id, and only the whole-document ones go (docs/039). */
+function queueSyncedTopology() {
+  history.followTopology();
   syncDocumentPending = true;
   scheduleRemoteRebuild(true);
 }
@@ -2585,12 +2596,13 @@ const registerSync = createRegisterSync({
   setDoc: setSyncedDocument,
   channel: {
     assign: (changes, batch) => session.assign(changes, batch),
-    claim: (ids, document, batch) => session.claim(ids, document, batch),
+    claim: (ids, delta, changes, batch) => session.claim(ids, delta, changes, batch),
     checkDrift: digest => session.checkDrift(digest),
     fetchSections: sections => session.fetchSections(sections),
   },
   onApplied: what => {
     if (what === 'document') { queueSyncedDocument(); return; }
+    if (what === 'topology') { queueSyncedTopology(); return; }
     scheduleRemoteRebuild();
   },
   onStatus: status => syncChip.show(status),
@@ -2750,7 +2762,7 @@ const session = createSessionChannel({
   onSync: push => registerSync.applySync(push.changes, push.by),
   onLanded: ack => registerSync.landed(ack),
   onClaim: result => registerSync.claimed(result),
-  onTopology: push => registerSync.applyTopology(migrateMountain(push.document)),
+  onTopology: push => registerSync.applyTopology(push),
   onDigest: answer => registerSync.compareDigest(answer),
   onSections: repair => registerSync.repair(repair),
   onCaughtUp: missed => registerSync.caughtUp(missed),
@@ -2943,7 +2955,9 @@ function joinMap(document: EditDoc = store.mdoc): void {
   awareness.reset(); // the server drops what a tab said about the map it left
   // Project creation/opening calls this before the dialog installs the document into store.mdoc. Rebase the
   // register replica from the document being joined, not from the project that happens to still be rendered.
-  registerSync.adopt(document);
+  // A map being opened is a load, not a room arrival: one this tab built itself has not been through the
+  // server's normalisation, and the replica's base has to be the document the room will hold.
+  registerSync.adopt(migrateMountain(document));
 }
 /**
  * Somebody deleted the map this tab had open (docs/038).

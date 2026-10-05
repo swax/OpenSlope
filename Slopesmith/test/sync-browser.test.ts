@@ -122,7 +122,7 @@ try {
     getDoc: () => doc, setDoc: next => { doc = next; },
     channel: {
       assign: (changes, batch) => channel!.assign(changes, batch),
-      claim: (ids, next, batch) => channel!.claim(ids, next, batch),
+      claim: (ids, delta, changes, batch) => channel!.claim(ids, delta, changes, batch),
       checkDrift: digest => channel!.checkDrift(digest), fetchSections: sections => channel!.fetchSections(sections),
     },
   });
@@ -130,7 +130,7 @@ try {
     clientId: 'remote-browser-test', url: () => `${api.url.replace('http', 'ws')}/api/session?client=remote-browser-test`,
     onJoined: () => { joined = true; sync.connect(); },
     onSync: push => sync.applySync(push.changes, push.by), onLanded: ack => sync.landed(ack),
-    onClaim: result => sync.claimed(result), onTopology: push => sync.applyTopology(push.document),
+    onClaim: result => sync.claimed(result), onTopology: push => sync.applyTopology(push),
     onCaughtUp: missed => sync.caughtUp(missed),
   });
   channel.start();
@@ -208,6 +208,16 @@ try {
     controller.querySelector('.lil-name')?.textContent === 'base ride feel' && controller.querySelector('select')?.value.startsWith('3 ')));
   assert((await surface.inputValue()).startsWith('3 '), 'changed Course settings are refreshed');
   assert.equal(await courseInput.evaluate(input => input.isConnected), false, 'affected Course controls are replaced');
+
+  // Somebody else's topology no longer resets this editor's undo (docs/039): the Course edit made before it is
+  // still one Ctrl+Z away, and undoing it re-asserts what this editor had before — over the remote value.
+  const undoButton = page.getByRole('button', { name: 'Undo', exact: true }).first();
+  assert(await undoButton.isEnabled(), 'a register edit made before a remote topology change can still be undone');
+  await undoButton.click();
+  await page.waitForFunction(() => (window as unknown as Observation).slopesmith.doc().baseSurface === 1);
+  const undoDeadline = Date.now() + 5000;
+  while (doc.baseSurface !== 1 && Date.now() < undoDeadline) await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(doc.baseSurface, 1, 'and the undo reaches the other editor as an ordinary assignment');
   assert.deepEqual(await page.evaluate(() => (window as unknown as Observation).slopesmith.errors()), []);
   assert.deepEqual(errors, []);
   await page.screenshot({ path: join(root, 'synced.png') });

@@ -1,6 +1,8 @@
 import type { RegisterAssignment } from '../net/session-channel';
 import type { RegisterStep, RegisterSync } from '../net/register-sync';
+import { carryIdentity } from '../../core/doc/ids';
 import { objectFamilyOf, type ObjectFamily } from '../../core/doc/registers';
+import type { QuadMeshDoc } from '../../core/doc/types';
 
 /**
  * Undo / redo as inverse assignments (docs/039).
@@ -153,6 +155,23 @@ export function createHistory(deps: {
     deps.refreshButtons();
   }
 
+  /**
+   * Somebody else's topology landed on the live document — or this participant's own claim lost and the
+   * document was moved onto the winner's (docs/039).
+   *
+   * Register entries survive it: they name registers by stable id, so another author's renumbering moves
+   * nothing they address, and a re-assertion naming geometry that has since gone retires quietly. Whole-document
+   * entries cannot: either side of one is a structure that no longer exists, and restoring it would erase the
+   * change that just arrived. So those go from both stacks, and the baseline moves onto the document as it now
+   * stands, which is what stops the arrival being sealed into the next entry as if this participant had made it.
+   */
+  function followTopology() {
+    undoStack = undoStack.filter(change => change.kind === 'registers');
+    redoStack = redoStack.filter(change => change.kind === 'registers');
+    baseline = deps.getDocJson();
+    deps.refreshButtons();
+  }
+
   /** Put a set of register values back, as a fresh change. Without a replica there is nothing to assert
    *  against, so the entry cannot have been a register one and this is never reached. */
   function reassert(changes: readonly RegisterAssignment[]): void {
@@ -166,9 +185,14 @@ export function createHistory(deps: {
     suppressCommit = true;
     if (change.kind === 'registers') reassert(direction === 'back' ? change.step.priors : change.step.afters);
     else {
-      const json = direction === 'back' ? change.before : change.after;
-      deps.onRestore(json);
-      baseline = json;
+      // The snapshot's mesh, under the identity the document has now: restoring never hands a name out twice.
+      const restored = JSON.parse(direction === 'back' ? change.before : change.after) as QuadMeshDoc;
+      carryIdentity(restored, JSON.parse(deps.getDocJson()) as QuadMeshDoc);
+      deps.onRestore(JSON.stringify(restored));
+      // Measured off the document the restore produced rather than the snapshot asked for, so the identity carried
+      // forward — and anything the host normalised on the way in — is not mistaken for a fresh edit by the next
+      // commit, which would push a phantom entry and wipe the redo stack.
+      baseline = deps.getDocJson();
       sync()?.resetSteps();
     }
     if (change.kind === 'registers') baseline = deps.getDocJson();
@@ -218,7 +242,7 @@ export function createHistory(deps: {
   }
 
   return {
-    scheduleCommit, commit, reset, undo, redo, entries, jumpTo,
+    scheduleCommit, commit, reset, followTopology, undo, redo, entries, jumpTo,
     canUndo: () => undoStack.length > 0,
     canRedo: () => redoStack.length > 0,
     undoSummary: () => undoStack.length ? undoStack[undoStack.length - 1].summary : null,

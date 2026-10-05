@@ -3,12 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collisionLabMountain } from '../src/core/collision/lab';
 import { digestDocument, textHash } from '../src/core/doc/digest';
-import { globalRegister, objectRegister, quadRegister, vertexRegister } from '../src/core/doc/registers';
+import { globalRegister, objectRegister, quadRegister, readRegister, vertexRegister } from '../src/core/doc/registers';
 import { canonicalJson } from '../src/core/doc/canonical';
 import { applyMeshDelete } from '../src/core/mesh/ops/delete';
-import { configureCheckpoints, createProject } from '../src/server/projects';
+import { topologyDelta } from '../src/core/doc/topology-delta';
+import { configureCheckpoints, createProject, saveProject } from '../src/server/projects';
 import {
-  assign, claimTopology, configureRooms, forgetRooms, joinRoom, roomDigest, takeSnapshot,
+  assign, claimTopology, configureRooms, forgetRooms, joinRoom, roomDigest, stepsSince, takeSnapshot,
 } from '../src/server/session/room';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { check, failures } from './check';
@@ -73,15 +74,24 @@ try {
   check(room.stale.size === 0, 'a re-assertion of the held value leaves nothing to rehash');
 
   // Topology replaces the structure, which renumbers every chunk: the digest is recomputed whole.
+  const base = structuredClone(room.doc);
   const before = room.at;
   assign(room, [[far, [7, 7, 7]]], 'Ada');
-  const deleted = applyMeshDelete(structuredClone(room.doc), { quads: [1] });
+  const deleted = applyMeshDelete(structuredClone(base), { quads: [1] });
   check(deleted.ok, 'a topology edit could be made locally');
   if (deleted.ok) {
-    const claimed = claimTopology(room, { ids: [room.doc.quadIds[1]], at: before, document: deleted.doc });
+    // Written against the base the claimant held, which predates the edit that landed meanwhile.
+    const claimed = claimTopology(room,
+      { ids: [base.quadIds[1]], at: before, delta: topologyDelta(base, deleted.doc), changes: [] });
     check(claimed.ok, 'and its claim was taken');
     check(room.digest === null && room.stale.size === 0, 'a claim lets the old digest go rather than patching it');
-    matches('after a topology claim and the replay of what landed under it');
+    matches('after a topology claim landed on what arrived under it');
+    check(canonicalJson(readRegister(room.doc, far)) === canonicalJson([7, 7, 7]),
+      'the edit that landed under the claim is still there: the delta went onto the room document, not over it');
+    // The log keeps the claim, so a tab that was away across it is handed the delta rather than the mountain.
+    const steps = stepsSince(room, before);
+    check(!!steps && steps.some(step => step.delta) && steps.some(step => step.changes.some(([key]) => key === far)),
+      'the log survives a topology claim: catching up across it is the steps, delta included');
     // An edit after the claim patches the freshly computed digest again.
     assign(room, [[vertexRegister(room.doc.vertexIds[2]), [5, 6, 7]]], 'Bob');
     matches('an edit landed on the new structure');
@@ -97,6 +107,16 @@ try {
   check(room.doc.name !== 'TAKEN', 'the snapshot stored a name other than the one asked for, and the room took it',
     room.doc.name);
   matches('after the snapshot renamed the room’s document');
+
+  // A document written from outside the room replaces the mountain: no log entry can describe that, so catching
+  // up from before it is the document, while the log itself — and catching up from after it — carry on.
+  const beforeOutside = room.at;
+  await saveProject(room.projectId, room.wrote, { ...structuredClone(room.doc), aiSeed: 99 });
+  check(room.at === beforeOutside + 1 && room.doc.aiSeed === 99, 'the room adopted the outside write');
+  check(stepsSince(room, beforeOutside) === null, 'a catch-up from before an outside write is the document');
+  assign(room, [[vertexRegister(room.doc.vertexIds[3]), [1, 1, 1]]], 'Ada');
+  check(stepsSince(room, room.at - 1)?.length === 1, 'and one from after it is the steps again');
+  matches('after the outside write');
 } finally {
   forgetRooms();
   rmSync(root, { recursive: true, force: true });

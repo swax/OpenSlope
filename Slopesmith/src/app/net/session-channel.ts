@@ -1,4 +1,5 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
+import type { TopologyDelta } from '../../core/doc/topology-delta';
 import type { PlayerPose } from '../../core/session/player-pose';
 import type { JukeboxState } from '../../core/session/jukebox';
 import type { RideEvent, SharedRideEvent } from '../../core/session/ride-event';
@@ -152,6 +153,46 @@ export interface JoinedView {
 
 export type ChannelStatus = 'connecting' | 'open' | 'closed';
 
+/** One change the room sequenced, as a catch-up or a lost claim replays it (docs/039). */
+export interface SyncStep {
+  changes: RegisterAssignment[];
+  delta?: TopologyDelta;
+}
+
+/** How this tab's topology claim turned out. */
+export interface ClaimAnswer {
+  batch: number;
+  ok: boolean;
+  at: number;
+  /** Keys of the claim's registers the room did not take. */
+  refused?: string[];
+  /** A loss the log can describe: everything sequenced since the claim's base. */
+  steps?: SyncStep[];
+  /** A loss it cannot: the room's whole document. */
+  document?: EditDoc;
+}
+
+/** Somebody else's accepted topology. A server on an older core sends the document instead of a delta. */
+export interface TopologyPush {
+  projectId: string;
+  at: number;
+  delta?: TopologyDelta;
+  changes?: RegisterAssignment[];
+  document?: EditDoc;
+  by: string;
+}
+
+/** What a reconnecting tab missed. A server on an older core sends flat `changes` rather than `steps`. */
+export interface CaughtUp {
+  projectId: string;
+  at: number;
+  steps?: SyncStep[];
+  changes?: RegisterAssignment[];
+  document?: EditDoc;
+  /** The highest of this replica's batches the room had answered before it rejoined. */
+  landed?: number;
+}
+
 interface ServerMessage {
   t: string;
   [key: string]: unknown;
@@ -186,18 +227,17 @@ export function createSessionChannel(deps: {
   onSync?: (push: { projectId: string; at: number; changes: RegisterAssignment[]; by: string }) => void;
   /** How a batch of this tab's own assignments turned out. */
   onLanded?: (ack: { batch: number; at: number; retired: string[]; refused: string[] }) => void;
-  /** How a topology claim turned out. A loss carries the document that won. */
-  onClaim?: (result: { batch: number; ok: boolean; at: number; document?: EditDoc }) => void;
-  /** Somebody else's accepted topology, whole. */
-  onTopology?: (push: { projectId: string; at: number; document: EditDoc; by: string }) => void;
+  /** How a topology claim turned out. A loss carries what was sequenced since its base, or the document. */
+  onClaim?: (result: ClaimAnswer) => void;
+  /** Somebody else's accepted topology: the delta and the registers that came with it. */
+  onTopology?: (push: TopologyPush) => void;
   /** The room's digest, answering a drift check. */
   onDigest?: (answer: { projectId: string; at: number; root: string; sections: Record<string, string> }) => void;
   /** The repair for the sections that diverged. */
   onSections?: (repair: { projectId: string; at: number; registers: RegisterAssignment[]; document?: EditDoc }) => void;
-  /** What this tab missed while it was away, and the highest of its batches the room had answered. */
-  onCaughtUp?: (missed: {
-    projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc; landed?: number;
-  }) => void;
+  /** What this tab missed while it was away — steps to replay, or the document — and the highest of its batches
+   *  the room had answered. */
+  onCaughtUp?: (missed: CaughtUp) => void;
   /** A peer's live selection, drag, and player pose. */
   onAware?: (peer: PeerAwareness) => void;
   /** A subscribed sharer's latest camera and display state. */
@@ -246,6 +286,16 @@ export function createSessionChannel(deps: {
   /** Where this tab is in the room's sequence, so a reconnection says what it last saw rather than starting
    *  over. One number: there is no per-participant clock anywhere in this design (docs/039). */
   let at = 0;
+  /**
+   * Relays held back while a rejoin waits for its catch-up, or null when none is pending.
+   *
+   * Between a `watch` that names a sequence and the `caught-up` that answers it, the room may relay changes the
+   * catch-up then repeats — and that it sequenced after steps the catch-up has not delivered yet. Applying
+   * them as they arrive would put a change ahead of what came before it, and a repeated topology delta does not
+   * apply cleanly, so they wait. The catch-up covers them; a failed join, answered with `error`, releases them
+   * in order instead.
+   */
+  let catchingUp: ServerMessage[] | null = null;
   let writable = true;
   let closedByUs = false;
   let wanted = false;
@@ -348,7 +398,7 @@ export function createSessionChannel(deps: {
         backoff = RECONNECT_MIN_MS;
         // The server seeded this session from the map this tab was last on; tell it what the editor actually
         // has open, and where this replica left off, which is the authority once the editor is running.
-        if (watching !== undefined) post({ t: 'watch', projectId: watching, at, ...versions() });
+        if (watching !== undefined) rewatch();
         post({ t: 'reference', level: referenceLevel });
         post({ t: 'playing', playing });
         post({ t: 'idle', idle });
@@ -398,14 +448,19 @@ export function createSessionChannel(deps: {
       }
       case 'joined': {
         const view = message as unknown as JoinedView;
-        if (view.projectId === watching) { at = view.at; writable = view.writable; }
+        // A rejoin stays at the sequence it asked from until its catch-up lands: the replica does not hold what
+        // lies between, and a claim or a reconnection measured from the room's head would skip it.
+        if (view.projectId === watching) { if (!catchingUp) at = view.at; writable = view.writable; }
         deps.onJoined?.(view);
         return;
       }
       case 'sync': {
         const push = message as unknown as
           { projectId: string; at: number; changes: RegisterAssignment[]; by: string };
-        if (push.projectId === watching) at = Math.max(at, push.at);
+        // A relay for the map this tab just left belongs to a document it no longer holds.
+        if (watching !== undefined && push.projectId !== watching) return;
+        if (catchingUp) { catchingUp.push(message); return; }
+        at = Math.max(at, push.at);
         deps.onSync?.(push);
         return;
       }
@@ -416,14 +471,16 @@ export function createSessionChannel(deps: {
         return;
       }
       case 'claim': {
-        const result = message as unknown as { batch: number; ok: boolean; at: number; document?: EditDoc };
+        const result = message as unknown as ClaimAnswer;
         at = Math.max(at, result.at);
         deps.onClaim?.(result);
         return;
       }
       case 'topology': {
-        const push = message as unknown as { projectId: string; at: number; document: EditDoc; by: string };
-        if (push.projectId === watching) at = Math.max(at, push.at);
+        const push = message as unknown as TopologyPush;
+        if (watching !== undefined && push.projectId !== watching) return;
+        if (catchingUp) { catchingUp.push(message); return; }
+        at = Math.max(at, push.at);
         deps.onTopology?.(push);
         return;
       }
@@ -439,10 +496,13 @@ export function createSessionChannel(deps: {
         return;
       }
       case 'caught-up': {
-        const missed = message as unknown as
-          { projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc; landed?: number };
+        const missed = message as unknown as CaughtUp;
+        const held = missed.projectId === watching ? catchingUp : null;
+        if (held) catchingUp = null;
         at = Math.max(at, missed.at);
         deps.onCaughtUp?.(missed);
+        // Whatever was held back is covered by the catch-up unless the room sequenced it later.
+        for (const relay of held ?? []) if (Number(relay.at) > missed.at) handle(relay);
         return;
       }
       case 'awareness-batch': {
@@ -540,9 +600,14 @@ export function createSessionChannel(deps: {
         deps.onRideEvent?.(event);
         return;
       }
-      case 'error':
+      case 'error': {
         console.warn('[session]', message.message);
+        // A join that fails is answered with this instead of a catch-up: release what was held, in order.
+        const held = catchingUp;
+        catchingUp = null;
+        for (const relay of held ?? []) handle(relay);
         return;
+      }
       default:
         return;
     }
@@ -551,6 +616,12 @@ export function createSessionChannel(deps: {
   /** What this build evaluates documents with, sent on every join so a mismatched install is told to follow
    *  rather than discovering it by writing geometry nobody else agrees with. */
   const versions = () => ({ doc: DOCUMENT_VERSION, core: CORE_VERSION });
+
+  /** Say the map again from where this replica is, and hold relays back until the room's catch-up answers. */
+  function rewatch(): void {
+    if (watching === undefined) return;
+    catchingUp = post({ t: 'watch', projectId: watching, at, ...versions() }) ? [] : null;
+  }
 
   function connect(): void {
     if (!wanted || socket) return;
@@ -574,6 +645,7 @@ export function createSessionChannel(deps: {
       if (socket !== opened) return;
       socket = null;
       welcome = null;
+      catchingUp = null;
       if (beat) { clearInterval(beat); beat = null; }
       deps.onStatus?.('closed');
       if (event.code === 4001 || event.code === 4002) {
@@ -616,14 +688,15 @@ export function createSessionChannel(deps: {
       watching = projectId;
       at = from;
       lastScreenState = '';
-      post({ t: 'watch', projectId, ...(from ? { at: from } : {}), ...versions() });
+      if (from) rewatch();
+      else {
+        catchingUp = null;
+        post({ t: 'watch', projectId, ...versions() });
+      }
     },
     /** Say the same map again, from where this replica actually is — what a reconnection sends so the room
      *  hands back exactly what was missed. */
-    rejoin(): void {
-      if (watching === undefined) return;
-      post({ t: 'watch', projectId: watching, at, ...versions() });
-    },
+    rejoin(): void { rewatch(); },
     /** Publish the extracted mountain in this tab's read-only Reference slot. Retained for reconnects. */
     reference(level: string | null): boolean {
       referenceLevel = level?.trim() || null;
@@ -667,9 +740,13 @@ export function createSessionChannel(deps: {
         changes: changes.map(([key, value]) => (value === undefined ? [key] : [key, value])),
       });
     },
-    /** A topology edit, compare-and-swapping the ids it consumes against where this replica last was. */
-    claim(ids: string[], document: EditDoc, batch: number): boolean {
-      return post({ t: 'claim', ids, at, document, batch });
+    /** A topology edit, compare-and-swapping the ids it consumes against where this replica last was: the
+     *  delta it made, and the registers that came with it. */
+    claim(ids: string[], delta: TopologyDelta, changes: RegisterAssignment[], batch: number): boolean {
+      return post({
+        t: 'claim', ids, at, delta, batch,
+        changes: changes.map(([key, value]) => (value === undefined ? [key] : [key, value])),
+      });
     },
     /** Ask the room what it hashes to. */
     checkDrift(digest: { root: string; sections: Record<string, string> }): boolean {
@@ -743,7 +820,8 @@ export type SessionChannel = ReturnType<typeof createSessionChannel>;
  * tessellate a mountain differently from the rest of the room, and the join is where that is caught.
  */
 export const DOCUMENT_VERSION = 3;
-export const CORE_VERSION = '2';
+/** '3': topology travels as an id-based delta rather than a whole document (docs/039). */
+export const CORE_VERSION = '3';
 
 /** Presence as a member list rather than a session list: one row per person, with however many tabs they
  *  have open. Keyed by session and displayed by user is the whole rule, and this is the second half of it. */

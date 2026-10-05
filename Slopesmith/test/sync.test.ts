@@ -19,8 +19,9 @@ import { clearTex, getVertex, moveVertex, setSurf, setTex, setOrient, type EditD
 import { meshSmoothVertices, migrateMountain, defaultMountain } from '../src/core/doc/mountain';
 import { digestDocument, textHash } from '../src/core/doc/digest';
 import {
-  objectFieldRegister, quadRegister, readRegister, vertexRegister, writeRegister,
+  objectFieldRegister, quadRegister, readRegister, structuralDocument, vertexRegister, writeRegister,
 } from '../src/core/doc/registers';
+import { canonicalJson } from '../src/core/doc/canonical';
 import { reconcileTJunctionGeometry } from '../src/core/mesh/t-junctions';
 import { meshAdjacency, meshFromDoc } from '../src/core/mesh/topology';
 import { setQuadsLocked } from '../src/core/mesh/locks';
@@ -101,12 +102,18 @@ interface Client {
    *  of a message has to read it, since that is the only place JSON has had its say. */
   received: unknown[][];
   landed: { batch: number; retired: string[]; refused: string[] }[];
-  claims: { batch: number; ok: boolean }[];
+  /** How each claim was answered, and what a loss carried: the steps since its base, or the whole document. */
+  claims: { batch: number; ok: boolean; steps: boolean; document: boolean }[];
+  /** Every catch-up: the sequence it brought the replica to, the highest of its batches the room had answered,
+   *  and whether it was the steps or the whole document. */
+  caughtUp: { at: number; landed?: number; steps: boolean; document: boolean }[];
   diverged: string[];
   repairs: number;
   writable: boolean;
-  /** Every catch-up this replica was handed, in the words it arrived in. */
-  caughtUp: { at: number; landed?: number }[];
+  /** The highest room sequence this replica has heard of — what a reconnection names. */
+  at: number;
+  /** Drop the socket and come back on a fresh one, naming where this replica left off. */
+  reopen(): Promise<void>;
   /** While set, an assignment goes out as far as the replica can tell and never reaches the room — the frame a
    *  dying socket swallows. */
   blackhole: boolean;
@@ -132,11 +139,12 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
     sent: [] as Sent[],
     received: [] as unknown[][],
     landed: [] as { batch: number; retired: string[]; refused: string[] }[],
-    claims: [] as { batch: number; ok: boolean }[],
+    claims: [] as { batch: number; ok: boolean; steps: boolean; document: boolean }[],
+    caughtUp: [] as { at: number; landed?: number; steps: boolean; document: boolean }[],
+    at: 0,
     diverged: [] as string[],
     repairs: 0,
     writable: false,
-    caughtUp: [] as { at: number; landed?: number }[],
     blackhole: false,
     aware: [] as AwarenessFrame[],
     peers: [] as PeerAwareness[],
@@ -154,9 +162,12 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
         });
         return held.blackhole || channel.assign(changes, batch);
       },
-      claim: (ids, doc, batch) => {
-        held.sent.push({ kind: 'claim', ids: [...ids], bytes: frameBytes({ t: 'claim', ids, at: 0, document: doc, batch }) });
-        return channel.claim(ids, doc, batch);
+      claim: (ids, delta, changes, batch) => {
+        held.sent.push({
+          kind: 'claim', ids: [...ids], changes: structuredClone(changes),
+          bytes: frameBytes({ t: 'claim', ids, at: 0, delta, changes, batch }),
+        });
+        return channel.claim(ids, delta, changes, batch);
       },
       checkDrift: digest => channel.checkDrift(digest),
       fetchSections: sections => {
@@ -179,22 +190,36 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
       return went;
     },
   });
-  const channel = createSessionChannel({
+  const heard = (at: number) => { held.at = Math.max(held.at, at); };
+  const makeChannel = () => createSessionChannel({
     clientId: name,
     replica: sync.replica,
     url: () => `ws://127.0.0.1:${service!.port}/api/session?client=${encodeURIComponent(name)}`,
     // As main.ts has it: a socket that closes under the replica puts what it had in flight on hold.
     onStatus: status => { if (status === 'closed') sync.disconnect(); },
-    onJoined: view => { joined = true; held.writable = view.writable; if (view.writable) sync.connect(); },
-    onSync: push => { held.received.push(...push.changes as unknown as unknown[][]); sync.applySync(push.changes, push.by); },
-    onLanded: ack => { held.landed.push(ack); sync.landed(ack); },
-    onClaim: result => { held.claims.push(result); sync.claimed(result); },
-    onTopology: push => sync.applyTopology(migrateMountain(push.document)),
+    onJoined: view => { joined = true; held.writable = view.writable; heard(view.at); if (view.writable) sync.connect(); },
+    onSync: push => {
+      heard(push.at);
+      held.received.push(...push.changes as unknown as unknown[][]);
+      sync.applySync(push.changes, push.by);
+    },
+    onLanded: ack => { heard(ack.at); held.landed.push(ack); sync.landed(ack); },
+    onClaim: result => {
+      heard(result.at);
+      held.claims.push({ batch: result.batch, ok: result.ok, steps: !!result.steps, document: !!result.document });
+      sync.claimed(result);
+    },
+    onTopology: push => { heard(push.at); sync.applyTopology(push); },
     onDigest: answer => { held.diverged.splice(0, held.diverged.length, ...sync.compareDigest(answer)); },
-    onSections: repair => { held.repairs++; sync.repair(repair); },
-    onCaughtUp: missed => { held.caughtUp.push({ at: missed.at, landed: missed.landed }); sync.caughtUp(missed); },
+    onSections: repair => { heard(repair.at); held.repairs++; sync.repair(repair); },
+    onCaughtUp: missed => {
+      heard(missed.at);
+      held.caughtUp.push({ at: missed.at, landed: missed.landed, steps: !!missed.steps, document: !!missed.document });
+      sync.caughtUp(missed);
+    },
     onAware: peer => { held.peers.push(peer); },
   });
+  let channel = makeChannel();
   /** This replica's session on the server, for the faults below to be injected where they really happen. */
   const live = () => {
     const session = sessionById(channel.sessionId() ?? '');
@@ -216,6 +241,7 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
     get received() { return held.received; },
     get landed() { return held.landed; },
     get claims() { return held.claims; },
+    get at() { return held.at; },
     get diverged() { return held.diverged; },
     get repairs() { return held.repairs; },
     get writable() { return held.writable; },
@@ -227,7 +253,18 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
     get picked() { return held.picked; },
     render: () => { reconcileTJunctionGeometry(held.doc); sync.noteEdit(); },
     awareness,
-    sync, channel,
+    sync,
+    get channel() { return channel; },
+    reopen: async () => {
+      channel.close();
+      sync.disconnect();
+      const caughtUp = held.caughtUp.length;
+      channel = makeChannel();
+      channel.start();
+      await until(() => channel.isOpen(), `${name} to reconnect`);
+      channel.watch(projectId, held.at);
+      await until(() => held.caughtUp.length > caughtUp, `${name} to be caught up`);
+    },
     drop: () => live().close(1012, 'the socket died'),
     loseNextAck: () => {
       const session = live(), send = session.send;
@@ -580,11 +617,19 @@ try {
   check(deleteFrames.length === 2 && deleteFrames.every(entry => entry.kind === 'claim' && !!entry.ids?.length),
     'a delete, which does move which patches exist, still claims — and names the ids it consumed, which is '
     + 'the whole of what one replica compares against another');
+  const documentBytes = frameBytes(shared);
+  console.log(`   a delete claim: ${deleteFrames.map(entry => entry.bytes).join(' / ')} bytes against a `
+    + `${documentBytes}-byte document`);
+  check(deleteFrames.every(entry => entry.bytes * 100 < documentBytes),
+    'and what it sends is a delta named by id, not the mountain: well under a hundredth of the document');
   const adaResult = ada.claims[ada.claims.length - 1], jedResult = jed.claims[jed.claims.length - 1];
   const winner = adaResult.ok ? ada : jed, loser = adaResult.ok ? jed : ada;
   const wonTarget = adaResult.ok ? adaTarget : jedTarget, lostTarget = adaResult.ok ? jedTarget : adaTarget;
   check(adaResult.ok !== jedResult.ok,
     'exactly one topology claim wins — two people subdividing the same corner of the mesh cannot both be right');
+  const lostAnswer = adaResult.ok ? jedResult : adaResult;
+  check(lostAnswer.steps && !lostAnswer.document,
+    'the loser is answered with what the room sequenced since its base, not with the whole document');
   await until(() => !loser.doc.quadIds.includes(wonTarget) && loser.doc.quadIds.includes(lostTarget),
     'the loser to revert');
   check(!winner.doc.quadIds.includes(wonTarget) && winner.doc.quadIds.includes(lostTarget),
@@ -624,6 +669,63 @@ try {
     + 'anything that keeps an ordinary edit off it');
   await until(() => loser.doc.quadIds.length === winner.doc.quadIds.length,
     'the loop cut to reach the other replica');
+  check(canonicalJson(structuralDocument(loser.doc)) === canonicalJson(structuralDocument(winner.doc)),
+    'the receiver applied the delta onto its own document and holds exactly the claimant\'s structure');
+
+  // ---- a replica away across a topology edit is caught up from the log, not handed the mountain ----
+  // Starts from the room's own document: the stored snapshot can lag the room by a write, and a replica that
+  // joins holding less than the sequence it is handed would be caught up from the wrong place.
+  const away = await connect('dee', projectId, structuredClone(roomFor(projectId)!.doc));
+  await idle([away], 120);
+  away.channel.close();
+  away.sync.disconnect();
+  const awayCut = applyMeshDelete(winner.doc, { quads: [winner.doc.quads.length - 1] });
+  if (awayCut.ok) winner.doc = awayCut.doc;
+  winner.render();
+  winner.sync.flush();
+  await until(() => loser.doc.quadIds.length === winner.doc.quadIds.length, 'the delete to reach the other replica');
+  await away.reopen();
+  check(away.caughtUp.at(-1)?.steps === true && !away.caughtUp.at(-1)?.document,
+    'a replica that reconnects across a topology edit is caught up with the steps — the delta among them');
+  check(canonicalJson(structuralDocument(away.doc)) === canonicalJson(structuralDocument(winner.doc)),
+    'and lands on exactly the structure everybody else holds');
+  away.close();
+
+  // ---- a replica whose structure drifted cannot apply a delta, and resyncs at once ----
+  const drift = loser.doc.quads.findIndex((_, at) => at > 0 && !loser.doc.quadPaint?.[at] && !loser.doc.quadTex?.[at]);
+  const swapWith = loser.doc.quads.findIndex((_, at) => at > drift && !loser.doc.quadPaint?.[at] && !loser.doc.quadTex?.[at]);
+  [loser.doc.quads[drift], loser.doc.quads[swapWith]] = [loser.doc.quads[swapWith], loser.doc.quads[drift]];
+  [loser.doc.quadIds[drift], loser.doc.quadIds[swapWith]] = [loser.doc.quadIds[swapWith], loser.doc.quadIds[drift]];
+  loser.doc.quads = [...loser.doc.quads];
+  loser.doc.quadIds = [...loser.doc.quadIds];
+  loser.sync.adopt(loser.doc); // it believes the room agrees, which is what a lost message looks like
+  const fetchedBefore = loser.sent.filter(entry => entry.kind === 'fetch').length;
+  const driftCut = applyMeshDelete(winner.doc, { quads: [winner.doc.quads.length - 1] });
+  if (driftCut.ok) winner.doc = driftCut.doc;
+  winner.render();
+  winner.sync.flush();
+  await until(() => canonicalJson(structuralDocument(loser.doc)) === canonicalJson(structuralDocument(winner.doc)),
+    'the drifted replica to resync');
+  const resyncFetch = loser.sent.filter(entry => entry.kind === 'fetch').slice(fetchedBefore);
+  check(resyncFetch.length === 1 && resyncFetch[0].sections?.join() === 'topology',
+    'a delta that does not verify asks for the topology at once, rather than waiting for the idle check');
+
+  // ---- arrival order: a register the claim also sets ends the same everywhere ----
+  const contestedCorner = winner.doc.vertexIds.find((id, at) => at > 50 && loser.doc.vertexIds.includes(id))!;
+  const orderCut = applyMeshDelete(winner.doc, { quads: [winner.doc.quads.length - 1] });
+  if (orderCut.ok) winner.doc = orderCut.doc;
+  writeRegister(winner.doc, vertexRegister(contestedCorner), [41, 41, 41]);
+  writeRegister(loser.doc, vertexRegister(contestedCorner), [42, 42, 42]);
+  loser.render();
+  winner.render();
+  loser.sync.flush();
+  winner.sync.flush();
+  await idle([winner, loser], 300);
+  const contestedValue = readRegister(roomFor(projectId)!.doc, vertexRegister(contestedCorner));
+  check(same(readRegister(winner.doc, vertexRegister(contestedCorner)), contestedValue)
+    && same(readRegister(loser.doc, vertexRegister(contestedCorner)), contestedValue),
+    'a register written concurrently with a claim that also sets it ends on the room\'s value everywhere',
+    JSON.stringify(contestedValue));
 
   // ---- an edit naming tombstoned geometry is discarded quietly ----
   const stale = loser.landed.length;
