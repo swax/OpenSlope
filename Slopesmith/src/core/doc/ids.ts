@@ -88,6 +88,27 @@ export function retireMeshIds(doc: Tombstoned, ids: Iterable<string>): void {
   if (retired.size) doc.tombstones = [...retired]; else delete doc.tombstones;
 }
 
+/**
+ * Carry the current document's identity onto one restored from history, so a restore never hands a name out
+ * twice (docs/039, *Undo*).
+ *
+ * Undoing an operation puts back the document from before it, and that document's `nextId` is lower and its
+ * tombstones shorter: the names the operation minted vanish without being retired, and the next operation
+ * mints the very same names for different geometry. Anything still addressing the old ones — another
+ * participant's undo entry, an edit in flight — then lands on terrain it never named. So the counter keeps the
+ * higher of the two, every name the restore removes is retired, and a name the restore brings back stops being
+ * a tombstone. The tombstones keep the current order, which is what lets a topology delta state the change as
+ * the common prefix that stands and the tail after it.
+ */
+export function carryIdentity(restored: MeshIds & Tombstoned, current: MeshIds & Tombstoned): void {
+  restored.nextId = Math.max(restored.nextId, current.nextId);
+  const live = new Set([...restored.vertexIds, ...restored.quadIds]);
+  const retired = new Set<string>();
+  for (const id of [...current.tombstones ?? [], ...restored.tombstones ?? []]) if (!live.has(id)) retired.add(id);
+  for (const id of [...current.vertexIds, ...current.quadIds]) if (!live.has(id)) retired.add(id);
+  if (retired.size) restored.tombstones = [...retired]; else delete restored.tombstones;
+}
+
 // ---- lights and gems: the object families with no module of their own ---------------------------------------
 
 /**

@@ -266,10 +266,17 @@ const DECOMPOSED: ReadonlySet<string> = new Set([
 ]);
 
 /** The per-quad channel behind each attribute field, in the order a quad's registers are emitted. */
-const QUAD_CHANNELS: readonly (readonly [QuadField, 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels'])[] = [
+export const QUAD_CHANNELS: readonly (readonly [QuadField, 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels'])[] = [
   ['paint', 'quadPaint'], ['tex', 'quadTex'], ['orient', 'quadOrient'], ['lock', 'quadLocked'], ['twist', 'quadTwist'],
   ['labels', 'quadLabels'],
 ];
+
+/** The document's object lists. A member is replaced in its list as a whole register, and some families have
+ *  single fields written onto the member itself, so a copy of the document that registers will be written onto
+ *  needs its own copy of each list and of each member. */
+export const OBJECT_LISTS = [
+  'props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'labels',
+] as const;
 
 /** The effects document's own tables, each a list of rows named by their own id. */
 const EFFECT_TABLES = [
@@ -982,7 +989,7 @@ export function registerShell(doc: QuadMeshDoc): QuadMeshDoc {
   for (const channel of ['edgeHandles', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels']) {
     if (record[channel] !== undefined) record[channel] = {};
   }
-  for (const family of ['props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'labels']) {
+  for (const family of OBJECT_LISTS) {
     if (record[family] !== undefined) record[family] = [];
   }
   // The effects document's presence is itself carried by a register, so it goes with the rest of them.

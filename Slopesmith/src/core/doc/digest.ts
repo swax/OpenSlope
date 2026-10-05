@@ -88,16 +88,20 @@ function digestStructure(doc: QuadMeshDoc): Record<string, unknown> {
   };
 }
 
+/** The topology section's hash alone — what a topology delta names as the structure its result must have, so
+ *  whoever applies one can tell that it landed on the base it was written against (docs/039). */
+export const topologyDigest = (doc: QuadMeshDoc, hash: HashText): string => hash(canonicalJson(digestStructure(doc)));
+
 /** One section's hash, or null when the section holds nothing. */
 function sectionDigest(doc: QuadMeshDoc, section: string, hash: HashText): string | null {
-  if (section === TOPOLOGY_SECTION) return hash(canonicalJson(digestStructure(doc)));
+  if (section === TOPOLOGY_SECTION) return topologyDigest(doc, hash);
   const registers = sectionRegisters(doc, section);
   return registers.size ? hash(canonicalJson([...registers])) : null;
 }
 
 /** The whole digest, computed from scratch. */
 export function digestDocument(doc: QuadMeshDoc, hash: HashText): DocumentDigest {
-  const sections: Record<string, string> = { [TOPOLOGY_SECTION]: hash(canonicalJson(digestStructure(doc))) };
+  const sections: Record<string, string> = { [TOPOLOGY_SECTION]: topologyDigest(doc, hash) };
   for (const [name, registers] of documentSections(doc)) sections[name] = hash(canonicalJson([...registers]));
   const named = ordered(sections);
   return { root: rootOf(named, hash), sections: named };

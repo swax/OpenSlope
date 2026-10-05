@@ -1,11 +1,21 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { canonicalNumber } from '../../core/doc/canonical';
-import { digestDocument, divergentSections, textHash, type DocumentDigest } from '../../core/doc/digest';
 import {
-  applyRegisters, documentRegisters, objectFieldChanges, objectFieldOf, registerGeometry, writeRegister,
+  TOPOLOGY_SECTION, digestDocument, divergentSections, textHash, type DocumentDigest,
+} from '../../core/doc/digest';
+import { nameIndex } from '../../core/doc/ids';
+import {
+  applyRegisters, documentRegisters, objectFieldChanges, objectFieldOf, registerGeometry, registerShell,
+  vertexRegister, writeRegister,
   type RegisterKey, type RegisterValue,
 } from '../../core/doc/registers';
-import type { RegisterAssignment } from './session-channel';
+import {
+  applyTopologyDelta, detachedDocument, topologyDelta, type TopologyDelta,
+} from '../../core/doc/topology-delta';
+import type { ClaimAnswer, RegisterAssignment, SyncStep, TopologyPush } from './session-channel';
+
+/** A claim's answer as this module reads it: the sequence it carries is the channel's business. */
+type ClaimOutcome = Pick<ClaimAnswer, 'batch' | 'ok' | 'refused' | 'steps' | 'document'>;
 
 /**
  * This tab's half of register sync (docs/039): what it sends, what it holds, and what it can put back.
@@ -26,9 +36,19 @@ import type { RegisterAssignment } from './session-channel';
  * ## Topology
  *
  * Registers do not own which vertices and quads exist. When the structure changes, this asks the room to
- * compare-and-swap the ids the operation consumed, having already applied it locally. Winning costs nothing
- * more; losing hands back the document that won, and this replica goes from its own optimistic geometry
- * straight to the authoritative geometry — one rebuild, never back through the state it started in.
+ * compare-and-swap the ids the operation consumed, having already applied it locally, and sends what the
+ * operation did as a DELTA named by stable id plus the registers it produced (docs/039, *Topology travels as a
+ * delta*). Winning costs nothing more; losing hands back what the room sequenced since this replica's base,
+ * and this replica rebuilds that base and goes straight to the authoritative geometry — one rebuild, never
+ * back through the state it started in. Somebody else's topology arrives the same way and is applied to the
+ * live document rather than replacing it, so nothing this replica holds is rebuilt from scratch.
+ *
+ * ## In flight
+ *
+ * Arrival order at the room decides every register, so this replica has to resolve concurrent writes the way
+ * the room did. A relayed value for a register this replica has written and the room has not acknowledged was
+ * sequenced BEFORE that write — on one ordered socket, the relay arriving first proves it — so the room ends on
+ * this replica's value, and the relay is skipped rather than written over it.
  *
  * ## Undo
  *
@@ -42,7 +62,7 @@ import type { RegisterAssignment } from './session-channel';
 /** What this module needs of a channel, so it can be exercised without a socket. */
 export interface RegisterTransport {
   assign(changes: RegisterAssignment[], batch: number): boolean;
-  claim(ids: string[], document: EditDoc, batch: number): boolean;
+  claim(ids: string[], delta: TopologyDelta, changes: RegisterAssignment[], batch: number): boolean;
   checkDrift(digest: { root: string; sections: Record<string, string> }): boolean;
   fetchSections(sections: string[]): boolean;
 }
@@ -156,12 +176,20 @@ interface Structure {
   freeEdges: EditDoc['freeEdges'];
   tJunctions: EditDoc['tJunctions'];
   nextId: number;
+  tombstones: EditDoc['tombstones'];
 }
 
 const structureOf = (doc: EditDoc): Structure => ({
   vertexIds: doc.vertexIds, quadIds: doc.quadIds, quads: doc.quads,
-  freeEdges: doc.freeEdges, tJunctions: doc.tJunctions, nextId: doc.nextId,
+  freeEdges: doc.freeEdges, tJunctions: doc.tJunctions, nextId: doc.nextId, tombstones: doc.tombstones,
 });
+
+/** What the room held when this replica last agreed with it: a structure and every register's value. Enough to
+ *  rebuild that document whole, which is what a lost claim and a lost race rewind to. */
+interface RoomBase {
+  structure: Structure;
+  shadow: Map<RegisterKey, RegisterValue>;
+}
 
 const sameList = <T>(a: readonly T[] | undefined, b: readonly T[] | undefined,
   each: (one: T, two: T) => boolean): boolean =>
@@ -247,14 +275,15 @@ export function createRegisterSync(deps: {
   /** Replace it, after a topology push or a resync. The host renders what it is handed. */
   setDoc: (doc: EditDoc) => void;
   channel: RegisterTransport;
-  /** The document changed underneath, so whatever renders it should. */
-  onApplied?: (what: 'registers' | 'document') => void;
+  /** The document changed underneath, so whatever renders it should: registers written in place, a document
+   *  replaced whole, or somebody else's topology applied to it — the last keeps register undo (docs/039). */
+  onApplied?: (what: 'registers' | 'document' | 'topology') => void;
   onStatus?: (status: SyncStatus) => void;
   /** Somebody else overrode a register this tab had touched — the one place per-element indication earns its
    *  place, where the element flashes in their colour (docs/039). */
   onOverride?: (keys: RegisterKey[], by: string) => void;
-  /** This tab's optimistic topology edit lost its claim. Called once, even if the winning snapshot already
-   *  arrived by broadcast; ordinary remote edits and duplicate acknowledgements stay quiet. */
+  /** This tab's topology edit lost — its claim was refused, or somebody else's was sequenced before it was
+   *  claimed. Called once; ordinary remote edits and duplicate acknowledgements stay quiet. */
   onTopologyRejected?: () => void;
   /** A disconnection long enough that replaying blind would be wrong. Nothing is replayed until the host
    *  answers with `replayHeld` or `discardHeld`. */
@@ -295,8 +324,13 @@ export function createRegisterSync(deps: {
    */
   const replica = `replica-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   let batches = 0;
-  /** Batches sent and not yet acknowledged, with the assignments each carried, oldest first. */
+  /** Batches sent and not yet acknowledged, with the assignments each carried, oldest first — the values too,
+   *  because a relayed object replaced whole gets them back on top, and a whole document that arrives meanwhile
+   *  was produced before they landed and has them written back onto it. */
   const inFlight = new Map<number, RegisterAssignment[]>();
+  /** The last relayed value skipped for each register this replica had in flight, kept in case the room
+   *  refuses this replica's write — then the relayed value is what the room holds after all. */
+  const skipped = new Map<RegisterKey, RegisterValue>();
   /** Registers changed while the channel was down. Coalesced by key, because the last value is the only one
    *  worth replaying. */
   const holding = new Map<RegisterKey, RegisterValue>();
@@ -316,9 +350,23 @@ export function createRegisterSync(deps: {
    *  faces are held apart because the room is told them apart. */
   const editingVertices = new Map<string, number>();
   const editingQuads = new Map<string, number>();
-  /** An outstanding topology claim. While one is out nothing else is sent, because everything else would be
-   *  built on a structure that may not survive. */
-  let claiming: { batch: number } | null = null;
+  /**
+   * An outstanding topology claim. While one is out nothing else is sent, because everything else would be
+   * built on a structure that may not survive. It keeps what the room held when it was made, so losing can
+   * rebuild that and replay what was sequenced since; the structure it claimed, so edits made meanwhile are
+   * kept only if nothing structural moved under them; and the registers it carried, which are in flight.
+   */
+  let claiming: {
+    batch: number;
+    base: RoomBase;
+    claimed: Structure;
+    carried: RegisterAssignment[];
+    /** A whole document was adopted from outside the register path meanwhile, so the answer can no longer be
+     *  applied to what this replica holds and the claim is settled with the document instead. */
+    superseded?: boolean;
+  } | null = null;
+  /** Waiting on the whole document after a topology step failed to apply. Nothing is sent meanwhile. */
+  let resyncing = false;
   /** The step being accumulated, and whether steps are being recorded at all. */
   let step: { priors: Map<RegisterKey, RegisterValue>; afters: Map<RegisterKey, RegisterValue> } | null = null;
   let recording = true;
@@ -328,8 +376,8 @@ export function createRegisterSync(deps: {
   let ticker: ReturnType<typeof setInterval> | null = null;
 
   const status = (): SyncStatus => ({
-    landed: !inFlight.size && !holding.size && !dirty && !claiming,
-    inFlight: [...inFlight.values()].reduce((sum, keys) => sum + keys.length, 0),
+    landed: !inFlight.size && !holding.size && !dirty && !claiming && !resyncing,
+    inFlight: [...inFlight.values()].reduce((sum, changes) => sum + changes.length, 0),
     held: holding.size,
     connected,
   });
@@ -365,23 +413,36 @@ export function createRegisterSync(deps: {
     return field ? touchedKeys.has(field.object) : touchedObjects.has(key);
   }
 
-  /**
-   * Absorb values the room sequenced before this tab's unacknowledged batches (`applySync` says why), keeping
-   * what those batches carry: a register this tab has in flight keeps this tab's value, and an object replaced
-   * whole gets this tab's in-flight fields back on top of it. Hands back what was actually written.
-   */
-  function absorbArriving(changes: readonly RegisterAssignment[]): readonly RegisterAssignment[] {
+  /** Every write of this tab's the room has not acknowledged: its unacknowledged batches, oldest first, then
+   *  the registers an outstanding topology claim carries. */
+  function pendingWrites(): Map<RegisterKey, RegisterValue> {
     const pending = new Map<RegisterKey, RegisterValue>();
     for (const sent of inFlight.values()) for (const [key, value] of sent) pending.set(key, value);
-    if (!pending.size) { absorb(changes); return changes; }
-    const arriving = changes.filter(([key]) => !inFlightCovers(pending, key));
-    absorb(arriving);
+    if (claiming) for (const [key, value] of claiming.carried) pending.set(key, value);
+    return pending;
+  }
+
+  /**
+   * Absorb values the room sequenced before this tab's unacknowledged writes (`applySync` says why), keeping
+   * what those writes carry: a register this tab has in flight keeps this tab's value, and an object replaced
+   * whole gets this tab's in-flight fields back on top of it. What is skipped is remembered, in case the room
+   * refuses the write that superseded it. Hands back what was actually written.
+   */
+  function absorbArriving(changes: readonly RegisterAssignment[], doc = deps.getDoc()): readonly RegisterAssignment[] {
+    const pending = pendingWrites();
+    if (!pending.size) { absorb(changes, doc); return changes; }
+    const arriving = changes.filter(([key, value]) => {
+      if (!inFlightCovers(pending, key)) return true;
+      skipped.set(key, value);
+      return false;
+    });
+    absorb(arriving, doc);
     const replaced = new Set(arriving.map(([key]) => key));
     const restored = [...pending].filter(([key]) => {
       const field = objectFieldOf(key);
       return !!field && replaced.has(field.object);
     });
-    if (restored.length) absorb(restored);
+    if (restored.length) absorb(restored, doc);
     return arriving;
   }
 
@@ -413,12 +474,45 @@ export function createRegisterSync(deps: {
    * document did with it: if this replica has deleted the object without saying so yet, the deletion is still
    * found and sent, and if it has not, the shadow goes on describing the room.
    */
-  function absorb(changes: readonly RegisterAssignment[]): void {
-    const doc = deps.getDoc();
+  function absorb(changes: readonly RegisterAssignment[], doc = deps.getDoc()): void {
     for (const [key, value] of changes) {
       const landed = writeRegister(doc, key, value) === 'landed';
       if (landed || objectFieldOf(key)) remember(key, value); else shadow.delete(key);
     }
+  }
+
+  /**
+   * The room answered for some writes of this replica's: forget what was skipped for registers no longer in
+   * flight, and where the room REFUSED this replica's write, put back the relayed values it skipped — that is
+   * what the room holds after all. A refused whole object releases the fields of it that were skipped too.
+   */
+  function settleSkipped(keys: Iterable<RegisterKey>, refused: readonly RegisterKey[]): void {
+    if (!skipped.size) return;
+    const pending = pendingWrites();
+    const settled = (key: RegisterKey): boolean => !inFlightCovers(pending, key);
+    const refusedKeys = new Set(refused);
+    const restored = [...skipped].filter(([key]) => settled(key)
+      && (refusedKeys.has(key) || refusedKeys.has(objectFieldOf(key)?.object ?? '')));
+    const answered = new Set([...keys, ...refused]);
+    for (const key of [...skipped.keys()]) {
+      if (settled(key) && (answered.has(key) || answered.has(objectFieldOf(key)?.object ?? ''))) skipped.delete(key);
+    }
+    if (!restored.length) return;
+    absorb(restored);
+    // The refused write was in flight when an outstanding claim took its base, so that base believed the room
+    // held it. It did not; a lost claim rebuilding from that base must not put it back.
+    if (claiming) {
+      for (const [key, value] of restored) {
+        if (value === undefined) claiming.base.shadow.delete(key); else claiming.base.shadow.set(key, clone(value));
+      }
+    }
+    digest = null;
+    deps.onApplied?.('registers');
+  }
+
+  /** Write the batches still in flight back onto a document the room produced before they landed. */
+  function reassertInFlight(): void {
+    for (const changes of inFlight.values()) absorb(changes);
   }
 
   /** Rebuild the shadow from a document: this replica now believes the room holds exactly this. */
@@ -436,15 +530,102 @@ export function createRegisterSync(deps: {
     rebase(doc);
   }
 
-  /** Broadcasts, rejected claims and drift repairs can carry the same snapshot. Compare the LIVE document,
-   *  not the shadow (which may predate an unsent edit), before replacing the editor's objects. */
+  /**
+   * Take a whole document from the room — a repair, a catch-up, a refusal. Broadcasts, rejected claims and
+   * drift repairs can carry the same snapshot, so compare the LIVE document, not the shadow (which may predate
+   * an unsent edit), before replacing the editor's objects. A batch still in flight when it arrives landed
+   * after the room produced it, so it is written back on top.
+   */
   function adoptChanged(doc: EditDoc): boolean {
+    resyncing = false;
     if (digestDocument(deps.getDoc(), textHash).root === digestDocument(doc, textHash).root) {
       rebase(deps.getDoc());
       return false;
     }
     adopt(doc);
+    reassertInFlight();
     return true;
+  }
+
+  /** Install a document this replica built from the room's own changes as the live one. */
+  function install(doc: EditDoc): void {
+    deps.setDoc(doc);
+    structure = structureOf(doc);
+    digest = null;
+  }
+
+  /** Ask for the whole document: a topology step did not land on this replica's structure, which is drift. */
+  function resync(): void {
+    resyncing = true;
+    if (connected) deps.channel.fetchSections([TOPOLOGY_SECTION]);
+  }
+
+  /**
+   * The document the room held at `base`, rebuilt whole: its structure, and every register at the value this
+   * replica believed it held. Values are copied in, because the shadow must never share an object the editor
+   * will go on to edit in place.
+   */
+  function rewound(base: RoomBase): EditDoc {
+    const s = base.structure;
+    const shell = registerShell({
+      ...deps.getDoc(), vertexIds: s.vertexIds, quadIds: s.quadIds, quads: s.quads, freeEdges: s.freeEdges,
+      tJunctions: s.tJunctions, nextId: s.nextId, tombstones: s.tombstones,
+      vertices: new Array<number>(s.vertexIds.length * 3).fill(0),
+    });
+    applyRegisters(shell, [...base.shadow].map(([key, value]) => [key, clone(value)] as const));
+    return shell;
+  }
+
+  /** One topology step onto a document, producing a new one, with the shadow following what the delta removed
+   *  and placed. Null when it does not land — this replica's base is not the one it was written against. */
+  function landDelta(doc: EditDoc, delta: TopologyDelta | undefined, changes: readonly RegisterAssignment[],
+    relayed: boolean): EditDoc | null {
+    const applied = applyTopologyDelta(doc, delta);
+    if (!applied.ok) return null;
+    for (const key of applied.applied.cleared) shadow.delete(key);
+    for (const [key, value] of applied.applied.placed) remember(key, value);
+    if (relayed) absorbArriving(changes, applied.applied.doc); else absorb(changes, applied.applied.doc);
+    return applied.applied.doc;
+  }
+
+  /** Steps the room sequenced, in order, onto a document that nobody else holds. */
+  function landSteps(doc: EditDoc, steps: readonly SyncStep[], relayed: boolean): EditDoc | null {
+    let held: EditDoc | null = doc;
+    for (const step of steps) {
+      if (step.delta) held = landDelta(held, step.delta, step.changes, relayed);
+      else if (relayed) absorbArriving(step.changes, held); else absorb(step.changes, held);
+      if (!held) return null;
+    }
+    return held;
+  }
+
+  /**
+   * What the room sequenced — a relay, or a reconnection's catch-up — onto the live document.
+   *
+   * Assignments alone are written in place, as they always were. A topology step is applied to a copy so the
+   * editor can still compare the document it had with the one it has now. A local topology edit this replica
+   * had not claimed yet was sequenced after the arrival, so it lost: the replica rewinds to what the room held
+   * and applies the arrival there, and says so. Its register edits from the same tick go with it, because they
+   * cannot be told apart from what the operation produced.
+   */
+  function landRoomSteps(steps: readonly SyncStep[]): void {
+    const doc = deps.getDoc();
+    if (!steps.some(step => step.delta)) {
+      const changes = steps.flatMap(step => step.changes);
+      if (!changes.length) return;
+      absorbArriving(changes, doc);
+      digest = null;
+      deps.onApplied?.('registers');
+      return;
+    }
+    const unclaimed = !sameMesh(structure, structureOf(doc));
+    const from = unclaimed ? rewound({ structure, shadow }) : steps[0].delta ? doc : detachedDocument(doc);
+    const landed = landSteps(from, steps, true);
+    if (!landed) { resync(); return; }
+    install(landed);
+    if (unclaimed) step = null;
+    deps.onApplied?.('topology');
+    if (unclaimed) deps.onTopologyRejected?.();
   }
 
   /** The registers that differ from what the room holds, with what they held before — the whole of an
@@ -541,22 +722,78 @@ export function createRegisterSync(deps: {
     return live;
   }
 
-  /** A topology edit: claim the ids it consumed, having already applied it locally. */
+  /**
+   * A topology edit: claim the ids it consumed, having already applied it locally.
+   *
+   * What travels is the delta from the structure the room holds to the one this document has, and the register
+   * difference the tick would have sent anyway — less what the delta already says: the positions of the
+   * vertices it writes, and clears of registers naming geometry it removed. Whatever this replica had not yet
+   * sent is in that difference, and so is everything the operation produced in registers.
+   */
   function claimTopology(ids: string[]): void {
     const doc = deps.getDoc();
+    const base: RoomBase = { structure, shadow: new Map(shadow) };
+    const { changes } = collect();
+    const delta = topologyDelta(structure, doc);
+    const written = new Set(delta.vertices.flatMap(run => typeof run[0] === 'string' ? [vertexRegister(run[0])] : []));
+    const vertexAt = nameIndex(doc.vertexIds), quadAt = nameIndex(doc.quadIds);
+    const carried = changes.filter(([key, value]) => {
+      if (written.has(key)) return false;
+      if (value !== undefined) return true;
+      // A clear naming an id the delta removed is already said by the delta. One naming only surviving ids — a
+      // crease whose edge went while both its corners stayed — has to travel.
+      const named = registerGeometry(key);
+      return named.vertices.every(id => vertexAt.has(id)) && named.quads.every(id => quadAt.has(id));
+    });
+    structure = structureOf(doc);
+    digest = null;
     const batch = ++batches;
-    claiming = { batch };
-    // The claim carries the mountain it produced, because topology renumbers and nothing smaller would say
-    // what happened. Whatever this replica had not yet sent is already in it.
-    if (!deps.channel.claim(ids, clone(doc), batch)) claiming = null;
+    claiming = { batch, base, claimed: structure, carried };
     // Either way the local document stands: this replica applies at once and reverts only if it lost.
-    rebase(doc);
+    if (!deps.channel.claim(ids, delta, carried, batch)) claiming = null;
     report();
+  }
+
+  /**
+   * This replica's claim lost. The room handed back what it sequenced since the claim's base, so the base is
+   * rebuilt and those steps replayed onto it; or the room's whole document, when the log could not say it.
+   *
+   * Register edits made while the claim was out were held back by the tick, so they are exactly what the
+   * document holds that the shadow does not, and they are put back onto the result — unless the structure moved
+   * after the claim, when they belong to an operation the rebuild has discarded and would half-apply it.
+   */
+  function lose(answer: ClaimOutcome, base: RoomBase, claimed: Structure): void {
+    const doc = deps.getDoc();
+    const later = answer.steps && sameMesh(claimed, structureOf(doc)) ? differences().changes : [];
+    let changed: 'topology' | 'document' | null = null;
+    if (answer.steps) {
+      const from = rewound(base);
+      shadow = base.shadow;
+      structure = base.structure;
+      const landed = landSteps(from, answer.steps, false);
+      if (landed) {
+        applyRegisters(landed, later);
+        install(landed);
+        if (later.length) dirty = true;
+        changed = 'topology';
+      } else resync();
+    } else if (answer.document && adoptChanged(answer.document)) changed = 'document';
+    step = null;
+    if (changed) deps.onApplied?.(changed);
+    // Edits put back onto the rebuilt document go out first: a drift check taken over them now would find them
+    // missing from the room and repair them away before they were ever sent.
+    if (later.length && !resyncing) tick();
+    else {
+      lastChangeAt = 0;
+      checkedAt = 0;
+      maybeCheckDrift();
+    }
+    deps.onTopologyRejected?.();
   }
 
   /** Ask the room what it hashes to, once this replica has been idle long enough to be worth checking. */
   function maybeCheckDrift(): void {
-    if (!connected || claiming || inFlight.size || holding.size) return;
+    if (!connected || claiming || resyncing || inFlight.size || holding.size) return;
     const at = clockNow();
     if (at - lastChangeAt < IDLE_CHECK_MS || at - checkedAt < IDLE_CHECK_MS) return;
     checkedAt = at;
@@ -567,15 +804,17 @@ export function createRegisterSync(deps: {
 
   /** One coalescing tick. */
   function tick(): void {
-    if (!active || claiming) return;
+    if (!active || claiming || resyncing) return;
     const shape = structureOf(deps.getDoc());
     if (!sameStructure(structure, shape)) {
       const ids = topologyClaimIds(structure, shape);
       // A claim naming nothing, over a mesh nothing was added to or taken from, claims nothing: no id changed
-      // hands, so there is no race to compare-and-swap and no geometry a whole document would carry that an
-      // assignment cannot. What is left is the derived T-node bookkeeping, which every replica works out for
-      // itself. Take the new structure as the baseline and let the edit go as the ordinary one it is.
+      // hands, so there is no race to compare-and-swap and no geometry a delta would carry that an assignment
+      // cannot. What is left is the derived T-node bookkeeping, which every replica works out for itself. Take
+      // the new structure as the baseline and let the edit go as the ordinary one it is.
       if (!ids.length && sameMesh(structure, shape)) structure = shape;
+      // A claim waits for the decision about held changes, so it can never leave them out of the room.
+      else if (connected && holding.size) return;
       else {
         dirty = false;
         lastChangeAt = clockNow();
@@ -646,6 +885,9 @@ export function createRegisterSync(deps: {
     /** This replica now holds exactly this document and owes the room nothing. */
     adopt(doc: EditDoc): void {
       adopt(doc);
+      // An outstanding claim's answer is about the document this replaced, so it settles with the room's.
+      if (claiming) claiming.superseded = true;
+      resyncing = false;
       step = null;
       touchedKeys.clear();
       touchedObjects.clear();
@@ -659,14 +901,19 @@ export function createRegisterSync(deps: {
     connect(): void {
       active = true;
       connected = true;
+      // A resync asked before this room was open — just after a project switch — went unanswered.
+      if (resyncing) deps.channel.fetchSections([TOPOLOGY_SECTION]);
       report();
     },
     /** This document is not shared: a project nobody else has open, or one this tab follows read-only. */
     detach(): void {
       active = false;
       connected = false;
+      claiming = null;
+      resyncing = false;
       release();
       inFlight.clear();
+      skipped.clear();
       report();
     },
     /** The channel went down. Changes go on being collected — they are simply held. */
@@ -686,6 +933,7 @@ export function createRegisterSync(deps: {
         }
       }
       inFlight.clear();
+      skipped.clear();
       report();
     },
 
@@ -711,40 +959,51 @@ export function createRegisterSync(deps: {
       if (overridden.length) deps.onOverride?.(overridden, by);
       deps.onApplied?.('registers');
     },
-    /** Somebody else's topology, whole. Whatever this replica had not yet sent is re-asserted onto the new
-     *  structure afterwards; anything naming geometry the operation removed retires quietly. */
-    applyTopology(document: EditDoc): void {
-      const unsent = claiming ? [] : collect().changes;
-      const changed = adoptChanged(document);
-      if (unsent.length) {
-        absorb(unsent);
-        if (connected) sendAssignments(unsent);
-        else for (const [key, value] of unsent) hold(key, value);
-      }
-      if (changed) deps.onApplied?.('document');
+    /**
+     * Somebody else's topology: a delta and the registers it carried, applied to the live document so that
+     * whatever this replica holds on surviving geometry stays where it is.
+     *
+     * Ignored while this replica's own claim is out: the room answers on one ordered socket, so this was
+     * sequenced first, that claim will lose, and its answer carries this among its steps. Ignored while the whole
+     * document is on its way, too. A server on an older core sends the document instead of a delta.
+     */
+    applyTopology(push: Pick<TopologyPush, 'delta' | 'changes' | 'document'>): void {
+      if (claiming || resyncing) return;
+      if (push.document) {
+        const unsent = collect().changes;
+        const changed = adoptChanged(push.document);
+        if (unsent.length) {
+          absorb(unsent);
+          if (connected) sendAssignments(unsent);
+          else for (const [key, value] of unsent) hold(key, value);
+        }
+        if (changed) deps.onApplied?.('document');
+      } else landRoomSteps([{ delta: push.delta, changes: push.changes ?? [] }]);
       report();
     },
-    /** How a batch of this tab's assignments turned out. Nothing here can have been rejected for losing a
-     *  race; a retired key named geometry somebody removed and is dropped without a word. */
-    landed(ack: { batch: number }): void {
+    /** How a batch of this tab's assignments turned out. Nothing here can have been rejected for losing a race;
+     *  a retired key named geometry somebody removed and is dropped without a word. A refused one leaves the
+     *  room holding whatever it was relayed instead, which this replica skipped and now puts back. */
+    landed(ack: { batch: number; retired?: readonly string[]; refused?: readonly string[] }): void {
+      const sent = inFlight.get(ack.batch);
       inFlight.delete(ack.batch);
+      settleSkipped((sent ?? []).map(([key]) => key), [...ack.refused ?? [], ...ack.retired ?? []]);
       report();
     },
     /** How this tab's topology claim turned out. */
-    claimed(result: { batch: number; ok: boolean; document?: EditDoc }): void {
+    claimed(result: ClaimOutcome): void {
       if (!claiming || claiming.batch !== result.batch) return;
+      const { base, claimed, carried, superseded } = claiming;
       claiming = null;
-      if (!result.ok && result.document) {
-        // Lost. The winner's document is already in hand, so this goes from its own optimistic geometry to the
-        // authoritative geometry in one step rather than back through the geometry it started with.
-        const changed = adoptChanged(result.document);
-        step = null;
-        if (changed) deps.onApplied?.('document');
-        lastChangeAt = 0;
-        checkedAt = 0;
-        maybeCheckDrift();
+      if (superseded) {
+        // The document this claim was made on was replaced meanwhile; the room's says how it turned out.
+        if (!result.ok) deps.onTopologyRejected?.();
+        resync();
+      } else if (result.ok) settleSkipped(carried.map(([key]) => key), result.refused ?? []);
+      else {
+        skipped.clear();
+        lose(result, base, claimed);
       }
-      if (!result.ok) deps.onTopologyRejected?.();
       report();
     },
     /**
@@ -760,21 +1019,28 @@ export function createRegisterSync(deps: {
      * replaying it would undo that later write. `landed` is the highest batch the room had answered from this
      * replica, and a held value that went out at or below it is let go. Whatever is left was never landed, and
      * now that its socket is gone it never will be, so it is held like a change that was never sent.
+     *
+     * A claim still out when the socket dropped lost its answer with it, and the room may or may not have
+     * taken it, so the whole document settles it — asked for after any replay, so it includes the replay.
      */
-    caughtUp(missed: { changes: readonly RegisterAssignment[]; document?: EditDoc; landed?: number }): void {
+    caughtUp(missed: {
+      steps?: readonly SyncStep[]; changes?: readonly RegisterAssignment[]; document?: EditDoc; landed?: number;
+    }): void {
       connected = true;
+      const steps: readonly SyncStep[] = missed.steps ?? (missed.changes ? [{ changes: [...missed.changes] }] : []);
+      // A claim's answer, or the document a resync asked for, went with the socket. Either way the whole document
+      // settles it, and the steps are left to that document rather than applied to a base it is about to replace.
+      const unsettled = !!claiming || resyncing;
+      claiming = null;
+      if (unsettled) resyncing = true;
       if (missed.document) {
         // A fresh page starts its room sequence at zero, so a room whose retained tail begins later answers
         // with the whole mountain. Very often that is the same durable snapshot boot just rendered. Rebase the
         // replica without replacing the live object in that case: replacing an identical document would make
         // the editor display its full progressive loader again for a mountain that did not change.
         if (adoptChanged(missed.document)) deps.onApplied?.('document');
-      }
-      else if (missed.changes.length) {
-        absorb(missed.changes);
-        digest = null;
-        deps.onApplied?.('registers');
-      }
+      } else if (!unsettled) landRoomSteps(steps); // which asks for the document itself if a step fails
+      const settle = () => { if (unsettled && resyncing) resync(); };
       const landed = missed.landed ?? 0;
       for (const [key, batch] of heldBatches) {
         if (batch > landed) continue;
@@ -782,16 +1048,17 @@ export function createRegisterSync(deps: {
         holdingFrom.delete(key);
       }
       heldBatches.clear();
-      if (!holding.size) { awayAt = 0; report(); return; }
+      if (!holding.size) { awayAt = 0; settle(); report(); return; }
       const awayMs = awayAt ? clockNow() - awayAt : 0;
-      if (awayMs <= REPLAY_THRESHOLD_MS) { replayHeld(); return; }
-      const moved = new Set(missed.changes.map(([key]) => key));
+      if (awayMs <= REPLAY_THRESHOLD_MS) { replayHeld(); settle(); return; }
+      const moved = new Set(steps.flatMap(step => step.changes.map(([key]) => key)));
       deps.onReconcile?.({
         awayMs,
         changes: [...holding].map(([key, value]) => [key, value] as RegisterAssignment),
         contested: [...holding.keys()]
           .filter(key => moved.has(key) || !sameValue(holdingFrom.get(key), shadowRead(key))),
       });
+      settle();
       report();
     },
     replayHeld,
@@ -801,7 +1068,7 @@ export function createRegisterSync(deps: {
 
     /** Check now, whatever the idle timer says — what a reconnection does. */
     checkDrift(): void {
-      if (!connected) return;
+      if (!connected || resyncing) return;
       checkedAt = clockNow();
       deps.channel.checkDrift(digestNow());
     },
@@ -815,9 +1082,11 @@ export function createRegisterSync(deps: {
       return diverged;
     },
     /** The repair. A divergent section arrives as its registers; a divergent topology arrives as the document,
-     *  because the topology section is not register-shaped. */
+     *  because the topology section is not register-shaped. A document that arrives while a claim is out is
+     *  left alone: the claim's answer settles this replica, and the document predates it. */
     repair(payload: { registers: readonly RegisterAssignment[]; document?: EditDoc }): void {
       if (payload.document) {
+        if (claiming) return;
         if (adoptChanged(payload.document)) deps.onApplied?.('document');
         report();
         return;
