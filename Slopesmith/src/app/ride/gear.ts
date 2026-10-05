@@ -69,7 +69,7 @@ export interface EquipmentTextureRegion {
 }
 
 /** Boot sole to ankle joint: the last term of both gears' stacks, and the same boot in each case. */
-const SOLE_TO_ANKLE = 0.112;
+export const SOLE_TO_ANKLE = 0.112;
 
 /** An axis-aligned box in deck-local metres. Both gears describe their reachable outline as one of these. */
 export interface DeckBox {
