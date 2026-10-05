@@ -512,8 +512,9 @@ function writeRefusal(member: SessionMember, project: ProjectManifest,
 /**
  * A tab has said which map it is on, where it left off, and what it evaluates documents with.
  *
- * Joining opens the room if nobody had it open, answers where the room is, and — for a tab that says it was
- * here before — hands back exactly what it missed, or the document when the tail no longer reaches that far.
+ * Joining opens the room if nobody had it open, answers where the room is, and — for a tab that names a
+ * sequence, because it was here before or because it loaded the room's document at that sequence — hands back
+ * exactly what it missed, or the document when the tail no longer reaches that far.
  */
 async function joinMap(sessionId: string, wanted: string | null,
   asked: { at?: number; doc?: number; core?: string }): Promise<void> {

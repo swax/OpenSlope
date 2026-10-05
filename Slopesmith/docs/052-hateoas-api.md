@@ -57,7 +57,8 @@ GET /api/avatars              the server-wide rider library + the FBX import act
 GET /api/schemas[/Name]       hand-written JSON Schema registry (src/server/api/schemas.ts)
 GET /api/projects             maps: slim rows + the create and validate actions
 POST /api/projects/validate   read a hand-authored document the way a create would; nothing is written
-GET /api/projects/{id}        one map: manifest + whole document + every link/action it offers
+GET /api/projects/{id}        one map: manifest + whole live document + its room sequence `at` + every
+                              link/action it offers (docs/039: the room's copy while one is open)
 GET /api/projects/{id}/registers[?prefix=|keys=]   the authoring state as registers
 POST /api/projects/{id}/registers                  the ordinary write: `changes`, and `rules` that name
                                                    faces by label instead of by key (below)

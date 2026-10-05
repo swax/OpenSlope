@@ -92,6 +92,19 @@ async function liveDocument(id: string): Promise<EditDoc> {
   return roomFor(id)?.doc ?? (await projects.openProject(id)).document;
 }
 
+/**
+ * A map as a page opens it, with `at`: the room sequence its document stands at, which the page joins the room
+ * from (docs/039). While a room is open its copy is the map and the file can lag it by a snapshot write, so the
+ * page is handed the room's document as the room holds it — normalised once, when the room read it — and the
+ * room's head. A page that loaded the file and joined at the head would hold less than the sequence it named,
+ * and its first topology claim would be built on a structure the room no longer has. With no room open the
+ * file is the whole truth, and the room that opens from it starts at 0 holding exactly it.
+ */
+function openedSnapshot(snapshot: projects.ProjectSnapshot): projects.ProjectSnapshot & { at: number } {
+  const room = roomFor(snapshot.project.id);
+  return room ? { ...snapshot, document: room.doc, at: room.at } : { ...snapshot, at: 0 };
+}
+
 /** A list of ids off a request body, which is what a selection-bounded revert arrives as. */
 const names = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').slice(0, 100_000) : [];
@@ -730,7 +743,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       if (req.method === 'GET' && parts[0] === 'current') {
         const current = await projects.currentProject(clientId);
         if (!current) { res.statusCode = 204; res.end(); return; }
-        jsonResponse(res, 200, current); return;
+        jsonResponse(res, 200, openedSnapshot(current)); return;
       }
       if (req.method === 'POST' && !parts.length) {
         const body = await readJsonBody(req) as { document?: unknown; name?: unknown };
@@ -777,7 +790,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       }
 
       if (parts.length === 1 && req.method === 'GET') {
-        const snapshot = await projects.openProject(parts[0]);
+        const snapshot = openedSnapshot(await projects.openProject(parts[0]));
         jsonResponse(res, 200, { ...snapshot, ...projectEnvelope(snapshot.project, identity) }); return;
       }
 
@@ -1105,7 +1118,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         return;
       }
       if (parts.length === 2 && parts[1] === 'activate' && req.method === 'POST') {
-        jsonResponse(res, 200, await projects.activateProject(parts[0], clientId)); return;
+        jsonResponse(res, 200, openedSnapshot(await projects.activateProject(parts[0], clientId))); return;
       }
       if (parts.length === 2 && parts[1] === 'permissions' && req.method === 'PUT') {
         const principal = projectActor(identity);

@@ -2499,7 +2499,10 @@ async function boot() {
   // Existing users arrive with their last localStorage mountain. If no disk project exists, initialize() makes
   // that exact recovery document the first project; otherwise the URL's map, and failing that the active disk
   // project, wins.
-  store.mdoc = migrateMountain(await projectSync.initialize(store.mdoc, mapNameInUrl(), new URLSearchParams(location.search).get('project') ?? ''));
+  const opened = await projectSync.initialize(store.mdoc, mapNameInUrl(), new URLSearchParams(location.search).get('project') ?? '');
+  // A map the server opened at a room sequence is the room's document, installed as received (docs/039). Browser
+  // recovery, and a map created from it, have not been through the server's normalisation.
+  store.mdoc = projectSync.sequence() === undefined ? migrateMountain(opened) : opened;
   joinMap(); // presence and the register room follow the map this tab actually opened (docs/038)
   await loadMountain();
   // A link to a map this server does not have — renamed since, deleted, or somebody else's. Said out loud
@@ -2949,15 +2952,19 @@ setInterval(() => {
 /** Follow this tab's open map: presence is keyed on it, and so is the room. */
 function joinMap(document: EditDoc = store.mdoc): void {
   const current = projectSync.current();
+  // Where the opened document stands in the room's sequence. The room hands back whatever it sequenced after
+  // that, so a page opened mid-session holds exactly what it names (docs/039).
+  const at = projectSync.sequence();
   peerMarks.clear();
   refreshPeers();
-  session.watch(current?.id ?? null);
+  session.watch(current?.id ?? null, at);
   awareness.reset(); // the server drops what a tab said about the map it left
   // Project creation/opening calls this before the dialog installs the document into store.mdoc. Rebase the
   // register replica from the document being joined, not from the project that happens to still be rendered.
-  // A map being opened is a load, not a room arrival: one this tab built itself has not been through the
-  // server's normalisation, and the replica's base has to be the document the room will hold.
-  registerSync.adopt(migrateMountain(document));
+  // A document opened at a sequence is the room's own, installed as received. One this tab built itself has
+  // not been through the server's normalisation, and the replica's base has to be the document the room will
+  // hold.
+  registerSync.adopt(at === undefined ? migrateMountain(document) : document);
 }
 /**
  * Somebody deleted the map this tab had open (docs/038).

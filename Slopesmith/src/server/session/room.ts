@@ -358,10 +358,13 @@ const retainedFrom = (room: Room): number => room.log.length ? room.log[0].at - 
  * Topology entries stay in the log now that a delta can describe them, so a tab that was away across a
  * topology edit is handed the edit rather than the mountain. Assignments between two topology entries merge
  * into one step. Null means the tail no longer reaches back that far, or the room adopted a document from
- * outside since then.
+ * outside since then — or that the sequence is one this room never reached. A room counts from 0 each time it
+ * opens, so that sequence was handed out by an earlier room on this map: a page that loaded the map just before
+ * its room closed, or a tab that outlived a server restart. Nothing in this room's log is measured from it.
  */
 export function stepsSince(room: Room, at: number): RoomStep[] | null {
-  if (at >= room.at) return [];
+  if (at > room.at) return null;
+  if (at === room.at) return [];
   if (at < room.replacedAt || at < retainedFrom(room)) return null;
   const steps: RoomStep[] = [];
   for (const entry of room.log) {

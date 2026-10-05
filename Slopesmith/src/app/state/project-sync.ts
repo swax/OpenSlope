@@ -24,6 +24,9 @@ export interface ClientProject {
 interface ProjectSnapshot {
   project: ClientProject;
   document: EditDoc;
+  /** The room sequence `document` stands at. Said by the answers a map is opened from, which hand over the
+   *  room's live document while a room is open (docs/039). */
+  at?: number;
   error?: string;
 }
 
@@ -172,6 +175,9 @@ export function createProjectSync(deps: {
   flushShared?: () => void;
 }) {
   let project: ClientProject | null = null;
+  /** Where the document last accepted stands in the room's sequence, or undefined when the server did not say —
+   *  a map this tab created, imported or duplicated, or a revision somebody else wrote. */
+  let sequence: number | undefined;
   let lastSavedJson = '';
   let dirty = false;
   let blocked = false;
@@ -217,6 +223,7 @@ export function createProjectSync(deps: {
   function accept(snapshot: ProjectSnapshot): EditDoc {
     projectChoiceNeeded = false;
     project = snapshot.project;
+    sequence = snapshot.at;
     setClientProjectId(project.id);
     lastSavedJson = JSON.stringify(snapshot.document);
     dirty = false;
@@ -734,6 +741,7 @@ export function createProjectSync(deps: {
     setWritable, setShared, applyPush, applyProjectMetadata, setProjectEditors,
     isShared: () => shared,
     current: () => project,
+    sequence: () => sequence,
     conflict: () => pending,
     isPreviewing: () => previewing,
     isRecoveryOnly: () => !project,
