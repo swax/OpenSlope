@@ -97,10 +97,12 @@ its members as the plain props they are. The tag only changes editing:
 - **Selecting.** In Props and Edit mode alike, a click on any member selects the whole group as a
   multi-selection. A box that catches part of a group takes all of it, and an Edit-mode Ctrl+click adds or drops
   the whole group. The selection's centre gizmo moves, turns and scales the set rigidly (docs/012).
-- **The group panel.** The preview card draws every member where it stands, each from its own level. Under it
+- **The group panel (Props mode).** The preview card draws every member where it stands, each from its own level. Under it
   are **Members (N)**, one button per member that opens that prop's own panel, and **Transform**. Turn and
   size read the first member and change every member by the same amount. They pivot on the group's centre at
   its lowest base, so a set on flat ground stays on it. Then come copy, cut and **✕ delete group**.
+  Edit mode shows only transforms and labels, with **open in Props mode** to reach this panel with the group
+  still selected.
 - **A member's panel** is the prop's usual panel, headed by **◀ back to group**, the group it belongs to, and
   **⇉ copy settings to N other members**. That copies contact, surface, mode layer, sounds and self-lighting, but
   not the pose, effects or materials.

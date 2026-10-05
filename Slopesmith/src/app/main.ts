@@ -208,9 +208,8 @@ viewportCallbacks.onSelectRailNode = (rail, node) => {
 // meaning and never enters or leaves a model edit session.
 const modalEditToolActive = () => store.bridgeRails !== null || !!store.surgeryTool || !!store.weldTool
   || !!store.createEdgeTool || viewport.pastePlacing || viewport.edgeExtrusionStaged;
-// Edit mode: clicking a placed prop SELECTS it — the same amber box + move gizmo Props mode shows — and
-// its banner lands in the toolbox: a MODEL placement's opens the edit session (clicking the selected
-// piece again enters too), a reference placement's offers the revised copy. A locked session stays put.
+// Edit mode: a placed prop gets transform and label controls, with a button into its full Props toolbox.
+// Clicking a selected MODEL piece again still opens its mesh edit session. A locked session stays put.
 viewportCallbacks.onEditPropPick = (index, toggle) => {
   const pp = store.mdoc.props?.[index];
   if (!pp || modalEditToolActive()) return false;
@@ -1672,6 +1671,16 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   },
   effects,
   goToEffects,
+  goToPropToolbox: () => {
+    const indices = store.multiSel.length ? [...store.multiSel] : store.selectedProp === null ? [] : [store.selectedProp];
+    // A one-prop marquee opens that prop's inspector, just like a direct click does.
+    const selected = indices.length === 1 ? indices[0] : null, many = indices.length > 1 ? indices : [];
+    setMode('props');
+    // Leaving Edit detaches its gizmo. Restore the same placements under the Props transform handle.
+    store.selectedProp = selected; store.multiSel = many;
+    viewport.setPlacedPropSelection(selected, many);
+    rebuildTools(); updatePaintUi();
+  },
   selectSpecialProp: specialProps.select,
   goToGemToolbox: async (id, mode) => {
     const prop = await propOps.editableGem(id);

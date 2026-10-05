@@ -1,5 +1,4 @@
 import { editMesh } from '../../edit/mesh-target';
-import { AUTHORED_MODEL_LEVEL, modelIdFromNumber } from '../../../core/doc/models';
 import GUI from 'lil-gui';
 import { segmented, toggleBar, label } from '../components/controls';
 import type { GizmoFrame } from '../../viewport/types';
@@ -149,7 +148,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   };
   const canRotateSelection = () => viewport.edgeExtrusionStaged && viewport.edgeExtrusionMode === 'path' ? false : store.currentMode === 'props'
     ? store.selectedProp !== null || store.multiSel.length > 0
-    : viewport.edgeExtrusionStaged || store.currentMode === 'edit' && !mixedEditSelection()
+    : editPropsSelected() || viewport.edgeExtrusionStaged || store.currentMode === 'edit' && !mixedEditSelection()
       && store.bridgeRails === null && cageActive() && (store.controlSel.length
       ? movableControlPointCount() > 1
       : store.edgeSel.length > 0 || store.cellSel.length > 0 || edit.selectedFreePoint());
@@ -164,9 +163,12 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     ];
   };
   const mixedEditSelection = () => editSelectionCounts().filter(selection => selection.count > 0).length > 1;
-  const editSelection = (): { kind: 'control points' | 'edges' | 'patches' | 'mixed selection'; readOnly: boolean } | null => {
+  const editPropsSelected = () => store.currentMode === 'edit' && !store.modelEditId && !mixedEditSelection()
+    && (store.selectedProp !== null || store.multiSel.length > 0);
+  const editSelection = (): { kind: 'control points' | 'edges' | 'patches' | 'props' | 'mixed selection'; readOnly: boolean } | null => {
     const counts = editSelectionCounts().filter(selection => selection.count > 0);
     if (counts.length > 1) return { kind: 'mixed selection', readOnly: counts.every(selection => selection.readOnly) };
+    if (editPropsSelected()) return { kind: 'props', readOnly: false };
     if (store.edgeSel.length) return { kind: 'edges', readOnly: false };
     if (store.cellSel.length) return { kind: 'patches', readOnly: false };
     if (store.selectedCorner !== null || store.regionSel.length || store.controlSel.length)
@@ -280,6 +282,20 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     labelTools.buildAssignment();
   }
 
+  /** Edit owns placement transforms and labels; Props owns the full prop/group inspector. */
+  function buildEditPropTools() {
+    const indices = store.multiSel.length ? store.multiSel : [store.selectedProp!];
+    const props = indices.map(index => store.mdoc.props?.[index]).filter(prop => !!prop);
+    const section = editSection('prop-selected', 'Selection');
+    detail(section, props.length === 1 ? deps.shortPropName(props[0].name) : `${props.length} props selected`);
+    detail(section, 'Use the gizmo to move, rotate or scale the selection.');
+    tip(section.add({ open: deps.goToPropToolbox }, 'open').name('open in Props mode'),
+      'Keep this selection and open its full prop or group settings in Props mode.');
+    tip(section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
+      'Clear this selection and return to the general Edit tools.');
+    labelTools.buildAssignment();
+  }
+
   function rebuildTools() {
     createTools.reset();
     clearGui(rightGui);
@@ -359,48 +375,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if (store.currentMode === 'edit' && mixedEditSelection()) { buildMixedEditSelectionTools(); return; }
     if ((store.selectedEdgeCrossing || store.selectedCoincidentVertices || cageActive()) && meshSelect.buildMeshSelectionTools(mdoc)) return;
 
-    // Once a mixed marquee is narrowed to Props, reuse the ordinary multi-prop list / delete / deselect tools
-    // without switching modes. The selection and transform handle stay exactly where the Edit drag left them.
-    if (store.currentMode === 'edit' && store.multiSel.length > 0 && !store.modelEditId) {
-      propTools.buildPropTools();
-      labelTools.buildAssignment();
-      return;
-    }
-
-    // A placed prop selected in Edit mode OWNS the toolbox, like any other Edit selection: the amber box
-    // + move gizmo it has in Props mode, with its way into editing here — a MODEL placement opens its
-    // edit session, a reference placement (read-only source geometry) offers the revised COPY (docs/028).
-    if (store.currentMode === 'edit' && store.selectedProp !== null && !store.modelEditId) {
-      const index = store.selectedProp;
-      const pp = store.mdoc.props?.[index];
-      if (!pp) store.selectedProp = null;
-      else if (pp.level === AUTHORED_MODEL_LEVEL) {
-        const g = editSection('prop-selected', `Tiled prop · ${pp.name || `#${pp.model}`}`);
-        detail(g, 'drag the gizmo to move this placement');
-        tip(g.add({ edit: () => deps.modelEdit.enter(modelIdFromNumber(pp.model), index) }, 'edit').name('✎ edit shape'),
-          'Open this prop’s edit session; edits change every placement of it.');
-        tip(g.add({ revise: () => deps.modelEdit.createRevision(index) }, 'revise').name('⧉ revise prop (v2)'),
-          'Fork this prop as “<name> v2” and edit the copy; this placement swaps over.',
-          'Other placements keep the original. Effects attached to this placement come with the copy.');
-        tip(g.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
-          'Drop this placement selection — the same as clicking off it.');
-        labelTools.buildAssignment();
-        return;
-      } else {
-        const g = editSection('prop-selected', `Textured prop · ${pp.name || `#${pp.model}`}`);
-        detail(g, 'drag the gizmo to move this placement');
-        detail(g, 'reference props are read-only — revise one to get your own copy');
-        if (pp.group) detail(g, 'group props can’t be revised yet');
-        else tip(g.add({ revise: () => deps.modelEdit.createRevision(index) }, 'revise').name('⧉ revise prop (v2)'),
-          'Copy this prop into your library as “<name> v2” and point this placement at it.',
-          'The copy keeps its UV layout, materials, and look, so nothing moves and nothing greys out — '
-          + 'effects attached to this placement come with it. Edit the copy in Blender (docs/046).');
-        tip(g.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
-          'Drop this placement selection — the same as clicking off it.');
-        labelTools.buildAssignment();
-        return;
-      }
-    }
+    if (editPropsSelected()) { buildEditPropTools(); return; }
 
     // Nothing selected: this is the ONLY state that shows the non-specific Edit tools.
     editPickSection.style.display = '';

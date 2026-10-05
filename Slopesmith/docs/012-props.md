@@ -286,6 +286,11 @@ the whole set. A single click, arming any tool, Esc, or undo clears the set. Box
 **⊞ group N props** ties the set into an authored group that selects as one from then on
 ([015 · Authored groups](015-groups.md#authored-groups)). A box that catches part of a group selects all of it.
 
+In **Edit mode**, selecting a prop, group or set shows only **Transform** (Move / Rotate / Scale), the selection,
+and **Labels**. **open in Props mode** keeps those placements selected and opens their full prop or group
+toolbox. A mixed mesh-and-prop selection first offers its usual type chooser; choosing props opens this compact
+Edit panel. Contact, materials, member settings and group actions live in Props mode.
+
 **Copy / paste** (Props or Edit mode): **Ctrl+C** copies the selected prop or box-selected set, **Ctrl+X** cuts it,
 and **Ctrl+V** holds the copies on the cursor the way a Library pick is held — a translucent ghost of the whole
 set riding the terrain, **Alt+wheel** or **← / →** turning it and **Shift+wheel** resizing it. A **click**
