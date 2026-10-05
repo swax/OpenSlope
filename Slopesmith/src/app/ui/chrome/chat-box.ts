@@ -42,6 +42,7 @@ const CSS = `
 .sp-chat.open .sp-chat-line { padding: 1px 0; background: none; opacity: 1 !important; }
 .sp-chat-line.faded { opacity: 0; }
 .sp-chat-who { color: #7fc3ef; font-weight: 650; }
+.sp-chat-time { margin-right: 6px; color: #6f8597; font-style: normal; font-variant-numeric: tabular-nums; }
 .sp-chat-speakers { display: none; align-self: flex-start; flex-wrap: wrap; gap: 5px; max-width: 100%;
   padding: 4px 7px; box-sizing: border-box; color: #bcebd0; background: rgba(16, 42, 32, 0.88);
   border: 1px solid rgba(73, 137, 101, 0.72); border-radius: 5px; }
@@ -93,6 +94,12 @@ const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"'
  *  sentence with a `<` in it reads as the author typed it and cannot become an element on the way. */
 export const plainChatText = (text: string): string =>
   text.replace(/&(amp|lt|gt|quot|#39);/g, (whole, name: string) => ENTITIES[name] ?? whole);
+
+/** When a line was said, as `hh:mm` in this browser's own timezone (`at` is the server's epoch milliseconds). */
+export function chatTime(at: number): string {
+  const when = new Date(at);
+  return `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+}
 
 export function createChatBox(deps: {
   say: (text: string) => void;
@@ -157,8 +164,13 @@ export function createChatBox(deps: {
     const row = document.createElement('div');
     row.className = `sp-chat-line sp-chat-${line.kind}`;
     if (line.from && line.from.userId === deps.me()?.id && line.kind === 'room') row.classList.add('sp-chat-mine');
+    const time = document.createElement('span');
+    time.className = 'sp-chat-time';
+    time.textContent = chatTime(line.at);
+    time.title = new Date(line.at).toLocaleString();
+    row.append(time);
     if (line.kind === 'system') {
-      row.textContent = plainChatText(line.text);
+      row.append(plainChatText(line.text));
       return row;
     }
     const who = document.createElement('span');
