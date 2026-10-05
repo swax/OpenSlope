@@ -153,7 +153,7 @@ async function connect(name: string, projectId: string, document: EditDoc,
     peers: [] as PeerAwareness[],
     picked: { vertices: [] as string[], quads: [] as string[] },
   };
-  let joined = false;
+  let joined = false, welcomed = false;
   const sync = createRegisterSync({
     getDoc: () => held.doc,
     setDoc: doc => { held.doc = doc; },
@@ -198,6 +198,7 @@ async function connect(name: string, projectId: string, document: EditDoc,
   let room: string | undefined, named: string | undefined;
   const makeChannel = () => createSessionChannel({
     clientId: name,
+    onWelcome: () => { welcomed = true; },
     replica: sync.replica,
     url: () => `ws://127.0.0.1:${service!.port}/api/session?client=${encodeURIComponent(name)}`,
     // As main.ts has it: a socket that closes under the replica puts what it had in flight on hold.
@@ -247,6 +248,9 @@ async function connect(name: string, projectId: string, document: EditDoc,
     sync.adopt(held.doc);
   } else {
     sync.adopt(held.doc); // main.ts `joinMap`: the replica's base is set before the room says anything
+    // After the welcome: the channel says its map again on every welcome, so a watch sent ahead of it is
+    // answered twice, and a check that counts this page's catch-ups would count both.
+    await until(() => welcomed, `${name} to be welcomed`);
     named = from.room;
     channel.watch(projectId, from.at, from.room);
     await until(() => held.caughtUp.length > 0, `${name} to be caught up`);
