@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
 import { railHasTube } from '../../../core/rails/rails';
+import { assemblyOf } from '../../../core/props/assembly';
 import type { MeshAdjacency } from '../../../core/mesh/topology';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import { makeTexRef, parseTexRef, resolveTerrainTexRef, type TexRef } from '../../../core/paint/textures';
@@ -707,7 +708,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (pick?.target === 'prop' && pick.source === 'authored') {
       // a line's member answers as its line: the line lays it out, so the line is what there is to edit
       const line = lineOwning(pick.propIndex);
-      if (line) selectLineNode(line, null); else selectProp(pick.propIndex);
+      // …and a group's member as its group, which moves, turns and sizes as one (docs/015 · Authored groups)
+      const group = line ? null : assemblyOf(layers.props.lastPlacedProps, pick.propIndex);
+      if (line) selectLineNode(line, null);
+      else if (group) selectPropSet(group);
+      else selectProp(pick.propIndex);
       return;
     }
     if (pick?.target === 'prop' && pick.source === 'reference') {
@@ -831,8 +836,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.propLines.seatNode(id, n);
   }
 
-  /** Select placed prop `i`: clear the other scene-object selections, then seat the gizmo on it. */
-  function selectProp(i: number) {
+  /** Clear every scene-object selection a placed-prop selection replaces. */
+  function clearForPropSelection() {
     stage.cb.onSelectKnot(null);
     layers.selection.placeCornerMarker(null);
     layers.refDecor.clearSurfaceInspection();
@@ -845,7 +850,18 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     dropLineSelection();
     layers.gems.clearSelection();
     layers.screens.clearSelection();
+  }
+
+  /** Select placed prop `i`: clear the other scene-object selections, then seat the gizmo on it. */
+  function selectProp(i: number) {
+    clearForPropSelection();
     layers.props.seatProp(i);
+  }
+
+  /** Select placed props `indices` together — a group's members — under the set's centre gizmo. */
+  function selectPropSet(indices: number[]) {
+    clearForPropSelection();
+    stage.cb.onSelectProps?.(indices, false);
   }
 
   /** Select a reference prop READ-ONLY: outline the clicked instance (every submesh of its model, seated by

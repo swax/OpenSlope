@@ -283,6 +283,8 @@ its prop (a white box flashes around it in 3D and the preview card shows it), th
 row's **✕** drops it from the set (the prop stays placed), and **delete N props** / the **Del** key remove
 the whole set. A single click, arming any tool, Esc, or undo clears the set. Box-selecting in edit mode
 (corners) and props mode share the marquee overlay; `marqueeKind` routes the finished rectangle.
+**⊞ group N props** ties the set into an authored group that selects as one from then on
+([015 · Authored groups](015-groups.md#authored-groups)). A box that catches part of a group selects all of it.
 
 **Copy / paste** (Props or Edit mode): **Ctrl+C** copies the selected prop or box-selected set, **Ctrl+X** cuts it,
 and **Ctrl+V** holds the copies on the cursor the way a Library pick is held — a translucent ghost of the whole
@@ -295,7 +297,7 @@ clearance above the ground — a seated prop lands seated. The turn is added to 
 outermost of its YXZ angles, so tilted props keep their tilt. A copy is the whole placement — pose, behaviour,
 labels, its fitted screens — under a fresh id, sharing the source's effect slot as **＋ place** does
 ([069](069-prop-defaults.md)). A prop line's member pastes as an ordinary prop, and an Effects trigger volume is
-not copied. The clipboard lives for the session, so it carries props between mountains; there, the effect slot
+not copied. A copied authored group pastes as a new group of its own; a lone member of one pastes ungrouped. The clipboard lives for the session, so it carries props between mountains; there, the effect slot
 is not trusted and copies of the author's own models are left out, since the same model number names a
 different model elsewhere (`core/props/clipboard.ts`). The idle Prop Tools offer **paste** while the clipboard
 holds something, and the set's panel offers **copy**, **cut**, and **paste**. In Edit mode, a selection containing

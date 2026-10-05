@@ -441,6 +441,11 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       ambientSoundFile: { type: 'string' },
       ambientRadius: { type: 'number' },
       group: { type: 'string', description: 'Group-def id when this placement is a mined group.' },
+      assembly: {
+        type: 'string',
+        description: 'Authored group id: every placement carrying the same id selects, moves, turns and sizes '
+          + 'together in the editor, while each keeps its own pose and settings. One placement alone is no group.',
+      },
       memberBehaviour: {
         type: 'object', additionalProperties: { type: 'object' },
         description: 'Group placements only: each member\'s own behaviour, keyed by its model id — the same '

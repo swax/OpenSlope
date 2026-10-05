@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PropMaterial, PropModel, LevelProps } from '../../core/reference/props';
 import type { V3 } from '../../core/doc/types';
+import type { Quat } from '../../core/props/pose';
 import { CUSTOM_TEX_LEVEL, makeTexRef, resolvePropTex } from '../../core/paint/textures';
 import { textureUrl } from '../net/asset-paths';
 import {
@@ -8,8 +9,15 @@ import {
 } from './texture-alpha';
 
 /** One model of an assembly view: the model plus its group-local pose (editor metres / degrees, the
- *  GroupPropDef fields — zero for mined members, whose offsets are baked into the geometry). */
-export interface ThumbEntry { model: PropModel; relPos?: V3; relYaw?: number }
+ *  GroupPropDef fields — zero for mined members, whose offsets are baked into the geometry). An authored group's
+ *  members (docs/015 · Authored groups) can come from different levels and carry a whole rotation and a size of
+ *  their own, so an entry may name its own level and material table, `relRot` (an editor-frame quaternion, which
+ *  wins over `relYaw`) and `relScale`. */
+export interface ThumbEntry {
+  model: PropModel; relPos?: V3; relYaw?: number;
+  relRot?: Quat; relScale?: number;
+  level?: string; materials?: LevelProps['materials'];
+}
 
 /**
  * Renders framed views of prop models. Two uses share one class: the Prop Library snapshots each model to a PNG
@@ -135,8 +143,8 @@ export class ThumbRenderer {
     // resolving through the same helper the viewport materials use keeps thumbnails and world in step
     const files = new Map<string, { level: string; name: string }>();
     for (const e of entries) for (const s of e.model.subs) {
-      const material = materials.get(s.mat);
-      const tile = resolvePropTex(level, material?.tex);
+      const material = (e.materials ?? materials).get(s.mat);
+      const tile = resolvePropTex(e.level ?? level, material?.tex);
       if (tile.name) files.set(`${tile.level}/${tile.name}`, { level: tile.level, name: tile.name });
       for (const frame of material?.frames ?? [])
         files.set(`${tile.level}/${frame}`, { level: tile.level, name: frame });
@@ -149,7 +157,12 @@ export class ThumbRenderer {
       const holder = new THREE.Group();
       const rel = e.relPos ?? [0, 0, 0];
       holder.position.set(-100 * rel[0], -100 * rel[2], 100 * rel[1]);
-      holder.rotation.z = (-(e.relYaw ?? 0) * Math.PI) / 180;
+      // The same axis map turns an editor rotation into this frame: editor X → raw −X, Y → raw Z, Z → raw −Y.
+      // That map is a reflection, so it also flips each angle — which leaves a quaternion (x, y, z, w) as
+      // (x, z, −y, w). A bare yaw is the special case: a raw turn of −yaw about +Z.
+      if (e.relRot) holder.quaternion.set(e.relRot[0], e.relRot[2], -e.relRot[1], e.relRot[3]);
+      else holder.rotation.z = (-(e.relYaw ?? 0) * Math.PI) / 180;
+      holder.scale.setScalar(e.relScale ?? 1);
       for (const s of e.model.subs) {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.BufferAttribute(s.positions, 3));
@@ -158,8 +171,8 @@ export class ThumbRenderer {
         if (s.normals?.length === s.positions.length)
           g.setAttribute('normal', new THREE.BufferAttribute(s.normals, 3));
         else g.computeVertexNormals();
-        const material = materials.get(s.mat);
-        const tile = resolvePropTex(level, material?.tex);
+        const material = (e.materials ?? materials).get(s.mat);
+        const tile = resolvePropTex(e.level ?? level, material?.tex);
         holder.add(new THREE.Mesh(g, this.material(tile.level, tile.name, material)));
       }
       this.group.add(holder);

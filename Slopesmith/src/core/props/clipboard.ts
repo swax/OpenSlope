@@ -6,6 +6,7 @@ import {
 } from '../effects/authoring';
 import { isEffectTriggerProp } from '../effects/trigger-volume';
 import { rotateY } from './pose';
+import { nextAssemblyId } from './assembly';
 
 /**
  * Copy / paste of placed props (docs/012): a snapshot of whole placements that pastes back as new ones — every
@@ -18,7 +19,8 @@ import { rotateY } from './pose';
  *
  * Identity is what a copy must not carry. The id is minted fresh on paste, a prop line's membership is
  * dropped (the line would replace the copy at its next re-layout, docs/070), and an Effects trigger volume is
- * not copied at all — it is authored in Effects mode as part of its graph, not placed as a prop.
+ * not copied at all — it is authored in Effects mode as part of its graph, not placed as a prop. A copied group
+ * (docs/015 · Authored groups) pastes as a new group of its own, and a lone member of one pastes on its own.
  */
 
 export interface PropClipboardEntry {
@@ -116,9 +118,18 @@ export function pastePlacements(doc: PropDoc, clip: PropClipboard, at?: PasteTra
   const sameMountain = clip.mountain === doc.name;
   const entries = pasteable(doc, clip);
   const indices: number[] = [];
+  // Each copied group becomes a new one, minted at its first member — so two groups in one paste stay two.
+  const groupSize = new Map<string, number>();
+  for (const { prop } of entries) if (prop.assembly) groupSize.set(prop.assembly, (groupSize.get(prop.assembly) ?? 0) + 1);
+  const pastedGroup = new Map<string, string>();
   for (const entry of entries) {
     const id = nextPlacedPropId(props);
-    const prop = { id, ...structuredClone(entry.prop), ...(at ? carried(entry.prop, clip.anchor, at) : {}) };
+    const prop: PlacedProp = { id, ...structuredClone(entry.prop), ...(at ? carried(entry.prop, clip.anchor, at) : {}) };
+    if (prop.assembly && (groupSize.get(prop.assembly) ?? 0) > 1) {
+      let group = pastedGroup.get(prop.assembly);
+      if (!group) pastedGroup.set(prop.assembly, (group = nextAssemblyId(props)));
+      prop.assembly = group;
+    } else delete prop.assembly;
     indices.push(props.push(prop) - 1);
     if (entry.effect && sameMountain && doc.effects?.slots.some(slot => slot.id === entry.effect!.slot))
       attachEffectToProp(doc.effects, id, entry.effect.slot, entry.effect.circumstance);

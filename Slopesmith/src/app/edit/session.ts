@@ -1,6 +1,7 @@
 import type { LabelDefinition, QuadMeshDoc, V3 } from '../../core/doc/types';
 import { nextLabelColor, nextLabelId } from '../../core/doc/labels';
 import { writePropRotation } from '../../core/props/pose';
+import { assemblyOf, withWholeAssemblies } from '../../core/props/assembly';
 import {
   meshCreaseVertices, meshDirNeighbors, meshResetShape, meshSmoothVertices, meshSetHandle, meshSetTwist,
   HANDLE_DIRS, type HandleDir,
@@ -850,8 +851,9 @@ export function createEditSession(deps: EditSessionDeps) {
     const incomingPatches = quadNames(doc, selection.patches);
     const currentProps = store.multiSel.length ? store.multiSel
       : store.selectedProp !== null ? [store.selectedProp] : [];
-    const incomingProps = store.modelEditId ? []
-      : selection.props.filter(index => index >= 0 && index < (store.mdoc.props?.length ?? 0));
+    // A group goes in or out whole, however much of it the box caught (docs/015 · Authored groups).
+    const incomingProps = store.modelEditId ? [] : withWholeAssemblies(store.mdoc.props ?? [],
+      selection.props.filter(index => index >= 0 && index < (store.mdoc.props?.length ?? 0)));
 
     const points = mergeMarqueeSet(currentPoints, incomingPoints, controlPointKey, mode);
     store.edgeSel = mergeMarqueeSet(store.edgeSel, incomingEdges, nameKey, mode);
@@ -874,12 +876,15 @@ export function createEditSession(deps: EditSessionDeps) {
     refreshEditSelectionUi();
   }
 
-  /** Ctrl/Cmd-click prop selection uses the same mixed-family state as the marquee: toggle only this prop,
-   * preserve every mesh family, then redraw one combined selection and centroid. */
+  /** Ctrl/Cmd-click prop selection uses the same mixed-family state as the marquee: toggle only this prop — or
+   * its whole group (docs/015 · Authored groups) — preserve every mesh family, then redraw one combined selection
+   * and centroid. */
   function toggleEditProp(index: number) {
     if (store.currentMode !== 'edit' || index < 0 || index >= (store.mdoc.props?.length ?? 0)) return;
     const props = new Set(selectedEditPropIndices());
-    if (props.has(index)) props.delete(index); else props.add(index);
+    const members = assemblyOf(store.mdoc.props ?? [], index) ?? [index];
+    if (props.has(index)) for (const member of members) props.delete(member);
+    else for (const member of members) props.add(member);
     store.selectedProp = null;
     store.multiSel = [...props].sort((a, b) => a - b);
     resetGizmoMode();

@@ -79,6 +79,36 @@ gizmos, not the editable free-light ones).
 - **Tools** — a selected group shows the usual turn / size / delete (labelled *delete group*); the
   base-keeping scale nudge uses the assembly's lowest member. Its contact, sound and lighting can differ per
   member: the **Members** list opens each member's own panel (docs/069 · Groups).
+- **⇲ break group** replaces the placement with its props (`unpackGroupPlacement`). Each member stands where it
+  stood and keeps its own settings from `memberBehaviour`, and the group's lights become free lights. The leader
+  keeps the placement's id, so the effects and screens attached to the group stay on it. An effect that covered
+  the whole group now covers the leader alone. The pieces stay selected, ready to **⊞ group** as an authored
+  group.
+
+## Authored groups
+
+An **authored group** ties any placements together (`PlacedProp.assembly`, `core/props/assembly.ts`). It is the
+other way round from a mined group: every member stays an ordinary placement, with its own pose, level,
+settings, effects, screens and materials. So a group can mix levels, and export, Test, collision and sound treat
+its members as the plain props they are. The tag only changes editing:
+
+- **Making one.** Box-select props and press **⊞ group N props**. A line's members and Effects trigger volumes
+  can't join. A prop already in a group leaves it for the new one. **⇲ break group** removes the tags.
+- **Selecting.** In Props and Edit mode alike, a click on any member selects the whole group as a
+  multi-selection. A box that catches part of a group takes all of it, and an Edit-mode Ctrl+click adds or drops
+  the whole group. The selection's centre gizmo moves, turns and scales the set rigidly (docs/012).
+- **The group panel.** The preview card draws every member where it stands, each from its own level. Under it
+  are **Members (N)**, one button per member that opens that prop's own panel, and **Transform**. Turn and
+  size read the first member and change every member by the same amount. They pivot on the group's centre at
+  its lowest base, so a set on flat ground stays on it. Then come copy, cut and **✕ delete group**.
+- **A member's panel** is the prop's usual panel, headed by **◀ back to group**, the group it belongs to, and
+  **⇉ copy settings to N other members**. That copies contact, surface, mode layer, sounds and self-lighting, but
+  not the pose, effects or materials.
+- **A group of one is no group.** A tag left on a single placement, after its partners are deleted or when one
+  member is pasted alone, is ignored. Copy / paste gives each copied group a fresh id (docs/012).
+
+Placing a mined group from the library still stamps one group placement. Turning that into an authored group
+is a later step.
 
 ## Prop tint from the rig (all placements)
 
