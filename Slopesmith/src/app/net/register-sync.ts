@@ -2,7 +2,8 @@ import type { EditDoc } from '../../core/doc/doc-edit';
 import { canonicalNumber } from '../../core/doc/canonical';
 import { digestDocument, divergentSections, textHash, type DocumentDigest } from '../../core/doc/digest';
 import {
-  applyRegisters, documentRegisters, registerGeometry, writeRegister, type RegisterKey, type RegisterValue,
+  applyRegisters, documentRegisters, objectFieldChanges, objectFieldOf, registerGeometry, writeRegister,
+  type RegisterKey, type RegisterValue,
 } from '../../core/doc/registers';
 import type { RegisterAssignment } from './session-channel';
 
@@ -286,8 +287,8 @@ export function createRegisterSync(deps: {
   let connected = false;
   let awayAt = 0;
   let batches = 0;
-  /** Batches sent and not yet acknowledged, with the keys each carried. */
-  const inFlight = new Map<number, RegisterKey[]>();
+  /** Batches sent and not yet acknowledged, with the assignments each carried, oldest first. */
+  const inFlight = new Map<number, RegisterAssignment[]>();
   /** Registers changed while the channel was down. Coalesced by key, because the last value is the only one
    *  worth replaying. */
   const holding = new Map<RegisterKey, RegisterValue>();
@@ -296,6 +297,9 @@ export function createRegisterSync(deps: {
   let holdingFrom = new Map<RegisterKey, RegisterValue>();
   /** Registers this tab has changed, so somebody else changing one of them is worth pointing at. */
   const touchedKeys = new Set<RegisterKey>();
+  /** The objects some field of which this tab changed, so an object arriving whole can be told from them at
+   *  once rather than by walking every key this tab has touched. */
+  const touchedObjects = new Set<RegisterKey>();
   /** Mesh geometry this tab has just written, and when — what awareness says it is working on. Corners and
    *  faces are held apart because the room is told them apart. */
   const editingVertices = new Map<string, number>();
@@ -319,9 +323,69 @@ export function createRegisterSync(deps: {
   });
   const report = () => deps.onStatus?.(status());
 
-  /** This replica now believes the room holds this value for this register. */
+  /**
+   * This replica now believes the room holds this value for this register.
+   *
+   * The shadow is keyed by whole register, as the document decomposes, so one FIELD of an object (docs/039)
+   * is remembered by updating the object it belongs to — a copy, so no earlier value handed out is changed
+   * under its holder. A field of an object the shadow does not hold has nothing to update: the room only
+   * assigns fields of objects it holds, so this replica has removed the object and is about to say so.
+   */
   function remember(key: RegisterKey, value: RegisterValue): void {
+    const field = objectFieldOf(key);
+    if (field) {
+      const held = shadow.get(field.object) as Record<string, unknown> | undefined;
+      if (!held) return;
+      const next = { ...held };
+      if (value === undefined) delete next[field.field]; else next[field.field] = clone(value);
+      shadow.set(field.object, next);
+      return;
+    }
     if (value === undefined) shadow.delete(key); else shadow.set(key, clone(value));
+  }
+
+  /** Whether an arriving key replaces something this tab changed: the same register, the object a field of
+   *  which this tab changed, or a field of an object this tab assigned whole. Another field of the same object
+   *  is not an override — that is the edit field assignment exists to let stand. */
+  function overrides(key: RegisterKey): boolean {
+    if (touchedKeys.has(key)) return true;
+    const field = objectFieldOf(key);
+    return field ? touchedKeys.has(field.object) : touchedObjects.has(key);
+  }
+
+  /**
+   * Absorb values the room sequenced before this tab's unacknowledged batches (`applySync` says why), keeping
+   * what those batches carry: a register this tab has in flight keeps this tab's value, and an object replaced
+   * whole gets this tab's in-flight fields back on top of it. Hands back what was actually written.
+   */
+  function absorbArriving(changes: readonly RegisterAssignment[]): readonly RegisterAssignment[] {
+    const pending = new Map<RegisterKey, RegisterValue>();
+    for (const sent of inFlight.values()) for (const [key, value] of sent) pending.set(key, value);
+    if (!pending.size) { absorb(changes); return changes; }
+    const arriving = changes.filter(([key]) => !inFlightCovers(pending, key));
+    absorb(arriving);
+    const replaced = new Set(arriving.map(([key]) => key));
+    const restored = [...pending].filter(([key]) => {
+      const field = objectFieldOf(key);
+      return !!field && replaced.has(field.object);
+    });
+    if (restored.length) absorb(restored);
+    return arriving;
+  }
+
+  /** Whether this tab has a write in flight that the room will land after an arriving key: the same register,
+   *  or the whole object an arriving field belongs to. */
+  function inFlightCovers(pending: ReadonlyMap<RegisterKey, RegisterValue>, key: RegisterKey): boolean {
+    if (pending.has(key)) return true;
+    const field = objectFieldOf(key);
+    return !!field && pending.has(field.object);
+  }
+
+  /** What this replica believes the room holds for a key, whether it names a whole register or one field. */
+  function shadowRead(key: RegisterKey): RegisterValue {
+    const field = objectFieldOf(key);
+    if (!field) return shadow.get(key);
+    return (shadow.get(field.object) as Record<string, unknown> | undefined)?.[field.field];
   }
 
   /**
@@ -332,11 +396,16 @@ export function createRegisterSync(deps: {
    * key the document could not take is not part of it. A key naming geometry this replica has already lost
    * writes nothing and is remembered as nothing, so a late edit for deleted geometry cannot leave a name
    * standing that the document has no way to answer for.
+   *
+   * A field is the exception. The room landed it on an object it holds, so it is remembered whatever this
+   * document did with it: if this replica has deleted the object without saying so yet, the deletion is still
+   * found and sent, and if it has not, the shadow goes on describing the room.
    */
   function absorb(changes: readonly RegisterAssignment[]): void {
     const doc = deps.getDoc();
     for (const [key, value] of changes) {
-      if (writeRegister(doc, key, value) === 'landed') remember(key, value); else shadow.delete(key);
+      const landed = writeRegister(doc, key, value) === 'landed';
+      if (landed || objectFieldOf(key)) remember(key, value); else shadow.delete(key);
     }
   }
 
@@ -382,6 +451,16 @@ export function createRegisterSync(deps: {
       if (prior !== undefined) {
         held++;
         if (sameValue(prior, value)) continue;
+        // An object the room already holds is edited by the fields that changed, so somebody else's edit to
+        // another field of it stands (docs/039). One it does not hold yet travels whole: that is a creation.
+        const fields = objectFieldChanges(key, prior, value, sameValue);
+        if (fields) {
+          for (const [field, now, was] of fields) {
+            changes.push([field, clone(now)]);
+            priors.push(clone(was));
+          }
+          continue;
+        }
       }
       changes.push([key, clone(value)]);
       priors.push(clone(prior));
@@ -417,7 +496,7 @@ export function createRegisterSync(deps: {
 
   function sendAssignments(changes: RegisterAssignment[]): void {
     const batch = ++batches;
-    if (deps.channel.assign(changes, batch)) inFlight.set(batch, changes.map(([key]) => key));
+    if (deps.channel.assign(changes, batch)) inFlight.set(batch, changes);
     else for (const [key, value] of changes) holding.set(key, value);
   }
 
@@ -485,7 +564,12 @@ export function createRegisterSync(deps: {
     if (!changes.length) { maybeCheckDrift(); return; }
     lastChangeAt = clockNow();
     record(changes, priors);
-    for (const [key] of changes) { touchedKeys.add(key); noteEditing(key); }
+    for (const [key] of changes) {
+      touchedKeys.add(key);
+      const field = objectFieldOf(key);
+      if (field) touchedObjects.add(field.object);
+      noteEditing(key);
+    }
     digest = null;
     if (!connected) {
       changes.forEach(([key, value], at) => {
@@ -541,6 +625,7 @@ export function createRegisterSync(deps: {
       adopt(doc);
       step = null;
       touchedKeys.clear();
+      touchedObjects.clear();
       // The names came off a document this replica no longer holds, so nothing is being worked on until
       // something is written to this one.
       editingVertices.clear();
@@ -566,8 +651,8 @@ export function createRegisterSync(deps: {
       if (connected) awayAt = clockNow();
       connected = false;
       // Anything in flight was never acknowledged, so it is held rather than assumed to have landed.
-      for (const keys of inFlight.values()) {
-        for (const key of keys) if (!holding.has(key)) holding.set(key, shadow.get(key));
+      for (const sent of inFlight.values()) {
+        for (const [key] of sent) if (!holding.has(key)) holding.set(key, shadowRead(key));
       }
       inFlight.clear();
       report();
@@ -575,11 +660,23 @@ export function createRegisterSync(deps: {
 
     // ---- what arrives ----
 
-    /** Somebody else's registers. Absolute, so they are simply written; nothing about them can be refused. */
+    /**
+     * Somebody else's registers. Absolute, so they are written — except where this tab's own write to the same
+     * register will land AFTER them.
+     *
+     * The room acknowledges a batch on the same socket, in the same order, as it relays everybody else's: a
+     * relay that arrives while one of this tab's batches is still unacknowledged was sequenced BEFORE that
+     * batch, so the room is about to hold this tab's value, not the one arriving. Writing it would leave this
+     * replica holding a value the room has already replaced — divergence until the drift check repaired it.
+     * So a register this tab has in flight keeps this tab's value, and an object replaced whole keeps the
+     * fields this tab has in flight on top of it, exactly as the room will. What this tab has changed and not
+     * yet sent is sent first, which puts it in flight, so a local edit is never overwritten by an older one.
+     */
     applySync(changes: readonly RegisterAssignment[], by: string): void {
-      absorb(changes);
+      if (dirty) tick();
+      const arriving = absorbArriving(changes);
       digest = null;
-      const overridden = changes.map(([key]) => key).filter(key => touchedKeys.has(key));
+      const overridden = arriving.map(([key]) => key).filter(overrides);
       if (overridden.length) deps.onOverride?.(overridden, by);
       deps.onApplied?.('registers');
     },
@@ -649,7 +746,7 @@ export function createRegisterSync(deps: {
         awayMs,
         changes: [...holding].map(([key, value]) => [key, value] as RegisterAssignment),
         contested: [...holding.keys()]
-          .filter(key => moved.has(key) || !sameValue(holdingFrom.get(key), shadow.get(key))),
+          .filter(key => moved.has(key) || !sameValue(holdingFrom.get(key), shadowRead(key))),
       });
       report();
     },
@@ -682,7 +779,9 @@ export function createRegisterSync(deps: {
         return;
       }
       if (!payload.registers.length) return;
-      absorb(payload.registers);
+      // A section is read when the room answers the fetch, so a batch this tab sent after asking lands after
+      // it — the same ordering a relay has, and the same rule.
+      absorbArriving(payload.registers);
       digest = null;
       deps.onApplied?.('registers');
     },
@@ -732,8 +831,8 @@ export function createRegisterSync(deps: {
     editing(): { vertices: string[]; quads: string[]; dragging: string[] } {
       const at = clockNow();
       const dragging = new Set<string>();
-      for (const keys of inFlight.values()) {
-        for (const key of keys) {
+      for (const sent of inFlight.values()) {
+        for (const [key] of sent) {
           const named = registerGeometry(key);
           for (const id of [...named.vertices, ...named.quads]) dragging.add(id);
         }

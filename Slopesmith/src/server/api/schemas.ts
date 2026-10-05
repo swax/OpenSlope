@@ -134,8 +134,8 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
             from: {
               type: 'string',
               description: 'A register key this map holds whose value is copied, with `value` merged over it '
-                + '(the copy\'s `id` gives way to this key). For a NEW key only: copying a register onto '
-                + 'itself would be the per-field patch a register does not offer — read, change, assign whole. '
+                + '(the copy\'s `id` gives way to this key). For a NEW key only: to change an object where it '
+                + 'stands, assign the fields that change as o/<family>.<field>/<id> keys. '
                 + 'Read from the map as it stands when the request arrives, so a register created earlier in '
                 + 'the same batch is not yet there to copy from.',
             },
@@ -187,9 +187,9 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
             },
             set: {
               type: 'object',
-              description: 'Quad channels ONLY. A prop is a whole-object register and there is no per-field '
-                + 'patch below a register, so no rule can reach one: assign it whole as o/prop/<id>, or move '
-                + 'a whole selection with POST …/seat. `null` clears a channel.',
+              description: 'Quad channels ONLY. A rule reaches faces, not objects: change an object\'s fields '
+                + 'with o/<family>.<field>/<id> keys in `changes`, or move a whole selection with POST …/seat. '
+                + '`null` clears a channel.',
               properties: {
                 paint: { type: ['integer', 'null'], description: 'SurfaceType int; null resets.' },
                 tex: { type: ['string', 'null'], description: 'Tile ref "LEVEL/NNNN.png"; null clears.' },
@@ -213,8 +213,9 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       + 'label in `where` and/or the placements named in `ids` (the union), samples the top surface under '
       + 'each with the same sampler POST …/ground answers from, and sets its Y to height + `offset`. A rail '
       + 'is seated NODE BY NODE, so it follows the ground along its whole length rather than pivoting about '
-      + 'its first point. This is a geometric operation, not a field patch: each placement\'s whole register '
-      + 'is read, moved and assigned back through the ordinary last-writer-wins path. The answer is '
+      + 'its first point. Each placement is read, and only the field holding its points — pos, or a rail\'s '
+      + 'nodes — is assigned back through the ordinary last-writer-wins path, so another person\'s edit to a '
+      + 'different field of the same placement stands. The answer is '
       + '{ revision, seated, skipped, unchanged } — `seated` placements that moved, `unchanged` ones already '
       + 'sitting there, `skipped` POINTS with no surface under them (a prop is one point, a rail one per '
       + 'node), which are left exactly where they are rather than dropped to zero.',
@@ -326,7 +327,9 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       + '"LEVEL/NNNN.png"), orient ({rot 0-3, mirror}), lock (true), twist (four V3s), labels (label-id '
       + 'array). '
       + 'Objects: "o/<family>/<objectId>" holds the whole object; families are prop, light, rail, gem, '
-      + 'model, volume, screen, label, effect, effect-node. Effects rows are addressed as '
+      + 'model, volume, screen, label, effect, effect-node. One top-level field of an existing prop, light, '
+      + 'rail, gem, screen or label is "o/<family>.<field>/<objectId>" ("o/prop.yaw/prop:a001"): it changes '
+      + 'that field alone, never creates the object, and is retired when the map does not hold it. Effects rows are addressed as '
       + '"o/effect/<table>/<rowId>" and nodes as "o/effect-node/<table>/<rowId>/<nodeId>". '
       + 'The run: "course" holds the whole knot list. '
       + 'Globals: "g/<field>" — g/name, g/sun, g/glare, g/skybox, g/baseSurface, g/raceMusic, g/laps, '

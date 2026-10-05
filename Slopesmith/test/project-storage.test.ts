@@ -16,7 +16,9 @@ import {
   type ProjectCheckpoint,
 } from '../src/server/projects';
 import { assign, closeRoom, configureRooms, forgetRooms, joinRoom, takeSnapshot } from '../src/server/session/room';
-import { globalRegister, quadRegister, readRegister, vertexRegister } from '../src/core/doc/registers';
+import {
+  globalRegister, objectFieldRegister, objectRegister, quadRegister, readRegister, vertexRegister,
+} from '../src/core/doc/registers';
 import { canonicalJson } from '../src/core/doc/canonical';
 import { encodePng } from '../src/server/routes/png';
 import type { EditDoc } from '../src/core/doc/doc-edit';
@@ -388,6 +390,29 @@ try {
   check(canonicalJson(readRegister(afterBounded, beyond)) === canonicalJson([4, 4, 4])
     && readRegister(afterBounded, globalRegister('aiSeed')) === 77,
     'and leaves the corner beside it, and every global, exactly where they were');
+
+  // An object written whole by one person and a field at a time by another (docs/039, *Objects*): each revert
+  // puts back what that person last wrote, at the grain they wrote it.
+  const lampKey = objectRegister('prop', 'prop:revert-lamp');
+  const lampField = (field: string) => objectFieldRegister('prop', field, 'prop:revert-lamp');
+  assign(room, [[lampKey, { id: 'prop:revert-lamp', level: 'Custom', model: 0, name: 'Lamp', pos: [0, 0, 0], yaw: 0, scale: 1 }]], 'Ada');
+  await takeSnapshot(room); // a checkpoint is taken of the stored revision, so the lamp has to be in it
+  const lampMark = await callProjects('POST', path, { reason: 'bulk', note: 'before the lamp is edited' });
+  const lampFile: string = lampMark.json.checkpoint.file;
+  assign(room, [[lampKey, { id: 'prop:revert-lamp', level: 'Custom', model: 0, name: 'Lamp_Ada', pos: [1, 1, 1], yaw: 45, scale: 1 }]], 'Ada');
+  assign(room, [[lampField('pos'), [2, 2, 2]]], 'Bob');
+  const lamp = (doc: EditDoc) => readRegister(doc, lampKey) as { name: string; pos: number[]; yaw: number };
+  const adasLamp = await callProjects('POST', `${path}/${encodeURIComponent(lampFile)}/revert`, { by: 'Ada' });
+  const afterAdasLamp = lamp(adasLamp.json.document as EditDoc);
+  check(adasLamp.status === 200 && afterAdasLamp.name === 'Lamp' && afterAdasLamp.yaw === 0
+    && canonicalJson(afterAdasLamp.pos) === canonicalJson([2, 2, 2]),
+    'reverting the person who last wrote an object whole puts back their fields, and leaves standing a field '
+      + 'somebody else wrote after them');
+  const bobsLamp = await callProjects('POST', `${path}/${encodeURIComponent(lampFile)}/revert`, { by: 'Bob' });
+  const afterBobsLamp = lamp(bobsLamp.json.document as EditDoc);
+  check(bobsLamp.status === 200 && bobsLamp.json.reverted === 1
+    && canonicalJson(afterBobsLamp.pos) === canonicalJson([0, 0, 0]) && afterBobsLamp.name === 'Lamp',
+    'and reverting the person who wrote one field of it puts back that field alone');
 
   await closeRoom(projectId);
   forgetRooms();

@@ -25,7 +25,8 @@ same register.
 | Vertex position | vertex id | xyz | last write wins, arrival order |
 | Edge handle | `"from>to"` | V3 offset | last write wins |
 | Quad attributes | quad id | paint / tex / orient / twist, per field | last write wins per field |
-| Props, lights, rails, gems, effect nodes | object id | the whole object | last write wins per object |
+| Props, lights, rails, gems, screens, labels | object id | the whole object; edited a field at a time | last write wins per field (see *Objects*) |
+| Models, particle volumes, prop lines, effect rows and nodes | object id | the whole object | last write wins per object |
 | Course path | the path | all knots | last write wins (see *Ordered data*) |
 | Globals — sun, name, bake exposure, skybox, music | one each | value | last write wins |
 | Which vertices and quads exist | — | — | **not a register** — see *Topology* |
@@ -81,6 +82,16 @@ value always has a defined outcome, so there is no rejection dialog and no merge
 Refusal is reserved for structural impossibility — an edit naming a tombstoned id, or a topology claim that
 lost a race.
 
+A defined outcome still has to reach every replica. Two people writing one register at the same moment both
+send before either hears the other; the room lands one and then the other, and relays each to the other
+person. The one whose write landed second hears the first relayed *before* its own acknowledgement — the room
+answers a socket in the order it sequences — and that relay carries the one value it must not write, because
+the room already holds its own over it. So **a replica never lets an arriving value replace a write of its
+own that is still unacknowledged**: the register keeps its value, and an object replaced whole gets the fields
+it has in flight back on top, exactly as the room will hold them. Whatever it has changed and not yet sent is
+sent first, which puts it under the same rule. Without this, the replica that won would hold the loser's value
+until the drift check noticed — a defined outcome, reached late.
+
 Values coalesce per register at 20–30 Hz rather than per frame; the intermediate positions of a drag are
 worthless once a later value exists. The existing 450 ms debounce stops being the transport and becomes the
 checkpoint cadence: the server writes a revisioned snapshot every so many accepted changes, so the
@@ -109,6 +120,39 @@ Two defences, and they are independent on purpose:
 Losing the watch costs freshness and never correctness: the base revision still makes the outside write
 conflict rather than disappear. Both are covered by `test/project-concurrency.test.ts`, which spawns a
 real second process to write the file, because an in-process save announces itself and would prove nothing.
+
+## Objects: whole to create, a field at a time to edit
+
+An object is one register: it is what the document decomposes into, what a section hashes, and what creating,
+replacing or deleting one assigns. Editing one that already exists is finer. A replica that finds a prop,
+light, rail, gem, screen or label changed sends only the top-level fields that changed, as
+`o/<family>.<field>/<id>` (`o/prop.pos/prop:a001`), each last-writer-wins on its own. Whole-object last-writer-wins
+lost an edit whenever two people touched one object at once — one dragging a prop while another renamed it,
+the later whole value carrying the other's stale field back — and that is the case this removes. The field
+sits beside the family rather than after the id because ids may carry slashes and field names never do, so a
+key parses one way.
+
+Two rules keep it honest:
+
+- **A field never creates an object.** A field arriving for an object the document does not hold is retired,
+  discarded like any late edit for deleted geometry. A whole-object assignment would have re-created a prop
+  somebody had just deleted; a field cannot, so a deletion stays deleted while somebody else is still
+  dragging what was deleted.
+- **Linked fields travel together.** Some fields describe one thing between them: a prop's asset is its
+  `level`, `model` and `name` with its `group` and `specialKind`; a spot light's `kind` goes with its `dir` and
+  `cone`; an attached screen's `prop` with its pose, and its `width` with its `height`. When any field of a
+  group changes, the whole group is sent, so a group always lands whole from one writer and two people can
+  never leave a prop showing one model under another's name.
+
+The other families stay whole-object, each for a reason the record carries: a model's vertices and quads
+index into each other, a particle volume is an imported native record, a prop line's settings and the props it
+generated must come from one writer, and an effect row or node carries a type its payload is shaped by.
+
+The decomposition, the digest and the stored document are unchanged — a field is a way of assigning part of a
+register, not a register of its own — so a replica's shadow stays keyed by whole object and a field updates
+the object it belongs to. The room credits fields individually, and a whole-object write supersedes the field
+credits before it, so a scoped revert (`040`) of one person puts back the fields they last wrote and leaves
+the fields somebody wrote after them standing.
 
 ## Topology takes an implicit claim
 

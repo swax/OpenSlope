@@ -18,7 +18,9 @@ import { collisionLabMountain } from '../src/core/collision/lab';
 import { clearTex, getVertex, moveVertex, setSurf, setTex, setOrient, type EditDoc } from '../src/core/doc/doc-edit';
 import { meshSmoothVertices, migrateMountain, defaultMountain } from '../src/core/doc/mountain';
 import { digestDocument, textHash } from '../src/core/doc/digest';
-import { quadRegister, readRegister, vertexRegister, writeRegister } from '../src/core/doc/registers';
+import {
+  objectFieldRegister, quadRegister, readRegister, vertexRegister, writeRegister,
+} from '../src/core/doc/registers';
 import { reconcileTJunctionGeometry } from '../src/core/mesh/t-junctions';
 import { meshAdjacency, meshFromDoc } from '../src/core/mesh/topology';
 import { setQuadsLocked } from '../src/core/mesh/locks';
@@ -330,6 +332,96 @@ try {
   check(same(readRegister(settled, vertexRegister(contested)), [22, 22, 22]),
     'the room writes what it settled on as an ordinary revision, so the file agrees with both replicas');
   void contestedIndex;
+
+  // ---- truly concurrent writes to one register converge at once, not at the next drift check ----
+  // Both flush before either hears the other. The room lands them in arrival order, and the replica whose
+  // write landed second hears the first one relayed BEFORE its own acknowledgement — the one value it must
+  // not write, because the room already holds its own over it.
+  const raced = vertexRegister(base.vertexIds[10]);
+  writeRegister(ada.doc, raced, [31, 31, 31]);
+  ada.sync.noteEdit();
+  writeRegister(jed.doc, raced, [32, 32, 32]);
+  jed.sync.noteEdit();
+  ada.sync.flush();
+  jed.sync.flush();
+  const roomValue = () => readRegister(roomFor(projectId)!.doc, raced);
+  await until(() => !ada.sync.status().inFlight && !jed.sync.status().inFlight
+    && same(readRegister(ada.doc, raced), roomValue()) && same(readRegister(jed.doc, raced), roomValue()),
+  'both replicas to agree with the room on the register they raced for');
+  check(same(readRegister(ada.doc, raced), roomValue()) && same(readRegister(jed.doc, raced), roomValue()),
+    'two replicas writing one register at the same moment both end on the value the room landed last');
+
+  // ---- one object, two people, two fields: both land (docs/039, *Objects*) ----
+  const propNamed = (doc: EditDoc, id: string) => doc.props?.find(prop => prop.id === id);
+  const sharedId = base.props![4].id!;
+  const fromAda = ada.sent.length, fromJed = jed.sent.length;
+  // Both edit before either has heard the other: Ada drags the prop, Jed scales it. Whole-object assignments
+  // would have let whichever landed second carry the other's stale field back.
+  propNamed(ada.doc, sharedId)!.pos = [1, 2, 3];
+  ada.sync.noteEdit();
+  propNamed(jed.doc, sharedId)!.scale = 2.5;
+  jed.sync.noteEdit();
+  ada.sync.flush();
+  jed.sync.flush();
+  const sentKeys = (client: Client, from: number) =>
+    client.sent.slice(from).flatMap(entry => (entry.changes ?? []).map(([key]) => key));
+  check(same(sentKeys(ada, fromAda), [objectFieldRegister('prop', 'pos', sharedId)])
+    && same(sentKeys(jed, fromJed), [objectFieldRegister('prop', 'scale', sharedId)]),
+    'an edit to an existing prop sends the field it changed, not the prop');
+  await until(() => same(propNamed(ada.doc, sharedId)?.scale, 2.5) && same(propNamed(jed.doc, sharedId)?.pos, [1, 2, 3]),
+    'both field edits to cross');
+  const bothFields = await storedOnce(projectId, doc => same(propNamed(doc, sharedId)?.pos, [1, 2, 3])
+    && propNamed(doc, sharedId)?.scale === 2.5, 'the room to write both fields');
+  check([ada.doc, jed.doc, bothFields].every(doc =>
+    same(propNamed(doc, sharedId)?.pos, [1, 2, 3]) && propNamed(doc, sharedId)?.scale === 2.5),
+  'two people editing different fields of one prop at once both keep their edit, on both replicas and on disk');
+
+  // A linked group travels whole, so two people swapping one prop's asset at once leave ONE writer's asset.
+  const fromAsset = { ada: ada.sent.length, jed: jed.sent.length };
+  Object.assign(propNamed(ada.doc, sharedId)!, { level: 'ADA', model: 7, name: 'Mdl_Ada' });
+  ada.sync.noteEdit();
+  Object.assign(propNamed(jed.doc, sharedId)!, { level: 'JED', model: 9, name: 'Mdl_Jed' });
+  jed.sync.noteEdit();
+  ada.sync.flush();
+  jed.sync.flush();
+  const assetKeys = sentKeys(ada, fromAsset.ada);
+  check(['level', 'model', 'name', 'group', 'specialKind'].every(field =>
+    assetKeys.includes(objectFieldRegister('prop', field, sharedId))) && assetKeys.length === 5,
+  'changing a prop’s asset sends its whole linked group, the fields it did not change included');
+  const asset = (doc: EditDoc) => {
+    const prop = propNamed(doc, sharedId)!;
+    return `${prop.level}/${prop.model}/${prop.name}`;
+  };
+  await until(() => asset(ada.doc) === asset(jed.doc), 'the two asset swaps to settle');
+  check(['ADA/7/Mdl_Ada', 'JED/9/Mdl_Jed'].includes(asset(ada.doc)) && asset(ada.doc) === asset(jed.doc),
+    'two concurrent asset swaps settle on one writer’s level, model and name together, never a mixture',
+    asset(ada.doc));
+
+  // A deletion stays a deletion while somebody else is still moving what was deleted.
+  const doomedId = base.props![6].id!;
+  jed.sync.sealStep();
+  ada.doc.props = ada.doc.props!.filter(prop => prop.id !== doomedId);
+  ada.sync.noteEdit();
+  propNamed(jed.doc, doomedId)!.pos = [9, 9, 9];
+  jed.sync.noteEdit();
+  ada.sync.flush();
+  jed.sync.flush();
+  await until(() => !propNamed(jed.doc, doomedId), 'the deletion to reach the replica that was moving it');
+  const jedsMove = jed.sync.sealStep();
+  await idle([ada, jed], 200);
+  check(!propNamed(ada.doc, doomedId) && !propNamed(jed.doc, doomedId),
+    'a prop deleted while somebody else moves it stays deleted: the move names a field, and a field never re-creates');
+  // Undo puts back what the step changed — a field of an object that is gone — and so brings nothing back.
+  if (jedsMove) jed.sync.reassert(jedsMove.priors);
+  await idle([ada, jed], 200);
+  const afterDelete = await storedOnce(projectId, doc => !propNamed(doc, doomedId), 'the room to write the deletion');
+  check(!!jedsMove && !propNamed(jed.doc, doomedId) && !propNamed(ada.doc, doomedId) && !propNamed(afterDelete, doomedId),
+    'and undoing that move afterwards does not resurrect it either');
+  // Leave awareness settled, as the sections after this one count frames from a quiet state: what these edits
+  // were naming expires, and the expiry is itself one frame.
+  await wait(EDITING_MS + 60);
+  ada.awareness.publish();
+  jed.awareness.publish();
 
   // ---- a relative tool resolves into the values it produces ----
   const before = ada.sent.length;

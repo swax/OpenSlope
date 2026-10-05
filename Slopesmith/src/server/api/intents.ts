@@ -460,8 +460,8 @@ function repeated(scene: Scene, key: RegisterKey, value: unknown, held: unknown)
 function copied(document: EditDoc, key: RegisterKey, from: unknown, value: unknown): unknown {
   if (typeof from !== 'string' || !from) throw new Error('`from` is the register key to copy from.');
   if (from === key) {
-    throw new Error(`${key} copied onto itself would be a per-field patch, which a register does not offer `
-      + '(docs/039): read the object, change it and assign it whole — or copy it to a NEW key with `from`.');
+    throw new Error(`\`from\` copies onto a NEW key. To change ${key} where it stands, assign the fields that `
+      + 'change as o/<family>.<field>/<id> keys (docs/039), or read it and assign it whole.');
   }
   const source = readRegister(document, from);
   if (source === undefined) throw new Error(`${from} holds nothing to copy — GET …/registers?keys=${from} to check.`);

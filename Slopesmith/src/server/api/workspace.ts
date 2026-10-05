@@ -8,7 +8,7 @@ import type { LabelDefinition, V3 } from '../../core/doc/types';
 import { changeSummary, describeChanges } from '../../core/doc/compare';
 import { migrateMountain } from '../../core/doc/mountain';
 import {
-  documentRegisters, objectRegister, quadRegister, readRegister,
+  documentRegisters, objectFamilyOf, objectFieldRegister, objectRegister, quadRegister, readRegister,
   type ObjectFamily, type QuadField, type RegisterKey, type RegisterValue,
 } from '../../core/doc/registers';
 import { validateEffectsDocument } from '../../core/effects/document';
@@ -383,6 +383,8 @@ function objectIdFromKey(key: RegisterKey): string | null {
   if (cut < 0) return null;
   const family = key.slice(2, cut);
   const rest = key.slice(cut + 1);
+  // `o/<family>.<field>/<id>` holds one field of the object, not an object of its own (docs/039).
+  if (family.includes('.')) return null;
   if (family === 'effect') {
     const tableCut = rest.indexOf('/');
     return tableCut < 0 ? null : rest.slice(tableCut + 1);
@@ -513,8 +515,8 @@ function ruleChannel(field: string, value: unknown): [QuadField, RegisterValue] 
       return ['twist', held(Array.isArray(value), 'the face\'s four corner offsets, or null to clear')];
     default:
       throw new Error(`A rule cannot set ${JSON.stringify(field)}. It names quad channels only — paint, tex, `
-        + 'orient, lock, twist, addLabel, removeLabel. A prop is a whole-object register with no per-field '
-        + 'patch below it (docs/039): assign it whole as o/prop/<id>, or move it with POST …/seat.');
+        + 'orient, lock, twist, addLabel, removeLabel. A rule reaches faces, not objects: change the fields of '
+        + 'an object with o/<family>.<field>/<id> keys in `changes` (docs/039), or move placements with POST …/seat.');
   }
 }
 
@@ -640,11 +642,16 @@ function standsOn(value: RegisterValue): V3[] | null {
   return isPoint(held.pos) ? [held.pos] : null;
 }
 
-/** The placement with its points put back on the ground — a copy, since the value read out of a register is
- *  the document's own object and the room compares the two to decide whether anything moved. */
-function reseated(value: RegisterValue, points: V3[]): RegisterValue {
-  const held = value as Record<string, unknown>;
-  return Array.isArray(held.nodes) ? { ...held, nodes: points } : { ...held, pos: points[0] };
+/** The placement with its points put back on the ground, as the one field that holds them — a rail's
+ *  `nodes`, anything else's `pos`. Assigning only that field is what lets seating land beside whatever else
+ *  somebody is changing on the same placement at the same time (docs/039). The points are new arrays, so the
+ *  room still sees a moved placement as a change and an unmoved one as none. */
+function reseated(key: RegisterKey, value: RegisterValue, points: V3[]): [RegisterKey, RegisterValue] {
+  const family = objectFamilyOf(key) as ObjectFamily;
+  const id = key.slice(key.indexOf('/', 2) + 1);
+  return Array.isArray((value as { nodes?: unknown }).nodes)
+    ? [objectFieldRegister(family, 'nodes', id), points]
+    : [objectFieldRegister(family, 'pos', id), points[0]];
 }
 
 /** The register scope a read asked for: comma-separated prefixes, exact keys, or `all`. The default is the
@@ -958,10 +965,9 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       // here, sampled from the same quilt `ground` answers from, so a section of props follows the terrain it
       // was sculpted onto.
       //
-      // A GEOMETRIC operation, not a field patch: it reads each placement's whole register, moves the points
-      // it stands on, and assigns the whole object back through the same `assign` as everything else. The
-      // no-per-field-patch rule that keeps concurrent editing honest (docs/039) is untouched — there is still
-      // no way to say "set `pos` on everything in this section", only "put this selection on the ground".
+      // A GEOMETRIC operation: it reads each placement, moves the points it stands on, and assigns only the
+      // field holding them through the same `assign` as everything else — so a person renaming or turning one
+      // of these placements while it is seated keeps their edit (docs/039).
       //
       // And it WRITES, so it is an editor action — unlike `ground`, which asks the same question of the same
       // sampler and changes nothing (`projectAccess` in app.ts names that exception, and only that one).
@@ -1007,7 +1013,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
             found = true;
             return [point[0], height + offset, point[2]] as V3;
           });
-          if (found) changes.push([key, reseated(value, moved)]);
+          if (found) changes.push(reseated(key, value, moved));
         }
         const written = assign(room, changes, by);
         await takeSnapshot(room);

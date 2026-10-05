@@ -1,7 +1,7 @@
 import type { QuadMeshDoc } from './types';
 import { canonicalJson } from './canonical';
 import {
-  COURSE_REGISTER, documentRegisters,
+  COURSE_REGISTER, documentRegisters, linkedFieldRegisters, objectFieldChanges,
   type ObjectFamily, type QuadField, type RegisterKey, type RegisterValue,
 } from './registers';
 import { directedEdgeEnds } from './serialize';
@@ -232,8 +232,12 @@ export function describeChanges(summary: ChangeSummary): string[] {
  * nothing reverts every register that differs, which is a whole-document restore expressed as assignments.
  */
 export interface RevertScope {
-  /** Only these registers — "everything Bob changed", as the room credits them. */
+  /** Only these registers — "everything Bob changed", as the room credits them. An object's FIELD keys may be
+   *  among them (docs/039), and they revert those fields of the object rather than all of it. */
   keys?: Iterable<RegisterKey>;
+  /** Fields somebody else wrote after the whole-object write `keys` credits, which a revert scoped to `keys`
+   *  leaves standing — the last writer of a field owns it, whoever last wrote the object around it. */
+  kept?: Iterable<RegisterKey>;
   /** Bounded by geometry: these corners and faces, and the creases running between two named corners.
    *  A scope naming any geometry covers geometry only — props, the run and the globals are not part of a
    *  selection of vertices and quads. */
@@ -268,14 +272,31 @@ function inSelection(key: RegisterKey, vertices: Set<string>, quads: Set<string>
 export function revertAssignments(diff: DocumentDiff, scope: RevertScope = {}):
   [RegisterKey, RegisterValue][] {
   const keys = scope.keys ? new Set(scope.keys) : null;
+  const kept = new Set(scope.kept ?? []);
   const vertices = new Set(scope.vertices ?? []);
   const quads = new Set(scope.quads ?? []);
   const bounded = vertices.size > 0 || quads.size > 0;
   const out: [RegisterKey, RegisterValue][] = [];
   for (const change of diff.values()) {
-    if (keys && !keys.has(change.key)) continue;
     if (bounded && !inSelection(change.key, vertices, quads)) continue;
-    out.push([change.key, change.before]);
+    const whole = !keys || keys.has(change.key);
+    // An object both documents hold may have been written a field at a time. Then the revert is the fields
+    // this scope wrote — or, for a whole-object write it is credited with, every field except those somebody
+    // wrote after it — and a field takes its linked group with it, so the group goes back together.
+    const fields = change.kind === 'changed' && (keys || kept.size)
+      ? objectFieldChanges(change.key, change.after, change.before, sameCanonical) : null;
+    if (fields) {
+      const groupHeld = (key: RegisterKey, test: (field: RegisterKey) => boolean): boolean =>
+        linkedFieldRegisters(key).some(test);
+      const wanted = fields.filter(([key]) => (whole || groupHeld(key, field => keys!.has(field)))
+        && !groupHeld(key, field => kept.has(field)));
+      if (whole && wanted.length === fields.length) out.push([change.key, change.before]);
+      else for (const [key, before] of wanted) out.push([key, before]);
+      continue;
+    }
+    if (whole) out.push([change.key, change.before]);
   }
   return out;
 }
+
+const sameCanonical = (a: unknown, b: unknown): boolean => canonicalJson(a) === canonicalJson(b);

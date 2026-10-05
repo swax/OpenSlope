@@ -61,6 +61,7 @@ Key grammar (schema \`RegisterKey\` has the full statement):
 | \`q/<quadId>/tex\` | one face's tile ref \`"<LEVEL>/<file>.png"\` or \`"Custom/<file>.png"\` |
 | \`q/<quadId>/orient\` · \`/lock\` · \`/twist\` · \`/labels\` | that face's other channels |
 | \`o/<family>/<id>\` | one whole object — families: prop, light, rail, gem, model, volume, screen, label |
+| \`o/<family>.<field>/<id>\` | one top-level field of an existing prop, light, rail, gem, screen or label — \`o/prop.yaw/prop:a001\` |
 | \`o/effect/<table>/<rowId>\` | one effects-document row; \`o/effect/document\` its own fields |
 | \`o/effect-node/<table>/<rowId>/<nodeId>\` | one node inside a graph/function row |
 | \`course\` | the whole run: knots, blend, surface |
@@ -68,8 +69,15 @@ Key grammar (schema \`RegisterKey\` has the full statement):
 
 Rules that keep edits honest:
 
-- **Objects are assigned whole.** Read the object (from the document or \`GET …/registers?prefix=o/\`),
-  change fields, assign it back. There is no per-field patch below the register.
+- **Objects are created, replaced and deleted whole** at \`o/<family>/<id>\`. To change part of a prop,
+  light, rail, gem, screen or label that already exists, assign just the fields that change at
+  \`o/<family>.<field>/<id>\` (\`{"key": "o/prop.yaw/prop:a001", "value": 90}\`; \`remove\` clears the field).
+  The rest of the object is left as it is, so somebody editing another field of it at the same moment keeps
+  their edit. A field key never creates an object: one naming an object this map does not hold is counted
+  \`retired\`. Fields that describe one thing between them go in the same request — a prop's
+  \`level\`/\`model\`/\`name\`/\`group\`/\`specialKind\`, a light's \`kind\`/\`dir\`/\`cone\`, a screen's
+  \`prop\`/\`pos\`/\`yaw\`/\`pitch\` and its \`width\`/\`height\`. Models, particle volumes, prop lines and
+  effects rows and nodes are always assigned whole.
 - **Inserting** an object means assigning to an id nobody holds. Follow the family's form —
   \`prop:a001\`, \`light:0004\`, \`gem:0012\` — any unused string works, except \`model:NNNN\`, whose
   number is how placements reference it. The object's own \`id\` field must match the key (the server
@@ -102,8 +110,8 @@ surface*. Each is one call.
 A quad matches when it carries **all** the labels named — the intersection is what makes "the trail quads
 inside this one section" sayable — and a label is named by its name or its id. \`set\` names quad channels
 only: \`paint\`, \`tex\`, \`orient\`, \`lock\`, \`twist\` (\`null\` clears one), plus \`addLabel\` /
-\`removeLabel\`. Nothing else — a prop is a whole-object register and there is no per-field patch below a
-register, so no rule can reach into one.
+\`removeLabel\`. Nothing else — a rule reaches faces, not objects: change an object's fields with
+\`o/<family>.<field>/<id>\` keys in \`changes\`, or move placements with \`…/seat\`.
 
 A rule is EXPANDED server-side into the same \`q/<quadId>/<field>\` assignments you would have sent yourself
 and lands through the same last-writer-wins path, so nothing about the model changes because a batch arrived
@@ -122,9 +130,9 @@ with the same sampler \`…/ground\` answers from, and sets its Y to \`height + 
 A point with no surface under it is left exactly where it is and counted in \`skipped\`, never dropped to
 zero. The answer is \`{revision, seated, skipped, unchanged}\`.
 
-Seating is a geometric operation, not a field patch: each placement's whole register is read, moved and
-assigned back. Run it again after sculpting — moving vertices moves the ground out from under everything
-standing on it.
+Seating reads each placement, moves the points it stands on and assigns only the field holding them — \`pos\`,
+or a rail's \`nodes\` — so it lands beside whatever else somebody is changing on the same placement. Run it
+again after sculpting — moving vertices moves the ground out from under everything standing on it.
 
 ## Placing things in the run's own terms
 
@@ -163,8 +171,8 @@ only, since the knots are what define the stations. Nothing placed this way need
   per-clone increment — \`station\` / \`lateral\` / \`above\` for a run-relative position, \`x\` / \`y\` / \`z\`
   for an \`[x, y, z]\` one, \`yaw\` for either. The same change with \`"remove": true\` deletes the row again.
 - **\`from\`** copies another register's value and merges \`value\` over it (the copy's \`id\` gives way to the
-  new key). It is for a NEW key: a copy onto its own key would be the per-field patch a register does not
-  offer — read, change, assign whole. It reads the map as it stands when the request arrives, so a register
+  new key). It is for a NEW key: to change an object where it stands, assign the fields that change at
+  \`o/<family>.<field>/<id>\`. It reads the map as it stands when the request arrives, so a register
   created earlier in the same batch is not yet there to copy: make the original in one call, its variants
   in the next.
 - **\`shape\`** on an \`o/model\` generates the geometry: \`box\` \`{size:[w,h,d], segments:[nx,ny,nz], top,
