@@ -102,14 +102,19 @@ model id.
   one loop, as Test always played it. The export used to write that loop once per member.
 - **The mode layer is always the group's.** It stays on the placement, and entries never carry it.
 
-**Editing.** A selected or held group with more than one member shows a **Member settings** section. Its
-**settings for** picker chooses whose settings the Contact, Lighting, Impact sound and Emitters sections show;
-Mode presence always edits the whole group.
-- Until a member differs, **whole group** edits the placement as before.
+**Editing.** A selected or held group with more than one member model, or a prop line that lays one out, shows
+a **Members** section in place of Contact, Lighting, Impact sound and Emitters. It has one button per member
+model, labelled with how that member collides. The group's own panel keeps what belongs to the whole group:
+transform, Mode presence, its effect, screens and the group actions.
+- A member's button opens **that member's panel**: the preview card shows the member alone, and its Contact,
+  Lighting, Impact sound and Emitters sections edit that member only. On a placement the panel also shows the
+  member model's Materials. **◀ back to <group>** returns to the group's panel. Selecting anything else also
+  closes a member's panel, so selecting a group always opens on the group.
 - The first edit to one member gives **every** member an entry holding what it does now
   (`materializeMemberBehaviour`), including an inferred collision profile for an older placement. No other
   member changes.
-- **⊟ one setting for all members** folds a split group back, giving everyone the picked member's settings.
+- **⇉ copy to N other members** gives every other member an entry equal to this member's, including its hit
+  sound and ambient emitter. The group stays split, so an ambient loop copied this way plays once per member.
 
 **Where it lands:**
 - **Export** tunes each member under its own join key, `<placement id>#<model>` (`groupMemberKey`). The bake
