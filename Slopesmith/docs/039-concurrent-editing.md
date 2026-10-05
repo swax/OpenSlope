@@ -468,7 +468,7 @@ arrives the replica sends nothing and ignores further topology relays. If the so
 the replica asks again after catching up, and it asks again whenever it joins a room. A request sent just
 after a project switch can reach the server before the new room is open and go unanswered.
 
-Three states need a deliberate answer:
+Several states need a deliberate answer:
 
 - **One of this replica's own claims is outstanding.** The room answers on one ordered socket, so any topology
   relay arriving now was sequenced ahead of that claim. The claim will lose on the stale-base rule, and its
@@ -485,6 +485,9 @@ Three states need a deliberate answer:
   holds, applies the relay, and shows the same rejection notice a lost claim shows. This edit used to
   disappear silently. Unsent register edits from the same tick go with it, because they cannot be told
   apart from what the operation produced.
+- **Only ordinary register edits are waiting for the next tick.** Send and record them before applying the
+  topology relay. Their in-flight values then survive the arrival, and their undo step keeps the original
+  values. Registers naming geometry the delta deletes retire when the room answers the batch.
 
 Topology claims wait while held changes await a reconnection decision, so a claim never leaves held values
 out of the room.
@@ -563,7 +566,9 @@ The claim, the relay, the rejection and the catch-up all change shape, so `CORE_
 
 - **An older bundle on a newer server** joins read-only on the version mismatch, so it never claims. It would
   not understand a delta, so the room sends that session the whole document as its topology relay, and catches
-  it up with the whole document whenever a topology step is in range.
+  it up with the whole document whenever a topology step is in range. Object-field assignments become whole
+  objects for these sessions, both live and in register-only catch-up. WebSocket edits, HTTP edits, seating,
+  and checkpoint reverts share this conversion. A cleared object still travels as a key alone.
 - **A newer bundle on an older server** still accepts a whole-document `topology` relay and adopts it as
   today.
 

@@ -42,6 +42,8 @@ import {
 import { acceptWebSocket, isWebSocketUpgrade, prepareWebSocketText, refuseUpgrade } from './socket';
 import { createJukebox, type ServerJukebox } from './jukebox';
 import type { JukeboxState } from '../../core/session/jukebox';
+import { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
+import { broadcastRegisters, legacyAssignments, olderCore } from './register-messages';
 import {
   sanitizeSharedScreenState, type SharedScreenFrame, type SharedScreenState,
 } from '../../core/session/screen-share';
@@ -80,17 +82,7 @@ const log = createLogger('session');
  *  is decided in the same table as the HTTP routes. */
 export const SESSION_PATH = '/api/session';
 
-/**
- * What this build's documents and core evaluate as.
- *
- * Participants compare these when they join, and a mismatched install joins read-only rather than writing
- * geometry the others would evaluate differently (docs/039). The document version is the format; the core
- * version is the evaluator — tessellation, crease handling, the ops — which two installs must agree on for
- * "the same document" to mean the same mountain.
- */
-export const DOCUMENT_VERSION = 3;
-/** '3': topology travels as an id-based delta rather than a whole document (docs/039). */
-export const CORE_VERSION = '3';
+export { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
 
 /** A normal editor peaks around forty channel messages a second (25 Hz registers + 12.5 Hz awareness). The
  * burst leaves room for topology and reconnect catch-up without letting one socket monopolise the event loop. */
@@ -549,16 +541,12 @@ async function joinMap(sessionId: string, wanted: string | null,
   if (missed === null || (olderCore(session) && missed.some(step => step.delta))) {
     send(sessionId, { t: 'caught-up', ...here, document: room.doc });
   } else if (olderCore(session)) {
-    send(sessionId, { t: 'caught-up', ...here, changes: onWire(missed.flatMap(step => step.changes)) });
+    send(sessionId, { t: 'caught-up', ...here,
+      changes: onWire(legacyAssignments(room.doc, missed.flatMap(step => step.changes))) });
   } else {
     send(sessionId, { t: 'caught-up', ...here, steps: stepsOnWire(missed) });
   }
 }
-
-/** A session running an older bundle, which reads topology only as whole documents. It joined read-only on the
- *  version mismatch, so it never claims; it only has to be able to follow. */
-const olderCore = (session: { coreVersion?: string }): boolean =>
-  session.coreVersion !== undefined && session.coreVersion !== CORE_VERSION;
 
 /** Steps as they go out, each step's assignments carrying a clear as the key alone (`onWire`). */
 const stepsOnWire = (steps: readonly RoomStep[]): RoomStep[] =>
@@ -604,8 +592,7 @@ function onAssign(sessionId: string, message: Extract<ClientMessage, { t: 'assig
   // wrote the value a register already held, is not news anybody else has to be told.
   if (!written.landed.length) return;
   noteWriter(sessionId);
-  relay(projectId, sessionId,
-    { t: 'sync', projectId, at: written.at, changes: onWire(written.landed), by: session.member.username });
+  broadcastRegisters(room, written, session.member.username, sessionId);
 }
 
 function onClaim(sessionId: string, message: Extract<ClientMessage, { t: 'claim' }>): void {
