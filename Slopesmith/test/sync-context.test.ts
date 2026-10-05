@@ -8,7 +8,7 @@ import { createRebuilder } from '../src/app/state/rebuild';
 import { createRegisterSync, type RegisterStep, type RegisterSync } from '../src/app/net/register-sync';
 import type { RegisterAssignment } from '../src/app/net/session-channel';
 import { createHistory } from '../src/app/state/history';
-import { readRegister, vertexRegister, writeRegister } from '../src/core/doc/registers';
+import { quadRegister, readRegister, vertexRegister, writeRegister } from '../src/core/doc/registers';
 import { topologyDelta, type TopologyDelta } from '../src/core/doc/topology-delta';
 
 const before = migrateMountain(defaultMountain());
@@ -152,6 +152,44 @@ const winnerStep = { delta: topologyDelta(before, winnerDoc.doc), changes: [['g/
   sync.flush();
   sync.claimed({ batch: state.batch, ok: true });
   assert.equal(state.rejections, 1, 'accepted local edits do not notify');
+  sync.stop();
+}
+
+// A topology relay can arrive between an ordinary edit and its coalescing tick. That edit must be sent before
+// the relay writes the same register, and it must still form this participant's undo step.
+{
+  const { state, sync } = harness(before);
+  const key = vertexRegister(winnerDoc.doc.vertexIds.at(-1)!);
+  const prior = structuredClone(readRegister(state.doc, key));
+  writeRegister(state.doc, key, [91, 92, 93]);
+  sync.noteEdit();
+  sync.applyTopology({ ...winnerStep, changes: [[key, [11, 12, 13]]] });
+  assert.deepEqual(readRegister(state.doc, key), [91, 92, 93], 'the unsent move survives the remote delta');
+  assert.deepEqual(state.assigns.map(sent => sent.changes), [[[key, [91, 92, 93]]]],
+    'the move is sent once, so the room will keep it too');
+  assert.deepEqual(sync.sealStep(), { priors: [[key, prior]], afters: [[key, [91, 92, 93]]] },
+    'undo records the local move, not the remote value');
+  sync.landed({ batch: state.assigns[0].batch });
+  sync.flush();
+  assert.deepEqual(sync.pending(), []);
+  assert.equal(state.assigns.length, 1, 'the next tick does not resend the move');
+  assert.equal(sync.status().landed, true);
+  sync.stop();
+}
+
+// Flushing before a delta does not bring deleted geometry back: its outstanding register retires normally.
+{
+  const { state, sync } = harness(before);
+  const key = quadRegister(before.quadIds[1], 'paint');
+  writeRegister(state.doc, key, 7);
+  sync.noteEdit();
+  sync.applyTopology(winnerStep);
+  assert.equal(state.assigns.length, 1);
+  sync.landed({ batch: state.assigns[0].batch, retired: [key] });
+  sync.flush();
+  assert(!state.doc.quadIds.includes(before.quadIds[1]));
+  assert.equal(readRegister(state.doc, key), undefined);
+  assert.deepEqual(sync.pending(), []);
   sync.stop();
 }
 

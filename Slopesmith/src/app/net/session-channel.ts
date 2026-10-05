@@ -5,6 +5,9 @@ import type { JukeboxState } from '../../core/session/jukebox';
 import type { RideEvent, SharedRideEvent } from '../../core/session/ride-event';
 import type { ClientProject } from '../state/project-sync';
 import type { SharedScreenFrame, SharedScreenState } from '../../core/session/screen-share';
+import { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
+
+export { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
 
 /** A suspended/background tab must not replay an old one-shot into a later run when it wakes. */
 const MAX_RIDE_EVENT_AGE_MS = 10_000;
@@ -831,17 +834,6 @@ export function createSessionChannel(deps: {
 }
 
 export type SessionChannel = ReturnType<typeof createSessionChannel>;
-
-/**
- * What this build's documents and core evaluate as (docs/039).
- *
- * Held here as well as on the server because the comparison is between two INSTALLS: a browser running an
- * older bundle against a service running a newer one is exactly the skew that would have one participant
- * tessellate a mountain differently from the rest of the room, and the join is where that is caught.
- */
-export const DOCUMENT_VERSION = 3;
-/** '3': topology travels as an id-based delta rather than a whole document (docs/039). */
-export const CORE_VERSION = '3';
 
 /** Presence as a member list rather than a session list: one row per person, with however many tabs they
  *  have open. Keyed by session and displayed by user is the whole rule, and this is the second half of it. */

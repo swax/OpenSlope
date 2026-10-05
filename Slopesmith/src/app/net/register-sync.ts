@@ -619,6 +619,9 @@ export function createRegisterSync(deps: {
       return;
     }
     const unclaimed = !sameMesh(structure, structureOf(doc));
+    // Send ordinary edits made since the last tick before an arriving delta can replace their values. They
+    // then have the same in-flight protection and undo record as edits the regular tick already sent.
+    if (!unclaimed && dirty) tick();
     const from = unclaimed ? rewound({ structure, shadow }) : steps[0].delta ? doc : detachedDocument(doc);
     const landed = landSteps(from, steps, true);
     if (!landed) { resync(); return; }

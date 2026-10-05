@@ -20,11 +20,11 @@ import {
 import { migrateLegacyProjectAssets, withProjectAssets } from '../project-assets';
 import { systemEvent } from '../session/chat';
 import { trimPlayerSeats } from '../session/capacity';
-import { presenceFor, sessionsOn } from '../session/presence';
+import { presenceFor } from '../session/presence';
 import {
-  assign, joinRoom, onWire, planRevert, roomFor, roomWriters, storedRoom, takeSnapshot, type RevertRequest,
+  assign, joinRoom, planRevert, roomFor, roomWriters, storedRoom, takeSnapshot, type RevertRequest,
 } from '../session/room';
-import { prepareWebSocketText } from '../session/socket';
+import { broadcastRegisters } from '../session/register-messages';
 import { saveWorkspaceConfig, workspaceConfig } from '../workspace-config';
 import { jsonResponse, readJsonBody, type ApiHandler } from './common';
 import {
@@ -842,16 +842,11 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         // Rules first, `changes` after: assignments land in order and the last writer wins, so an explicit
         // key always overrides a rule that happened to touch it, and a later rule overrides an earlier one.
         const written = assign(room, [...rules.changes, ...changes], by);
+        broadcastRegisters(room, written, by);
         // A room joined over HTTP has no socket participant whose leaving would flush it, so nothing may be
         // left only in memory: the snapshot is taken before answering, and the answer carries the revision
         // it produced.
         await takeSnapshot(room);
-        if (written.landed.length) {
-          const frame = prepareWebSocketText(JSON.stringify({
-            t: 'sync', projectId: parts[0], at: written.at, changes: onWire(written.landed), by,
-          }));
-          for (const session of sessionsOn(parts[0])) session.sendPrepared(frame);
-        }
         const manifest = await projects.projectManifest(parts[0]);
         jsonResponse(res, 200, {
           projectId: parts[0], revision: manifest.revision,
@@ -1034,13 +1029,8 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           if (found) changes.push(reseated(key, value, moved));
         }
         const written = assign(room, changes, by);
+        broadcastRegisters(room, written, by);
         await takeSnapshot(room);
-        if (written.landed.length) {
-          const frame = prepareWebSocketText(JSON.stringify({
-            t: 'sync', projectId: parts[0], at: written.at, changes: onWire(written.landed), by,
-          }));
-          for (const session of sessionsOn(parts[0])) session.sendPrepared(frame);
-        }
         const manifest = await projects.projectManifest(parts[0]);
         jsonResponse(res, 200, {
           projectId: parts[0], revision: manifest.revision,
@@ -1241,21 +1231,13 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
             ...attribution(identity, parts[0]) });
         const by = actor(identity);
         const written = assign(room, changes, by);
+        // HTTP edits reach every replica, including the one whose author requested the revert.
+        broadcastRegisters(room, written, by);
         await takeSnapshot(room);
         // What the revert actually put back. A key naming geometry deleted since the checkpoint retires
         // quietly rather than travelling on as an edit nobody can apply, and a whole-map revert can carry a
         // great many of those.
         const applied = written.landed;
-        // Relayed to everybody on the map, the requester included: these are somebody else's registers as far
-        // as every replica is concerned, including the one whose author asked for them.
-        if (applied.length) {
-          const frame = prepareWebSocketText(JSON.stringify({
-            t: 'sync', projectId: parts[0], at: written.at, changes: onWire(applied), by,
-          }));
-          for (const session of sessionsOn(parts[0])) {
-            session.sendPrepared(frame);
-          }
-        }
         const snapshot = await projects.openProject(parts[0]);
         systemEvent(`${by} reverted ${revertPhrase(request)} on ${snapshot.project.name} to the checkpoint `
           + `from ${checkpointClock(file)} — ${applied.length} register${applied.length === 1 ? '' : 's'}`);
