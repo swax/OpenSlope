@@ -22,6 +22,9 @@ export interface BoardBoostTrailFrame {
   /** A speed-pad request selects retail's strongest red without consulting the meter. */
   pad: boolean;
   gear: RideGear;
+  /** A walker's two soles, world space: each becomes one streak across `quaternion`'s +X in place of the gear's
+   *  deck-end outline — Superman flight's boost with no board under it. */
+  feet?: readonly [THREE.Vector3, THREE.Vector3];
 }
 
 const SAMPLE_SECONDS = 3 / 60;
@@ -29,6 +32,8 @@ const MAX_SAMPLES = 7;
 const STREAKS = 2;
 const VERTICES_PER_QUAD = 6;
 const MAX_VERTICES = MAX_SAMPLES * STREAKS * VERTICES_PER_QUAD;
+/** Half a boot's width: a streak from under a foot is as wide as the sole it leaves. */
+const FOOT_HALF_STREAK = 0.05;
 
 // Exact RGB triples and meter-third thresholds implement the board-afterimage colour contract
 // [Trailmap: 360-boost-trail]; a pad bypasses the meter and selects red.
@@ -155,6 +160,14 @@ export class BoardBoostTrail {
   }
 
   private capture(frame: BoardBoostTrailFrame, out: TrailSample) {
+    if (frame.feet) {
+      const across = this.local.set(1, 0, 0).applyQuaternion(frame.quaternion);
+      for (let foot = 0; foot < 2; foot++) {
+        out.points[foot * 2].copy(frame.feet[foot]).addScaledVector(across, -FOOT_HALF_STREAK);
+        out.points[foot * 2 + 1].copy(frame.feet[foot]).addScaledVector(across, FOOT_HALF_STREAK);
+      }
+      return;
+    }
     const snowboard = frame.gear === 'snowboard';
     // Slopesmith gear's real outline: 1.86 m snowboard, or the asymmetric 1.104/0.936 m ski extents.
     const tailZ = snowboard ? -0.93 * this.travelSign : this.travelSign > 0 ? -0.936 : 1.104;

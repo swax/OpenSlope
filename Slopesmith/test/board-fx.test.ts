@@ -242,6 +242,35 @@ const launchControls = playToolsSource.indexOf('if (play.launching)', stanceGate
 assert(gearRow >= 0 && stanceGate > gearRow && launchControls > stanceGate,
   'Standard / Goofy is gated to snowboards directly below the gear row and above launch controls');
 
+// Off the board, Superman flight's boost reuses the afterimage with one streak under each sole instead of the
+// deck outline, and drains the same way once boost is let go.
+{
+  const footScene = new THREE.Scene();
+  const footFx = new BoardFx(footScene);
+  const soles = [new THREE.Vector3(-0.105, 20, 0), new THREE.Vector3(0.105, 20, 0)] as const;
+  const footFrame = {
+    position: new THREE.Vector3(0, 20, 0), quaternion: new THREE.Quaternion(), velocity: new THREE.Vector3(0, 0, 30),
+    feet: soles, active: true, energy: 1, pad: false, gear: 'snowboard' as const,
+  };
+  const fly = (n: number) => { for (let i = 0; i < n; i++) {
+    for (const sole of soles) sole.z += 0.5;
+    footFx.updateFootBoost(footFrame, 1 / 60);
+  } };
+  fly(21);
+  assert.equal(footFx.systemStats().boostVertices, 84, 'a flight boost draws the full two-streak afterimage');
+  const footMesh = footScene.getObjectByName('PlayerBoardBoostTrail') as THREE.Mesh;
+  const footPositions = footMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+  for (let v = 0; v < footMesh.geometry.drawRange.count; v++) {
+    assert.ok(Math.abs(footPositions.getY(v) - 20) < 1e-6, 'every streak vertex sits at sole height');
+    assert.ok(Math.abs(Math.abs(footPositions.getX(v)) - 0.105) <= 0.05 + 1e-6,
+      'each streak is a sole wide, centred under its own foot');
+  }
+  footFrame.active = false;
+  fly(21);
+  assert.equal(footFx.systemStats().boostVertices, 0, 'letting go of boost drains the foot streaks away');
+  footFx.dispose();
+}
+
 // Allocation boundary: only the player TestRide imports BoardFx. AI physics/pose stays effect-free.
 const app = resolve(process.cwd(), 'src/app/ride');
 assert.match(readFileSync(resolve(app, 'session.ts'), 'utf8'), /new BoardFx\(this\.o\.scene, this\.o\.boardFxGround\)/);

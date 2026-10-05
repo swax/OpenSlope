@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { RideGear } from './gear';
 import { groundRestDepth, surfaceFor } from './physics-math';
 import type { WalkGroundQuery } from './xr/walk';
-import { BoardBoostTrail } from './boost-trail';
+import { BoardBoostTrail, type BoardBoostTrailFrame } from './boost-trail';
 
 /**
  * Local-player board feedback: the boost afterimage, carved wake and the retail board's five snow-spray buffers,
@@ -675,6 +675,13 @@ export class BoardFx {
     this.rebuildWake();
     this.rebuildParticles();
     this.rebuildSpry();
+  }
+
+  /** On foot there is no deck for the rest of this to read: Superman flight's boost draws the same afterimage
+   *  from under the soles (`frame.feet`). Sharing the trail shares its clears, so mounting or getting off never
+   *  stitches a board streak onto a foot one. */
+  updateFootBoost(frame: BoardBoostTrailFrame, dt: number) {
+    this.boostTrail.update(frame, dt);
   }
 
   /** Clear every live visual and transition latch; used on dismount and a live checkbox-off. */

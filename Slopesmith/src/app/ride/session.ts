@@ -21,7 +21,7 @@ import { createRideInput, type RideInput, type RideInputOpts } from './input';
 import { createRideGamepad, type RideGamepad } from './gamepad';
 import { createRiderPose, type RiderPose } from './pose';
 import { createBoardAudio, type BoardAudio } from './board-audio';
-import type { EquipmentAppearance, RideGear, SnowboardStance } from './gear';
+import { SOLE_TO_ANKLE, type EquipmentAppearance, type RideGear, type SnowboardStance } from './gear';
 import type { BoardSoundMix } from '../../core/doc/types';
 import type { AnnouncerEvent } from '../../core/audio/announcer';
 import {
@@ -238,6 +238,10 @@ export class TestRide {
   private readonly walkHeadQuaternion = new THREE.Quaternion();
   private readonly walkAnkleA = new THREE.Vector3();
   private readonly walkAnkleB = new THREE.Vector3();
+  /** The two soles Superman flight's boost streaks from (`updateFootBoostTrail`). */
+  private readonly walkSoleA = new THREE.Vector3();
+  private readonly walkSoleB = new THREE.Vector3();
+  private readonly walkSoles: readonly [THREE.Vector3, THREE.Vector3] = [this.walkSoleA, this.walkSoleB];
   private readonly walkFlatForward = new THREE.Vector3();
   private readonly walkAcceleration = new THREE.Vector3();
   /** Start of this desktop walking frame, retained so glass sees one allocation-free swept presence sample. */
@@ -483,7 +487,11 @@ export class TestRide {
     }
     if (this.onFootFlag) {
       let flightBoosting = false;
-      if (!this.pausedFlag) { flightBoosting = this.stepWalker(dt); this.stepBoardCoast(dt); }
+      if (!this.pausedFlag) {
+        flightBoosting = this.stepWalker(dt);
+        this.stepBoardCoast(dt);
+        this.updateFootBoostTrail(flightBoosting, dt);
+      }
       else { this.updateWalkCamera(); this.updateWalkAvatar(0); this.stepBoardCoast(0); }
       this.boardAudio?.updateFlightBoost(flightBoosting, dt);
       return;
@@ -992,6 +1000,24 @@ export class TestRide {
     }
     // The coast may have moved through the ray this frame; highlight the pose that was actually drawn.
     this.refreshDesktopBoardTarget();
+  }
+
+  /**
+   * Superman flight's boost with no board under it: the board's boost afterimage, streaking from the two soles
+   * of the body `updateWalkAvatar` just solved. Fed every unpaused on-foot frame, so letting go of boost drains
+   * the trail the way it does on the board rather than freezing it in the air. Board FX off draws nothing.
+   */
+  private updateFootBoostTrail(boosting: boolean, dt: number) {
+    if (!this.boardFx || !this.walker) return;
+    const solved = this.pose.rider.solved, up = THREE.Object3D.DEFAULT_UP;
+    this.walkSoleA.copy(solved.ankleFront).addScaledVector(up, -SOLE_TO_ANKLE);
+    this.walkSoleB.copy(solved.ankleRear).addScaledVector(up, -SOLE_TO_ANKLE);
+    this.boardFx.updateFootBoost({
+      position: this.walker.position(), quaternion: this.walkBodyQuaternion, velocity: this.walker.velocity(),
+      feet: this.walkSoles,
+      // Off the board no run meter is spent, so the trail reads as the unlimited boost does: full red.
+      active: boosting, energy: 1, pad: false, gear: this.pose.gear,
+    }, dt);
   }
 
   /** Pose the same production body remote observers use. Keeping it warm in first person makes V a view toggle,
