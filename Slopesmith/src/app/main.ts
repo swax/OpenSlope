@@ -2952,19 +2952,19 @@ setInterval(() => {
 /** Follow this tab's open map: presence is keyed on it, and so is the room. */
 function joinMap(document: EditDoc = store.mdoc): void {
   const current = projectSync.current();
-  // Where the opened document stands in the room's sequence. The room hands back whatever it sequenced after
-  // that, so a page opened mid-session holds exactly what it names (docs/039).
-  const at = projectSync.sequence();
+  // Where the opened document stands in the room's sequence, and which room that is counted in. The room hands
+  // back whatever it sequenced after that, so a page opened mid-session holds exactly what it names (docs/039).
+  const opened = projectSync.sequence();
   peerMarks.clear();
   refreshPeers();
-  session.watch(current?.id ?? null, at);
+  session.watch(current?.id ?? null, opened?.at, opened?.room);
   awareness.reset(); // the server drops what a tab said about the map it left
   // Project creation/opening calls this before the dialog installs the document into store.mdoc. Rebase the
   // register replica from the document being joined, not from the project that happens to still be rendered.
   // A document opened at a sequence is the room's own, installed as received. One this tab built itself has
   // not been through the server's normalisation, and the replica's base has to be the document the room will
   // hold.
-  registerSync.adopt(at === undefined ? migrateMountain(document) : document);
+  registerSync.adopt(opened === undefined ? migrateMountain(document) : document);
 }
 /**
  * Somebody deleted the map this tab had open (docs/038).

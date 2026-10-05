@@ -422,9 +422,20 @@ whole document. The page installs the document as received, like anything else t
 *Receivers*). A map this tab created, imported or duplicated is served without `at`, and joins at the head
 as before.
 
-A room counts from 0 each time it opens. A sequence beyond its head therefore came from an earlier room on
-this map: a page that loaded just before that room closed, or a tab that outlived a restart. Nothing in this
-room's log is measured from it, so that catch-up is the document.
+**A sequence travels with the room it was counted in.** A room counts from 0 each time it opens. So a page
+that loaded at sequence N just before its room closed could join the next room after that room had passed N,
+and be caught up from N in a log that never held its document. A page that read the file could also miss an
+outside write that replaced it before any room opened. Each room therefore has an `id`: the stored revision it
+opened from plus a nonce. `joined` and `caught-up` carry it as `room`, the answers a page opens a map from carry
+it beside `at`, and `watch` names it. With no room open, those answers name the stored revision instead, which
+is sequence 0 of whichever room opens from that file and of no other room.
+
+A room catches up a sequence named with its own `id`, or with its base revision at sequence 0, from its log.
+Anything else is answered with the document: a sequence from a room that closed, one from before a restart,
+or one read off a file that was replaced before this room opened. A client that names no room is still
+answered with the document when its sequence is beyond the room's head, since it cannot have been counted
+there. When the room in a `caught-up` is not the one the tab named, the tab's count starts over at that room's
+sequence instead of keeping the higher of the two.
 
 #### Receivers
 
@@ -581,12 +592,6 @@ The claim, the relay, the rejection and the catch-up all change shape, so `CORE_
   - each arrival counts as structural, so it drops everyone's topology undo.
 
   A fix needs a non-structural update that takes no stale-base sequence.
-- **A sequence from an earlier room that the next room has already passed.** A page that loads a map at
-  sequence N just before its room closes may join a reopened room that is already past N. It is then caught
-  up from N in the new room's log and misses that room's first N changes until its idle drift check. A
-  topology step among them fails its hash and falls back to the document. A page that loads the stored map
-  before any room opens, and then misses an outside write that replaces it, is left behind the same way.
-  Telling rooms apart needs an identity per room carried with the sequence.
 - **Rendering a topology change incrementally.** A renumbering still re-tessellates. Stage 6 owns that.
 
 #### Tests
@@ -611,7 +616,11 @@ is `{}` on one side and absent on the other. The digest ignores both.
     value;
   - opens a page while the stored snapshot lags the room by a topology edit. The page is handed the room's
     document and sequence, joins with nothing replayed, and claims at once without a whole-document answer.
-    A page naming a sequence beyond the room's head is caught up with the document.
+    A page naming a sequence beyond the room's head is caught up with the document;
+  - closes and reopens a second map's room. A page that read the file is caught up from the room that opened
+    from it with steps. A page from the closed room is caught up with the document, whether the next room has
+    passed its sequence or not, and then counts on from the new room. A page that read a file since replaced
+    from outside is caught up with the document.
 - `test/sync-context.test.ts`: the relay ignored during an outstanding claim, the single rejection notice, the
   rewind of an unclaimed local edit, a claim outstanding across a disconnect, the skip of an in-flight register
   and its refused exception, and history keeping register entries while dropping whole-document entries

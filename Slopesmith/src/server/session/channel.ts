@@ -114,8 +114,9 @@ const ACCESS_RECHECK_MS = 30_000;
 
 /** What a client may say. Anything else is answered with an error and the socket is left open. */
 export type ClientMessage =
-  /** Which map this tab is on, the sequence it last saw there, and what it evaluates documents with. */
-  | { t: 'watch'; projectId: string | null; at?: number; doc?: number; core?: string }
+  /** Which map this tab is on, the sequence it last saw there and the room that sequence was counted in, and what
+   *  it evaluates documents with. */
+  | { t: 'watch'; projectId: string | null; at?: number; room?: string; doc?: number; core?: string }
   /** Which extracted mountain is loaded in this tab's read-only Reference slot. */
   | { t: 'reference'; level: string | null }
   /** Which world this tab is actively playing. */
@@ -154,8 +155,8 @@ export type ServerMessage =
   | { t: 'presence'; maps: Record<string, PresenceEntry[]> }
   /** One participant joined, left or moved. Absolute upserts make repeated or coalesced delivery harmless. */
   | { t: 'presence-delta'; change: PresenceChange }
-  /** Where the room is, whether this tab may write to it, and why not when it may not. */
-  | { t: 'joined'; projectId: string; at: number; writable: boolean; reason?: string }
+  /** Where the room is and which room it is, whether this tab may write to it, and why not when it may not. */
+  | { t: 'joined'; projectId: string; at: number; room: string; writable: boolean; reason?: string }
   /** Somebody else's registers, absolute. */
   | { t: 'sync'; projectId: string; at: number; changes: RegisterAssignment[]; by: string }
   /** How a batch of this tab's own assignments turned out. */
@@ -176,9 +177,10 @@ export type ServerMessage =
    *  the steps to replay, or the document when the log cannot say it. A session on an older core is sent the
    *  flat assignments it reads, or the document whenever a topology step is in range. And the highest of its own
    *  batches the room had answered before it rejoined, so a batch whose acknowledgement died with the old socket
-   *  is not replayed over somebody's later write. */
-  | { t: 'caught-up'; projectId: string; at: number; steps?: RoomStep[]; changes?: RegisterAssignment[];
-    document?: EditDoc; landed: number }
+   *  is not replayed over somebody's later write. `room` is the room `at` is counted in, which is not the one the
+   *  client named when it was answered with the document for that reason. */
+  | { t: 'caught-up'; projectId: string; at: number; room: string; steps?: RoomStep[];
+    changes?: RegisterAssignment[]; document?: EditDoc; landed: number }
   /** The disposable states that changed during one room window, encoded once and shared by every socket. */
   | { t: 'awareness-batch'; projectId: string; peers: AwarenessPeer[] }
   /** The cadence browsers on this room should use when publishing disposable awareness. */
@@ -514,10 +516,11 @@ function writeRefusal(member: SessionMember, project: ProjectManifest,
  *
  * Joining opens the room if nobody had it open, answers where the room is, and — for a tab that names a
  * sequence, because it was here before or because it loaded the room's document at that sequence — hands back
- * exactly what it missed, or the document when the tail no longer reaches that far.
+ * exactly what it missed, or the document when the tail no longer reaches that far or the sequence was counted
+ * in another room.
  */
 async function joinMap(sessionId: string, wanted: string | null,
-  asked: { at?: number; doc?: number; core?: string }): Promise<void> {
+  asked: { at?: number; room?: unknown; doc?: number; core?: string }): Promise<void> {
   watchProject(sessionId, wanted);
   const session = sessionById(sessionId);
   if (!session || !wanted || session.projectId !== wanted) return;
@@ -536,20 +539,19 @@ async function joinMap(sessionId: string, wanted: string | null,
   const room = await joinRoom(wanted);
   if (sessionById(sessionId) !== session || session.projectId !== wanted) return;
   send(sessionId, {
-    t: 'joined', projectId: wanted, at: room.at, writable: session.writable,
+    t: 'joined', projectId: wanted, at: room.at, room: room.id, writable: session.writable,
     ...(refusal ? { reason: refusal } : {}),
   });
   if (asked.at === undefined) { session.at = room.at; return; }
-  const missed = stepsSince(room, asked.at);
+  const missed = stepsSince(room, asked.at, typeof asked.room === 'string' ? asked.room : undefined);
   session.at = room.at;
+  const here = { projectId: wanted, at: room.at, room: room.id, landed };
   if (missed === null || (olderCore(session) && missed.some(step => step.delta))) {
-    send(sessionId, { t: 'caught-up', projectId: wanted, at: room.at, document: room.doc, landed });
+    send(sessionId, { t: 'caught-up', ...here, document: room.doc });
   } else if (olderCore(session)) {
-    send(sessionId, {
-      t: 'caught-up', projectId: wanted, at: room.at, changes: onWire(missed.flatMap(step => step.changes)), landed,
-    });
+    send(sessionId, { t: 'caught-up', ...here, changes: onWire(missed.flatMap(step => step.changes)) });
   } else {
-    send(sessionId, { t: 'caught-up', projectId: wanted, at: room.at, steps: stepsOnWire(missed), landed });
+    send(sessionId, { t: 'caught-up', ...here, steps: stepsOnWire(missed) });
   }
 }
 

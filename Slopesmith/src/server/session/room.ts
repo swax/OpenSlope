@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { canonicalJson } from '../../core/doc/canonical';
 import { documentDiff, revertAssignments, type RevertScope } from '../../core/doc/compare';
@@ -149,6 +150,14 @@ export interface Room {
   stale: Set<RegisterKey>;
   /** The room's one sequence. Every accepted change takes the next number. */
   at: number;
+  /**
+   * This room, as against every other room the map has had or will have: the stored revision it opened from,
+   * and a nonce. A room counts `at` from 0 each time it opens, so a sequence means nothing without the room it
+   * was counted in, and a tab names the room alongside it (`countedHere`).
+   */
+  id: string;
+  /** The stored revision this room opened from: sequence 0 of its count. */
+  base: number;
   /** Which sequence last consumed each mesh id — the whole of what a topology claim compares against. */
   stamps: Map<string, number>;
   /**
@@ -233,11 +242,13 @@ export async function joinRoom(projectId: string): Promise<Room> {
   if (already) return already;
   watchExternalWrites();
   const open = openProject(projectId).then(snapshot => {
+    const base = snapshot.project.revision;
     const made: Room = {
       projectId, doc: snapshot.document, digest: null, stale: new Set(),
-      at: 0, stamps: new Map(), authors: new Map(), topologyAt: 0, replacedAt: 0, log: [], landed: new Map(),
+      at: 0, id: `${storedRoom(base)}.${randomUUID().slice(0, 8)}`, base,
+      stamps: new Map(), authors: new Map(), topologyAt: 0, replacedAt: 0, log: [], landed: new Map(),
       since: 0, timer: null,
-      writing: null, wrote: snapshot.project.revision,
+      writing: null, wrote: base,
     };
     rooms.set(projectId, made);
     return made;
@@ -351,6 +362,21 @@ export const landedFrom = (room: Room, replica: string): number => room.landed.g
 /** The oldest sequence the retained log can rebuild from. */
 const retainedFrom = (room: Room): number => room.log.length ? room.log[0].at - 1 : room.at;
 
+/** What a map read off the file, with no room open, names as the room its sequence 0 belongs to: the stored
+ *  revision, which is where whichever room opens from that file starts. */
+export const storedRoom = (revision: number): string => `r${revision}`;
+
+/**
+ * Whether a sequence a tab names was counted in this room.
+ *
+ * Named with this room's `id`, it was. Named with the stored revision this room opened from, it is sequence 0
+ * here: the page read the map off the file while no room was open, and holds exactly what this room started
+ * from. Anything else was counted somewhere this room's log does not reach — a room that closed after the page
+ * loaded, one from before a restart, or a file replaced before this room opened.
+ */
+const countedHere = (room: Room, at: number, named: string): boolean =>
+  named === room.id || (at === 0 && named === storedRoom(room.base));
+
 /**
  * What the room has sequenced since a given sequence, as steps to replay in order — what a reconnecting tab is
  * caught up with and what a losing claim is answered with — or null when only the document can say it.
@@ -358,11 +384,12 @@ const retainedFrom = (room: Room): number => room.log.length ? room.log[0].at - 
  * Topology entries stay in the log now that a delta can describe them, so a tab that was away across a
  * topology edit is handed the edit rather than the mountain. Assignments between two topology entries merge
  * into one step. Null means the tail no longer reaches back that far, or the room adopted a document from
- * outside since then — or that the sequence is one this room never reached. A room counts from 0 each time it
- * opens, so that sequence was handed out by an earlier room on this map: a page that loaded the map just before
- * its room closed, or a tab that outlived a server restart. Nothing in this room's log is measured from it.
+ * outside since then, or the sequence was counted in another room. A room counts from 0 each time it opens, so
+ * a tab names the room alongside the sequence (`countedHere`). One that names none is still caught when its
+ * sequence is beyond this room's head, which it cannot have been counted here to reach.
  */
-export function stepsSince(room: Room, at: number): RoomStep[] | null {
+export function stepsSince(room: Room, at: number, named?: string): RoomStep[] | null {
+  if (named !== undefined && !countedHere(room, at, named)) return null;
   if (at > room.at) return null;
   if (at === room.at) return [];
   if (at < room.replacedAt || at < retainedFrom(room)) return null;
