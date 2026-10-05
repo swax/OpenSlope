@@ -22,7 +22,7 @@ export function hoveredGizmoPivot(gizmo: {
 }
 
 /**
- * Camera navigation: the custom desktop fly (Alt+RMB look + WASD), the ray-cast orbit (RMB / single-finger
+ * Camera navigation: the custom desktop fly (Alt + WASD, Alt+RMB to look), the ray-cast orbit (RMB / single-finger
  * turntable around the cursor's surface hit), the two-finger twist, the exponential wheel zoom, the
  * perspective ⇄ orthographic toggle, view serialize/restore, and double-click focus (frameSphere). Also owns
  * the upper-right ViewHelper nav-gizmo + its projection button. The shell's pointer dispatch drives the
@@ -51,7 +51,8 @@ export function createCameraController(stage: Stage, grid: {
   let gridControl!: StepControl;
   let snapControl!: StepControl;
 
-  // desktop fly (Alt+RMB): look-drag steers, WASD/QE moves (true fly, relative to look), Shift faster
+  // desktop fly: WASD/QE moves (true fly, relative to look) while Alt is held, Alt+RMB adds a look-drag to
+  // steer, Shift faster. `flying` is the look-drag; the keys alone leave OrbitControls running.
   let flying = false;
   let flySpeed = 160;
   let flyDist = 200; // distance to re-seat the orbit pivot in front of the camera on fly-end
@@ -69,18 +70,34 @@ export function createCameraController(stage: Stage, grid: {
   const touchPts = new Map<number, { x: number; y: number }>();
   let twist: TwistState | null = null;
 
-  // ---- desktop fly (RMB) ----
+  // ---- desktop fly (Alt + WASD/QE, Alt+RMB look) ----
 
+  function releaseFlyKeys() {
+    for (const k of Object.keys(flyKeys)) (flyKeys as Record<string, boolean>)[k] = false;
+  }
+
+  /** The fly letter a key event names. Under Alt a Mac's Option rewrites `key` (⌥W = ∑, ⌥E = Dead), so the
+   *  physical key stands in for it there. */
+  function flyLetter(e: KeyboardEvent): string {
+    const k = e.key.toLowerCase();
+    if (k in flyKeys || !e.altKey || !/^Key[WASDQE]$/.test(e.code)) return k;
+    return e.code.slice(3).toLowerCase();
+  }
+
+  /** WASD/QE fly while Alt is held — no click needed — or through an Alt+RMB look-drag, which outlives the Alt
+   *  that started it. Plain letters stay shortcuts otherwise. */
   function flyKey(e: KeyboardEvent, down: boolean) {
-    if (e.key === 'Alt') return; // Alt only gates fly at pointerdown (read live); no OrbitControls remap
-    if (!flying) return;
+    if (e.key === 'Alt') { if (!down && !flying) releaseFlyKeys(); return; }
+    flyKeys.shift = e.shiftKey; // read off every key, so a Shift pressed before Alt still boosts
+    const k = flyLetter(e);
+    if (k === 'shift' || !(k in flyKeys)) return;
+    // a release belongs to the press even if focus moved into a field in between
+    if (!down) { (flyKeys as Record<string, boolean>)[k] = false; return; }
     const t = e.target as HTMLElement | null;
     if (t?.matches?.('input, textarea, select')) return;
-    const k = e.key.toLowerCase();
-    if (k === 'shift') flyKeys.shift = down;
-    else if (k in flyKeys) (flyKeys as Record<string, boolean>)[k] = down;
-    else return;
-    e.preventDefault();
+    if (!flying && !(e.altKey && !e.ctrlKey && !e.metaKey)) return; // AltGr (Ctrl+Alt) types characters
+    (flyKeys as Record<string, boolean>)[k] = true;
+    e.preventDefault(); // Alt+D (address bar) / Alt+E (browser menu) are browser shortcuts
   }
 
   function startFly(e: PointerEvent) {
@@ -92,7 +109,7 @@ export function createCameraController(stage: Stage, grid: {
 
   function endFly(e: PointerEvent) {
     flying = false;
-    for (const k of Object.keys(flyKeys)) (flyKeys as Record<string, boolean>)[k] = false;
+    if (!e.altKey) releaseFlyKeys(); // still holding Alt: the keys keep flying without the look-drag
     const dir = stage.camera.getWorldDirection(new THREE.Vector3());
     stage.controls.target.copy(stage.camera.position).addScaledVector(dir, flyDist); // re-seat orbit pivot
     stage.controls.enabled = true;
@@ -111,13 +128,15 @@ export function createCameraController(stage: Stage, grid: {
     if (Math.abs(fwd.y) < 0.995) cam.quaternion.copy(test); // stop short of flipping over the poles
   }
 
-  /** WASD/QE translate relative to the look direction (true fly — can go underground). Shift = faster. */
+  /** WASD/QE translate relative to the look direction (true fly — can go underground). Shift = faster. The
+   *  orbit pivot rides along, so Alt+WASD without a look-drag keeps OrbitControls' view (endFly re-seats it). */
   function flyMove(dt: number) {
     const k = flyKeys;
     const v = new THREE.Vector3((k.d ? 1 : 0) - (k.a ? 1 : 0), (k.e ? 1 : 0) - (k.q ? 1 : 0), (k.s ? 1 : 0) - (k.w ? 1 : 0));
     if (v.lengthSq() === 0) return;
     v.normalize().multiplyScalar(flySpeed * (k.shift ? 4 : 1) * dt).applyQuaternion(stage.camera.quaternion);
     stage.camera.position.add(v);
+    stage.controls.target.add(v);
   }
 
   /** In fly mode the wheel trims fly speed instead of zooming (the shell routes it here). */
@@ -627,7 +646,7 @@ export function createCameraController(stage: Stage, grid: {
     get touchPts() { return touchPts; },
     get twist() { return twist; },
     set twist(v: TwistState | null) { twist = v; },
-    flyKey, startFly, endFly, applyLook, flyMove, trimFlySpeed,
+    flyKey, releaseFlyKeys, startFly, endFly, applyLook, flyMove, trimFlySpeed,
     startOrbit, applyOrbit, applyOrbitMove, endOrbit, cancelOrbit,
     beginTwist, applyTwist, reseatTargetAhead, wheelZoom, seatTargetAhead,
     setProjection, serializeView, serializeSharedView, applyView, followView, frameSphere, lookFrom,

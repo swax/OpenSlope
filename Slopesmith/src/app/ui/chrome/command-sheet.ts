@@ -101,7 +101,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
     cmdSheet.innerHTML = rideHelp
       ? helpPanel(rideHelp.title, ...rideHelp.groups)
       : helpPanel('View',
-        [['RMB', 'orbit'], ['Alt+RMB', 'fly · WASD/QE'], ['MMB', 'pan'], ['wheel', 'zoom'], ['F', 'frame'], ['1–7', 'switch main view']]);
+        [['RMB', 'orbit'], ['Alt+WASD/QE', 'fly'], ['Alt+RMB', 'fly look'], ['MMB', 'pan'], ['wheel', 'zoom'], ['F', 'frame'], ['1–7', 'switch main view']]);
     cmdSheet.style.display = cmdSheet.innerHTML ? '' : 'none';
     paintControls.innerHTML = rideHelp ? '' : store.currentMode === 'info'
       ? (courseDrawing()

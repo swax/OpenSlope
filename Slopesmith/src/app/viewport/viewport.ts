@@ -1117,7 +1117,7 @@ export class Viewport {
     });
     window.addEventListener('keyup', e => this.cameraCtl.flyKey(e, false));
     // Shift re-frames a corner gizmo to World for a deliberate free 3D off-surface move (overhangs / wall
-    // faces / cave roofs). Tracked here separately from flyKey (which only reads Shift while flying); ignored
+    // faces / cave roofs). Tracked here separately from flyKey (whose Shift is only fly speed); ignored
     // mid-drag (the frame locks once a drag starts, restored on drag end) and cleared on blur so a Shift
     // released outside the window can't stick.
     // Alt read off the pointer itself (capture phase, ahead of the gizmo's own pointermove), so a press or
@@ -1136,6 +1136,7 @@ export class Viewport {
     window.addEventListener('keydown', createEdgeMods);
     window.addEventListener('keyup', createEdgeMods);
     window.addEventListener('blur', () => {
+      this.cameraCtl.releaseFlyKeys(); // Alt-Tab mid Alt+W must not leave the camera cruising
       this.transforms.shiftKey(false);
       this.router.cancelSelectionDrag();
     });
@@ -1201,7 +1202,10 @@ export class Viewport {
       // down even between rides, because on foot the rig IS the view.
       if (!this.rideCtl.riding && !this.rideCtl.xrPresenting) {
         if (this.cameraCtl.flying) this.cameraCtl.flyMove(dt); // Alt+RMB fly drives the camera directly; skip OrbitControls
-        else if (!this.cameraCtl.orbiting) this.controls.update(); // custom orbit also drives the camera directly
+        else if (!this.cameraCtl.orbiting) { // custom orbit also drives the camera directly
+          this.cameraCtl.flyMove(dt); // Alt+WASD without a look-drag: camera and pivot translate together
+          this.controls.update();
+        }
       }
       this.applyViewGrid(); // ortho axis overlay follows the live camera target; free-angle views hide it
       this.cageLayer.scaleHandleNubs(); // keep the tangent nubs screen-constant as the camera moves
