@@ -364,14 +364,17 @@ const mesaEffectData: ReferenceEffectsData = {
 };
 const mineCartRun = mesaEffectData.document.graphs.find(graph => graph.originalIndex === 176)?.nodes[1];
 const mineCartCall = mineCartRun ? referenceInstanceEffectCall(mesaEffectData, mineCartRun) : null;
+// Follow the call's own target: MESA's effect indices match across regions, but its instance and model lists
+// do not (PAL places the cart at instance 774 / model 176, NTSC-U at 771 / 173).
+const mineCartModel = mineCartCall?.target?.model;
 const mesaModels = JSON.parse(readFileSync(
   retailFile('MESA/Models.json'), 'utf8')) as {
     Models: Parameters<typeof hierarchicalModelAnimation>[0][];
   };
-const mineCartAnimation = hierarchicalModelAnimation(mesaModels.Models[176]);
-const mineCartPayload = (await readLevelProps('MESA')).models.find(model => model.id === 176);
+const mineCartAnimation = mineCartModel === undefined ? undefined : hierarchicalModelAnimation(mesaModels.Models[mineCartModel]);
+const mineCartPayload = (await readLevelProps('MESA')).models.find(model => model.id === mineCartModel);
 const mineCartChannels = mineCartAnimation ? propModelAnimationChannels(mineCartAnimation) : [];
-check(mineCartCall?.target?.index === 774 && mineCartCall.graph?.originalIndex === 177
+check(mineCartCall?.target?.modelName === 'Mdl_MineCart_RustedANIM_3000' && mineCartCall.graph?.originalIndex === 177
   && mineCartAnimation?.clipFrames === 90 && mineCartAnimation.objects[2]?.channels?.filter(Boolean).length === 6
   && mineCartPayload?.animation?.objects.length === 6 && mineCartPayload.subs.map(sub => sub.object).join(',') === '1,2,3,4,5'
   && mineCartChannels.length === 6
