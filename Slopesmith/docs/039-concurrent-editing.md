@@ -163,7 +163,9 @@ ignored. Sorted keys and fixed float precision are the whole fix.
 and on a large mesh the only remedy is refetching the document. Hash per section instead — vertices in chunks
 of about 1024, quad attributes, objects, globals — compare the roots, and on a mismatch descend one level and
 refetch only the divergent chunk. Two levels is plenty, the section hashes maintain incrementally, and repair
-becomes invisible instead of a reload.
+becomes invisible instead of a reload. The room maintains them lazily: an accepted batch only records which
+registers it moved, and their sections are rehashed when a replica asks — which it does only once idle — so
+landing an edit costs microseconds rather than a chunk's rehash at every participant's coalescing rate.
 
 Check on idle, on reconnect, and after any lost claim.
 

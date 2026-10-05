@@ -370,6 +370,47 @@ console.log(`\n-- a mountain of ${mountain.vertexIds.length} corners, ${mountain
     'a single corner move rehashes one chunk rather than the mountain');
 }
 
+// ---- what a pass reuses from the last one is never stale -----------------------------------------------------
+{
+  // `documentRegisters` reuses its crease order and its corner and face key strings between passes over one
+  // document, because a shared tab runs one every coalescing tick. The decomposition must still be exactly
+  // what a first pass over the same document would give — same keys, same values, same order — however the
+  // document was edited in place in between. A structured clone carries no reused state, so it is the
+  // reference.
+  const live = clone(mountain);
+  const entries = (doc: QuadMeshDoc) => canonicalJson([...documentRegisters(doc)]);
+  const fresh = () => entries(clone(live));
+  const agrees = (what: string) => check(entries(live) === fresh(), `${what}: a repeated pass matches a first one`);
+
+  documentRegisters(live);
+  agrees('nothing changed');
+  live.edgeHandles!['5>6'] = [1, 1, 1];
+  agrees('a crease added in place');
+  delete live.edgeHandles!['0>1'];
+  agrees('a crease removed in place');
+  live.edgeHandles!['40>41'] = [2, 2, 2];
+  agrees('a crease reshaped in place');
+  delete live.edgeHandles!['40>41'];
+  live.edgeHandles!['40>41'] = [3, 3, 3];
+  agrees('a crease removed and re-added, which reorders the channel');
+  live.vertexIds[1] = 'renamed:corner';
+  agrees('an id rewritten in place under a crease and a corner');
+  live.quadIds[3] = 'renamed:face';
+  agrees('an id rewritten in place under painted faces');
+  live.vertexIds = [...live.vertexIds];
+  live.quadIds = [...live.quadIds];
+  agrees('id arrays replaced whole');
+  (live.quadPaint as Record<number, number>)[5] = 2;
+  agrees('a face painted in place');
+  const cut = applyMeshDelete(live, { quads: [0, 1] });
+  if (!cut.ok) throw new Error(cut.error);
+  agrees('before a topology edit');
+  check(entries(cut.doc) === entries(clone(cut.doc)), 'after a topology edit: a pass matches a first one');
+  const handleKeys = [...documentRegisters(cut.doc).keys()].filter(key => key.startsWith('h/'));
+  check(handleKeys.length > 0 && handleKeys.every((key, at) => at === 0 || handleKeys[at - 1] < key),
+    'creases still come out in register-key order');
+}
+
 // ---- a topology edit, which registers do not own --------------------------------------------------------------
 {
   const before = clone(mountain);

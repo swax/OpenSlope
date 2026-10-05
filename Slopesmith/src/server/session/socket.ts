@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
+import { constants as zlib, deflateRawSync, inflateRawSync } from 'node:zlib';
 
 /**
  * The WebSocket half of the session channel (docs/038), spoken directly over the upgraded socket.
@@ -14,6 +15,16 @@ import type { Duplex } from 'node:stream';
  * Everything below is deliberately strict about what a client may send: a frame that is not masked, a
  * reserved opcode, or a message over the cap closes the connection rather than being interpreted generously.
  * A browser never sends any of them, so a peer that does is either broken or probing.
+ *
+ * ## Compression
+ *
+ * Every browser offers `permessage-deflate` (RFC 7692), and the channel's traffic is JSON that shrinks well —
+ * an awareness batch about sevenfold, a whole mountain about threefold. It is accepted in its simplest shape:
+ * NO context takeover in either direction, so every message is compressed and decompressed on its own. That
+ * keeps both directions stateless, which is what lets a broadcast be compressed ONCE and the same bytes go to
+ * every peer that negotiated it, exactly as uncompressed frames already are; and it lets a client's message be
+ * inflated with a one-shot call that carries the same size cap as an uncompressed one. Small messages travel
+ * uncompressed even to a peer that negotiated it, since RFC 7692 decides per message.
  */
 
 /** The constant RFC 6455 appends to the client's key before digesting it. Its only job is to prove the server
@@ -29,13 +40,41 @@ const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
 
 const OPCODE = { continuation: 0x0, text: 0x1, binary: 0x2, close: 0x8, ping: 0x9, pong: 0xa } as const;
 
+/** RSV1, which `permessage-deflate` names "Per-Message Compressed". */
+const COMPRESSED = 0x40;
+/** The response that accepts compression: stateless in both directions (see *Compression* above). A server
+ *  MAY ask both of these whether or not the client offered them, and a client MUST support both (RFC 7692
+ *  §7.1.1). */
+const DEFLATE_RESPONSE = 'permessage-deflate; server_no_context_takeover; client_no_context_takeover';
+/** The empty stored block a sync flush ends with. The sender strips it and the receiver puts it back. */
+const DEFLATE_TAIL = Buffer.from([0x00, 0x00, 0xff, 0xff]);
+/** Below this a message goes uncompressed: a register acknowledgement or a pong saves a handful of bytes for
+ *  the cost of a zlib call. An awareness batch or a sync carrying a stroke is above it. */
+const DEFLATE_THRESHOLD = 512;
+/** Fastest level. It gets within a few percent of the default's ratio on this traffic at half the cost, and
+ *  compression runs on the socket thread. */
+const DEFLATE_LEVEL = 1;
+
+/**
+ * One text message encoded for sending, prepared once and shared by every socket it goes to. Both forms are
+ * built on first use and immutable afterwards, so a broadcast that reaches only peers without compression
+ * never compresses, and one that reaches several compresses once.
+ */
+export interface PreparedText {
+  /** The frame for a peer that did not negotiate compression. */
+  readonly plain: Buffer;
+  /** The frame for a peer that did: compressed, or the plain frame when compressing would not pay. */
+  readonly deflated: Buffer;
+}
+
 export interface WebSocketPeer {
   /** Send one text message. Silently does nothing once the peer is closed, so callers broadcasting to a list
    *  never have to check first. */
   send(text: string, options?: WebSocketSendOptions): void;
-  /** Send a frame prepared once for a fleet-wide broadcast. Buffers are immutable after preparation and may
-   * be shared across sockets. */
-  sendPrepared(frame: Buffer, options?: WebSocketSendOptions): void;
+  /** Send a message prepared once for a fleet-wide broadcast, in whichever form this peer negotiated. */
+  sendPrepared(text: PreparedText, options?: WebSocketSendOptions): void;
+  /** Whether this peer negotiated `permessage-deflate`. */
+  readonly compressing: boolean;
   close(code?: number, reason?: string): void;
   readonly closed: boolean;
   onMessage(listener: (text: string) => void): void;
@@ -67,18 +106,69 @@ export function refuseUpgrade(socket: Duplex, status: number, message: string): 
 }
 
 /** One outgoing frame. Server frames are never masked, which is the whole of the server's side of masking. */
-function frame(opcode: number, payload: Buffer): Buffer {
+function frame(opcode: number, payload: Buffer, compressed = false): Buffer {
   const length = payload.length;
   const header = length < 126 ? Buffer.alloc(2) : length < 65536 ? Buffer.alloc(4) : Buffer.alloc(10);
-  header[0] = 0x80 | opcode; // FIN, because nothing here fragments what it sends
+  header[0] = 0x80 | (compressed ? COMPRESSED : 0) | opcode; // FIN, because nothing here fragments what it sends
   if (length < 126) header[1] = length;
   else if (length < 65536) { header[1] = 126; header.writeUInt16BE(length, 2); }
   else { header[1] = 127; header.writeBigUInt64BE(BigInt(length), 2); }
   return Buffer.concat([header, payload]);
 }
 
+/** One message's payload compressed on its own, as `permessage-deflate` without context takeover carries it:
+ *  a raw DEFLATE stream ended by a sync flush, with that flush's empty block removed (RFC 7692 §7.2.1). */
+function deflatePayload(payload: Buffer): Buffer {
+  const deflated = deflateRawSync(payload, { level: DEFLATE_LEVEL, finishFlush: zlib.Z_SYNC_FLUSH });
+  return deflated.subarray(0, deflated.length - DEFLATE_TAIL.length);
+}
+
 /** Encode fleet-wide text once instead of allocating and concatenating an identical frame per recipient. */
-export const prepareWebSocketText = (text: string): Buffer => frame(OPCODE.text, Buffer.from(text, 'utf8'));
+export function prepareWebSocketText(text: string): PreparedText {
+  const payload = Buffer.from(text, 'utf8');
+  let plain: Buffer | undefined;
+  let deflated: Buffer | undefined;
+  const prepared: PreparedText = {
+    get plain() { return (plain ??= frame(OPCODE.text, payload)); },
+    get deflated() {
+      if (deflated) return deflated;
+      const packed = payload.length >= DEFLATE_THRESHOLD ? deflatePayload(payload) : null;
+      deflated = packed && packed.length < payload.length ? frame(OPCODE.text, packed, true) : prepared.plain;
+      return deflated;
+    },
+  };
+  return prepared;
+}
+
+/**
+ * Whether a handshake's offers include `permessage-deflate` in a shape this server can accept.
+ *
+ * Offers are tried in the client's order and the first acceptable one wins. Acceptable means its parameters
+ * are ones the stateless response above satisfies: either context-takeover flag (both are granted anyway) and
+ * `client_max_window_bits`, which only limits how the client compresses — any window inflates under the
+ * default one. An offer that limits the SERVER's window is declined rather than honoured; no browser sends one.
+ * Malformed or duplicated parameters decline the offer they are in, which is what the RFC asks.
+ */
+export function acceptsDeflate(header: string | string[] | undefined): boolean {
+  const offers = (Array.isArray(header) ? header.join(',') : header ?? '').split(',');
+  return offers.some(offer => {
+    const [name, ...params] = offer.split(';').map(part => part.trim());
+    if (name.toLowerCase() !== 'permessage-deflate') return false;
+    const seen = new Set<string>();
+    return params.filter(Boolean).every(param => {
+      const cut = param.indexOf('=');
+      const key = (cut < 0 ? param : param.slice(0, cut)).trim().toLowerCase();
+      const value = cut < 0 ? null : param.slice(cut + 1).trim().replace(/^"(.*)"$/, '$1');
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      if (key === 'server_no_context_takeover' || key === 'client_no_context_takeover') return value === null;
+      if (key === 'client_max_window_bits') {
+        return value === null || (/^\d+$/.test(value) && Number(value) >= 8 && Number(value) <= 15);
+      }
+      return false;
+    });
+  });
+}
 
 /**
  * Complete the handshake and hand back the peer.
@@ -94,8 +184,11 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
     refuseUpgrade(socket, 400, 'This endpoint speaks WebSocket version 13.');
     return null;
   }
+  const deflate = acceptsDeflate(req.headers['sec-websocket-extensions']);
   socket.write('HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\n'
-    + `sec-websocket-accept: ${acceptKey(key)}\r\n\r\n`);
+    + `sec-websocket-accept: ${acceptKey(key)}\r\n`
+    + (deflate ? `sec-websocket-extensions: ${DEFLATE_RESPONSE}\r\n` : '')
+    + '\r\n');
   // Presence and lease frames are tiny and latency is the whole point of a channel, so they go out rather
   // than waiting for a full segment.
   (socket as { setNoDelay?: (on: boolean) => void }).setNoDelay?.(true);
@@ -104,9 +197,11 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
   const closeListeners: Array<() => void> = [];
   let closed = false;
   let pending: Buffer = head?.length ? Buffer.from(head) : Buffer.alloc(0);
-  /** An interrupted message: the opcode it started with and the fragments seen so far. */
+  /** An interrupted message: the opcode it started with, whether its first frame said it was compressed, and
+   *  the fragments seen so far. */
   let fragments: Buffer[] = [];
   let fragmentOpcode = 0;
+  let fragmentCompressed = false;
   let fragmentBytes = 0;
   let backpressured = false;
   const coalesced = new Map<string, Buffer>();
@@ -131,12 +226,25 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
     finish();
   }
 
-  function deliver(opcode: number, payload: Buffer): void {
-    if (opcode === OPCODE.text) {
-      const text = payload.toString('utf8');
-      for (const listener of messageListeners) listener(text);
+  function deliver(opcode: number, payload: Buffer, compressed: boolean): void {
+    // A binary message is not something this channel speaks; it is dropped rather than guessed at — before
+    // anything is spent inflating it.
+    if (opcode !== OPCODE.text) return;
+    let bytes = payload;
+    if (compressed) {
+      // No client context takeover was granted, so the message inflates on its own. The output cap is the same
+      // one an uncompressed message meets, which is what stops a few kilobytes inflating into gigabytes.
+      try {
+        bytes = inflateRawSync(Buffer.concat([payload, DEFLATE_TAIL]),
+          { finishFlush: zlib.Z_SYNC_FLUSH, maxOutputLength: MAX_MESSAGE_BYTES });
+      } catch (error) {
+        if ((error as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') fail(1009, 'message too large');
+        else fail(1007, 'compressed message could not be read');
+        return;
+      }
     }
-    // A binary message is not something this channel speaks; it is dropped rather than guessed at.
+    const text = bytes.toString('utf8');
+    for (const listener of messageListeners) listener(text);
   }
 
   function sendFrame(prepared: Buffer, options: WebSocketSendOptions = {}): void {
@@ -158,6 +266,11 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
     try { backpressured = !socket.write(prepared); } catch { finish(); }
   }
 
+  function sendPrepared(text: PreparedText, options?: WebSocketSendOptions): void {
+    if (closed) return;
+    sendFrame(deflate ? text.deflated : text.plain, options);
+  }
+
   function flushCoalesced(): void {
     if (closed) return;
     backpressured = false;
@@ -175,9 +288,16 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
       if (closed || pending.length < 2) return;
       const first = pending[0];
       const second = pending[1];
-      if (first & 0x70) { fail(1002, 'reserved bits are set'); return; }
       const fin = (first & 0x80) !== 0;
       const opcode = first & 0x0f;
+      // RSV1 means "compressed" once compression was negotiated, and nothing at all otherwise. It may only
+      // stand on the first frame of a data message: never on a control frame or a continuation (RFC 7692 §6.1).
+      const compressed = (first & COMPRESSED) !== 0;
+      if (first & (deflate ? 0x30 : 0x70)) { fail(1002, 'reserved bits are set'); return; }
+      if (compressed && (opcode === OPCODE.continuation || (opcode & 0x08) !== 0)) {
+        fail(1002, 'only the first frame of a data message may be compressed');
+        return;
+      }
       const masked = (second & 0x80) !== 0;
       let length = second & 0x7f;
       let at = 2;
@@ -212,15 +332,16 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
         fragments.push(payload);
         if (!fin) continue;
         const whole = Buffer.concat(fragments);
-        const started = fragmentOpcode;
-        fragments = []; fragmentOpcode = 0; fragmentBytes = 0;
-        deliver(started, whole);
+        const started = fragmentOpcode, startedCompressed = fragmentCompressed;
+        fragments = []; fragmentOpcode = 0; fragmentCompressed = false; fragmentBytes = 0;
+        deliver(started, whole, startedCompressed);
         continue;
       }
       if (opcode !== OPCODE.text && opcode !== OPCODE.binary) { fail(1002, `unknown opcode ${opcode}`); return; }
-      if (fin) { deliver(opcode, payload); continue; }
+      if (fin) { deliver(opcode, payload, compressed); continue; }
       fragments = [payload];
       fragmentOpcode = opcode;
+      fragmentCompressed = compressed;
       fragmentBytes = payload.length;
     }
   }
@@ -241,8 +362,9 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
 
   return {
     get closed() { return closed; },
-    send: (text, options) => sendFrame(prepareWebSocketText(text), options),
-    sendPrepared: sendFrame,
+    get compressing() { return deflate; },
+    send: (text, options) => sendPrepared(prepareWebSocketText(text), options),
+    sendPrepared,
     close(code = 1000, reason = ''): void { fail(code, reason); },
     onMessage(listener) { messageListeners.push(listener); },
     onClose(listener) { closeListeners.push(listener); },

@@ -1,5 +1,6 @@
 import type { Role } from '../accounts/policy';
 import type { PlayerPose } from '../../core/session/player-pose';
+import type { PreparedText } from './socket';
 
 /**
  * Who is on which map, what each of them is looking at, and what they are touching (docs/038, docs/039).
@@ -134,7 +135,7 @@ export interface LiveSession {
   docVersion?: number;
   coreVersion?: string;
   send(message: unknown): void;
-  sendPrepared(frame: Buffer, coalesceKey?: string): void;
+  sendPrepared(frame: PreparedText, coalesceKey?: string): void;
   close(code?: number, reason?: string): void;
 }
 

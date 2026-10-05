@@ -183,10 +183,46 @@ function keyable(what: string, id: string | undefined, forbidden?: string): stri
   return id;
 }
 
+/**
+ * Register keys already built for one id array, so a pass over the registers reuses the same key strings
+ * rather than concatenating and rehashing a fresh one per corner and face every time.
+ *
+ * A shared tab compares every register at the coalescing rate while anybody edits, and the keys are what
+ * every one of those comparisons looks up by. Reuse is checked per entry against the id the key was built
+ * from, so an id rewritten in place rebuilds exactly its own key and nothing stale can ever be handed out.
+ */
+interface KeyRow {
+  ids: (string | undefined)[];
+  keys: (RegisterKey | undefined)[];
+}
+
+const vertexKeyRows = new WeakMap<readonly string[], KeyRow>();
+const quadKeyRows = new WeakMap<readonly string[], KeyRow>();
+
+function keyRow(rows: WeakMap<readonly string[], KeyRow>, ids: readonly string[]): KeyRow {
+  let row = rows.get(ids);
+  if (!row) { row = { ids: [], keys: [] }; rows.set(ids, row); }
+  return row;
+}
+
+/** The key held at one slot of a row, or undefined when it was built from another id than the one there now. */
+const heldKey = (row: KeyRow, slot: number, id: string): RegisterKey | undefined =>
+  row.ids[slot] === id ? row.keys[slot] : undefined;
+
+function holdKey(row: KeyRow, slot: number, id: string, key: RegisterKey): RegisterKey {
+  row.ids[slot] = id;
+  row.keys[slot] = key;
+  return key;
+}
+
 function emitVertices(doc: QuadMeshDoc, emit: Emit, from = 0, to = doc.vertexIds.length): void {
-  const last = Math.min(to, doc.vertexIds.length);
+  const ids = doc.vertexIds;
+  const row = keyRow(vertexKeyRows, ids);
+  const last = Math.min(to, ids.length);
   for (let at = Math.max(from, 0); at < last; at++) {
-    emit(vertexRegister(doc.vertexIds[at]), readVertex(doc.vertices, at));
+    const id = ids[at];
+    const key = heldKey(row, at, id) ?? holdKey(row, at, id, vertexRegister(id));
+    emit(key, readVertex(doc.vertices, at));
   }
 }
 
@@ -202,26 +238,90 @@ function emitVertices(doc: QuadMeshDoc, emit: Emit, from = 0, to = doc.vertexIds
 function emitHandles(doc: QuadMeshDoc, emit: Emit, from = 0, to = Infinity): void {
   const handles = doc.edgeHandles;
   if (!handles) return;
-  const named: [RegisterKey, V3][] = [];
+  for (const crease of handleOrder(doc.vertexIds, handles)) {
+    if (crease.from < from || crease.from >= to) continue;
+    emit(crease.register, handles[crease.key]);
+  }
+}
+
+/** One crease as `emitHandles` addresses it: its index-named channel key, the id-named register it is, and the
+ *  ids that register was built from — kept so a reuse can confirm the mesh still names them. */
+interface NamedCrease {
+  key: string;
+  register: RegisterKey;
+  from: number;
+  to: number;
+  fromId: string;
+  toId: string;
+}
+
+/** The creases of one `edgeHandles` channel in register-key order, and exactly what that order was read from. */
+interface HandleOrder {
+  vertexIds: readonly string[];
+  vertexCount: number;
+  /** The channel's keys in the order it enumerated them, so a key added or removed is a mismatch. */
+  keys: string[];
+  named: NamedCrease[];
+}
+
+const handleOrders = new WeakMap<object, HandleOrder>();
+
+/**
+ * The creases in register-key order, parsed and sorted once per shape of the channel rather than per call.
+ *
+ * Every pass over a mountain's registers — the 25 Hz comparison a shared tab runs while anybody drags, a drift
+ * digest, a section repair — walks the creases, and re-parsing and re-sorting every key each time was the
+ * largest single cost of that comparison. The order is a pure function of the channel's KEYS and of the ids
+ * those indices name, never of the values, so it is reused only after confirming both: the keys enumerate
+ * exactly as they did, and every crease's two indices still name the ids its register was built from. Anything
+ * else — a crease added or removed, a topology edit, an id array rewritten in place — recomputes it, so the
+ * answer is always the one a fresh parse and sort would give.
+ */
+function handleOrder(vertexIds: readonly string[], handles: Record<string, V3>): NamedCrease[] {
+  const held = handleOrders.get(handles);
+  if (held && held.vertexIds === vertexIds && held.vertexCount === vertexIds.length && sameKeys(handles, held.keys)
+    && held.named.every(crease => vertexIds[crease.from] === crease.fromId && vertexIds[crease.to] === crease.toId)) {
+    return held.named;
+  }
+  const keys: string[] = [];
+  const named: NamedCrease[] = [];
   for (const key in handles) {
+    keys.push(key);
     const ends = directedEdgeEnds(key);
     if (!ends) throw new Error(`This mountain carries a crease under a key that names no edge: ${key}`);
-    const at = Number(ends[0]);
-    const fromId = doc.vertexIds[at], toId = doc.vertexIds[Number(ends[1])];
-    if (fromId === undefined || toId === undefined || at < from || at >= to) continue;
-    named.push([handleRegister(fromId, toId), handles[key]]);
+    const from = Number(ends[0]), to = Number(ends[1]);
+    const fromId = vertexIds[from], toId = vertexIds[to];
+    if (fromId === undefined || toId === undefined) continue;
+    named.push({ key, register: handleRegister(fromId, toId), from, to, fromId, toId });
   }
-  named.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-  for (const [key, value] of named) emit(key, value);
+  named.sort((a, b) => a.register < b.register ? -1 : a.register > b.register ? 1 : 0);
+  handleOrders.set(handles, { vertexIds, vertexCount: vertexIds.length, keys, named });
+  return named;
+}
+
+/** Whether a channel still enumerates exactly these keys, in this order. */
+function sameKeys(channel: Record<string, unknown>, keys: readonly string[]): boolean {
+  let at = 0;
+  for (const key in channel) {
+    if (keys[at] !== key) return false;
+    at++;
+  }
+  return at === keys.length;
 }
 
 function emitQuads(doc: QuadMeshDoc, emit: Emit, from = 0, to = doc.quadIds.length): void {
   const record = doc as unknown as Record<string, Record<number, unknown> | undefined>;
-  const last = Math.min(to, doc.quadIds.length);
+  const ids = doc.quadIds;
+  const row = keyRow(quadKeyRows, ids);
+  const width = QUAD_CHANNELS.length;
+  const last = Math.min(to, ids.length);
   for (let at = Math.max(from, 0); at < last; at++) {
-    for (const [field, channel] of QUAD_CHANNELS) {
+    for (let index = 0; index < width; index++) {
+      const [field, channel] = QUAD_CHANNELS[index];
       const value = record[channel]?.[at];
-      if (value !== undefined) emit(quadRegister(doc.quadIds[at], field), value);
+      if (value === undefined) continue;
+      const id = ids[at], slot = at * width + index;
+      emit(heldKey(row, slot, id) ?? holdKey(row, slot, id, quadRegister(id, field)), value);
     }
   }
 }
