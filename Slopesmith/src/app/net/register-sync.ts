@@ -1034,10 +1034,11 @@ export function createRegisterSync(deps: {
       claiming = null;
       if (unsettled) resyncing = true;
       if (missed.document) {
-        // A fresh page starts its room sequence at zero, so a room whose retained tail begins later answers
-        // with the whole mountain. Very often that is the same durable snapshot boot just rendered. Rebase the
-        // replica without replacing the live object in that case: replacing an identical document would make
-        // the editor display its full progressive loader again for a mountain that did not change.
+        // The room answers with the whole mountain when its log cannot reach back to the sequence this tab named:
+        // a tail that has moved on, an outside write, or a sequence from an earlier room on this map. Very often
+        // that is the same document this tab already renders. Rebase the replica without replacing the live
+        // object in that case: replacing an identical document would make the editor display its full
+        // progressive loader again for a mountain that did not change.
         if (adoptChanged(missed.document)) deps.onApplied?.('document');
       } else if (!unsettled) landRoomSteps(steps); // which asks for the document itself if a step fails
       const settle = () => { if (unsettled && resyncing) resync(); };

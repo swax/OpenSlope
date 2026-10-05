@@ -682,13 +682,15 @@ export function createSessionChannel(deps: {
       startActivityTracking();
       connect();
     },
-    /** Which map this tab is on. Presence is keyed by it, and so is everything the room relays. */
-    watch(projectId: string | null, from = 0): void {
+    /** Which map this tab is on. Presence is keyed by it, and so is everything the room relays. `from` is the
+     *  room sequence the replica's document stands at, when it is known — 0 included, which is a room's start —
+     *  so the room hands back whatever it sequenced after that document rather than joining it at the head. */
+    watch(projectId: string | null, from?: number): void {
       if (watching === projectId) return;
       watching = projectId;
-      at = from;
+      at = from ?? 0;
       lastScreenState = '';
-      if (from) rewatch();
+      if (from !== undefined) rewatch();
       else {
         catchingUp = null;
         post({ t: 'watch', projectId, ...versions() });

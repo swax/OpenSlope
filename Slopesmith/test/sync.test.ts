@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { forgetAccounts } from '../src/server/accounts/store';
-import { configureCheckpoints } from '../src/server/projects';
+import { configureCheckpoints, openProject } from '../src/server/projects';
 import { configureSessions, forgetSessions, sessionById } from '../src/server/session/presence';
 import { configureRooms, forgetRooms, roomFor } from '../src/server/session/room';
 import { startApiService, type ApiService } from '../src/server/main';
@@ -132,7 +132,9 @@ const opened: Client[] = [];
 /** A frame's size on the wire, as the channel serialises it. */
 const frameBytes = (message: unknown): number => JSON.stringify(message).length;
 
-async function connect(name: string, projectId: string, document: EditDoc): Promise<Client> {
+/** A replica on the map. Given `from`, it joins the way a page opens a map: holding the document it loaded at
+ *  that room sequence before the room answers, and caught up with whatever the room sequenced after it. */
+async function connect(name: string, projectId: string, document: EditDoc, from?: number): Promise<Client> {
   const held = {
     name,
     doc: document,
@@ -228,9 +230,15 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
   };
   channel.start();
   await until(() => channel.isOpen(), `${name} to connect`);
-  channel.watch(projectId);
-  await until(() => joined, `${name} to join the room`);
-  sync.adopt(held.doc);
+  if (from === undefined) {
+    channel.watch(projectId);
+    await until(() => joined, `${name} to join the room`);
+    sync.adopt(held.doc);
+  } else {
+    sync.adopt(held.doc); // main.ts `joinMap`: the replica's base is set before the room says anything
+    channel.watch(projectId, from);
+    await until(() => held.caughtUp.length > 0, `${name} to be caught up`);
+  }
   // Getters rather than a spread: every field below is read after the fact, and a copy taken now would be a
   // copy of what the replica looked like before the test did anything to it.
   const client: Client = {
@@ -294,11 +302,17 @@ async function idle(clients: readonly Client[], ms: number): Promise<void> {
   }
 }
 
-/** The document as the service now holds it — what a fresh participant would load. */
-async function serverDocument(projectId: string): Promise<EditDoc> {
+/** The map as a fresh page opens it: the room's live document while a room is open, the file otherwise, and the
+ *  room sequence that document stands at. */
+async function pageLoad(projectId: string): Promise<{ document: EditDoc; at: number }> {
   const res = await fetch(`http://127.0.0.1:${service!.port}/api/projects/${projectId}`);
-  return (await res.json() as { document: EditDoc }).document;
+  return await res.json() as { document: EditDoc; at: number };
 }
+
+const serverDocument = async (projectId: string): Promise<EditDoc> => (await pageLoad(projectId)).document;
+
+/** What the file holds, which is not what a page is handed while a room is open. */
+const storedDocument = async (projectId: string): Promise<EditDoc> => (await openProject(projectId)).document;
 
 /** The stored document, once it says what it is being asked about. The room writes its snapshots on a cadence
  *  rather than per change, so what the file holds catches up a moment after the replicas do. */
@@ -306,7 +320,7 @@ async function storedOnce(projectId: string, test: (doc: EditDoc) => boolean, wh
   ms = 5_000): Promise<EditDoc> {
   const deadline = Date.now() + ms;
   for (;;) {
-    const doc = await serverDocument(projectId);
+    const doc = await storedDocument(projectId);
     if (test(doc)) return doc;
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await wait(40);
@@ -673,9 +687,8 @@ try {
     'the receiver applied the delta onto its own document and holds exactly the claimant\'s structure');
 
   // ---- a replica away across a topology edit is caught up from the log, not handed the mountain ----
-  // Starts from the room's own document: the stored snapshot can lag the room by a write, and a replica that
-  // joins holding less than the sequence it is handed would be caught up from the wrong place.
-  const away = await connect('dee', projectId, structuredClone(roomFor(projectId)!.doc));
+  const awayPage = await pageLoad(projectId);
+  const away = await connect('dee', projectId, awayPage.document, awayPage.at);
   await idle([away], 120);
   away.channel.close();
   away.sync.disconnect();
@@ -690,6 +703,58 @@ try {
   check(canonicalJson(structuralDocument(away.doc)) === canonicalJson(structuralDocument(winner.doc)),
     'and lands on exactly the structure everybody else holds');
   away.close();
+
+  // ---- a page opened mid-session holds the room's document, and joins from the sequence it stands at ----
+  //
+  // The file can lag the room by a snapshot write. A page used to load the file and join at the room's head, so
+  // it held less than the sequence it named: a topology edit it made in that window was built on a structure
+  // the room no longer had, failed its hash and was answered with the mountain. The room's writer is held here
+  // so the lag is exactly one topology edit, rather than however long a write happens to take.
+  const liveRoom = roomFor(projectId)!;
+  while (liveRoom.writing) await liveRoom.writing; // one already queued could run after the delete and write it
+  let releaseWriter = () => {};
+  liveRoom.writing = new Promise<void>(done => { releaseWriter = done; });
+  const unwritten = winner.doc.quadIds[winner.doc.quads.length - 1];
+  const unwrittenCut = applyMeshDelete(winner.doc, { quads: [winner.doc.quads.length - 1] });
+  if (unwrittenCut.ok) winner.doc = unwrittenCut.doc;
+  winner.render();
+  winner.sync.flush();
+  await until(() => !liveRoom.doc.quadIds.includes(unwritten), 'the room to take the delete');
+  const lagging = await storedDocument(projectId);
+  const page = await pageLoad(projectId);
+  check(lagging.quadIds.includes(unwritten),
+    'the file still holds a patch the room has deleted: its snapshot is behind by one topology edit');
+  check(page.at === liveRoom.at && !page.document.quadIds.includes(unwritten)
+    && canonicalJson(structuralDocument(page.document)) === canonicalJson(structuralDocument(liveRoom.doc)),
+    'a page opening the map is handed the room\'s live document and the sequence it stands at, not the file');
+  const fresh = await connect('una', projectId, page.document, page.at);
+  check(fresh.caughtUp.length === 1 && fresh.caughtUp[0].steps && !fresh.caughtUp[0].document
+    && !fresh.sent.some(entry => entry.kind === 'fetch'),
+    'and joins from that sequence, so the room has nothing to replay over it and the page asks for nothing');
+  // Away from the end of the mesh, where the patch the file still holds is: one the page and the room both have.
+  const freshCut = applyMeshDelete(fresh.doc, { quads: [Math.floor(fresh.doc.quads.length / 2)] });
+  if (freshCut.ok) fresh.doc = freshCut.doc;
+  fresh.render();
+  fresh.sync.flush();
+  await until(() => fresh.claims.length > 0, 'the fresh page\'s claim to resolve');
+  check(freshCut.ok && fresh.claims[0].ok && fresh.sent.filter(entry => entry.kind === 'claim').length === 1,
+    'a topology edit made straight after opening lands on the room\'s structure: the claim wins, instead of '
+    + 'failing its hash and being answered with the whole mountain');
+  await until(() => [winner, loser].every(other =>
+    canonicalJson(structuralDocument(other.doc)) === canonicalJson(structuralDocument(fresh.doc))),
+  'the fresh page\'s edit to reach everybody');
+  releaseWriter();
+  await storedOnce(projectId, doc => doc.quadIds.length === fresh.doc.quadIds.length,
+    'the room to write both deletes once its writer is free');
+  fresh.close();
+
+  // A room counts from 0 each time it opens, so a sequence it never reached was handed out by an earlier room
+  // on this map — a page that opened it just before that room closed. Only the document can catch that up.
+  const stray = await connect('eve', projectId, structuredClone(page.document), liveRoom.at + 5);
+  check(stray.caughtUp.length === 1 && stray.caughtUp[0].document
+    && canonicalJson(structuralDocument(stray.doc)) === canonicalJson(structuralDocument(liveRoom.doc)),
+    'a page naming a sequence beyond the room\'s head is caught up with the document, not told it missed nothing');
+  stray.close();
 
   // ---- a replica whose structure drifted cannot apply a delta, and resyncs at once ----
   const drift = loser.doc.quads.findIndex((_, at) => at > 0 && !loser.doc.quadPaint?.[at] && !loser.doc.quadTex?.[at]);

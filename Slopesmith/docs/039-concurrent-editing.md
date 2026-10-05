@@ -406,9 +406,25 @@ any buffered relay sequenced after them. In practice there are none, because eve
 by the catch-up. A join that fails answers with `error` instead of `caught-up`. That ends the buffering and
 applies the buffered relays in order, leaving the drift check to settle the rest.
 
-A fresh page catches up from sequence 0 over a stored snapshot that may already contain some topology steps.
-Replaying one fails its hash and falls back to the whole document. That costs no more than before, when any
-topology change since the room opened sent the whole document anyway.
+A page opens a map at a sequence. The answers it opens one from carry `at` beside the document. Those are
+`GET /api/projects/:id`, `GET /api/projects/current` and `POST /api/projects/:id/activate`:
+
+- **While a room is open**, the document is the room's own copy and `at` is the room's head. The stored
+  snapshot can lag the room by one write. A page that loaded it and joined at the head would hold less than the
+  sequence it named, and its first topology claim would be built on a structure the room no longer has.
+- **With no room open**, the document is the stored one and `at` is 0, where the room that opens from it
+  starts.
+
+The page watches from `at`, so its catch-up holds only what the room sequenced after the document it loaded.
+Nothing it already holds is replayed over it. A page used to catch up from sequence 0 over a snapshot that
+could already hold some of the log's topology steps, and each of those failed its hash and fell back to the
+whole document. The page installs the document as received, like anything else the room sends (see
+*Receivers*). A map this tab created, imported or duplicated is served without `at`, and joins at the head
+as before.
+
+A room counts from 0 each time it opens. A sequence beyond its head therefore came from an earlier room on
+this map: a page that loaded just before that room closed, or a tab that outlived a restart. Nothing in this
+room's log is measured from it, so that catch-up is the document.
 
 #### Receivers
 
@@ -565,12 +581,12 @@ The claim, the relay, the rejection and the catch-up all change shape, so `CORE_
   - each arrival counts as structural, so it drops everyone's topology undo.
 
   A fix needs a non-structural update that takes no stale-base sequence.
-- **Handing a fresh page the live document with its sequence.** A page loads the stored snapshot, which can
-  lag the room by one snapshot write, and then joins at the room's head. It can therefore hold less than the
-  sequence it claims until its idle drift check repairs it. A topology claim it makes in that window fails the
-  hash and is answered with the document. The old whole-document claim would instead have overwritten what it
-  missed. Loading the room's live document along with its sequence would close this window, and would also
-  avoid the replay described under catch-up.
+- **A sequence from an earlier room that the next room has already passed.** A page that loads a map at
+  sequence N just before its room closes may join a reopened room that is already past N. It is then caught
+  up from N in the new room's log and misses that room's first N changes until its idle drift check. A
+  topology step among them fails its hash and falls back to the document. A page that loads the stored map
+  before any room opens, and then misses an outside write that replaces it, is left behind the same way.
+  Telling rooms apart needs an identity per room carried with the sequence.
 - **Rendering a topology change incrementally.** A renumbering still re-tessellates. Stage 6 owns that.
 
 #### Tests
@@ -592,7 +608,10 @@ is `{}` on one side and absent on the other. The digest ignores both.
   - catches up a third replica that reconnects across a topology edit, from the log;
   - forces a structural divergence to show the resync;
   - writes a register the claimant also sets in its claim, and shows that every replica ends on the room's
-    value.
+    value;
+  - opens a page while the stored snapshot lags the room by a topology edit. The page is handed the room's
+    document and sequence, joins with nothing replayed, and claims at once without a whole-document answer.
+    A page naming a sequence beyond the room's head is caught up with the document.
 - `test/sync-context.test.ts`: the relay ignored during an outstanding claim, the single rejection notice, the
   rewind of an unclaimed local edit, a claim outstanding across a disconnect, the skip of an in-flight register
   and its refused exception, and history keeping register entries while dropping whole-document entries
