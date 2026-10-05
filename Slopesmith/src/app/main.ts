@@ -2691,6 +2691,7 @@ function setJukeboxVideoEnabled(enabled: boolean): void {
 const session = createSessionChannel({
   clientId: editorClientId,
   deviceLabel: editorDeviceLabel,
+  replica: registerSync.replica,
   // Presence moved, so the roster's online column and everybody's open map moved with it.
   onPresence: maps => { presenceByMap = maps; usersMode.refresh(); refreshPeers(); },
   onProfileChanged: () => usersMode.refresh(),

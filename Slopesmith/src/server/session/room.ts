@@ -150,6 +150,16 @@ export interface Room {
   topologyAt: number;
   /** The accepted batches still retained, oldest first, for rebasing a claim onto what landed under it. */
   log: { at: number; changes: RegisterAssignment[] }[];
+  /**
+   * The highest batch number each replica has had answered here, by the name the replica gives itself
+   * (`noteLanded`).
+   *
+   * This is not a clock. Nothing is ordered by it and nothing but the replica's own held batches is compared
+   * against it. It exists because an acknowledgement can die with a socket after its batch has landed, and the
+   * replica then cannot tell that batch from one that never arrived. Replaying a batch that did land would
+   * overwrite whatever anybody wrote over it since.
+   */
+  landed: Map<string, number>;
   /** Changed since the last durable snapshot, and the timer that will take one. */
   since: number;
   timer: ReturnType<typeof setTimeout> | null;
@@ -197,7 +207,7 @@ export async function joinRoom(projectId: string): Promise<Room> {
   const open = openProject(projectId).then(snapshot => {
     const made: Room = {
       projectId, doc: snapshot.document, digest: null, stale: new Set(),
-      at: 0, stamps: new Map(), authors: new Map(), topologyAt: 0, log: [], since: 0, timer: null,
+      at: 0, stamps: new Map(), authors: new Map(), topologyAt: 0, log: [], landed: new Map(), since: 0, timer: null,
       writing: null, wrote: snapshot.project.revision,
     };
     rooms.set(projectId, made);
@@ -284,6 +294,30 @@ function credit(room: Room, key: RegisterKey, held: RegisterValue, value: Regist
   for (const field of objectFieldRegisters(key, held, value)) room.authors.delete(field);
   room.authors.set(key, by);
 }
+
+/** How many replicas a room keeps a landed batch for. A replica is one page load, so this is far more than one
+ *  session uses. A replica pushed out has a lost acknowledgement replayed, which is what happened before any
+ *  were kept. */
+const LANDED_REPLICAS = 1024;
+
+/**
+ * A replica's batch has been answered.
+ *
+ * One socket is answered in the order it sends and one replica numbers its batches upwards, so the highest batch
+ * answered says every earlier batch from that socket was answered too. That holds per socket rather than per
+ * replica, which is why it is read back when the replica rejoins and before the new socket has sent anything
+ * (`joinMap` in `channel.ts`).
+ */
+export function noteLanded(room: Room, replica: string, batch: number): void {
+  if (!replica || !(batch > 0)) return;
+  const held = room.landed.get(replica) ?? 0;
+  room.landed.delete(replica);                       // re-inserted last, so the oldest replica is pushed out first
+  room.landed.set(replica, Math.max(held, batch));
+  if (room.landed.size > LANDED_REPLICAS) room.landed.delete(room.landed.keys().next().value!);
+}
+
+/** The highest batch a replica has had answered here, or 0 for one this room has not heard from. */
+export const landedFrom = (room: Room, replica: string): number => room.landed.get(replica) ?? 0;
 
 /** The assignments the room has accepted since a given sequence — what a reconnecting participant is caught
  *  up with, or null when the tail no longer reaches back that far and it needs the document instead. */
