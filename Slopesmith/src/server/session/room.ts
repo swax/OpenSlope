@@ -5,8 +5,8 @@ import {
   digestDocument, textHash, updateDigest, TOPOLOGY_SECTION, type DocumentDigest,
 } from '../../core/doc/digest';
 import {
-  applyRegisters, globalRegister, readRegister, sectionRegisters, writeRegister,
-  type RegisterKey, type RegisterValue,
+  applyRegisters, globalRegister, objectFieldOf, objectFieldRegisters, readRegister, sectionRegisters,
+  writeRegister, type RegisterKey, type RegisterValue,
 } from '../../core/doc/registers';
 import {
   ProjectConflictError, onProjectWritten, openProject, saveRoomDocument, type ProjectSnapshot,
@@ -255,7 +255,7 @@ export function assign(room: Room, changes: readonly RegisterAssignment[], by = 
     if (outcome === 'refused') { refused.push(key); continue; }
     if (holdsAlready(held, value)) continue;
     landed.push([key, value]);
-    if (by) room.authors.set(key, by);
+    if (by) credit(room, key, held, value, by);
   }
   // A batch that changed nothing does not move the sequence, so a stale edit for deleted geometry and a
   // re-assertion of what is already there both leave everybody's idea of where the room is exactly where it
@@ -269,6 +269,20 @@ export function assign(room: Room, changes: readonly RegisterAssignment[], by = 
     scheduleSnapshot(room);
   }
   return { at: room.at, landed, retired, refused };
+}
+
+/**
+ * Credit a landed register to whoever landed it.
+ *
+ * An object can be written whole or a field at a time (docs/039), and crediting has to keep "last writer" true
+ * at both grains. A field is credited on its own key. A whole object written — created, replaced or deleted —
+ * makes its writer the last to have written every field of it, so the field credits it supersedes go: what is
+ * left credited to a field is always newer than the object's own credit, which is what lets a revert of the
+ * object's writer leave those fields alone.
+ */
+function credit(room: Room, key: RegisterKey, held: RegisterValue, value: RegisterValue, by: string): void {
+  for (const field of objectFieldRegisters(key, held, value)) room.authors.delete(field);
+  room.authors.set(key, by);
 }
 
 /** The assignments the room has accepted since a given sequence — what a reconnecting participant is caught
@@ -288,6 +302,14 @@ export function registersWrittenBy(room: Room, by: string): RegisterKey[] {
   const wanted = by.trim().toLowerCase();
   if (!wanted) return [];
   return [...room.authors].flatMap(([key, writer]) => writer.toLowerCase() === wanted ? [key] : []);
+}
+
+/** Object fields somebody other than this participant last wrote — what a revert scoped to them keeps, even
+ *  inside an object they last wrote whole, because every such field credit is newer than that write. */
+function fieldsWrittenByOthers(room: Room, by: string): RegisterKey[] {
+  const wanted = by.trim().toLowerCase();
+  return [...room.authors].flatMap(([key, writer]) =>
+    writer.toLowerCase() !== wanted && objectFieldOf(key) ? [key] : []);
 }
 
 /** Everybody the room has credited a register to since it opened — who a revert may be scoped to. */
@@ -315,7 +337,8 @@ export interface RevertRequest {
  */
 export function planRevert(room: Room, was: EditDoc, request: RevertRequest = {}): RegisterAssignment[] {
   const scope: RevertScope = {
-    ...(request.by ? { keys: registersWrittenBy(room, request.by) } : {}),
+    ...(request.by
+      ? { keys: registersWrittenBy(room, request.by), kept: fieldsWrittenByOthers(room, request.by) } : {}),
     ...(request.vertices?.length ? { vertices: request.vertices } : {}),
     ...(request.quads?.length ? { quads: request.quads } : {}),
   };

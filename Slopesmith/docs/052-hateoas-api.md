@@ -166,18 +166,19 @@ response gains `rules: [{matched, keys}]` per rule, and a `where` naming a label
 refused by name before anything lands — a rule is a query, and a query that silently matches nothing reads
 as a successful edit that never happened.
 
-`set` names quad channels only, on purpose. A prop is a whole-object register and this document states there
-is no per-field patch below a register; a rule that could set `pos` on every prop in a section would be that
-patch, arriving through a side door. What placements actually needed was not a patch but a geometric
-operation, which is the other route.
+`set` names quad channels only, on purpose. A rule reaches faces, not objects: one object's fields are
+assigned with `o/<family>.<field>/<id>` keys (docs/039, *Objects*), and a rule that set `pos` on every prop
+in a section would be a bulk object edit nobody has asked for. What placements actually needed was a
+geometric operation, which is the other route.
 
 **`POST …/seat`** takes `{ where, ids, offset }`: props carrying every label in `where`, union the
 placements named in `ids` (a bare `prop:…`/`light:…`/`gem:…`/`rail:…` id, or a whole `o/prop/…` key —
 labels live on props, so `ids` is how the rest join), each sampled with the very sampler `ground` answers
 from and set to `height + offset`. A **rail is seated node by node**, because a rail follows the ground
 along its whole length rather than pivoting about its first point. A point with no surface under it is
-skipped and counted rather than dropped to zero. It reads each placement's whole register, moves it and
-assigns the whole thing back, so it is a geometry call and not a field patch — and it *writes*, which is
+skipped and counted rather than dropped to zero. It reads each placement, moves the points it stands on and
+assigns only the field holding them — `pos`, or a rail's `nodes` — so a person renaming or turning the same
+placement meanwhile keeps their edit. It *writes*, which is
 why `projectAccess` leaves it on the editor side while `ground`, which asks the same sampler the same
 question and changes nothing, stays the one POST exception at viewer.
 
@@ -258,8 +259,8 @@ above}` / `{knot, along, lateral, above}` in the run's own frame — station in 
 same spine the AIP export samples, lateral to the rider's right (the sign `bank` uses); a prop's `yaw`
 may be `"course+90"`, facing the rider's left at that station. `repeat` makes a row of one change — `count`
 and a `step`, or `every`/`until` along the run — with `{i}` in the key and the name; `from` copies another
-register and merges `value` over it (for a *new* key: a copy onto itself would be the per-field patch a
-register does not offer); `shape` on an `o/model` generates a `box`, a gabled `house` shell, a `roof` or a
+register and merges `value` over it (for a *new* key: an object is changed where it stands by assigning
+its fields at `o/<family>.<field>/<id>`); `shape` on an `o/model` generates a `box`, a gabled `house` shell, a `roof` or a
 `panel` in the frame the bake expects. `GET …/course` is the ruler all of this is read against: the run's
 length, each knot's station, and a station table with heading, floor width and ground. The response's
 `intents` block counts what expanded, so twelve lamps read as twelve. The guide gained a *From curl*

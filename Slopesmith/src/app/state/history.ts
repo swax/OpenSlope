@@ -1,5 +1,6 @@
 import type { RegisterAssignment } from '../net/session-channel';
 import type { RegisterStep, RegisterSync } from '../net/register-sync';
+import { objectFamilyOf, type ObjectFamily } from '../../core/doc/registers';
 
 /**
  * Undo / redo as inverse assignments (docs/039).
@@ -62,12 +63,14 @@ export function describeRegisters(keys: readonly string[]): string {
   if (has(key => key.startsWith('q/') && (key.endsWith('/paint') || key.endsWith('/tex') || key.endsWith('/orient')))) {
     return 'Paint terrain';
   }
-  if (has(key => key.startsWith('o/prop/'))) return 'Edit props';
-  if (has(key => key.startsWith('o/rail/'))) return 'Edit rails';
-  if (has(key => key.startsWith('o/gem/'))) return 'Edit gems';
-  if (has(key => key.startsWith('o/light/'))) return 'Edit lights';
-  if (has(key => key.startsWith('o/effect'))) return 'Edit effects';
-  if (has(key => key.startsWith('o/model/') || key.startsWith('o/volume/'))) return 'Edit models';
+  // An object's key names it whole or names one of its fields (docs/039); either way the family is the layer.
+  const family = (...named: ObjectFamily[]) => has(key => named.includes(objectFamilyOf(key) as ObjectFamily));
+  if (family('prop')) return 'Edit props';
+  if (family('rail')) return 'Edit rails';
+  if (family('gem')) return 'Edit gems';
+  if (family('light')) return 'Edit lights';
+  if (family('effect', 'effect-node')) return 'Edit effects';
+  if (family('model', 'volume')) return 'Edit models';
   if (has(key => key === 'g/sun')) return 'Edit sun lighting';
   if (has(key => key === 'g/raceMusic' || key === 'g/raceMusicArrangement')) return 'Edit race music';
   if (has(key => key === 'g/environmentBed')) return 'Edit environment sound';

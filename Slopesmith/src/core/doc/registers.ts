@@ -19,6 +19,7 @@ import { readVertex, writeVertex } from '../mesh/primitives';
  * | Edge handle                             | `h/<from id>><to id>`  | offset             |
  * | Quad attributes, one register per field | `q/<quad id>/<field>`  | paint/tex/…        |
  * | Props, lights, rails, gems, models, volumes, screens, prop lines, effects | `o/<family>/<id>` | the whole object |
+ * | …one field of an existing prop, light, rail, gem, screen or label | `o/<family>.<field>/<id>` | that field |
  * | Course path                             | `course`               | every knot         |
  * | Globals — name, sun, skybox, music, …   | `g/<field>`            | the field's value  |
  *
@@ -76,6 +77,149 @@ export const quadRegister = (quad: string, field: QuadField): RegisterKey =>
 export const objectRegister = (family: ObjectFamily, id: string): RegisterKey =>
   `${OBJECT_PREFIX}${family}/${id}`;
 export const globalRegister = (field: string): RegisterKey => `${GLOBAL_PREFIX}${field}`;
+
+// ---- object fields: assigning part of an object ----------------------------------------------------------
+
+/**
+ * The families whose objects are assigned FIELD BY FIELD once they exist, and the fields of each that only
+ * mean something together (docs/039).
+ *
+ * An object is still one register — that is what the document decomposes into, what a digest hashes and what
+ * a creation or a deletion assigns. What changes is how an edit to an object that already exists travels: as
+ * the top-level fields it changed, `o/<family>.<field>/<id>`, each last-writer-wins on its own. One person
+ * dragging a prop while another renames it then both land, where a whole-object assignment would have let the
+ * later one put back the other's stale value. It also means an edit can no longer bring an object back: a
+ * field assignment for an object the document does not hold is discarded, where re-sending the whole object
+ * would have re-created what somebody had just deleted.
+ *
+ * A linked group is a set of fields that describe ONE thing between them — a prop's asset is its level, model
+ * and name together, a spot light's kind goes with its direction and cone. Whenever any field of a group
+ * changes, every field of the group is sent, so the group always lands whole from one writer and two people
+ * can never leave a prop showing one model under another's name.
+ *
+ * The families left out stay whole-object, and on purpose: a model's vertices and quads index into each other
+ * (`AuthoredModel` — the record is the unit), a particle volume is an imported native record, a prop line's
+ * settings and the props it generated have to come from one writer, and an effect row or node carries a type
+ * its payload is shaped by.
+ */
+const FIELD_FAMILIES: ReadonlyMap<ObjectFamily, readonly (readonly string[])[]> = new Map<ObjectFamily, string[][]>([
+  ['prop', [['level', 'model', 'name', 'group', 'specialKind']]],
+  ['light', [['kind', 'dir', 'cone']]],
+  ['rail', []],
+  ['gem', []],
+  // An attached screen's pose is in its prop's frame, so attachment and pose are one thing; so is its aspect.
+  ['screen', [['prop', 'pos', 'yaw', 'pitch'], ['width', 'height']]],
+  ['label', []],
+]);
+
+/** Fields a key can name: identifiers, minus the object's own id and the names that are not data. */
+const FIELD_NAME = /^[A-Za-z_$][\w$]*$/;
+const UNADDRESSABLE: ReadonlySet<string> = new Set(['id', '__proto__', 'constructor', 'prototype']);
+const addressableField = (field: string): boolean => FIELD_NAME.test(field) && !UNADDRESSABLE.has(field);
+
+/** One field of one object. The field sits beside the family rather than after the id, because ids may carry
+ *  slashes and field names never carry a dot or a slash, so the key always parses one way. */
+export const objectFieldRegister = (family: ObjectFamily, field: string, id: string): RegisterKey =>
+  `${OBJECT_PREFIX}${family}.${field}/${id}`;
+
+/** What an object field key names. */
+export interface ObjectFieldKey {
+  family: ObjectFamily;
+  field: string;
+  id: string;
+  /** The whole-object register the field belongs to. */
+  object: RegisterKey;
+}
+
+/** The parts of an `o/<family>.<field>/<id>` key, or null when the key is not one a document can hold. */
+export function objectFieldOf(key: RegisterKey): ObjectFieldKey | null {
+  if (!key.startsWith(OBJECT_PREFIX)) return null;
+  const cut = key.indexOf('/', OBJECT_PREFIX.length);
+  if (cut < 0) return null;
+  const head = key.slice(OBJECT_PREFIX.length, cut);
+  const dot = head.indexOf('.');
+  if (dot < 0) return null;
+  const family = head.slice(0, dot) as ObjectFamily;
+  const field = head.slice(dot + 1);
+  const id = key.slice(cut + 1);
+  if (!FIELD_FAMILIES.has(family) || !addressableField(field) || !id) return null;
+  return { family, field, id, object: objectRegister(family, id) };
+}
+
+/** The family and id of a whole-object key whose family is assigned field by field, or null. */
+function fieldedObjectOf(key: RegisterKey): { family: ObjectFamily; id: string } | null {
+  if (!key.startsWith(OBJECT_PREFIX)) return null;
+  const cut = key.indexOf('/', OBJECT_PREFIX.length);
+  if (cut < 0) return null;
+  const family = key.slice(OBJECT_PREFIX.length, cut) as ObjectFamily;
+  const id = key.slice(cut + 1);
+  return FIELD_FAMILIES.has(family) && id ? { family, id } : null;
+}
+
+/** Which object family a key addresses, whether it names the whole object or one of its fields. */
+export function objectFamilyOf(key: RegisterKey): ObjectFamily | null {
+  if (!key.startsWith(OBJECT_PREFIX)) return null;
+  const cut = key.indexOf('/', OBJECT_PREFIX.length);
+  if (cut < 0) return null;
+  const head = key.slice(OBJECT_PREFIX.length, cut);
+  const dot = head.indexOf('.');
+  const family = dot < 0 ? head : head.slice(0, dot);
+  return families.has(family) ? family as ObjectFamily : null;
+}
+
+/** The fields of the group `field` belongs to — itself alone when it belongs to none. */
+function linkedFields(family: ObjectFamily, field: string): readonly string[] {
+  return FIELD_FAMILIES.get(family)?.find(group => group.includes(field)) ?? [field];
+}
+
+/** Every field key that has to travel with this one: its linked group's, itself included. */
+export function linkedFieldRegisters(key: RegisterKey): RegisterKey[] {
+  const named = objectFieldOf(key);
+  if (!named) return [key];
+  return linkedFields(named.family, named.field).map(field => objectFieldRegister(named.family, field, named.id));
+}
+
+/** The field keys any of these object values could be holding — what a whole-object write supersedes. */
+export function objectFieldRegisters(key: RegisterKey, ...values: RegisterValue[]): RegisterKey[] {
+  const named = fieldedObjectOf(key);
+  if (!named) return [];
+  const fields = new Set<string>();
+  for (const value of values) {
+    if (isRecord(value)) for (const field of Object.keys(value)) if (addressableField(field)) fields.add(field);
+  }
+  return [...fields].map(field => objectFieldRegister(named.family, field, named.id));
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * The field assignments that take an existing object from `before` to `after`, each as
+ * `[field key, value now, value before]` — or null when the change has to travel as the whole object.
+ *
+ * Whole is the answer for a key whose family is not assigned by field, for values that are not plain records,
+ * and for a change to a field no key can name (its id, or a name that is not an identifier); an object that
+ * appears or disappears is not a change to an existing one and is never asked about. Any field of a linked
+ * group that changed brings the rest of its group along, holding what `after` holds for them — nothing,
+ * where it has nothing, which clears the field on arrival.
+ *
+ * `same` is the caller's own idea of equal values, so a replica and a revert each compare the way they
+ * already do.
+ */
+export function objectFieldChanges(key: RegisterKey, before: RegisterValue, after: RegisterValue,
+  same: (a: unknown, b: unknown) => boolean): [RegisterKey, RegisterValue, RegisterValue][] | null {
+  const named = fieldedObjectOf(key);
+  if (!named || !isRecord(before) || !isRecord(after)) return null;
+  const changed = new Set<string>();
+  for (const field of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (same(before[field], after[field])) continue;
+    if (!addressableField(field)) return null;
+    changed.add(field);
+  }
+  for (const field of [...changed]) for (const linked of linkedFields(named.family, field)) changed.add(linked);
+  return [...changed].map(field =>
+    [objectFieldRegister(named.family, field, named.id), after[field], before[field]]);
+}
 
 /** The run is one register holding every knot: knots are an ordered list of free positions rather than
  *  id-keyed members, and course edits belong to whoever is shaping the run (docs/039, *Ordered data*). */
@@ -449,6 +593,9 @@ export function registerSection(doc: QuadMeshDoc, key: RegisterKey): string | nu
     return at === undefined ? null : chunkSection('quads', at);
   }
   if (key.startsWith(OBJECT_PREFIX)) {
+    // A field is hashed with the object it belongs to, so its section is its family's.
+    const field = objectFieldOf(key);
+    if (field) return `objects/${field.family}`;
     const cut = key.indexOf('/', OBJECT_PREFIX.length);
     const family = cut < 0 ? '' : key.slice(OBJECT_PREFIX.length, cut);
     return families.has(family) ? `objects/${family}` : null;
@@ -522,6 +669,28 @@ function inChannel(owner: Record<string, unknown> | undefined, make: () => Recor
   };
 }
 
+/** Each id-keyed list's id → index, as last built. */
+const idIndexes = new WeakMap<readonly { id?: string }[], Map<string, number>>();
+
+/**
+ * Where an object with this id sits in its list, or -1 — the first one carrying it, as a scan would find.
+ *
+ * Every assignment to an object looks its id up at least twice (what it held, then the write), and a
+ * multi-selection edit names hundreds of objects at the coalescing rate, on the room and on every replica, so
+ * a scan per lookup grows with the map. The index is reused only while it answers correctly: a hit is
+ * confirmed against the slot it names, and a miss — a creation, a deletion, a list changed in place — rebuilds
+ * it before answering. A stale index can therefore cost a rebuild but never give a wrong slot.
+ */
+function indexById(list: readonly { id?: string }[] | undefined, id: string): number {
+  if (!list) return -1;
+  const held = idIndexes.get(list)?.get(id);
+  if (held !== undefined && list[held]?.id === id) return held;
+  const index = new Map<string, number>();
+  list.forEach((object, at) => { if (object.id !== undefined && !index.has(object.id)) index.set(object.id, at); });
+  idIndexes.set(list, index);
+  return index.get(id) ?? -1;
+}
+
 /**
  * A whole-object register in a list keyed by the object's own id: an id the list does not carry is an insert,
  * and assigning nothing is a delete.
@@ -530,9 +699,9 @@ function inChannel(owner: Record<string, unknown> | undefined, make: () => Recor
  * effect node whose graph is not here. Reading never creates the list, so asking about an object a document
  * does not have leaves the document as it was.
  */
-function byIdentity<T>(read: () => T[] | undefined, make: () => T[] | undefined,
-  name: (object: T) => string | undefined, want: string): Register {
-  const at = (): number => read()?.findIndex(object => name(object) === want) ?? -1;
+function byIdentity<T extends { id?: string }>(read: () => T[] | undefined, make: () => T[] | undefined,
+  want: string): Register {
+  const at = (): number => indexById(read(), want);
   return {
     read: () => { const found = at(); return found < 0 ? undefined : read()![found]; },
     write: value => {
@@ -612,7 +781,34 @@ function effectRegister(doc: QuadMeshDoc, family: 'effect' | 'effect-node', path
   if (!node) return null;
   const holder = (list?: EffectRow[]): EffectRow | undefined => list?.find(row => row.id === owner);
   return byIdentity<{ id: string }>(() => holder(rows())?.nodes,
-    () => { const row = holder(rows()); return row && (row.nodes ??= []); }, held => held.id, node);
+    () => { const row = holder(rows()); return row && (row.nodes ??= []); }, node);
+}
+
+/** Where each field-assigned family keeps its objects on a document. */
+const FIELDED_LISTS: Record<string, 'props' | 'lights' | 'rails' | 'gems' | 'screens' | 'labels'> = {
+  prop: 'props', light: 'lights', rail: 'rails', gem: 'gems', screen: 'screens', label: 'labels',
+};
+
+/**
+ * One field of an object this document holds.
+ *
+ * The object is edited IN PLACE rather than replaced, so a tool or an inspector holding it goes on holding the
+ * object the document has. An object the document does not hold is 'retired': the ordinary reason a field
+ * arrives for one is that somebody deleted it while somebody else was editing it, and the late edit is
+ * discarded quietly — a field assignment never creates an object, which is what keeps a deletion deleted.
+ */
+function objectFieldRegisterOn(doc: QuadMeshDoc, named: ObjectFieldKey): Register | 'retired' {
+  const list = (doc as unknown as Record<string, { id?: string }[] | undefined>)[FIELDED_LISTS[named.family]];
+  const at = indexById(list, named.id);
+  if (at < 0) return 'retired';
+  const object = list![at] as Record<string, unknown>;
+  return {
+    read: () => object[named.field],
+    write: value => {
+      if (value === undefined) delete object[named.field]; else object[named.field] = value;
+      return true;
+    },
+  };
 }
 
 /**
@@ -671,51 +867,53 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
       () => (record[channel] ??= {}) as Record<string, unknown>, String(at));
   }
   if (key.startsWith(OBJECT_PREFIX)) {
+    const fielded = objectFieldOf(key);
+    if (fielded) return objectFieldRegisterOn(doc, fielded);
     const cut = key.indexOf('/', OBJECT_PREFIX.length);
     if (cut < 0) return 'refused';
     const family = key.slice(OBJECT_PREFIX.length, cut) as ObjectFamily;
     const id = key.slice(cut + 1);
     if (!id) return 'refused';
-    const list = <T>(field: 'props' | 'lights' | 'rails' | 'gems' | 'models' | 'particleVolumes' | 'screens' | 'propLines' | 'labels') => ({
+    const list =<T>(field: 'props' | 'lights' | 'rails' | 'gems' | 'models' | 'particleVolumes' | 'screens' | 'propLines' | 'labels') => ({
       read: () => record[field] as T[] | undefined,
       make: () => (record[field] ??= []) as T[],
     });
     switch (family) {
       case 'prop': {
         const held = list<{ id?: string }>('props');
-        return byIdentity(held.read, held.make, prop => prop.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'rail': {
         const held = list<{ id?: string }>('rails');
-        return byIdentity(held.read, held.make, rail => rail.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'model': {
         const held = list<{ id: string }>('models');
-        return byIdentity(held.read, held.make, model => model.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'volume': {
         const held = list<{ id: string }>('particleVolumes');
-        return byIdentity(held.read, held.make, volume => volume.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'light': {
         const held = list<{ id?: string }>('lights');
-        return byIdentity(held.read, held.make, light => light.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'gem': {
         const held = list<{ id?: string }>('gems');
-        return byIdentity(held.read, held.make, gem => gem.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'screen': {
         const held = list<{ id?: string }>('screens');
-        return byIdentity(held.read, held.make, screen => screen.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'prop-line': {
         const held = list<{ id?: string }>('propLines');
-        return byIdentity(held.read, held.make, line => line.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'label': {
         const held = list<{ id: string }>('labels');
-        return byIdentity(held.read, held.make, label => label.id, id);
+        return byIdentity(held.read, held.make, id);
       }
       case 'effect': case 'effect-node':
         return effectRegister(doc, family, id) ?? 'refused';

@@ -415,8 +415,8 @@ try {
   const patched = await call('POST', `/api/projects/${mine}/registers`, { key, body: { rules: [
     { where: { label: 'trail' }, set: { pos: [0, 0, 0] } },
   ] } });
-  check(patched.status === 400 && String(patched.body?.error ?? '').includes('o/prop'),
-    'and one reaching for a prop field is refused with the rule it would have broken: no patch below a register');
+  check(patched.status === 400 && String(patched.body?.error ?? '').includes('o/<family>.<field>/<id>'),
+    'and one reaching for a prop field is refused, pointing at the field keys that do reach one');
 
   const contested = await call('POST', `/api/projects/${mine}/registers`, { key, body: {
     changes: [{ key: `q/${quads[1]}/paint`, value: 9 }],
@@ -478,6 +478,20 @@ try {
   const nobody = await call('POST', `/api/projects/${mine}/seat`, { key, body: { ids: ['prop:nobody'] } });
   check(nobody.status === 400 && String(nobody.body?.error ?? '').includes('prop:nobody'),
     'and an id naming no placement is refused by name rather than counted as a skip');
+
+  // An agent changes part of an existing object with its field key, and the rest of it stands (docs/039).
+  const turned = await call('POST', `/api/projects/${mine}/registers`, { key, body: { changes: [
+    { key: 'o/prop.yaw/prop:seat-a', value: 90 },
+    { key: 'o/prop.pos/prop:never-placed', value: [0, 0, 0] },
+  ] } });
+  const turnedProp = (await call('GET', `/api/projects/${mine}/registers?keys=o/prop/prop:seat-a,o/prop/prop:never-placed`,
+    { key })).body.registers as [string, { yaw: number; pos: number[]; name: string }][];
+  check(turned.status === 200 && turned.body.landed === 1 && turnedProp.length === 1
+    && turnedProp[0][1].yaw === 90 && turnedProp[0][1].name === 'Mdl_Probe'
+    && JSON.stringify(turnedProp[0][1].pos) === JSON.stringify(seatA.pos),
+  'an agent assigns one field of an existing prop by its field key, and every other field of it stands');
+  check(turned.body.retired === 1,
+    'while a field key naming a prop the map does not hold is retired, and creates nothing');
 
   // ---- 5g. intents: the run as a ruler, positions in its terms, rows, variants and shapes ----------------
   const ruler = await call('GET', `/api/projects/${mine}/course?every=100`, { key });
