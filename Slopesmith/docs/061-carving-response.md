@@ -38,10 +38,26 @@ binary; original meter-dependent strength is not reconstructed by this change.
 
 Low-grip assistance is opt-in. It still modifies tilt, self-centering and lateral
 recovery when enabled; disabling it no longer claims that every other controller
-detail is exactly original. VR gaze reference and seat comfort, switch lead selection,
+detail is exactly original. VR gaze input and seat comfort, switch lead selection,
 braking input, contact redirection safeguards and terrain acquisition remain port
 adaptations. Contact/input scheduling still needs a live comparison on identical
 course segments before claiming whole-controller equivalence.
+
+Grounded WebXR gaze feeds the same normalized steer input as desktop controls. The
+heading closure stays referenced to actual travel for both, so looking into a curve
+does not add a second yaw target and scrub extra speed. Manual stick ownership also
+removes gaze from the entire ground carve. Air/rail aiming and headset seat comfort
+are separate. `head-steer.test.ts` compares velocity, position and board heading for
+equivalent head/stick inputs across snow, powder, ice, slopes, switch and reversals.
+
+Slopesmith also supplies a low-speed cruise recovery floor after collisions or skids.
+It fades from full alignment at 0.5 m/s to zero at the 2 m/s switch-latch threshold;
+the ordinary alignment gate still wins whenever it supplies more drive. Holding
+brake suppresses this added assistance. Surface targets, resistance, rider factors
+and the alignment gate at normal riding speeds are unchanged. This recovery policy
+is a port choice, not a claim about retail behavior. `flat-ground-ride.test.ts` covers
+slow sideways/backward recovery on snow, ice and rock in regular and switch stance,
+plus brake suppression and preservation of faster skids and switch transitions.
 
 ## Verification
 

@@ -27,13 +27,13 @@ function floorAt(y = 0, extent = 400): THREE.Mesh {
 }
 
 /** A rider seated at rest on the level floor, facing +Z. `drive: 0` isolates the contact from the cruise term. */
-function seated(drive?: number) {
+function seated(drive?: number, surface = 1) {
   const model = createRideModel({
     spawn: new THREE.Vector3(0, 1, 0), heading: new THREE.Vector3(0, 0, 1), terrain: floorAt(),
-    surfaceOf: () => 1, oobFloorY: -100, keys, stick, drive, onRespawn: () => {},
+    surfaceOf: () => surface, oobFloorY: -100, keys, stick, drive, onRespawn: () => {},
   });
   model.start();
-  model.st.pos.set(0, -groundRestDepth(SNOW), 0);
+  model.st.pos.set(0, -groundRestDepth(SURFACE_ROWS[surface]), 0);
   model.st.vel.set(0, 0, 0);
   model.st.fwd.set(0, 0, 1);
   model.st.contactN.set(0, 1, 0);
@@ -144,12 +144,41 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
     `cruise and resistance settle in balance below the target (net ${balance.toFixed(4)} m/s²)`);
 }
 
-// Alignment is a heading delta in the contact plane, so a SIDEWAYS skid still gets nothing ([Trailmap: 360]).
-// This is the half of the gate riding switch does not touch: 90° across the travel is off the drive's 60° band
-// whichever end of the deck is called the front, so a slide stays a slide.
+// A collision can leave a slow skid above the standstill fallback but below the switch latch. Previously
+// cruise stayed off until drag reduced it below 0.5 m/s: 5–7 seconds from a 1 m/s skid on snow, longer on ice.
+// Recovery should work without steering or boost, on either edge and with either end of the board leading.
+for (const surface of [1, 5, 9]) for (const speed of [0.51, 1, 1.9]) {
+  for (const angle of [-90, 90, 180]) for (const lead of [1, -1] as const) {
+    const model = seated(undefined, surface);
+    model.st.lead = lead;
+    model.st.fwd.set(0, 0, lead); // the ridden direction is +Z for both regular and switch
+    const radians = angle * Math.PI / 180;
+    model.st.vel.set(speed * Math.sin(radians), 0, speed * Math.cos(radians));
+    for (let i = 0; i < 120; i++) model.step(1 / 60);
+    const label = `surface ${surface}, ${speed} m/s, ${angle} degrees, lead ${lead}`;
+    const forward = travel(model) * lead;
+    assert.ok(forward > Math.min(5, SURFACE_ROWS[surface].target * 0.65),
+      `a slow skid rides forward again within 2 s (${label}: ${forward.toFixed(2)} m/s)`);
+    assert.equal(model.st.lead, lead, `recovery preserves the ridden end (${label})`);
+  }
+}
+
+// Holding brake must not add recovery thrust to a slow sideways slide.
 {
   const model = seated();
-  model.st.vel.set(8, 0, 0); // 8 m/s across a +Z heading: square sideways, 90° off both ends
+  model.st.vel.set(1, 0, 0);
+  keys.brake = true;
+  model.step(1 / 60);
+  keys.brake = false;
+  assert.ok(Math.abs(model.st.vel.z) < 1e-6, 'braking suppresses the added low-speed recovery drive');
+}
+
+// Alignment is a heading delta in the contact plane, so a FAST sideways skid still gets nothing ([Trailmap: 360]).
+// This is the half of the gate riding switch does not touch: 90° across the travel is off the drive's 60° band
+// whichever end of the deck is called the front, so a slide stays a slide.
+for (const initialSpeed of [2.1, 8]) {
+  const model = seated();
+  model.st.vel.set(initialSpeed, 0, 0); // across a +Z heading: square sideways, 90° off both ends
   const before = model.st.vel.length();
   model.step(1 / 60);
   assert.ok(model.st.vel.length() <= before + 1e-6,
@@ -159,9 +188,9 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
 // ...and the other half: 180° across the travel is RIDING SWITCH (docs/016), not a dead skid. The lead latches
 // to the end that is actually leading, so the rider keeps the deck pointing where the air left it and rides on.
 // The deck must not whip around to face the travel — that snap-back is the thing switch support removes.
-{
+for (const initialSpeed of [2.1, 8]) {
   const model = seated();
-  model.st.vel.set(0, 0, -8); // 8 m/s backwards under a +Z heading: landed a 180
+  model.st.vel.set(0, 0, -initialSpeed); // backwards under a +Z heading: landed a 180
   model.step(1 / 60);
   assert.equal(model.st.lead, -1, 'travel 180° off the nose hands the lead to the tail');
   assert.ok(model.st.vel.dot(model.st.fwd) <= 0, 'one tick does not flip the board around');

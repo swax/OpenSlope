@@ -32,7 +32,8 @@ export const AIR_H_DRAG = RIDE_AIR_HORIZONTAL_DRAG;
 // [Trailmap: 360] cruise drive: the rider-statistic factor (mid of the traced 0.738–1.015 band) and the cap on
 // the deficit it may chase.
 export const RIDER_DRIVE = RIDE_RIDER_DRIVE, CRUISE_DEFICIT_MAX = RIDE_CRUISE_DEFICIT_MAX;
-/** Contact-plane speed below which the travel heading is unreadable and the board's own heading stands in. */
+/** Full standstill cruise fallback below this contact-plane speed; recovery fades out by SWITCH_LATCH_SPEED.
+ * Port safeguard, not a recovered retail constant. */
 export const CRUISE_HEADING_FLOOR = 0.5;
 
 /**
@@ -52,18 +53,16 @@ export const GROUND_TURN_RATE = RIDE_GROUND_TURN_RATE, AIR_TURN_RATE = RIDE_AIR_
 export const STEER_STRENGTH = RIDE_STEER_STRENGTH, GRIP_SCALE = RIDE_GRIP_SCALE;
 export const BANK_MAX = RIDE_BANK_MAX;                  // [Trailmap: 330] roll = lean · 50°
 /**
- * VR head steering (docs/048) — `no spec constant`, and deliberately so: the engine has no headset, so the spec
+ * VR head steering (docs/016) — `no spec constant`, and deliberately so: the engine has no headset, so the spec
  * traces no gaze reference at all. These three are the SHIPPED VRChat board's authored values
  * (`RideableBoard.headLookDeadzone` / `headLeanFullAngle`, Unity docs/vrchat/017), taken because the point of the
- * WebXR port is that the same mountain steers the same way in both headsets — not because a sibling
- * implementation's inspector outranks the spec. Everything they feed is spec'd: the deadzone and the full-lean
- * angle only shape an intent that then runs the ordinary lean slew, yaw closure and `6°/tick` cap.
+ * WebXR controls use the same input thresholds. On the ground, gaze supplies only the steering intent; the
+ * ordinary travel-referenced lean slew, yaw closure and `6°/tick` cap match desktop controls.
  *
- * `HEAD_LOOK_DEADZONE` is the yaw treated as "aligned" — inside it the board stops turning, so a glance at the
- * scenery does not nudge the nose. `HEAD_LEAN_FULL_ANGLE` is the gaze offset from TRAVEL that maps to full lean:
- * measured against travel and never the nose, because the closure parks the nose on the gaze in ~0.1 s and a
- * nose-referenced lean would cancel itself before its banked force could bend the line (on ice that force is the
- * only thing that CAN bend it). `HEAD_STICK_OVERRIDE` is the stick deflection past which the thumb owns the lean.
+ * `HEAD_LOOK_DEADZONE` is the gaze offset from travel treated as zero steering. `HEAD_LEAN_FULL_ANGLE` is the
+ * additional offset beyond it that maps to full lean. Measuring against travel keeps the edge engaged until
+ * the path has turned toward the look direction, rather than releasing it as soon as the nose turns.
+ * `HEAD_STICK_OVERRIDE` is the non-XR stick threshold; XR uses its already-deadzoned active flag.
  */
 export const HEAD_LOOK_DEADZONE = 5, HEAD_LEAN_FULL_ANGLE = 30, HEAD_STICK_OVERRIDE = 0.05; // deg, deg, 0..1
 /**

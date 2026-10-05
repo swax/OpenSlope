@@ -385,10 +385,18 @@ it); this is the headset catching up.
 
 ### WebXR headset controls
 
-WebXR carries the same seated steering behavior as the shipped OpenSlope Unity board. Riding left-stick X is first
+WebXR uses the shipped OpenSlope Unity board's seated stick-input thresholds. Riding left-stick X is first
 dead-zoned and re-normalized, then mapped through **`sign(x) · x²`**: partial deflections have more range near
 centre, while hard left/right still outputs exactly 100%. The curve stays active on snow, in air, and on rails;
-head steering is unchanged, and centring the stick hands steering back to the head.
+centring the stick hands steering back to the head.
+
+Grounded **head steering is an input to the ordinary desktop carve**. The look direction is projected into the
+contact plane and measured against travel: the first 5° is a deadzone, then another 30° reaches full steering.
+That input runs the same lean, banked force and travel-referenced heading closure as the stick. Gaze does not
+also aim the grounded board directly; doing both turned it farther across its movement, adding lateral drag and
+sometimes closing the cruise-drive gate. Equivalent head and stick inputs now carry the same speed through a
+curve. A deflected stick owns the whole ground carve even while looking elsewhere. Head-only steering leaves
+the headset seat pinned; air and rail retain their separate gaze-aiming behavior.
 
 The tracked-controller preview is a low-poly **Meta Quest Touch Plus**, measured off Meta's own
 `oculus-controller-art` reference mesh rather than eyeballed: the 6.6 cm plate, its **32° forward lean** away from
@@ -997,14 +1005,19 @@ carry are called out rather than filled in from a sibling implementation. The SS
   The visible deck bank consumes lean separately.
 - **Shaped speed** ([Trailmap: 360]) — there is no g·sinθ runaway: a per-surface **cruise drive**
   re-accelerates toward that surface's **speed target** (snow ≈ 14.4 m/s, ice ≈ 17.8, rock ≈ 5.4), gated by
-  how square the board is to its travel — nothing beyond 60° off, so a sideways skid does not re-accelerate.
+  how square the board is to its travel — at normal riding speeds, nothing beyond 60° off, so a sideways skid
+  does not re-accelerate.
   That gate is a **heading delta measured in the contact plane**, so the normal channel never votes: a deck
   settling out of a landing carries normal velocity and little else, and reading the angle off the full 3D
   velocity would score it 90° across its own travel and cut the drive on the tick a rider most needs it. Below a
   readable travel speed the board's **own heading stands in** and the delta is zero, so the drive pulls a rider
-  up to the target from a standstill. That fallback is what makes level ground rideable at all: at zero slope
-  the cruise drive is the only force along the contact plane, so refusing to drive under the floor would instead
-  make low speed absorbing — a rider who dropped under it could never climb back over.
+  up to the target from a standstill. Slopesmith extends that fallback into a **low-speed recovery assist**:
+  full below 0.5 m/s, fading linearly to zero at the 2 m/s switch-latch threshold. It supplies a minimum drive
+  alignment without changing the surface target or rider factor, so a collision's slow sideways/backward drift
+  can recover without waiting several seconds for drag to reach the standstill floor. Holding brake suppresses
+  the added assist; the standstill fallback remains. This is a port choice, not a recovered SSX constant.
+  At zero slope the cruise drive is the only force along the contact plane, so a closed gate can otherwise
+  leave a slow rider waiting on surface drag to start again.
   A **decaying speed cap** bounds it: ≈ 27.9 m/s, rising to ≈ 33.5 while boosting or airborne, snapping up and
   easing down at ≈ 2.08 m/s per second. Surface gravity accelerates travel downhill,
   while the recovered forward-resistance polynomial opposes forward motion. The
