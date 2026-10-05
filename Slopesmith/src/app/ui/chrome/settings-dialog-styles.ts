@@ -1,4 +1,4 @@
-import { legalPanelCss } from './legal-panel';
+import { aboutPanelCss } from './about-panel';
 
 export const settingsDialogCss = `
 .sp-settings { width: 500px; height: min(620px, calc(100vh - 24px)); overflow: hidden; box-sizing: border-box;
@@ -164,4 +164,4 @@ export const settingsDialogCss = `
 .sp-settings .setup-guide li { margin: 5px 0; }
 .sp-settings .setup-guide code { color: #d7e3f0; user-select: all; }
 .sp-settings .setup-guide a { color: #7db7e8; }
-${legalPanelCss}`;
+${aboutPanelCss}`;

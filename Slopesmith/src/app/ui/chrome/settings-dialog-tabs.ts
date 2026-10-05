@@ -1,6 +1,6 @@
-import { buildLegalPanel } from './legal-panel';
+import { buildAboutPanel } from './about-panel';
 
-export type SettingsTabName = 'integrations' | 'account' | 'gear' | 'server' | 'legal';
+export type SettingsTabName = 'integrations' | 'account' | 'gear' | 'server' | 'about';
 
 interface SettingsTabs {
   el: HTMLDivElement;
@@ -8,15 +8,15 @@ interface SettingsTabs {
   account: HTMLDivElement;
   gear: HTMLDivElement;
   server: HTMLDivElement | null;
-  legal: HTMLDivElement;
+  about: HTMLDivElement;
   select: (name: SettingsTabName, focus?: boolean) => void;
 }
 
 /** Accessible pages inside one save transaction. Administrators get the additional Server page; ordinary
  * members never receive its tab or panel. Tab changes only presentation: every field stays alive, so
  * switching pages never discards an edit or restarts one of the asynchronous server probes.
- * Legal is the odd one out — it holds no settings at all, only the disclaimers and third-party notices
- * (legal-panel.ts), which live here because Settings is where a user looks for "about this program". */
+ * About is the odd one out — it holds no settings at all, only the project's links, the disclaimers and the
+ * third-party notices (about-panel.ts), which live here because Settings is where a user looks for them. */
 export function buildSettingsTabs(includeServer: boolean): SettingsTabs {
   const el = document.createElement('div');
   el.className = 'settings-tabs';
@@ -32,7 +32,7 @@ export function buildSettingsTabs(includeServer: boolean): SettingsTabs {
     { name: 'integrations', label: 'Integrations' },
     { name: 'account', label: 'Account' },
     { name: 'gear', label: 'Gear' },
-    { name: 'legal', label: 'Legal' },
+    { name: 'about', label: 'About' },
   ];
   if (includeServer) specs.splice(3, 0, { name: 'server', label: 'Server' });
   const buttons = new Map<SettingsTabName, HTMLButtonElement>();
@@ -87,15 +87,15 @@ export function buildSettingsTabs(includeServer: boolean): SettingsTabs {
 
   el.append(tablist, panelHost);
   select('integrations');
-  const legal = panels.get('legal')!;
-  buildLegalPanel(legal);   // static content: built once, never re-read from a setting
+  const about = panels.get('about')!;
+  buildAboutPanel(about);   // static content: built once, never re-read from a setting
   return {
     el,
     integrations: panels.get('integrations')!,
     account: panels.get('account')!,
     gear: panels.get('gear')!,
     server: panels.get('server') ?? null,
-    legal,
+    about,
     select,
   };
 }

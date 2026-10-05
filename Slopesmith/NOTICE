@@ -152,7 +152,7 @@ ThirdPartyNotices/npm-browser-packages.json, then generates
 dist/ThirdPartyNotices/npm-browser-dependencies.txt from those installed package roots and their
 installed runtime dependency closure. This conservatively covers dependencies incorporated into
 prebundled package entry points that Vite sees as one module root. The same generated text appears
-in Settings > Legal. The server build likewise checks its actual external
+in Settings > About. The server build likewise checks its actual external
 imports against the server category and emits both an external-package manifest and installed
 runtime-closure legal text under dist-server/ThirdPartyNotices/. A dependency graph or NOTICE list
 that drifts in either direction fails the build.
