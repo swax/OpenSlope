@@ -360,6 +360,7 @@ export function createEditSession(deps: EditSessionDeps) {
     if (store.currentMode !== 'edit' || store.bridgeRails !== null || !cageActive()) return false;
     if (mixedEditSelection()) return mixedEditMoveVertices().length > 0 || mixedEditFloatingPoints().length > 0
       || selectedEditPropIndices().length > 0;
+    if (!store.modelEditId && selectedEditPropIndices().length) return true;
     return store.selectedCorner !== null || store.controlSel.length > 0 || store.regionSel.length > 0
       || store.edgeSel.length > 0 || store.cellSel.length > 0;
   }
@@ -562,6 +563,7 @@ export function createEditSession(deps: EditSessionDeps) {
     if (store.currentMode === 'props') return store.selectedProp !== null || store.multiSel.length > 0;
     if (store.bridgeRails !== null) return false;
     if (mixedEditSelection()) return store.currentMode === 'edit' && cageActive() && mixedEditAnchorPositions().length > 1;
+    if (store.currentMode === 'edit' && !store.modelEditId && selectedEditPropIndices().length) return true;
     if (store.controlSel.length) return store.currentMode === 'edit' && cageActive() && movableControlPoints(store.controlSel).length > 1;
     return store.currentMode === 'edit' && cageActive()
       && (store.regionSel.length > 1 || store.edgeSel.length > 0 || store.cellSel.length > 0 || selectedFreePoint());

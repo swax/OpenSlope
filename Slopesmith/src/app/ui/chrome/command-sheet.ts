@@ -16,7 +16,7 @@ export type CommandSheetDeps = {
   /** Scene ▸ Course ▸ reset course is clicking out a new run. */
   courseDrawing: () => boolean;
   canRotateSelection: () => boolean;
-  editSelection: () => { kind: 'control points' | 'edges' | 'patches' | 'mixed selection'; readOnly: boolean } | null;
+  editSelection: () => { kind: 'control points' | 'edges' | 'patches' | 'props' | 'mixed selection'; readOnly: boolean } | null;
   selectedControlCagesVisible: () => boolean;
   canEditCurvature: () => boolean;
   edgeExtrusionStaged: () => boolean;
@@ -65,6 +65,11 @@ export function createCommandSheet(deps: CommandSheetDeps) {
       return helpPanel('Edit Mode — mixed selection',
         selection.readOnly ? [] : [['W / E', 'move / rotate all selected types together']],
         [['Ctrl+LMB', 'toggle any enabled type'], ['Tools count', 'keep one selected type'], ['Esc', 'deselect all']]);
+    }
+    if (selection.kind === 'props') {
+      return helpPanel('Edit Mode — props',
+        [['W / E / R', 'move / rotate / scale'], ['Ctrl+LMB', 'toggle selection']],
+        [['Props mode', 'full prop / group settings'], ['Esc', 'deselect']]);
     }
     return helpPanel(`Edit Mode — ${selection.kind}`,
       [

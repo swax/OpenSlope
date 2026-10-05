@@ -163,8 +163,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       props: 'standard', occludeWithSurfaces: true, surfaceEpsilon: 1e-3,
     });
     if (pick?.target !== 'prop') return false;
-    // Edit mode: a clicked authored placement acts — a MODEL piece enters its edit session, a
-    // reference-library placement raises the revise banner (the host decides).
+    // Edit mode: a clicked authored placement is selected — or its group, or a second click on a MODEL piece
+    // enters its edit session (the host decides).
     if (modelBanner && pick.source === 'authored' && stage.cb.onEditPropPick?.(pick.propIndex, toggle)) return true;
     stage.cb.onClickTargetUnavailable?.('prop', pick.source);
     return true;

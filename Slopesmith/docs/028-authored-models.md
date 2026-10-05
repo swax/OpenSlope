@@ -58,7 +58,7 @@ flat shape reproduces — the model self-heals to polygons. Bakes ship two trian
 - Clicking a placed prop in Edit mode SELECTS it — the same amber box + move gizmo Props mode shows, so
   a placement moves without leaving Edit; any mesh pick or a plain click off (the mountain backdrop or
   empty space) drops the selection. A selected MODEL placement enters its edit session on a second
-  click (or **✎ edit model**, in Edit or Props mode) — the session opens AT that placement:
+  click (or **✎ edit shape**, in Props mode) — the session opens AT that placement:
   `rebaseModelToPlacement` bakes its pose into the definition's stored frame and re-derives every other
   placement's rotation/scale (poses compose closed under translate·rotate·uniform-scale, so nothing
   rendered moves — regression-tested with tilt, where the absorbed rotation has to right-multiply rather
@@ -67,8 +67,10 @@ flat shape reproduces — the model self-heals to polygons. Bakes ship two trian
   definition changes. From inside a session a plain click off returns to terrain editing (unless
   locked; armed modal tools keep their own click meanings). Leaving Edit mode ends the session. Esc
   mirrors the clicks in layers: clear the selection, then give up the lock, then leave the session.
-- **⧉ revise prop (v2)**, directly under **＋ place prop** on a selected placement (the Edit banner or the
-  Props panel), means one thing whatever is selected: **put a copy of this prop in your library as
+- The Edit-mode placement panel offers transforms and labels, plus **open in Props mode** to open the same
+  selection's full toolbox. This applies to single props, groups and multi-selections.
+- **⧉ revise prop (v2)**, directly under **＋ place prop** on a selected placement in the Props panel, means one thing
+  whatever is selected: **put a copy of this prop in your library as
   `<name> v2` and point THIS placement at it.** Other placements keep the original. The placement is
   MUTATED rather than replaced, so it keeps its `id` and every effect attached to it comes with it.
   Group props can't be revised yet.
