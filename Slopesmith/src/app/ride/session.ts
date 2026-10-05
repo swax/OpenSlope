@@ -485,6 +485,10 @@ export class TestRide {
       const rate = this.onFootFlag ? WALK_LOOK_STICK_PIXELS_PER_SECOND : RIDE_LOOK_STICK_PIXELS_PER_SECOND;
       this.orbitCamera(this.hud.lookStick.x * rate * dt, this.hud.lookStick.y * rate * dt);
     }
+    // The chase view snaps back behind the rider as soon as a look is let go — RMB up, finger lifted, or the right
+    // stick centred. A pause holds it there, so a frozen pose can still be orbited and inspected from any side.
+    this.cam.holdOrbit(this.pausedFlag || this.hud.lookHeld || this.hud.lookStick.active
+      || this.pointerLock?.looking === true);
     if (this.onFootFlag) {
       let flightBoosting = false;
       if (!this.pausedFlag) {

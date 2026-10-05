@@ -232,6 +232,29 @@ assert.ok(Math.abs(camera.position.z - pos.z) < 1e-9,
   'a quarter-turn user orbit reaches the rider side instead of changing the chase bearing');
 rideCamera.orbit(Math.PI / 2 / 0.006, 0); // return to the retail seat for the tests below
 
+// A look is a glance, not a new chase seat: the aimed seat holds while the look is held (RMB, a finger, the right
+// stick, a pause) and snaps back behind the rider as soon as it is let go.
+{
+  const glanceCam = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 2_000);
+  const rc = createRideCamera({ camera: glanceCam, castSeg: () => null, toWorld: new THREE.Matrix4() });
+  const at = new THREE.Vector3(), travel = forward.clone().multiplyScalar(20);
+  const seatSide = () => new THREE.Vector3().fromArray(rc.telemetry(1 / 60).candidatePosition).sub(at).x;
+  const ride = (seconds: number) => {
+    for (let frame = 0; frame < Math.round(seconds * 60); frame++) rc.update(1 / 60, at, travel, forward, true, false);
+  };
+  rc.setHeading(forward);
+  rc.orbit(-Math.PI / 2 / 0.006, 0); // a quarter turn round to the rider's side
+  rc.holdOrbit(true);
+  ride(3);
+  const side = seatSide();
+  assert.ok(Math.abs(side) > 1, 'a held look keeps the chase seat at the rider side however long it is held');
+  rc.holdOrbit(false);
+  ride(1 / 60);
+  assert.ok(Math.abs(seatSide()) < Math.abs(side), 'the seat starts back on the first frame after release');
+  ride(0.6);
+  assert.ok(Math.abs(seatSide()) < 0.05, 'and is back behind the rider well inside a second');
+}
+
 // V's on-board first person sits on the rider's solved eye bridge and needs the close projection plane used by
 // the headset rather than the chase boom's wall plane.
 {

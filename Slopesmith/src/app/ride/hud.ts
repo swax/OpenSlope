@@ -1201,6 +1201,8 @@ export function createRideHud(o: RideHudOpts) {
   return {
     stick, lookStick, update, setWalking, setFirstPerson, setCountdown, showMessage, showTimeBonus, setLaps, setRunClock,
     setTelemetry, notePadPresent, mirrorPad, dispose,
+    /** A finger is down on the touch look surface — the chase camera holds its aim until it lifts. */
+    get lookHeld() { return lookPointers.size > 0; },
   };
 }
 
