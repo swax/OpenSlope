@@ -18,10 +18,10 @@ import type {
 } from '../../../core/doc/types';
 import type { ArmedProp } from '../../state/store';
 import {
-  applyBehaviour, baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
+  baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
   type ResolvedPropDefaults,
 } from '../../../core/props/defaults';
-import type { GroupDef } from '../../../core/reference/groups';
+import type { GroupDef, GroupPropDef } from '../../../core/reference/groups';
 import { effectTemplateLabel } from '../../../core/props/effect-defaults';
 import { freeScreen, screenForProp, screensOfProp } from '../../props/screens';
 import { screenPose, screenProp } from '../../../core/props/screen';
@@ -259,11 +259,13 @@ export function createPropTools(ctx: ToolsContext) {
   let stoppingDuringBuild = false;
 
   function syncLoopOwner(): void {
-    const next = store.multiSel.length ? null
+    const subject = store.multiSel.length ? null
       : store.selectedProp !== null ? `prop:${store.selectedProp}`
         : store.selectedRefProp
           ? `ref:${store.selectedRefProp.level}:${store.selectedRefProp.sourceIndex ?? store.selectedRefProp.name}`
           : store.armedProp ? `held:${store.armedProp.level}:${store.armedProp.model}` : null;
+    // Each group member has an emitter of its own, so opening another member is a change of owner too.
+    const next = subject && openMember ? `${subject}#${openMember.model}` : subject;
     if (next === loopOwner) return;
     loopOwner = next;
     // Stop before the panel is rebuilt without its button, not after: the sound and the control that stops it
@@ -864,73 +866,139 @@ export function createPropTools(ctx: ToolsContext) {
     return { contactSection, profile };
   }
 
-  /** Whose settings each GROUP's inspector shows (docs/069), by placement id or held group, for the session. */
-  const memberPicks = new Map<string, number | 'all'>();
+  // ---- group members (docs/069): the group's panel lists them, and each opens a panel of its own ----
 
   /**
-   * The member picker for a GROUP (docs/069). A group is one placement, and until any member differs they all
-   * share its settings — "whole group" edits those. Picking a member shows what that member does, and the first
-   * edit to it gives EVERY member an entry of its own holding what it does now, so no other member changes. Once
-   * split, a group is edited member by member until "one setting for all" folds it back.
-   *
-   * `group` is the host for the whole group; `owner` is the placement member fallbacks resolve against (for a held
-   * group, a stand-in built from its behaviour). Returns the host the contact, lighting and sound sections bind
-   * to — the mode layer is always the group's.
+   * The group member whose own panel is showing, or null for the group's. It belongs to one group — `key` names
+   * its placement, hold or line — and is dropped as soon as the panel is built for anything else, so selecting a
+   * group always opens on the group.
    */
-  function addMemberSection(group: BehaviourHost, def: GroupDef, owner: PlacedProp, pickKey: string):
-    { host: BehaviourHost; section: ReturnType<typeof editSection> } {
-    const section = editSection(`${group.key}-members`, 'Member settings', true);
-    const target = group.target;
-    const models = def.props.map(m => m.model);
-    const split = !!target.memberBehaviour;
-    let pick = memberPicks.get(pickKey) ?? 'all';
-    if (pick !== 'all' && !models.includes(pick)) pick = 'all';
-    if (split && pick === 'all') pick = models[0];
-    const options: Record<string, string> = split ? {} : { 'whole group': 'all' };
-    for (const m of def.props) {
-      const label = shortPropName(m.name);
-      options[label in options ? `${label} #${m.model}` : label] = String(m.model);
+  let openMember: { key: string; model: number } | null = null;
+
+  const placedGroupKey = (prop: PlacedProp, index: number) => prop.id ?? `index:${index}`;
+  const heldGroupKey = (armed: ArmedProp) => `held:${armed.level}:${armed.group}`;
+  const lineGroupKey = (line: { id: string }) => `line:${line.id}`;
+
+  /** A group's member MODELS, each once. Settings are kept per model, so two copies of one model in an assembly
+   *  are one member here. */
+  function groupMembers(def: GroupDef): GroupPropDef[] {
+    return def.props.filter((m, i) => def.props.findIndex(other => other.model === m.model) === i);
+  }
+
+  /** Whether a group has members to tell apart — otherwise its panel edits it as one prop. */
+  const hasMembers = (def: GroupDef | null | undefined): def is GroupDef => !!def && groupMembers(def).length > 1;
+
+  /** Each member's button name: its browsing name, numbered where two models share one, counted where the
+   *  assembly places it more than once. */
+  function memberLabel(def: GroupDef, model: number): string {
+    const members = groupMembers(def);
+    const label = (m: GroupPropDef) => shortPropName(m.name);
+    const member = members.find(m => m.model === model);
+    if (!member) return `#${model}`;
+    const shared = members.some(m => m !== member && label(m) === label(member));
+    const copies = def.props.filter(m => m.model === model).length;
+    return `${label(member)}${shared ? ` #${model}` : ''}${copies > 1 ? ` ×${copies}` : ''}`;
+  }
+
+  /** The open member of the group under `key`, while it is still one of that group's members. */
+  function openMemberOf(key: string, def: GroupDef | null | undefined): GroupPropDef | null {
+    if (!hasMembers(def) || openMember?.key !== key) return null;
+    return groupMembers(def).find(m => m.model === openMember!.model) ?? null;
+  }
+
+  /** Drop the open member unless the panel being built is its group's. Run before anything reads it. */
+  function keepOpenMember(key: string | null): void {
+    if (openMember && openMember.key !== key) openMember = null;
+  }
+
+  /** The group buildPropTools is about to show — a selected or held one — or null for anything else. */
+  function propPanelGroupKey(): string | null {
+    if (store.multiSel.length || ctx.isReplacingProp()) return null;
+    if (store.selectedScreen !== null || store.selectedRefScreen !== null) return null;
+    if (store.selectedProp !== null) {
+      const prop = store.mdoc.props?.[store.selectedProp];
+      return prop && defOfPlaced(prop) ? placedGroupKey(prop, store.selectedProp) : null;
     }
-    tip(section.add({ member: String(pick) }, 'member', options).name('settings for').onChange((value: string) => {
-      memberPicks.set(pickKey, value === 'all' ? 'all' : Number(value));
-      rebuildTools();
-    }), 'Whose settings the sections below show and change.',
-    'A group is one placement. Its members share its settings until you change one member’s; from then on each '
-      + 'keeps its own, so a trunk can stay solid inside ride-through, rustling leaves. The mode layer is always '
-      + 'the whole group’s.');
-    if (pick === 'all') {
-      note(section, 'Every member behaves alike. Pick one to give it settings of its own.');
-      return { host: group, section };
-    }
-    const model = pick;
+    if (store.selectedRefProp) return null;
+    return store.armedProp?.group ? heldGroupKey(store.armedProp) : null;
+  }
+
+  /**
+   * Every member's entry, each holding what that member does NOW. Stored entries are the live records, edited in
+   * place; a member without one (every member, before the first per-member edit) gets one materialized from the
+   * placement, so the first edit to any member — written back as the whole set — changes no other member.
+   */
+  function memberEntries(group: BehaviourHost, def: GroupDef, owner: PlacedProp): Record<string, PropBehaviour> {
     const collisionEffect = !!group.placement
       && authoredPropHasEffectCircumstance(store.mdoc.effects, group.placement.id, 'collision');
-    // Stored entries are edited in place; a member without one (every member, before the first split) gets what
-    // it does now, and the whole set is written back on the first change.
-    const entries = { ...materializeMemberBehaviour(owner, models, collisionEffect), ...target.memberBehaviour };
-    const entry = entries[String(model)];
-    if (split) {
-      const name = shortPropName(def.props.find(m => m.model === model)?.name ?? '');
-      tip(section.add({ unify: () => {
-        const mode = target.modePresence;
-        applyBehaviour(target, materializeMemberBehaviour({ ...owner, memberBehaviour: entries }, [model],
-          collisionEffect)[String(model)]);
-        if (mode) target.modePresence = mode;
-        if (group.placement) { delete group.placement.solid; delete group.placement.bounce; }
-        memberPicks.set(pickKey, 'all');
-        group.changed();
-        rebuildTools();
-      } }, 'unify').name('⊟ one setting for all members'),
-      `Give every member ${name}’s settings and edit the group as one again.`);
-    } else {
-      note(section, 'Changing this member gives each member settings of its own.');
+    const models = groupMembers(def).map(m => m.model);
+    return { ...materializeMemberBehaviour(owner, models, collisionEffect), ...group.target.memberBehaviour };
+  }
+
+  /** How a member collides, in the few words a button has room for. */
+  const memberContactText = { solid: 'solid', through: 'ride-through', none: 'no contact' } as const;
+
+  /**
+   * A GROUP's Members list (docs/069). A group is one placement, but its members are different models, and each
+   * keeps its own contact, lighting and sounds — so the group's panel holds what is the WHOLE group's (where it
+   * stands, its mode layer) and offers each member as a button that opens that member's own panel.
+   *
+   * `owner` is the placement member fallbacks resolve against; a held group or a line passes a stand-in.
+   */
+  function addMembersSection(group: BehaviourHost, def: GroupDef, owner: PlacedProp, key: string) {
+    const members = groupMembers(def);
+    const section = editSection(`${group.key}-members`, `Members (${members.length})`, true);
+    note(section, group.target.memberBehaviour
+      ? 'Each member has settings of its own. Open one to see or change them.'
+      : 'Every member behaves alike so far. Open one to see or change its settings.',
+    'Contact, lighting and sounds are per member, so a trunk can stay solid inside ride-through, rustling leaves. '
+      + 'Changing one member never changes another; “copy to other members” on its panel is how to share them.');
+    const entries = memberEntries(group, def, owner);
+    for (const member of members) {
+      const label = memberLabel(def, member.model);
+      const profile = entries[String(member.model)]?.nativeCollision;
+      const contact = profile ? ` · ${memberContactText[collisionProfileContactState(profile)]}` : '';
+      tip(section.add({ open: () => { openMember = { key, model: member.model }; rebuildTools(); } }, 'open')
+        .name(`▸ ${label}${contact}`), `Open ${label}’s own contact, lighting and sounds.`);
     }
+    return section;
+  }
+
+  /**
+   * One member's panel, opened from its group's Members list: a way back to the group, a way to give the other
+   * members these settings, and the contact, lighting and sound sections bound to this member alone.
+   */
+  function buildMemberTools(group: BehaviourHost, def: GroupDef, owner: PlacedProp, key: string, model: number) {
+    const target = group.target;
+    const entries = memberEntries(group, def, owner);
+    const entry = entries[String(model)];
+    const groupName = shortPropName(def.name);
+    const name = memberLabel(def, model);
+    const others = groupMembers(def).filter(m => m.model !== model);
+    const othersText = `${others.length} other member${others.length === 1 ? '' : 's'}`;
+    tip(gui.add({ back: () => { openMember = null; rebuildTools(); } }, 'back').name(`◀ back to ${groupName}`),
+      'Return to the group’s own panel and its other members.');
+    note(gui, `Member of ${groupName}. Its contact, lighting and sounds are its own.`,
+      'The group is still one placement: where it stands, its mode layer and its effect are the whole group’s, '
+        + 'on the group’s panel.');
+    tip(gui.add({ copy: () => {
+      for (const other of others) entries[String(other.model)] = structuredClone(entry);
+      target.memberBehaviour = entries;
+      group.changed();
+      rebuildTools();
+      toast(`${name}’s settings copied to ${othersText} of ${groupName}.`, 'ok');
+    } }, 'copy').name(`⇉ copy to ${othersText}`),
+    `Give every other member of ${groupName} ${name}’s settings.`,
+    'Everything on this panel — contact, ride surface, self-lighting, the hit sound and the ambient emitter.');
     const host: BehaviourHost = {
       target: entry, level: group.level, key: `${group.key}-member`,
       placement: group.placement ? groupMemberProp({ ...group.placement, memberBehaviour: entries }, model) : undefined,
       changed: () => { target.memberBehaviour = entries; group.changed(); },
     };
-    return { host, section };
+    addContactSection(host);
+    addLightingSection(host);
+    addImpactSection(host);
+    addEmitterSection(host);
   }
 
   /**
@@ -981,10 +1049,10 @@ export function createPropTools(ctx: ToolsContext) {
         '“use model defaults” switches back to what each member’s own model starts with.'];
       return armed.behaviour.memberBehaviour
         ? [`Each member of ${name} starts with its own model’s defaults.`,
-          'A tree’s trunk and leaves are different models, so each brings its own contact and sound. Pick a member '
+          'A tree’s trunk and leaves are different models, so each brings its own contact and sound. Open a member '
           + 'below to see or change what it does.']
         : [`Every member of ${name} starts alike, so the group shares one set of settings.`,
-          'These are the leader’s model defaults, which every member’s match. Pick a member below to give it '
+          'These are the leader’s model defaults, which every member’s match. Open a member below to give it '
           + 'settings of its own.'];
     }
     if (armed.from === 'placement') return [`Copying a placed ${name}: its settings, not the model’s defaults.`,
@@ -1019,6 +1087,18 @@ export function createPropTools(ctx: ToolsContext) {
   function buildHeldPropTools(armed: ArmedProp) {
     const resolved = propDefaults(armed.level, armed.model);
     const def = armed.group ? groupDefIdx.get(`${armed.level}:${armed.group}`) : undefined;
+    // A held group's members are set up like a placed one's, against a stand-in placement built from the hold;
+    // every write still lands on the held behaviour itself.
+    const groupKey = heldGroupKey(armed);
+    const owner: PlacedProp = { level: armed.level, model: armed.model, name: armed.name, pos: [0, 0, 0], yaw: 0,
+      scale: 1, ...armed.behaviour };
+    const member = openMemberOf(groupKey, def);
+    if (def && member) {
+      // Nothing is placed yet, so an edit re-renders nothing; the group's status line is on its own panel.
+      buildMemberTools({ target: armed.behaviour, level: armed.level, key: 'props-held', changed: () => {} },
+        def, owner, groupKey, member.model);
+      return;
+    }
     // What "model defaults" means for what is held: the model's, or for a group each member's own (docs/069).
     const defaults = def ? groupDefaults(armed.level, def) : resolved.behaviour;
     const name = shortPropName(armed.name);
@@ -1086,27 +1166,21 @@ export function createPropTools(ctx: ToolsContext) {
       actionRows.push(apply.domElement);
     }
 
-    // A held group edits member by member like a placed one; its stand-in placement is what member fallbacks
-    // resolve against, and every write still lands on the held behaviour itself.
-    const members = def && def.props.length > 1
-      ? addMemberSection(host, def, { level: armed.level, model: armed.model, name: armed.name, pos: [0, 0, 0],
-        yaw: 0, scale: 1, ...armed.behaviour }, `held:${armed.level}:${armed.group}`)
-      : null;
-    const memberHost = members?.host ?? host;
+    // A group with members lists them instead; each one's contact, lighting and sounds are on its own panel.
+    const membersSection = hasMembers(def) ? addMembersSection(host, def, owner, groupKey) : null;
     // Switching the effect off is a change to the hold like any other, so the panel redraws to offer ↺ back.
     const effectSection = addHeldEffectSection(armed, rebuildTools);
     const modeSection = addModeSection(host);
-    const { contactSection } = addContactSection(memberHost);
-    const lightingSection = addLightingSection(memberHost);
-    const impactSection = addImpactSection(memberHost);
-    const emitterSection = addEmitterSection(memberHost);
+    const behaviourSections = membersSection ? [] : [addContactSection(host).contactSection,
+      addLightingSection(host), addImpactSection(host), addEmitterSection(host)];
     aboutSection.domElement.before(...actionRows);
-    aboutSection.domElement.after(...(members ? [members.section.domElement] : []),
+    aboutSection.domElement.after(...(membersSection ? [membersSection.domElement] : []),
       ...(effectSection ? [effectSection.domElement] : []), modeSection.domElement,
-      contactSection.domElement, lightingSection.domElement, impactSection.domElement, emitterSection.domElement);
+      ...behaviourSections.map(section => section.domElement));
   }
 
   function buildPropTools() {
+    keepOpenMember(propPanelGroupKey()); // before the preview card, which shows an open member alone
     updatePropPreview();
     if (store.selectedScreen !== null || store.selectedRefScreen !== null) {
       syncLoopOwner(); buildScreenTools(); return;
@@ -1129,6 +1203,23 @@ export function createPropTools(ctx: ToolsContext) {
     const prop = store.selectedProp !== null ? store.mdoc.props?.[store.selectedProp] : undefined;
     if (prop) {
       const def = defOfPlaced(prop);
+      // The behaviour sections are shared with the held prop's panel (docs/069): same controls, bound here to
+      // this placement, whose edits re-render the scene.
+      const groupHost: BehaviourHost = {
+        target: prop, level: prop.level, key: 'props-authored', changed: scheduleRebuild, placement: prop,
+      };
+      const groupKey = placedGroupKey(prop, store.selectedProp!);
+      const member = openMemberOf(groupKey, def);
+      if (def && member) {
+        buildMemberTools(groupHost, def, prop, groupKey, member.model);
+        // What the member is MADE of: its own model's material table, which the group's panel cannot show.
+        const materialSection = editSection('props-authored-materials', 'Materials & textures', false);
+        addPropMaterials(materialSection, materialsHost, prop.level, member.model, (store.mdoc.props ?? [])
+          .filter(p => p.level === prop.level && (p.model === member.model
+            || !!defOfPlaced(p)?.props.some(m => m.model === member.model))).length);
+        addDeselect();
+        return;
+      }
       const actionRows: HTMLElement[] = [];
       const animation = propLevels.get(prop.level)?.models.find(model => model.id === prop.model)?.animation;
       if (animation) {
@@ -1185,20 +1276,12 @@ export function createPropTools(ctx: ToolsContext) {
         lastScale = s;
         scheduleRebuild();
       }), 'Scale the prop up or down — its base stays on the ground.');
-      // The behaviour sections are shared with the held prop's panel (docs/069): same controls, bound here to
-      // this placement, whose edits re-render the scene.
-      const groupHost: BehaviourHost = {
-        target: prop, level: prop.level, key: 'props-authored', changed: scheduleRebuild, placement: prop,
-      };
-      // A group with more than one member picks whose settings the sections show; the mode layer is the group's.
-      const members = def && def.props.length > 1
-        ? addMemberSection(groupHost, def, prop, prop.id ?? `index:${store.selectedProp}`) : null;
-      const host = members?.host ?? groupHost;
+      // A group with members lists them instead of the behaviour sections; each member's are on its own panel,
+      // and what stays here is the whole group's.
+      const membersSection = hasMembers(def) ? addMembersSection(groupHost, def, prop, groupKey) : null;
       const modeSection = addModeSection(groupHost);
-      const impactSection = addImpactSection(host);
-      const emitterSection = addEmitterSection(host);
-      const lightingSection = addLightingSection(host);
-      const { contactSection } = addContactSection(host);
+      const behaviourSections = membersSection ? [] : [addContactSection(groupHost).contactSection,
+        addLightingSection(groupHost), addImpactSection(groupHost), addEmitterSection(groupHost)];
       // Saved defaults read the live placement; a legacy placement materializes its inferred profile.
       const copied = () => ({ ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision
         ?? placedPropCollisionProfile(prop, authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
@@ -1269,17 +1352,18 @@ export function createPropTools(ctx: ToolsContext) {
       // The preview is a persistent sibling above these dynamic rows. Move the actions ahead of every folder,
       // then arrange the inspector groups in the task order used while placing and tuning a prop.
       // What the placement is MADE of, under the controls that place and tune it: the model's own material
-      // table, editable where the model is ours.
-      const materialSection = editSection('props-authored-materials', 'Materials & textures', false);
-      addPropMaterials(materialSection, materialsHost, prop.level, prop.model,
+      // table, editable where the model is ours. A group's members are several models, so each member's
+      // table is on that member's panel instead.
+      const materialSection = membersSection ? null : editSection('props-authored-materials', 'Materials & textures', false);
+      if (materialSection) addPropMaterials(materialSection, materialsHost, prop.level, prop.model,
         (store.mdoc.props ?? []).filter(p => p.level === prop.level && p.model === prop.model).length);
       // A screen is an annotation on this board rather than a thing of its own, so it is offered here, beside
       // the prop it covers (docs/051).
       const screenSection = addScreenSection(prop);
       transformSection.domElement.before(...actionRows);
-      transformSection.domElement.after(...(members ? [members.section.domElement] : []), modeSection.domElement,
-        contactSection.domElement, lightingSection.domElement, impactSection.domElement, emitterSection.domElement,
-        screenSection.domElement, materialSection.domElement);
+      transformSection.domElement.after(...(membersSection ? [membersSection.domElement] : []), modeSection.domElement,
+        ...behaviourSections.map(section => section.domElement), screenSection.domElement,
+        ...(materialSection ? [materialSection.domElement] : []));
       return;
     }
     const ref = store.selectedRefProp;
@@ -1541,8 +1625,10 @@ export function createPropTools(ctx: ToolsContext) {
 
   function buildLineTools() {
     const { propLines } = ctx;
-    updatePropPreview();
     const line = propLines.selected();
+    // A member's panel has no path controls, so drawing always shows the line's own.
+    keepOpenMember(line?.template.group && !store.lineDrawing ? lineGroupKey(line) : null);
+    updatePropPreview();
     if (!line) return;
     const template = line.template;
     const name = shortPropName(template.name);
@@ -1550,6 +1636,19 @@ export function createPropTools(ctx: ToolsContext) {
     const def = template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : undefined;
     const changed = () => propLines.changed(line);
     const settled = () => { propLines.changed(line); rebuildTools(); };
+    // What every copy carries, bound to the line's template: an edit lays the line out again, so it reaches all
+    // of them. The first copy stands in as the placement for the diagnostics that read one (effects, collider).
+    const host: BehaviourHost = {
+      target: template, level: template.level, key: 'props-line', changed,
+      ...(members[0] ? { placement: members[0] } : {}),
+    };
+    const owner: PlacedProp = { ...template, pos: [0, 0, 0], yaw: 0, scale: 1 };
+    const member = line.nodes.length >= 2 ? openMemberOf(lineGroupKey(line), def) : null;
+    if (def && member) {
+      buildMemberTools(host, def, owner, lineGroupKey(line), member.model);
+      addDeselect();
+      return;
+    }
 
     const sheet = line.sheet;
     const noun = sheet ? 'sheet' : 'line';
@@ -1635,20 +1734,16 @@ export function createPropTools(ctx: ToolsContext) {
     addDeselect();
 
     if (line.nodes.length < 2) return;
-    // What every copy carries, bound to the line's template: an edit lays the line out again, so it reaches all
-    // of them. The first copy stands in as the placement for the diagnostics that read one (effects, collider).
-    const host: BehaviourHost = {
-      target: template, level: template.level, key: 'props-line', changed,
-      ...(members[0] ? { placement: members[0] } : {}),
-    };
-    const memberSection = def && def.props.length > 1
-      ? addMemberSection(host, def, { ...template, pos: [0, 0, 0], yaw: 0, scale: 1 }, `line:${line.id}`) : null;
-    const behaviourHost = memberSection?.host ?? host;
+    if (hasMembers(def)) {
+      addMembersSection(host, def, owner, lineGroupKey(line));
+      addModeSection(host);
+      return;
+    }
     addModeSection(host);
-    addContactSection(behaviourHost);
-    addLightingSection(behaviourHost);
-    addImpactSection(behaviourHost);
-    addEmitterSection(behaviourHost);
+    addContactSection(host);
+    addLightingSection(host);
+    addImpactSection(host);
+    addEmitterSection(host);
   }
 
   /** Tools for a box-selected SET of props: the list (click a row = identify, its ✕ = drop from the set), the
@@ -1740,25 +1835,35 @@ export function createPropTools(ctx: ToolsContext) {
   function updatePropPreview() {
     if (!inPropSubTool()) { propPreview.hide(); return; } // the card belongs to the prop tools, not light / rail / gem
     const sel = store.selectedProp !== null ? store.mdoc.props?.[store.selectedProp] : undefined;
-    // a group placement previews its whole assembly, with the component list under the name (docs/015)
+    // A group previews its whole assembly, with the component list under the name (docs/015) — unless one of its
+    // members is open, which previews alone under its own name, because the panel below is that one model's.
+    const show = (level: string, model: number, name: string, def: GroupDef | null | undefined, groupKey: string,
+      instance?: string | null) => {
+      const member = openMemberOf(groupKey, def);
+      if (member) propPreview.show(level, member.model, shortPropName(member.name), propLevels.get(level), null, instance);
+      else propPreview.show(level, model, name, propLevels.get(level), def ?? null, instance);
+    };
     // Every card for a PLACED prop names which placement it is, the same way the box-selection list already
     // did: the Effects panel identifies a prop by its number, so clicking one has to answer that question too
     // rather than making you open its effect to find out which of twenty identical panes you are holding.
     if (isEffectTriggerProp(sel)) propPreview.hide();
-    else if (sel) propPreview.show(sel.level, sel.model, shortPropName(sel.name), propLevels.get(sel.level), defOfPlaced(sel),
-      sel.id ?? `#${store.selectedProp}`);
+    else if (sel) show(sel.level, sel.model, shortPropName(sel.name), defOfPlaced(sel),
+      placedGroupKey(sel, store.selectedProp!), sel.id ?? `#${store.selectedProp}`);
     // a prop line shows the model it lays out, named by the line (docs/070)
     else if (store.selectedLine !== null && ctx.propLines.selected()) {
-      const { template, sheet } = ctx.propLines.selected()!;
+      const line = ctx.propLines.selected()!;
+      const { template, sheet } = line;
       // a sheet's template names no model of its own: its first piece is what it looks like (docs/071)
       const first = sheet ? (store.mdoc.props ?? []).find(p => p.line === store.selectedLine) : undefined;
       if (sheet && !first) propPreview.hide();
-      else propPreview.show(template.level, first?.model ?? template.model, shortPropName(template.name),
-        propLevels.get(template.level), template.group ? groupDefIdx.get(`${template.level}:${template.group}`) ?? null : null,
+      else show(template.level, first?.model ?? template.model, shortPropName(template.name),
+        template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : null, lineGroupKey(line),
         store.selectedLine);
     }
     // the armed prop is on the cursor, not in the document — it has no placement identity to show yet
-    else if (store.armedProp) propPreview.show(store.armedProp.level, store.armedProp.model, shortPropName(store.armedProp.name), propLevels.get(store.armedProp.level), store.armedProp.group ? groupDefIdx.get(`${store.armedProp.level}:${store.armedProp.group}`) : null);
+    else if (store.armedProp) show(store.armedProp.level, store.armedProp.model, shortPropName(store.armedProp.name),
+      store.armedProp.group ? groupDefIdx.get(`${store.armedProp.level}:${store.armedProp.group}`) : null,
+      heldGroupKey(store.armedProp));
     // A reference pick's number is its native Instances[] row — the exact value Effects mode labels "Prop
     // number". A model-only pick carries no instance, so it stays nameless there.
     else if (store.selectedRefProp) propPreview.show(store.selectedRefProp.level, store.selectedRefProp.model, shortPropName(store.selectedRefProp.name), propLevels.get(store.selectedRefProp.level), null,

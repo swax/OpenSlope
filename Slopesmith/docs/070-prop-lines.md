@@ -89,8 +89,8 @@ The **Line** section of the Tools panel:
 
 Then **✚ add more points**, **✕ delete this point**, **⇄ swap prop…**, **⇥ break into props** and **✕ delete
 line**. Below them are the sections a placed prop has — mode presence, contact & collision, lighting, impact
-sound, emitters, and member settings for a group — bound to the line's template, so an edit reaches every
-member. Delete removes the selected point, or the whole line with no point selected; Esc deselects.
+sound and emitters, or for a group the Members list and its per-member panels — bound to the line's template,
+so an edit reaches every copy. Delete removes the selected point, or the whole line with no point selected; Esc deselects.
 
 ### Effects
 

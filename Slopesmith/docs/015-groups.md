@@ -78,7 +78,7 @@ gizmos, not the editable free-light ones).
   kind/intensity per light. A plain prop shows no list.
 - **Tools** — a selected group shows the usual turn / size / delete (labelled *delete group*); the
   base-keeping scale nudge uses the assembly's lowest member. Its contact, sound and lighting can differ per
-  member, picked in **Member settings** (docs/069 · Groups).
+  member: the **Members** list opens each member's own panel (docs/069 · Groups).
 
 ## Prop tint from the rig (all placements)
 
