@@ -146,6 +146,8 @@ export type RegisterAssignment = [string, unknown];
 export interface JoinedView {
   projectId: string;
   at: number;
+  /** The room `at` is counted in. A room counts from 0 each time it opens (docs/039). */
+  room?: string;
   writable: boolean;
   /** Set when it may not: a viewer, or an install that would evaluate this mountain differently. */
   reason?: string;
@@ -186,6 +188,8 @@ export interface TopologyPush {
 export interface CaughtUp {
   projectId: string;
   at: number;
+  /** The room `at` is counted in — another than the one the rejoin named, when that is why `document` came. */
+  room?: string;
   steps?: SyncStep[];
   changes?: RegisterAssignment[];
   document?: EditDoc;
@@ -286,6 +290,9 @@ export function createSessionChannel(deps: {
   /** Where this tab is in the room's sequence, so a reconnection says what it last saw rather than starting
    *  over. One number: there is no per-participant clock anywhere in this design (docs/039). */
   let at = 0;
+  /** The room `at` was counted in, said with it: rooms count from 0 each time they open, so the room this tab
+   *  rejoins may not be the one it left. Undefined until a room or a served map has said. */
+  let room: string | undefined;
   /**
    * Relays held back while a rejoin waits for its catch-up, or null when none is pending.
    *
@@ -450,7 +457,10 @@ export function createSessionChannel(deps: {
         const view = message as unknown as JoinedView;
         // A rejoin stays at the sequence it asked from until its catch-up lands: the replica does not hold what
         // lies between, and a claim or a reconnection measured from the room's head would skip it.
-        if (view.projectId === watching) { if (!catchingUp) at = view.at; writable = view.writable; }
+        if (view.projectId === watching) {
+          if (!catchingUp) { at = view.at; room = view.room; }
+          writable = view.writable;
+        }
         deps.onJoined?.(view);
         return;
       }
@@ -499,7 +509,13 @@ export function createSessionChannel(deps: {
         const missed = message as unknown as CaughtUp;
         const held = missed.projectId === watching ? catchingUp : null;
         if (held) catchingUp = null;
-        at = Math.max(at, missed.at);
+        if (missed.projectId === watching && missed.room !== undefined && missed.room !== room) {
+          // Counted in another room than the one this tab named: the room it knew closed, or the server restarted,
+          // or it read the map off the file. The count starts over from this room's, rather than carrying on from
+          // a number this room may never reach.
+          at = missed.at;
+          room = missed.room;
+        } else at = Math.max(at, missed.at);
         deps.onCaughtUp?.(missed);
         // Whatever was held back is covered by the catch-up unless the room sequenced it later.
         for (const relay of held ?? []) if (Number(relay.at) > missed.at) handle(relay);
@@ -570,7 +586,7 @@ export function createSessionChannel(deps: {
         const map = message as unknown as { projectId: string; name: string };
         // The server has already taken this tab off the map. Forgetting it here as well is what keeps a
         // reconnection from asking to rejoin one that is not there.
-        if (map.projectId === watching) { watching = null; at = 0; }
+        if (map.projectId === watching) { watching = null; at = 0; room = undefined; }
         deps.onGone?.(map);
         return;
       }
@@ -620,7 +636,7 @@ export function createSessionChannel(deps: {
   /** Say the map again from where this replica is, and hold relays back until the room's catch-up answers. */
   function rewatch(): void {
     if (watching === undefined) return;
-    catchingUp = post({ t: 'watch', projectId: watching, at, ...versions() }) ? [] : null;
+    catchingUp = post({ t: 'watch', projectId: watching, at, room, ...versions() }) ? [] : null;
   }
 
   function connect(): void {
@@ -684,11 +700,13 @@ export function createSessionChannel(deps: {
     },
     /** Which map this tab is on. Presence is keyed by it, and so is everything the room relays. `from` is the
      *  room sequence the replica's document stands at, when it is known — 0 included, which is a room's start —
-     *  so the room hands back whatever it sequenced after that document rather than joining it at the head. */
-    watch(projectId: string | null, from?: number): void {
+     *  so the room hands back whatever it sequenced after that document rather than joining it at the head.
+     *  `counted` is the room that sequence belongs to, as the map was served with it. */
+    watch(projectId: string | null, from?: number, counted?: string): void {
       if (watching === projectId) return;
       watching = projectId;
       at = from ?? 0;
+      room = from === undefined ? undefined : counted;
       lastScreenState = '';
       if (from !== undefined) rewatch();
       else {

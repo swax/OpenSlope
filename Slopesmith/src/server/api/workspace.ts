@@ -22,7 +22,7 @@ import { systemEvent } from '../session/chat';
 import { trimPlayerSeats } from '../session/capacity';
 import { presenceFor, sessionsOn } from '../session/presence';
 import {
-  assign, joinRoom, onWire, planRevert, roomFor, roomWriters, takeSnapshot, type RevertRequest,
+  assign, joinRoom, onWire, planRevert, roomFor, roomWriters, storedRoom, takeSnapshot, type RevertRequest,
 } from '../session/room';
 import { prepareWebSocketText } from '../session/socket';
 import { saveWorkspaceConfig, workspaceConfig } from '../workspace-config';
@@ -99,10 +99,15 @@ async function liveDocument(id: string): Promise<EditDoc> {
  * room's head. A page that loaded the file and joined at the head would hold less than the sequence it named,
  * and its first topology claim would be built on a structure the room no longer has. With no room open the
  * file is the whole truth, and the room that opens from it starts at 0 holding exactly it.
+ *
+ * `room` says which room `at` is counted in, since a room counts from 0 each time it opens: the open room's id,
+ * or the stored revision, which names sequence 0 of the room that opens from that file and of no other.
  */
-function openedSnapshot(snapshot: projects.ProjectSnapshot): projects.ProjectSnapshot & { at: number } {
-  const room = roomFor(snapshot.project.id);
-  return room ? { ...snapshot, document: room.doc, at: room.at } : { ...snapshot, at: 0 };
+function openedSnapshot(snapshot: projects.ProjectSnapshot): projects.ProjectSnapshot & { at: number; room: string } {
+  const open = roomFor(snapshot.project.id);
+  return open
+    ? { ...snapshot, document: open.doc, at: open.at, room: open.id }
+    : { ...snapshot, at: 0, room: storedRoom(snapshot.project.revision) };
 }
 
 /** A list of ids off a request body, which is what a selection-bounded revert arrives as. */

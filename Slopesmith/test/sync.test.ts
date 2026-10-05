@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { forgetAccounts } from '../src/server/accounts/store';
 import { configureCheckpoints, openProject } from '../src/server/projects';
 import { configureSessions, forgetSessions, sessionById } from '../src/server/session/presence';
-import { configureRooms, forgetRooms, roomFor } from '../src/server/session/room';
+import { configureRooms, forgetRooms, roomFor, storedRoom } from '../src/server/session/room';
 import { startApiService, type ApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import {
@@ -134,7 +134,8 @@ const frameBytes = (message: unknown): number => JSON.stringify(message).length;
 
 /** A replica on the map. Given `from`, it joins the way a page opens a map: holding the document it loaded at
  *  that room sequence before the room answers, and caught up with whatever the room sequenced after it. */
-async function connect(name: string, projectId: string, document: EditDoc, from?: number): Promise<Client> {
+async function connect(name: string, projectId: string, document: EditDoc,
+  from?: { at: number; room?: string }): Promise<Client> {
   const held = {
     name,
     doc: document,
@@ -193,13 +194,21 @@ async function connect(name: string, projectId: string, document: EditDoc, from?
     },
   });
   const heard = (at: number) => { held.at = Math.max(held.at, at); };
+  /** The room `held.at` is counted in, and the one this replica named when it last asked to be caught up. */
+  let room: string | undefined, named: string | undefined;
   const makeChannel = () => createSessionChannel({
     clientId: name,
     replica: sync.replica,
     url: () => `ws://127.0.0.1:${service!.port}/api/session?client=${encodeURIComponent(name)}`,
     // As main.ts has it: a socket that closes under the replica puts what it had in flight on hold.
     onStatus: status => { if (status === 'closed') sync.disconnect(); },
-    onJoined: view => { joined = true; held.writable = view.writable; heard(view.at); if (view.writable) sync.connect(); },
+    onJoined: view => {
+      joined = true;
+      held.writable = view.writable;
+      heard(view.at);
+      room = view.room;
+      if (view.writable) sync.connect();
+    },
     onSync: push => {
       heard(push.at);
       held.received.push(...push.changes as unknown as unknown[][]);
@@ -215,7 +224,9 @@ async function connect(name: string, projectId: string, document: EditDoc, from?
     onDigest: answer => { held.diverged.splice(0, held.diverged.length, ...sync.compareDigest(answer)); },
     onSections: repair => { heard(repair.at); held.repairs++; sync.repair(repair); },
     onCaughtUp: missed => {
-      heard(missed.at);
+      // Counted in another room than the one named, the count starts over, as the channel's own does.
+      if (missed.room !== named) held.at = missed.at; else heard(missed.at);
+      room = missed.room;
       held.caughtUp.push({ at: missed.at, landed: missed.landed, steps: !!missed.steps, document: !!missed.document });
       sync.caughtUp(missed);
     },
@@ -236,7 +247,8 @@ async function connect(name: string, projectId: string, document: EditDoc, from?
     sync.adopt(held.doc);
   } else {
     sync.adopt(held.doc); // main.ts `joinMap`: the replica's base is set before the room says anything
-    channel.watch(projectId, from);
+    named = from.room;
+    channel.watch(projectId, from.at, from.room);
     await until(() => held.caughtUp.length > 0, `${name} to be caught up`);
   }
   // Getters rather than a spread: every field below is read after the fact, and a copy taken now would be a
@@ -270,7 +282,8 @@ async function connect(name: string, projectId: string, document: EditDoc, from?
       channel = makeChannel();
       channel.start();
       await until(() => channel.isOpen(), `${name} to reconnect`);
-      channel.watch(projectId, held.at);
+      named = room;
+      channel.watch(projectId, held.at, room);
       await until(() => held.caughtUp.length > caughtUp, `${name} to be caught up`);
     },
     drop: () => live().close(1012, 'the socket died'),
@@ -302,11 +315,13 @@ async function idle(clients: readonly Client[], ms: number): Promise<void> {
   }
 }
 
-/** The map as a fresh page opens it: the room's live document while a room is open, the file otherwise, and the
- *  room sequence that document stands at. */
-async function pageLoad(projectId: string): Promise<{ document: EditDoc; at: number }> {
+/** A map as a page opens it: the document, the room sequence it stands at, and the room that is counted in. */
+interface Opened { document: EditDoc; at: number; room: string; project: { revision: number } }
+
+/** The map as a fresh page opens it: the room's live document while a room is open, the file otherwise. */
+async function pageLoad(projectId: string): Promise<Opened> {
   const res = await fetch(`http://127.0.0.1:${service!.port}/api/projects/${projectId}`);
-  return await res.json() as { document: EditDoc; at: number };
+  return await res.json() as Opened;
 }
 
 const serverDocument = async (projectId: string): Promise<EditDoc> => (await pageLoad(projectId)).document;
@@ -688,7 +703,7 @@ try {
 
   // ---- a replica away across a topology edit is caught up from the log, not handed the mountain ----
   const awayPage = await pageLoad(projectId);
-  const away = await connect('dee', projectId, awayPage.document, awayPage.at);
+  const away = await connect('dee', projectId, awayPage.document, awayPage);
   await idle([away], 120);
   away.channel.close();
   away.sync.disconnect();
@@ -727,7 +742,7 @@ try {
   check(page.at === liveRoom.at && !page.document.quadIds.includes(unwritten)
     && canonicalJson(structuralDocument(page.document)) === canonicalJson(structuralDocument(liveRoom.doc)),
     'a page opening the map is handed the room\'s live document and the sequence it stands at, not the file');
-  const fresh = await connect('una', projectId, page.document, page.at);
+  const fresh = await connect('una', projectId, page.document, page);
   check(fresh.caughtUp.length === 1 && fresh.caughtUp[0].steps && !fresh.caughtUp[0].document
     && !fresh.sent.some(entry => entry.kind === 'fetch'),
     'and joins from that sequence, so the room has nothing to replay over it and the page asks for nothing');
@@ -749,8 +764,9 @@ try {
   fresh.close();
 
   // A room counts from 0 each time it opens, so a sequence it never reached was handed out by an earlier room
-  // on this map — a page that opened it just before that room closed. Only the document can catch that up.
-  const stray = await connect('eve', projectId, structuredClone(page.document), liveRoom.at + 5);
+  // on this map. A client that does not say which room (one from before rooms were named) is still caught by
+  // that much. Only the document can catch it up.
+  const stray = await connect('eve', projectId, structuredClone(page.document), { at: liveRoom.at + 5 });
   check(stray.caughtUp.length === 1 && stray.caughtUp[0].document
     && canonicalJson(structuralDocument(stray.doc)) === canonicalJson(structuralDocument(liveRoom.doc)),
     'a page naming a sequence beyond the room\'s head is caught up with the document, not told it missed nothing');
@@ -1091,6 +1107,92 @@ try {
     + 'not per tab');
   reloaded.close();
   bo.close();
+
+  // ---- a sequence travels with the room it was counted in ----
+  //
+  // A room counts from 0 each time it opens. A page that opened the map at sequence N just before its room
+  // closed could join the next room after that one had passed N, and be caught up from N in a log that never
+  // held its document. A page that read the map off the file could miss an outside write that replaced the file
+  // before any room opened. So a page names the room alongside the sequence, and the room answers a sequence
+  // counted anywhere else with the document. A second map, so its room can close and reopen under nobody else.
+  const madeSecond = await fetch(`http://127.0.0.1:${service.port}/api/projects`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ document: migrateMountain(collisionLabMountain('ROOMS')) }),
+  });
+  const secondId = ((await madeSecond.json()) as { project: { id: string } }).project.id;
+  const corner = (doc: EditDoc, index: number) => vertexRegister(doc.vertexIds[index]);
+  const holds = (client: Client, index: number, value: number[]) =>
+    same(readRegister(client.doc, corner(client.doc, index)), value);
+  async function edit(client: Client, index: number, value: number[]): Promise<void> {
+    const landed = client.landed.length;
+    writeRegister(client.doc, corner(client.doc, index), value);
+    client.sync.noteEdit();
+    client.sync.flush();
+    await until(() => client.landed.length > landed, `${client.name}'s edit to land`);
+  }
+  async function everybodyLeaves(clients: readonly Client[], index: number, value: number[]): Promise<void> {
+    for (const client of clients) client.close();
+    await until(() => !roomFor(secondId), 'the room to close behind its last tab');
+    await storedOnce(secondId, doc => same(readRegister(doc, corner(doc, index)), value), 'the closing room\'s write');
+  }
+
+  // Off the file, with no room open, a page names the stored revision: sequence 0 of the room that opens from it.
+  const offFile = await pageLoad(secondId);
+  check(offFile.at === 0 && offFile.room === storedRoom(offFile.project.revision) && !roomFor(secondId),
+    'a page opening a map nobody has open is handed the file at sequence 0, named by its stored revision');
+  const fay = await connect('fay', secondId, structuredClone(offFile.document), offFile);
+  const firstRoom = roomFor(secondId)!;
+  await edit(fay, 10, [1, 1, 1]);
+  await edit(fay, 11, [2, 2, 2]);
+  const gus = await connect('gus', secondId, structuredClone(offFile.document), offFile);
+  check(gus.caughtUp[0]?.steps && !gus.caughtUp[0].document && holds(gus, 10, [1, 1, 1]) && holds(gus, 11, [2, 2, 2]),
+    'which the room opened from that file takes as its own sequence 0, so a page that read the file is caught up '
+    + 'with the steps since rather than the mountain');
+
+  const early = await pageLoad(secondId);
+  await edit(fay, 12, [3, 3, 3]);
+  await edit(fay, 13, [4, 4, 4]);
+  const late = await pageLoad(secondId);
+  check(early.room === firstRoom.id && early.at === 2 && late.room === firstRoom.id && late.at === 4,
+    'while a room is open a page is handed its sequence named by the room itself');
+  await everybodyLeaves([fay, gus], 13, [4, 4, 4]);
+
+  const reopened = await pageLoad(secondId);
+  const hal = await connect('hal', secondId, reopened.document, reopened);
+  const nextRoom = roomFor(secondId)!;
+  await edit(hal, 14, [5, 5, 5]);
+  await edit(hal, 15, [6, 6, 6]);
+  await edit(hal, 16, [7, 7, 7]);
+  check(nextRoom.id !== firstRoom.id && nextRoom.at === 3,
+    'the map\'s next room counts from 0 again, and has passed the sequence one of those pages holds');
+  const ivy = await connect('ivy', secondId, early.document, early);
+  check(ivy.caughtUp[0]?.document && holds(ivy, 14, [5, 5, 5]) && holds(ivy, 15, [6, 6, 6])
+    && holds(ivy, 16, [7, 7, 7]),
+    'a page naming the room that closed is caught up with the document, not from its sequence in a log that never '
+    + 'held its document — which would have skipped the new room\'s first changes');
+  const kim = await connect('kim', secondId, late.document, late);
+  const kimCaught = kim.caughtUp.length;
+  kim.channel.rejoin();
+  await until(() => kim.caughtUp.length > kimCaught, 'kim\'s rejoin to be answered');
+  check(kim.caughtUp[0]?.document && kim.caughtUp[kimCaught].steps && !kim.caughtUp[kimCaught].document,
+    'and a page whose sequence the new room had not reached counts on from where that room stands, so its next '
+    + 'rejoin is told it missed nothing rather than handed the mountain again');
+  await everybodyLeaves([hal, ivy, kim], 16, [7, 7, 7]);
+
+  // An outside write that replaces the file before any room opens — a restore, an import, a script.
+  const beforeWrite = await pageLoad(secondId);
+  const replaced = structuredClone(beforeWrite.document);
+  writeRegister(replaced, corner(replaced, 20), [9, 9, 9]);
+  const replacing = await fetch(`http://127.0.0.1:${service.port}/api/projects/${secondId}/document`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ baseRevision: beforeWrite.project.revision, document: replaced }),
+  });
+  check(replacing.ok, 'the file is replaced from outside with no room open');
+  const jo = await connect('jo', secondId, beforeWrite.document, beforeWrite);
+  check(jo.caughtUp[0]?.document && holds(jo, 20, [9, 9, 9]),
+    'a page that read the file before it was replaced names a revision the room did not open from, so it is '
+    + 'caught up with the document rather than told it missed nothing');
+  jo.close();
 
   ada.close();
   await wait(150);
