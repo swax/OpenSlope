@@ -221,15 +221,13 @@ export interface RideModelOpts {
   /** The active touch/gamepad analog axis. Ground/rail use centre-softened `x`; air may supply linear `airX`. */
   stick: { readonly active: boolean; readonly x: number; readonly airX?: number };
   /**
-   * VR HEAD STEER (docs/048): the rider's world-space gaze direction, or null while nothing is looking. Supplied
-   * only by a headset ride; absent — every desktop, touch and pad ride — the heading stays referenced to travel
-   * and not one term below changes, which is what keeps the retail traces this model is pinned to intact.
+   * VR HEAD STEER (docs/016): the rider's world-space gaze direction, or null while nothing is looking. Supplied
+   * only by a headset ride. Grounded, the gaze offset from travel supplies an ordinary steering input when the
+   * stick is centred. Lean, banked force and heading closure then use the same travel reference as desktop.
    *
-   * With one, the model does what the shipped VRChat board does (Unity docs/vrchat/017): grounded, the yaw closure
-   * leads the GAZE instead of the travel and the gaze offset drives the same input→lean slew a stick would, so a
-   * head-steered turn edges the board and carries the real banked force; airborne, the heading turns toward the
-   * gaze at the air rate and stops there. It is a REFERENCE swap, not a second steering path: every rate, gate
-   * and cap is the one the stick runs through.
+   * Gaze must not also replace the ground yaw reference: that adds the look angle to the normal carve lead,
+   * pushes the board across its travel and scrubs speed. Airborne, the heading still turns directly toward the
+   * gaze at the air rate and stops there. Head steering never carries the headset seat.
    */
   gaze?: () => THREE.Vector3 | null;
   /** Run-scoped held-boost gate. Omitted means unlimited; TestRide supplies the Unity boost-meter charge check. */
@@ -1529,7 +1527,12 @@ export function createRideModel(o: RideModelOpts) {
     if (deficit > 0) {
       const travelSpeed = Math.hypot(u, w);
       const offDeg = travelSpeed > CRUISE_HEADING_FLOOR ? Math.acos(clamp(u / travelSpeed, -1, 1)) / D2R : 0;
-      const driveAlign = clamp01((60 - offDeg) / 30);
+      // Port recovery: a collision can leave drift too slow to latch switch, but fast enough to close the
+      // alignment gate for seconds. Fade the standstill fallback out across that range instead of cutting it
+      // off at 0.5 m/s. Above the switch threshold the recovered 30–60 degree gate is unchanged.
+      const recovery = o.keys.brake ? 0
+        : clamp01((SWITCH_LATCH_SPEED - travelSpeed) / (SWITCH_LATCH_SPEED - CRUISE_HEADING_FLOOR));
+      const driveAlign = Math.max(clamp01((60 - offDeg) / 30), recovery);
       accel.addScaledVector(ride, (o.drive ?? RIDER_DRIVE) * driveAlign * s.mult * deficit);
     }
     if (boost) accel.addScaledVector(ride, BOOST_ACCEL * clamp01(1 - Math.abs(st.lean) / BOOST_LEAN_WINDOW));
@@ -1579,28 +1582,15 @@ export function createRideModel(o: RideModelOpts) {
       fwdN.negate();
     }
 
-    /**
-     * WHICH DIRECTION THE HEADING HOMES ONTO. Ordinarily the travel: let go of the stick and the board
-     * straightens onto where it is already going. Under VR head steer (docs/048) it is the GAZE instead, so the
-     * nose turns to match where the rider looks and stops there — inside `HEAD_LOOK_DEADZONE` the reference is
-     * the heading itself, which is the "stop there" (a glance at the scenery must not walk the board round).
-     */
+    // Head direction supplies a steering intent, just like the stick. Keep heading closure referenced to
+    // travel: also aiming the nose directly at gaze would add a second turn and create a speed-scrubbing skid.
     const gazeDir = o.gaze?.();
     const gaze = gazeDir ? projectOnPlane(gazeDir, n, groundGaze) : null;
-    let refDir = velDir;
     let headSteer = 0; // gaze-derived steer intent: 0 inside the deadzone, ±1 at HEAD_LEAN_FULL_ANGLE past it
     if (gaze && gaze.lengthSq() > 1e-5) {
       gaze.normalize();
       const deadzone = HEAD_LOOK_DEADZONE * D2R;
-      refDir = Math.abs(angleAbout(fwdN, gaze, n)) <= deadzone ? fwdN : gaze;
-      /**
-       * ...and the gaze also EDGES the board, by driving the same input→lean slew a stick drives. Measured
-       * against TRAVEL, never the nose: the closure below parks the nose on the gaze within ~0.1 s (leading it
-       * by `turnLean`, which flips a nose-referenced offset's sign), so a nose-referenced lean cancels itself
-       * before its banked force can act — and on ice that force is the only thing that bends the path at all.
-       * Against travel it mirrors the stick's own loop: the lean holds while the PATH still points away from
-       * the gaze, and ebbs as the carve brings it round.
-       */
+      // Measure from travel so the edge remains engaged until the path has actually reached the gaze.
       const offTravel = angleAbout(velDir, gaze, n);
       if (Math.abs(offTravel) > deadzone) {
         headSteer = Math.sign(offTravel)
@@ -1622,14 +1612,12 @@ export function createRideModel(o: RideModelOpts) {
     st.lean = moveTowards(st.lean, leanTarget, leanRate * dt);
     const tuning = responseTuning;
     const turnLean = headingLead(st.lean, st.charge, tuning.mode) * STEER_STRENGTH;
-    const slipRef = angleAbout(refDir, fwdN, n);
-    const slipVel = refDir === velDir ? slipRef : angleAbout(velDir, fwdN, n);
+    const slipVel = angleAbout(velDir, fwdN, n);
     // The downhill contact direction is independent of the board's lateral force axis.
     const fallLine = n.clone().multiplyScalar(n.y).sub(WORLD_UP);
     if (fallLine.lengthSq() > RESPONSE.YAW_FLAT_CROSS_LENGTH_SQ) fallLine.normalize(); else fallLine.copy(fwdN);
-    const projection = refDir === velDir
-      ? new THREE.Vector3().crossVectors(st.vel, fwdN).dot(n) / Math.max(vmag, RESPONSE.GUARDS_SPEED_MPS)
-      : Math.sin(slipRef); // VR reference swap, explicitly outside the original controller.
+    const projection = new THREE.Vector3().crossVectors(st.vel, fwdN).dot(n)
+      / Math.max(vmag, RESPONSE.GUARDS_SPEED_MPS);
     const rawYaw = headingYaw(st.lean, turnLean, projection, vmag,
       st.vel.dot(fwdN), st.vel.dot(fallLine), dt);
     // Low-grip assist term 1 of 2 ([Trailmap: 330-carving] is untouched; see `iceAssistFor`). Damp the yaw
@@ -1642,9 +1630,7 @@ export function createRideModel(o: RideModelOpts) {
     // ~0.14 s while three quarters of the re-alignment is already done, so a lean-gated damp arrives too late
     // to matter (measured: 77/23 → 73/27, i.e. nothing). Applied AFTER the clamp, because the re-alignment
     // runs into the 6°/tick cap and scaling the pre-clamp fraction would not reach it.
-    // Reads slipVel (the DRIFT), not slipRef: under head steer the yaw is referenced to the GAZE and the two part
-    // company, while the gate has to stay on the drift. Keeping the same variable in both files keeps the ports
-    // diffable (`RideableBoard.cs`, same three terms).
+    // Both head and stick steering use actual drift here, just as they do for the heading closure above.
     const unCommitting = turnLean * slipVel >= 0 && Math.abs(turnLean) < Math.abs(slipVel);
     const selfCentre = unCommitting ? 1 - assist * ICE_SELF_CENTER_DAMP : 1;
     const yawRad = rawYaw * selfCentre;
