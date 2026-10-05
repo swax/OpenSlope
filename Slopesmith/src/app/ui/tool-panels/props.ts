@@ -18,10 +18,15 @@ import type {
 } from '../../../core/doc/types';
 import type { ArmedProp } from '../../state/store';
 import {
-  baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
+  applyBehaviour, baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
   type ResolvedPropDefaults,
 } from '../../../core/props/defaults';
-import type { GroupDef, GroupPropDef } from '../../../core/reference/groups';
+import { expandGroupProps, type GroupDef, type GroupPropDef } from '../../../core/reference/groups';
+import {
+  assemblyOf, assemblyRefusal, breakAssembly, createAssembly, scalePlacements, turnPlacements,
+  unpackGroupPlacement, wholeAssembly, withWholeAssemblies,
+} from '../../../core/props/assembly';
+import type { AssemblyPreviewMember } from '../../props/preview';
 import { effectTemplateLabel } from '../../../core/props/effect-defaults';
 import { freeScreen, screenForProp, screensOfProp } from '../../props/screens';
 import { screenPose, screenProp } from '../../../core/props/screen';
@@ -1001,6 +1006,176 @@ export function createPropTools(ctx: ToolsContext) {
     addEmitterSection(host);
   }
 
+  // ---- authored groups (docs/015 · Authored groups): placements tied together, each still its own prop ----
+
+  /** A placement's settings as a record another placement can take: a legacy placement's inferred collision
+   *  profile materialized, so what it does now is what the copy does. */
+  function settingsOf(prop: PlacedProp): PropBehaviour {
+    return { ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision
+      ?? placedPropCollisionProfile(prop, authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
+        typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile)) };
+  }
+
+  /** The selected authored group's members, when the box selection is exactly one group. */
+  function selectedAssembly(): number[] | null {
+    return wholeAssembly(store.mdoc.props ?? [], store.multiSel) ? [...store.multiSel].sort((a, b) => a - b) : null;
+  }
+
+  /** What a group is called: its first member, and how many more it holds. */
+  function assemblyLabel(members: readonly number[]): string {
+    const first = store.mdoc.props?.[members[0]];
+    return `${first ? shortPropName(first.name) : 'group'} +${members.length - 1}`;
+  }
+
+  /** Select a whole group, or one of its members on its own. */
+  function selectAssemblyMembers(members: number[]) {
+    store.selectedProp = null; store.multiSel = members;
+    scheduleRebuild(); rebuildTools();
+  }
+  function selectAssemblyMember(index: number) {
+    store.multiSel = []; store.selectedProp = index;
+    scheduleRebuild(); rebuildTools();
+  }
+
+  /** ⊞ group: tie the box selection into one new group, which the panel then shows. */
+  function groupSelection() {
+    const props = store.mdoc.props ?? [];
+    const refusal = assemblyRefusal(props, store.multiSel);
+    if (refusal) { toast(refusal, 'warn'); return; }
+    createAssembly(props, store.multiSel);
+    scheduleRebuild(); rebuildTools();
+    toast(`Grouped ${plural(store.multiSel.length)} — clicking any of them now selects the group.`, 'ok');
+  }
+
+  /** ⇲ break group on a MINED group placement: its props, each where it stood, and its lights as free lights. */
+  function breakGroupPlacement(index: number, def: GroupDef) {
+    const props = store.mdoc.props ?? [];
+    const name = shortPropName(props[index]?.name ?? def.name);
+    const { indices, lights } = unpackGroupPlacement(store.mdoc, index, def);
+    if (!indices.length) return;
+    // The pieces stay selected, so ⊞ group is one click away; a group this one belonged to is selected whole.
+    const pieces = withWholeAssemblies(props, indices);
+    store.selectedProp = pieces.length === 1 ? pieces[0] : null;
+    store.multiSel = pieces.length > 1 ? pieces : [];
+    scheduleRebuild(); rebuildTools();
+    toast(`Broke ${name} into ${plural(indices.length)}${lights ? ` and ${lights} free light${lights === 1 ? '' : 's'}` : ''}.`, 'ok');
+  }
+
+  /** The rows a group member's own panel opens with: back to its group, what it belongs to, and a way to give
+   *  every other member its settings. Answers their elements, for the caller to place. */
+  function addAssemblyMemberRows(prop: PlacedProp, members: number[]): HTMLElement[] {
+    const props = store.mdoc.props ?? [];
+    const label = assemblyLabel(members);
+    const others = members.map(i => props[i]).filter(other => other && other !== prop);
+    const othersText = `${others.length} other member${others.length === 1 ? '' : 's'}`;
+    const back = tip(gui.add({ back: () => selectAssemblyMembers(members) }, 'back').name('◀ back to group'),
+      `Select the whole group again — ${label}.`);
+    const about = note(gui, `Member of ${label}. Its settings are its own.`,
+      'Moving it here moves it within the group. A click on any member in the world selects the whole group; the '
+        + 'group’s Members list opens one on its own.');
+    const copy = tip(gui.add({ copy: () => {
+      const settings = settingsOf(prop);
+      delete settings.memberBehaviour; // a mined group's per-model record means nothing on another placement
+      for (const other of others) {
+        applyBehaviour(other, settings);
+        delete other.solid; delete other.bounce; // the copied profile replaces any legacy contact flags
+      }
+      scheduleRebuild(); rebuildTools();
+      toast(`${shortPropName(prop.name)}’s settings copied to ${othersText} of ${label}.`, 'ok');
+    } }, 'copy').name(`⇉ copy settings to ${othersText}`),
+    `Give every other member of the group this prop’s settings.`,
+    'Contact, ride surface, mode layer, hit sound, ambient emitter and self-lighting. Position, size, effects and '
+      + 'materials stay each member’s own.');
+    return [back.domElement, about, copy.domElement];
+  }
+
+  /** How a group member collides, in the few words a Members button has room for. */
+  function memberSummary(prop: PlacedProp): string {
+    if (prop.group) return 'group';
+    const hitSound = typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
+    const profile = placedPropCollisionProfile(prop,
+      authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'), hitSound);
+    return memberContactText[collisionProfileContactState(profile)];
+  }
+
+  /**
+   * A selected authored GROUP's panel: its members, each a button into that prop's own panel, a turn and a size
+   * for the whole set, and the group's actions. Moving is the selection gizmo's, which turns and scales the set too.
+   */
+  function buildAssemblyTools(members: number[]) {
+    const props = store.mdoc.props ?? [];
+    const id = props[members[0]]?.assembly;
+    if (!id) return;
+    tip(gui.add({ unpack: () => {
+      breakAssembly(store.mdoc.props ?? [], id);
+      scheduleRebuild(); rebuildTools(); // the members stay selected, now as a plain set
+      toast(`Broke the group into ${plural(members.length)}.`, 'ok');
+    } }, 'unpack').name('⇲ break group'),
+    'Release the members into props of their own. Nothing moves, and each keeps its settings.');
+    if (propClipboard.canCopy()) {
+      tip(gui.add({ copy: propClipboard.copy }, 'copy').name('⧉ copy group (Ctrl+C)'),
+        'Copy the group; Ctrl+V holds it on the cursor and places a new group of its own.');
+      tip(gui.add({ cut: propClipboard.cut }, 'cut').name('cut group (Ctrl+X)'),
+        'Copy the group and remove it.');
+    }
+    gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete group (${plural(members.length)})`);
+    addDeselect();
+
+    const levels = new Set(members.map(i => props[i]?.level));
+    const memberSection = editSection('props-assembly-members', `Members (${members.length})`, true);
+    note(memberSection, 'Each member is a prop of its own. Open one to change its settings.',
+      'Members can come from different levels and keep their own contact, sounds, effects, screens and materials. '
+        + 'The group only holds them together.');
+    for (const index of members) {
+      const prop = props[index];
+      if (!prop) continue;
+      const label = `${shortPropName(prop.name)}${levels.size > 1 ? ` · ${prop.level}` : ''}`;
+      tip(memberSection.add({ open: () => selectAssemblyMember(index) }, 'open')
+        .name(`▸ ${label} · ${memberSummary(prop)}`), `Open ${shortPropName(prop.name)}’s own panel.`);
+    }
+
+    // Turn and size read the first member, and change every member by the same amount about the group's centre
+    // on the ground — the lowest base among them — so a set standing on flat ground stays standing on it.
+    const transformSection = editSection('props-assembly-transform', 'Transform', false);
+    const live = () => (store.mdoc.props ?? []);
+    const pivot = (): V3 => {
+      const placed = members.map(i => live()[i]).filter((prop): prop is PlacedProp => !!prop);
+      const mean = (k: number) => placed.reduce((sum, prop) => sum + prop.pos[k], 0) / placed.length;
+      return [mean(0), Math.min(...placed.map(prop => prop.pos[1] + prop.scale * placedBaseOffset(prop))), mean(2)];
+    };
+    const frame = {
+      get turn() { return live()[members[0]]?.yaw ?? 0; },
+      set turn(value: number) {
+        const first = live()[members[0]];
+        if (first && Number.isFinite(value)) turnPlacements(live(), members, value - first.yaw, pivot());
+      },
+      get size() { return live()[members[0]]?.scale ?? 1; },
+      set size(value: number) {
+        const first = live()[members[0]];
+        if (first && value > 0 && first.scale > 0) scalePlacements(live(), members, value / first.scale, pivot());
+      },
+    };
+    tip(transformSection.add(frame, 'turn', 0, 360, 1).name('turn (°)').listen().onChange(scheduleRebuild),
+      'Spin the whole group about the vertical through its centre.', 'Reads the first member’s turn.');
+    tip(transformSection.add(frame, 'size', 0.1, 5, 0.05).name('size ×').listen().onChange(scheduleRebuild),
+      'Scale the whole group — its spacing and every member’s size together.',
+      'Reads the first member’s size; every member scales by the same factor, about the group’s centre on the ground.');
+  }
+
+  /** What the preview card draws for a group: every member where it stands, a mined group member as its parts. */
+  function assemblyPreviewMembers(members: readonly number[]): AssemblyPreviewMember[] {
+    const props = store.mdoc.props ?? [];
+    return members.flatMap(index => {
+      const prop = props[index];
+      if (!prop || isEffectTriggerProp(prop)) return [];
+      const def = defOfPlaced(prop);
+      return (def ? expandGroupProps(prop, def) : [prop]).map(part => ({
+        level: part.level, model: part.model, name: part.name, props: propLevels.get(part.level),
+        pos: part.pos, yaw: part.yaw, pitch: part.pitch, roll: part.roll, scale: part.scale,
+      }));
+    });
+  }
+
   /**
    * The held prop's effect (docs/069 · Effects): what each stamp is given, where it came from, and a switch to
    * place without it. Nothing when the hold carries no effect.
@@ -1221,6 +1396,9 @@ export function createPropTools(ctx: ToolsContext) {
         return;
       }
       const actionRows: HTMLElement[] = [];
+      // A member of an authored group opened from its group's panel: the way back, before anything else.
+      const assembly = assemblyOf(store.mdoc.props ?? [], store.selectedProp!);
+      if (assembly) actionRows.push(...addAssemblyMemberRows(prop, assembly));
       const animation = propLevels.get(prop.level)?.models.find(model => model.id === prop.model)?.animation;
       if (animation) {
         const nativeObjects = projectedNativeModelObjectCount(animation);
@@ -1283,15 +1461,22 @@ export function createPropTools(ctx: ToolsContext) {
       const behaviourSections = membersSection ? [] : [addContactSection(groupHost).contactSection,
         addLightingSection(groupHost), addImpactSection(groupHost), addEmitterSection(groupHost)];
       // Saved defaults read the live placement; a legacy placement materializes its inferred profile.
-      const copied = () => ({ ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision
-        ?? placedPropCollisionProfile(prop, authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
-          typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile)) });
+      const copied = () => settingsOf(prop);
       // a group's component list rides the preview card above
       if (!isEffectTriggerProp(prop)) {
         const replaceAction = tip(gui.add({ replace: ctx.replaceSelectedProp }, 'replace').name('⇄ replace prop'),
           'Click a prop in the world or the Prop Library to replace this one, keeping its position, rotation and size.',
           'The replacement takes the chosen prop’s settings and effects. Esc cancels; undo restores the original.');
         actionRows.push(replaceAction.domElement);
+      }
+      // A mined group comes apart into ordinary props, which ⊞ group can tie back together as an authored one.
+      if (def && !prop.line) {
+        const breakAction = tip(gui.add({ unpack: () => breakGroupPlacement(store.selectedProp!, def) }, 'unpack')
+          .name('⇲ break group'),
+        'Replace this group with its props, each where it stands with its own settings.',
+        `Its lights become free lights. Effects and screens attached to the group stay on ${shortPropName(def.props[0].name)}, `
+          + 'the member that stands where the group does. Select the pieces and ⊞ group them to move them as one again.');
+        actionRows.push(breakAction.domElement);
       }
       // The author's own model can take this placement's settings as its defaults (docs/069): tune one on the
       // mountain, then every new one starts that way.
@@ -1747,9 +1932,16 @@ export function createPropTools(ctx: ToolsContext) {
   }
 
   /** Tools for a box-selected SET of props: the list (click a row = identify, its ✕ = drop from the set), the
-   *  one gizmo at the set's centre moves them together, and delete removes them all (also the Delete key). */
+   *  one gizmo at the set's centre moves them together, and delete removes them all (also the Delete key).
+   *  A set that is exactly one authored group gets the group's own panel instead. */
   function buildMultiPropTools() {
+    const group = selectedAssembly();
+    if (group) { buildAssemblyTools(group); return; }
     multiList.show(store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })));
+    tip(gui.add({ group: groupSelection }, 'group').name(`⊞ group ${plural(store.multiSel.length)}`),
+      'Tie the selected props into a group that selects, moves, turns and sizes as one.',
+      'Each keeps its own level, settings, effects and screens — the group only holds them together. Clicking any '
+        + 'member selects the whole group; its panel opens each member on its own.');
     // Shared by Props mode and an Edit marquee narrowed to props.
     if (store.multiSel.some(i => {
       const prop = store.mdoc.props?.[i];
@@ -1846,9 +2038,12 @@ export function createPropTools(ctx: ToolsContext) {
     // Every card for a PLACED prop names which placement it is, the same way the box-selection list already
     // did: the Effects panel identifies a prop by its number, so clicking one has to answer that question too
     // rather than making you open its effect to find out which of twenty identical panes you are holding.
+    const assembly = sel ? null : selectedAssembly();
     if (isEffectTriggerProp(sel)) propPreview.hide();
     else if (sel) show(sel.level, sel.model, shortPropName(sel.name), defOfPlaced(sel),
       placedGroupKey(sel, store.selectedProp!), sel.id ?? `#${store.selectedProp}`);
+    // an authored group previews every member where it stands, across levels (docs/015 · Authored groups)
+    else if (assembly) propPreview.showSet(assemblyLabel(assembly), assemblyPreviewMembers(assembly));
     // a prop line shows the model it lays out, named by the line (docs/070)
     else if (store.selectedLine !== null && ctx.propLines.selected()) {
       const line = ctx.propLines.selected()!;

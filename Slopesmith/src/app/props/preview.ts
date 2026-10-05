@@ -1,5 +1,7 @@
 import type { LevelProps } from '../../core/reference/props';
 import type { GroupDef } from '../../core/reference/groups';
+import type { V3 } from '../../core/doc/types';
+import { placementQuat } from '../../core/props/pose';
 import { ThumbRenderer, THUMB_DEFAULT_AZIMUTH, THUMB_DEFAULT_ELEVATION, type ThumbEntry } from './thumb-renderer';
 import { installStyles } from '../ui/components/styles';
 
@@ -19,6 +21,13 @@ import { installStyles } from '../ui/components/styles';
  * each with its own mesh, and every one of them labels as `Glass_Pane`. The line under it is what you attach
  * an effect to.
  */
+
+/** One placement an authored group's preview draws: its model, the level payload that model is read from, and
+ *  its world pose (editor metres / degrees). */
+export interface AssemblyPreviewMember {
+  level: string; model: number; name: string; props: LevelProps | undefined;
+  pos: V3; yaw: number; pitch?: number; roll?: number; scale: number;
+}
 
 const ORBIT_SENSITIVITY = 0.01;                 // radians of orbit per pixel dragged
 const MAX_ELEVATION = 1.45;                       // clamp the pitch just shy of straight over / under the model
@@ -171,27 +180,78 @@ export class PropPreview {
     });
   }
 
+  /**
+   * Show an authored GROUP (docs/015 · Authored groups): every member where it stands, each drawn from its own
+   * level, with the member list under the stats as a mined group's component list. `members` carry world poses;
+   * the view frames whatever they span, so no origin needs choosing.
+   */
+  showSet(name: string, members: readonly AssemblyPreviewMember[], instance?: string | null) {
+    this.el.classList.add('on');
+    this.nameEl.textContent = name;
+    this.modelEl.textContent = '';
+    this.instanceEl.textContent = instance ?? '';
+    this.setMemberNames(members.map(m => m.name));
+    const entries: ThumbEntry[] = [];
+    const origin = members[0]?.pos ?? [0, 0, 0]; // world positions can run to kilometres; the view only needs offsets
+    for (const m of members) {
+      const model = m.props?.models.find(x => x.id === m.model);
+      if (!model || !m.props) continue;
+      entries.push({ model, level: m.level, materials: m.props.materials,
+        relPos: [m.pos[0] - origin[0], m.pos[1] - origin[1], m.pos[2] - origin[2]],
+        relRot: placementQuat(m), relScale: m.scale });
+    }
+    let tris = 0, verts = 0;
+    for (const e of entries) for (const s of e.model.subs) { tris += s.indices.length / 3; verts += s.positions.length / 3; }
+    this.statsEl.textContent = entries.length ? `${tris.toLocaleString()} tris · ${verts.toLocaleString()} verts` : '';
+    const mine = ++this.token;
+    this.hasModel = false;
+    this.el.classList.remove('orbit');
+    if (!entries.length) { this.thumb.canvas.style.visibility = 'hidden'; return; }
+    void this.thumb.prepareSet(entries, entries[0].level!, entries[0].materials!).then(() => {
+      if (mine !== this.token) return;
+      this.hasModel = true;
+      this.el.classList.add('orbit');
+      this.thumb.canvas.style.visibility = 'visible';
+      this.thumb.view(this.azimuth, this.elevation);
+    });
+  }
+
+  /** One component-list row: a marker and its text. */
+  private memberRow(marker: HTMLElement, text: string) {
+    const r = document.createElement('div');
+    r.className = 'pp-member';
+    const label = document.createElement('span');
+    label.textContent = text;
+    r.append(marker, label);
+    this.membersEl.appendChild(r);
+  }
+
+  /** The `▪` marker a member model's row leads with. */
+  private modelMarker(): HTMLElement {
+    const ico = document.createElement('span');
+    ico.className = 'pp-ico';
+    ico.textContent = '▪';
+    return ico;
+  }
+
+  /** The component list for an authored group: one row per member placement. */
+  private setMemberNames(names: readonly string[]) {
+    this.membersEl.replaceChildren();
+    this.membersEl.classList.toggle('on', names.length > 0);
+    for (const name of names) this.memberRow(this.modelMarker(), name);
+  }
+
   /** The component list under the stats line — one row per member model (▪) and light (a coloured dot): what
    *  this one placement carries. Hidden for a plain prop. */
   private setMembers(group: GroupDef | null) {
     this.membersEl.replaceChildren();
     this.membersEl.classList.toggle('on', !!group);
     if (!group) return;
-    const row = (marker: HTMLElement, text: string) => {
-      const r = document.createElement('div');
-      r.className = 'pp-member';
-      const label = document.createElement('span');
-      label.textContent = text;
-      r.append(marker, label);
-      this.membersEl.appendChild(r);
-    };
+    const row = (marker: HTMLElement, text: string) => this.memberRow(marker, text);
     for (const m of group.props) {
-      const ico = document.createElement('span');
-      ico.className = 'pp-ico';
-      ico.textContent = '▪';
       // Full names here rather than the browsing label: this list is what the placement CARRIES, and two
       // members that differ only in their trailing number are two different models.
-      row(ico, m.name);
+      row(this.modelMarker(), m.name);
     }
     for (const L of group.lights) {
       const dot = document.createElement('span');

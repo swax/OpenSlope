@@ -33,6 +33,7 @@ import { reconcileTJunctionGeometry } from '../core/mesh/t-junctions';
 import { createNetWatcher, type NetChange } from '../core/mesh/incremental';
 import { AUTHORED_MODEL_LEVEL, createAuthoredModel, duplicateAuthoredModel, findModel, modelEditDocFor, modelIdFromNumber, modelNumber, rebaseModelToPlacement } from '../core/doc/models';
 import { applyBehaviour } from '../core/props/defaults';
+import { assemblyOf } from '../core/props/assembly';
 import { turnD4 } from '../core/paint/orientation';
 import { recordFromReferenceProp, revisedPropName } from '../core/props/adopt';
 import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
@@ -228,6 +229,8 @@ viewportCallbacks.onEditPropPick = (index, toggle) => {
   }
   if (store.modelEditId) exitModelEdit(false); // selecting a placement is a click off the edited model
   edit.deselectEdit(); // one selection at a time: the placement takes the toolbox + gizmo
+  // A group's member answers as its group, as it does in Props mode (docs/015 · Authored groups).
+  if (assemblyOf(store.mdoc.props ?? [], index)) { edit.toggleEditProp(index); rebuildTools(); return true; }
   store.selectedProp = index;
   store.multiSel = [];
   rebuildTools();

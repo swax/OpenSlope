@@ -26,6 +26,7 @@ import type { RigLight } from '../core/reference/lights';
 import { placedPropCollisionProfile } from '../core/props/contact';
 import { applyBehaviour, behaviourOf } from '../core/props/defaults';
 import { unrotateByPlacement, writePropRotation } from '../core/props/pose';
+import { withWholeAssemblies } from '../core/props/assembly';
 import { screenProp } from '../core/props/screen';
 import type { RideEvent } from '../core/session/ride-event';
 
@@ -327,7 +328,8 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (additive && !indices.length) return;
       const current = store.multiSel.length ? store.multiSel : store.selectedProp === null ? [] : [store.selectedProp];
       resetGizmoMode();
-      store.multiSel = [...new Set([...(additive ? current : []), ...indices])].sort((a, b) => a - b);
+      // A group selects whole, however much of it the box caught (docs/015 · Authored groups).
+      store.multiSel = withWholeAssemblies(store.mdoc.props ?? [], [...(additive ? current : []), ...indices]);
       store.selectedProp = null;
       if (store.multiSel.length) {
         store.selectedLight = null; store.selectedRail = null; store.selectedNode = null;
