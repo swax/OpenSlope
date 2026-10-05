@@ -123,10 +123,39 @@ export async function writeFileAtomic(file: string, data: string | Buffer): Prom
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
     await writeFile(temp, data);
-    await rename(temp, file);
+    await renameOver(temp, file);
   } catch (error) {
     await rm(temp, { force: true }).catch(() => { /* the original failure is the one worth reporting */ });
     throw error;
+  }
+}
+
+/** What Windows answers a rename over a file that another handle has open with — a reader part-way through
+ *  it, the projects watcher re-reading a manifest, an antivirus or indexer scan. POSIX simply replaces the
+ *  name; Windows refuses until the other handle closes, which is moments later. */
+const TRANSIENT_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const RENAME_ATTEMPTS = 12;
+
+/**
+ * `rename` over an existing file, retried briefly on Windows when the destination is momentarily held open.
+ *
+ * A refusal there is not cosmetic. A project save writes the document and then the manifest that names its
+ * hash; a manifest rename refused between the two leaves a document the manifest does not describe, which the
+ * next read reconciles as somebody else's edit — and a live room then adopts it and drops the snapshot it was
+ * writing, losing whatever had landed since. Waiting out the reader keeps that from happening. Backoff doubles
+ * from 5 ms to a 100 ms ceiling, under a second in all, and any other error, or one on another platform,
+ * fails at once as it always did.
+ */
+async function renameOver(from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code ?? '';
+      if (process.platform !== 'win32' || !TRANSIENT_RENAME.has(code) || attempt >= RENAME_ATTEMPTS) throw error;
+      await new Promise<void>(done => setTimeout(done, Math.min(5 * 2 ** (attempt - 1), 100)));
+    }
   }
 }
 

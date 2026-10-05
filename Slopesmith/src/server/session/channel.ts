@@ -869,10 +869,12 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
       const refusal = writeRefusal(session.member, project, versions);
       session.writable = !refusal;
       session.managesProject = canManageProject(project, session.member);
+      // Only a tab this leaves read-only is handed the room's document, to drop whatever it had not sent; one
+      // that may still write goes on from its own replica, so the mountain would be bytes it never reads.
       send(session.sessionId, {
         t: 'project-access', projectId: project.id, project, writable: session.writable,
         ...(refusal ? { reason: refusal } : {}),
-        ...(document ? { document } : {}),
+        ...(document && refusal ? { document } : {}),
       });
     }
   });

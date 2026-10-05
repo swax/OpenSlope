@@ -372,11 +372,21 @@ export function createRegisterSync(deps: {
     const registers = documentRegisters(deps.getDoc());
     const changes: RegisterAssignment[] = [];
     const priors: RegisterValue[] = [];
+    // The shadow never holds undefined — `remember` deletes instead — so one lookup answers both "does the room
+    // hold this register" and "with what". Counting the registers it does hold is what lets the deletion pass
+    // below be skipped: the decomposition's keys are distinct, so when every shadow key was met there, none of
+    // them can be missing from it.
+    let held = 0;
     for (const [key, value] of registers) {
-      if (shadow.has(key) && sameValue(shadow.get(key), value)) continue;
+      const prior = shadow.get(key);
+      if (prior !== undefined) {
+        held++;
+        if (sameValue(prior, value)) continue;
+      }
       changes.push([key, clone(value)]);
-      priors.push(shadow.has(key) ? clone(shadow.get(key)) : undefined);
+      priors.push(clone(prior));
     }
+    if (held === shadow.size) return { changes, priors };
     for (const key of shadow.keys()) {
       if (registers.has(key)) continue;
       // A register the document no longer holds is cleared rather than left standing: an unpainted face and a

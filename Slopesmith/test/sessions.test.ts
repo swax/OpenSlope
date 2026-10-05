@@ -1077,6 +1077,8 @@ try {
     && /read-only/i.test(String(mapRefusal.message))
     && admitted.status === 200 && graceAdmitted.writable === true,
     'changing a map allow-list immediately revokes and restores an already-open editor tab');
+  check(graceRestricted.document?.vertexIds?.length > 0 && graceAdmitted.document === undefined,
+    'the room’s document goes only to the tab left read-only, not to one that may go on writing from its own');
   const beforeRename = graceOne.mark();
   graceOne.send({ t: 'assign', changes: [['g/name', 'GRACE_RENAME']], batch: 102 });
   const renameRefusal = await graceOne.expect(m => m.t === 'landed' && m.batch === 102,

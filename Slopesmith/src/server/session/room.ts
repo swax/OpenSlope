@@ -116,7 +116,19 @@ export type ClaimResult =
 export interface Room {
   projectId: string;
   doc: EditDoc;
-  digest: DocumentDigest;
+  /**
+   * The two-level digest as last computed, or null when the document has been replaced since — read it through
+   * `roomDigest`, never directly.
+   *
+   * It is maintained LAZILY. A replica only asks for it once it has been idle for seconds (docs/039), while
+   * every accepted batch would otherwise rehash a thousand-register chunk: measured on a real mountain that
+   * was ~99% of what landing an assignment cost, paid at the coalescing rate by everybody editing. So a batch
+   * only records which registers it moved, and the sections they fall in are rehashed when somebody asks.
+   */
+  digest: DocumentDigest | null;
+  /** Registers landed since `digest` was computed — the sections `roomDigest` has to rehash. A set, so it is
+   *  bounded by the registers the document holds however long nobody asks. */
+  stale: Set<RegisterKey>;
   /** The room's one sequence. Every accepted change takes the next number. */
   at: number;
   /** Which sequence last consumed each mesh id — the whole of what a topology claim compares against. */
@@ -170,7 +182,9 @@ function watchExternalWrites(): void {
 
 function adopt(room: Room, doc: EditDoc): void {
   room.doc = doc;
-  room.digest = digestDocument(doc, textHash);
+  // A replaced document renumbers the chunks, so nothing about the old digest carries over.
+  room.digest = null;
+  room.stale.clear();
 }
 
 /** The room for a map, opening it from disk on first use. Concurrent joins share one open. */
@@ -182,7 +196,7 @@ export async function joinRoom(projectId: string): Promise<Room> {
   watchExternalWrites();
   const open = openProject(projectId).then(snapshot => {
     const made: Room = {
-      projectId, doc: snapshot.document, digest: digestDocument(snapshot.document, textHash),
+      projectId, doc: snapshot.document, digest: null, stale: new Set(),
       at: 0, stamps: new Map(), authors: new Map(), topologyAt: 0, log: [], since: 0, timer: null,
       writing: null, wrote: snapshot.project.revision,
     };
@@ -248,7 +262,7 @@ export function assign(room: Room, changes: readonly RegisterAssignment[], by = 
   // was.
   if (landed.length) {
     room.at++;
-    room.digest = updateDigest(room.doc, room.digest, landed.map(([key]) => key), textHash);
+    if (room.digest) for (const [key] of landed) room.stale.add(key);
     room.log.push({ at: room.at, changes: landed });
     if (room.log.length > roomPolicy.logLimit) room.log.shift();
     room.since += landed.length;
@@ -347,7 +361,7 @@ export function claimTopology(room: Room,
   room.at++;
   room.topologyAt = room.at;
   for (const id of claim.ids) room.stamps.set(id, room.at);
-  room.digest = digestDocument(room.doc, textHash);
+  // `adopt` already let the digest go; the replay above landed on the new structure, which is the whole of it.
   // The tail described a structure that no longer exists, so it is not something a later claim may replay.
   room.log = [];
   room.since = roomPolicy.snapshotChanges;
@@ -357,8 +371,15 @@ export function claimTopology(room: Room,
 
 // ---- drift detection and repair (docs/039) ----------------------------------------------------------------
 
-/** The room's two-level digest — the roots two replicas compare, and the section hashes they descend to. */
-export const roomDigest = (room: Room): DocumentDigest => room.digest;
+/** The room's two-level digest — the roots two replicas compare, and the section hashes they descend to.
+ *  Brought up to date here, on demand: from scratch after a replaced document, otherwise by rehashing only the
+ *  sections the registers landed since the last ask fall in. */
+export function roomDigest(room: Room): DocumentDigest {
+  if (!room.digest) room.digest = digestDocument(room.doc, textHash);
+  else if (room.stale.size) room.digest = updateDigest(room.doc, room.digest, room.stale, textHash);
+  room.stale.clear();
+  return room.digest;
+}
 
 /** One section's registers, for a replica repairing exactly the chunk that diverged. The topology section is
  *  not register-shaped, so a divergence there is answered with the document instead. */
@@ -413,7 +434,7 @@ export function takeSnapshot(room: Room): Promise<unknown> {
       // climbing for as long as anybody kept editing.
       if (room.doc.name !== snapshot.project.name) {
         room.doc.name = snapshot.project.name;
-        room.digest = updateDigest(room.doc, room.digest, [globalRegister('name')], textHash);
+        if (room.digest) room.stale.add(globalRegister('name'));
       }
     })
     .catch(error => { log.error(`the snapshot for ${room.projectId} failed`, { error }); })
