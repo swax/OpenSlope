@@ -338,6 +338,7 @@ export class TestRide {
       // The meter belongs to a live timed/scored run, not to the retained board. A free ride, a finished event,
       // or a grounded dismount/remount has no running clock/score and therefore always accepts held boost.
       heldBoostAvailable: () => !this.runActive || this.scorer.hasBoost,
+      symmetricDeck: () => this.pose.gear === 'snowboard',
       // The same run boundary owns automatic recovery. Free riding keeps the result of crashes, wedges and OOB
       // falls until the player explicitly asks for the public/manual carry-back.
       automaticRespawnAvailable: () => this.runActive,
@@ -651,10 +652,11 @@ export class TestRide {
       // Slopesmith's board-pointed air thrust inherit this effect without a second airborne-only implementation.
       boostActive: this.model.boostActive(), boostEnergy: this.effects.boostMeter ?? 1,
       padBoost: this.model.padBoostSeconds > 0,
-      // Ground/rail boost still follows ridden travel (including switch). Air boost follows the visible nose.
-      // Naming the actual force direction lets the shared trail choose the exhaust end correctly in both cases.
+      // Ground/rail boost still follows ridden travel (including switch). Air boost follows the visible deck,
+      // toward the end the model chose as the boost began (a snowboard's leading end; skis' tips). Naming the
+      // actual force direction lets the shared trail choose the exhaust end correctly in both cases.
       boostDirection: st.grounded ? this.boostDirection.copy(rs.rideFwd)
-        : this.boostDirection.set(0, 0, 1).applyQuaternion(this.pose.board.quaternion),
+        : this.boostDirection.set(0, 0, this.model.boostEnd).applyQuaternion(this.pose.board.quaternion),
     }, dt, this.pose.gear);
     perf.poseMs = smoothRideMs(perf.poseMs, performance.now() - started);
     started = performance.now();

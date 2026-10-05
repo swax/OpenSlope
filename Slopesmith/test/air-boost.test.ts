@@ -35,6 +35,8 @@ interface AirRideOpts {
   right?: boolean;
   tuck?: boolean;
   keys?: RideKeys;
+  /** A snowboard (rides either way round) rather than skis. */
+  symmetricDeck?: boolean;
 }
 
 function airRide(opts: AirRideOpts = {}): RideModel {
@@ -44,6 +46,7 @@ function airRide(opts: AirRideOpts = {}): RideModel {
   const modelOpts: RideModelOpts = {
     spawn: new THREE.Vector3(0, 1, 0), heading: new THREE.Vector3(0, 0, 1), terrain: floorAt(),
     surfaceOf: () => 1, oobFloorY: -100, keys, stick: { active: false, x: 0 }, onRespawn: () => {},
+    ...(opts.symmetricDeck ? { symmetricDeck: () => true } : {}),
   };
   const model = createRideModel(modelOpts);
   model.start();
@@ -148,6 +151,33 @@ function step(model: RideModel, ticks = 1) {
   assert.ok(Math.abs(pad.st.vel.y - padCoast.st.vel.y) < 1e-9,
     'a timed pad does not fire the board-thrust path');
   assert.ok(!pad.boostThrustActive(), 'the pad-only boost state stays outside the board-thrust audio gate');
+}
+
+// A snowboard rides either way round, so a boost begun tail-first thrusts toward the tail — still ahead — while
+// skis are directional and keep thrusting toward their tips. The end is chosen as the boost begins and held until
+// it is let go, so a spin mid-boost does not swap it; the next press reads the deck afresh.
+{
+  const tailFirst = { fwd: new THREE.Vector3(0, 0, 1), velocity: new THREE.Vector3(0, 0, -10), boost: true };
+  const coast = airRide({ ...tailFirst, boost: false });
+  const board = airRide({ ...tailFirst, symmetricDeck: true });
+  const skis = airRide(tailFirst);
+  step(coast); step(board); step(skis);
+  assert.ok(Math.abs((board.st.vel.z - coast.st.vel.z) + AIR_BOOST_ACCEL * DT) < 1e-9,
+    'a snowboard travelling tail-first boosts toward its tail, which is ahead');
+  assert.equal(board.boostEnd, -1, 'the trail is told the tail end leads the thrust');
+  assert.ok(Math.abs((skis.st.vel.z - coast.st.vel.z) - AIR_BOOST_ACCEL * DT) < 1e-9,
+    'skis travelling backwards still thrust toward their tips');
+  assert.equal(skis.boostEnd, 1);
+
+  const keys: RideKeys = { left: false, right: false, tuck: false, brake: false, boost: true };
+  const spun = airRide({ ...tailFirst, keys, symmetricDeck: true });
+  step(spun);
+  spun.st.fwd.set(0, 0, -1); // a 180 mid-boost: the nose now leads
+  step(spun);
+  assert.equal(spun.boostEnd, -1, 'the end chosen at the press holds through a spin while boost stays held');
+  keys.boost = false; step(spun);
+  keys.boost = true; step(spun);
+  assert.equal(spun.boostEnd, 1, 'the next press reads the leading end afresh');
 }
 
 console.log('AIR BOOST TESTS PASSED');

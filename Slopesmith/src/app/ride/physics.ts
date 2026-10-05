@@ -234,6 +234,10 @@ export interface RideModelOpts {
   gaze?: () => THREE.Vector3 | null;
   /** Run-scoped held-boost gate. Omitted means unlimited; TestRide supplies the Unity boost-meter charge check. */
   heldBoostAvailable?: () => boolean;
+  /** Whether the deck rides either way round — a snowboard, as against skis. Then a held AIR boost thrusts toward
+   *  whichever end was travelling forward when the boost began, rather than always toward the nose, so a rider
+   *  going switch or out of a spun 180 still boosts ahead. Omitted (skis, AI) keeps the nose. */
+  symmetricDeck?: () => boolean;
   /** Whether world-driven out-of-play recovery may fire. Omitted preserves retail/AI automatic recovery.
    *  TestRide limits it to a live scored run; the public `resetToCourse` method remains manual and unconditional. */
   automaticRespawnAvailable?: () => boolean;
@@ -647,7 +651,7 @@ export function createRideModel(o: RideModelOpts) {
       && (meta.surface >= 0 || meta.key === mountSupportKey || allowUntyped);
   // Aimed-air-boost scratch is stable across ticks: this path is live at 60 Hz and must not manufacture four
   // short-lived vectors every time the trigger is held.
-  const airAim = new THREE.Vector3(), airVelocityDir = new THREE.Vector3();
+  const airAim = new THREE.Vector3(), airVelocityDir = new THREE.Vector3(), boostEndAxis = new THREE.Vector3();
   const airAimPerp = new THREE.Vector3(), airTurnAxis = new THREE.Vector3();
 
   const tickV0 = new THREE.Vector3(); const dv = new THREE.Vector3(); let dvTicks = 0;
@@ -672,6 +676,10 @@ export function createRideModel(o: RideModelOpts) {
   /** Whether the held air boost changed acceleration or bent velocity on the last physics tick. Kept honest so
    * the boost roar stops when an at-cap aim points exactly along travel and the cap would discard the thrust. */
   let airBoostActive = false;
+  /** The end of the deck a held air boost thrusts toward: `+1` the nose, `−1` the tail. Chosen once, as the boost
+   *  begins (`latchBoostEnd`), and held until it is let go. */
+  let boostEnd: 1 | -1 = 1;
+  let boostWasHeld = false;
   let telemetryFrame = 0;
   let tickTrace: {
     opening: RideTelemetryState;
@@ -1146,6 +1154,7 @@ export function createRideModel(o: RideModelOpts) {
   function tickCore(h: number) {
     tickV0.copy(st.vel); // banked into `dv` at the close; a respawn returns before that and is not an acceleration
     airBoostActive = false; // ground and rail ticks never leave the aimed-air-thrust audio gate armed
+    latchBoostEnd();
     st.landEta = Infinity; // only a falling air tick predicts a landing; every other motion state has none ahead
     if (padBoostTimer > 0) padBoostTimer = Math.max(0, padBoostTimer - h);
     wedge *= WEDGE_DECAY; // decays every tick, so only CONSECUTIVE contact frames ever reach the threshold
@@ -1708,12 +1717,13 @@ export function createRideModel(o: RideModelOpts) {
     st.airTime += dt;
     st.slip = 0;
 
-    // AIR BOOST follows the deck's visible nose — the same axis the new board trail leaves behind. Below the cap
+    // AIR BOOST follows the deck's visible axis toward `boostEnd` — the nose, or a snowboard's tail when that end
+    // was leading as the boost began — the same axis the board trail leaves behind. Below the cap
     // this is ordinary 8 m/s² thrust. Across the last 2 m/s, where the shared cap would erase a sideways
     // push, it cross-fades into (a) real braking for an against-travel aim and (b) a magnitude-preserving turn
     // toward the perpendicular deck axis at up to 40°/s. Pointing with travel at the cap honestly does nothing.
     if (heldBoostActive()) {
-      boardPointingDirection(st, airAim);
+      boardPointingDirection(st, airAim).multiplyScalar(boostEnd);
       const speed = st.vel.length();
       const capness = clamp01((speed - (st.speedCap - AIR_BOOST_CAP_BLEND)) / AIR_BOOST_CAP_BLEND);
       if (capness < 1) {
@@ -1971,6 +1981,24 @@ export function createRideModel(o: RideModelOpts) {
   }
 
   function heldBoostActive() { return o.keys.boost && (o.heldBoostAvailable?.() ?? true); }
+
+  /**
+   * Choose the end a held boost pushes toward, once, on the tick it begins. Skis are directional and always thrust
+   * toward the tips. A snowboard rides either way round, so it thrusts toward whichever end is travelling forward
+   * at that moment — the nose riding regular, the tail riding switch or out of a spun 180. Too slow along the
+   * deck to read, the ridden lead stands in.
+   */
+  function latchBoostEnd() {
+    const held = heldBoostActive();
+    if (held && !boostWasHeld) {
+      boostEnd = 1;
+      if (o.symmetricDeck?.()) {
+        const along = st.vel.dot(boardPointingDirection(st, boostEndAxis));
+        boostEnd = Math.abs(along) > SWITCH_LATCH_SPEED ? (along > 0 ? 1 : -1) : st.lead;
+      }
+    }
+    boostWasHeld = held;
+  }
 
   function boostActive() { return heldBoostActive() || padBoostTimer > 0; }
 
@@ -3408,6 +3436,8 @@ export function createRideModel(o: RideModelOpts) {
     /** The run's lap countdown, or null on a single-pass course — read by the HUD. */
     get laps(): LapCounter | null { return lapCounter; },
     get padBoostSeconds() { return padBoostTimer; }, ollieDown, ollieUp, boostActive, boostThrustActive,
+    /** The deck end a held air boost thrusts toward (`+1` nose, `−1` tail), for the trail's exhaust end. */
+    get boostEnd() { return boostEnd; },
     castSeg, castCameraObstacle, closestCameraTerrain, renderState };
 }
 
