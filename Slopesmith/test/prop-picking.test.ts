@@ -284,6 +284,21 @@ dom.dispatch('pointerup', {});
 check(selected === 7, 'Props select mode routes a click to the authored prop');
 check(placed === 0, 'display-only effect decoration cannot turn a prop click into placement');
 
+// Ctrl/Cmd+click adds the prop to the selection or drops it, as Edit and Effects mode do — the host decides which.
+{
+  let toggled: number | null = null;
+  stage.cb.onToggleProp = (index: number) => { toggled = index; };
+  selected = null;
+  dom.dispatch('pointerdown', { ctrlKey: true });
+  dom.dispatch('pointerup', { ctrlKey: true });
+  check(toggled === 7 && selected === null, 'Ctrl+click toggles the prop rather than selecting it alone');
+  toggled = null;
+  dom.dispatch('pointerdown', { metaKey: true });
+  dom.dispatch('pointerup', { metaKey: true });
+  check(toggled === 7, 'and so does Cmd+click');
+  stage.cb.onToggleProp = undefined;
+}
+
 // A prop line (docs/070): its members answer as the line, which is what lays them out.
 {
   props.lastPlacedProps[7] = { id: 'line:0000:000', line: 'line:0000' };
@@ -366,7 +381,7 @@ check(pickedPlacedProp === 7, 'Props middle-click selects the model and arms pro
   selected = 3;
   pickedPlacedProp = null;
   const placedBefore = placed;
-  stage.cb.isReplacingProp = () => true;
+  stage.cb.isPickingProp = () => true;
   stage.gizmo.axis = 'X';
   dom.dispatch('pointerdown', {});
   dom.dispatch('pointerup', {});
@@ -391,7 +406,7 @@ check(pickedPlacedProp === 7, 'Props middle-click selects the model and arms pro
   dom.dispatch('pointerdown', {});
   dom.dispatch('pointerup', {});
   check(selected === 3 && placed === placedBefore, 'Replace: empty terrain keeps the target and places nothing');
-  stage.cb.isReplacingProp = () => false;
+  stage.cb.isPickingProp = () => false;
   placedPropGroup.visible = true;
   props.propArm = { level: 'TEST', model: 1, baseOffset: 0 };
 }

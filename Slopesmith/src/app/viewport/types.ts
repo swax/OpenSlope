@@ -270,6 +270,10 @@ export interface ViewportCallbacks {
   /** Edit mode: an authored prop placement was clicked. Ctrl/Cmd toggles it alongside any selected mesh
    *  families; a plain click keeps the existing select / click-again-to-edit behavior. True = handled. */
   onEditPropPick?(index: number, toggle: boolean): boolean;
+  /** Edit mode: a click landed on free light `id` — select it to move, or with `toggle` (Ctrl/Cmd) add it to the
+   *  selected props or drop it (true when taken) — or, with null, on anything else, which lets a selected light go
+   *  (true when one was). */
+  onEditLightPick?(id: string | null, toggle?: boolean): boolean;
   /** Edit mode: a plain click landed on nothing selectable (empty space or the model-session's read-only
    *  mountain backdrop). Ends an unlocked model edit session — the host applies the lock / armed-tool rules. */
   onEditClickAway?(): void;
@@ -449,10 +453,18 @@ export interface ViewportCallbacks {
   /** Props mode: a middle-click copied a reference-world prop — arm that exact instance's model and inferred
    *  collision profile. `sourceIndex` preserves native sphere-body donors and independent contact gates. */
   onPickReferenceProp?(level: string, model: number, name: string, sourceIndex?: number): void;
+  /** Props mode: a Ctrl/Cmd+click on placed prop `index` — add it (its whole group, docs/015) to the selection,
+   *  or drop it when it is already selected. */
+  onToggleProp?(index: number): void;
+  /** Props mode: a Ctrl/Cmd+click on free light `id` — add it to the selection beside the props, or drop it, as a
+   *  Ctrl+clicked prop is; a group's light adds or drops its group (docs/015). False when nothing is selected to add
+   *  it to, and the click selects the light as a plain one would. */
+  onToggleLight?(id: string): boolean;
   /** Props mode: a middle-click copied a placed prop — arm its model to place more. */
   onPickPlacedProp?(index: number): void;
-  /** Replacement uses an ordinary world click as a prop pick while retaining the target selection. */
-  isReplacingProp?(): boolean;
+  /** Whether an ordinary world click is a prop PICK (`onPickPlacedProp` / `onPickReferenceProp`) rather than a
+   *  selection, keeping the current one: replacing a prop. */
+  isPickingProp?(): boolean;
   /** Props select mode: a reference-world prop was clicked — a READ-ONLY selection (outline + preview card;
    *  no gizmo, the reference can't be edited). All-null clears it. */
   /** `inst` = the picked INSTANCE's decoded contact + audio data — instance data, so it rides the pick

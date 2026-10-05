@@ -13,10 +13,12 @@ export type CommandSheetDeps = {
   /** Props mode is holding a paste (docs/012). */
   propPastePlacing: () => boolean;
   isReplacingProp: () => boolean;
+  /** A group waiting for a light to join it (docs/015). */
+  lightJoinWaitsFor: () => 'light' | null;
   /** Scene ▸ Course ▸ reset course is clicking out a new run. */
   courseDrawing: () => boolean;
   canRotateSelection: () => boolean;
-  editSelection: () => { kind: 'control points' | 'edges' | 'patches' | 'props' | 'mixed selection'; readOnly: boolean } | null;
+  editSelection: () => { kind: 'control points' | 'edges' | 'patches' | 'props' | 'light' | 'mixed selection'; readOnly: boolean } | null;
   selectedControlCagesVisible: () => boolean;
   canEditCurvature: () => boolean;
   edgeExtrusionStaged: () => boolean;
@@ -65,6 +67,9 @@ export function createCommandSheet(deps: CommandSheetDeps) {
       return helpPanel('Edit Mode — mixed selection',
         selection.readOnly ? [] : [['W / E', 'move / rotate all selected types together']],
         [['Ctrl+LMB', 'toggle any enabled type'], ['Tools count', 'keep one selected type'], ['Esc', 'deselect all']]);
+    }
+    if (selection.kind === 'light') {
+      return helpPanel('Edit Mode — light', [['W', 'move']], [['Props mode', 'full light settings'], ['Esc', 'deselect']]);
     }
     if (selection.kind === 'props') {
       return helpPanel('Edit Mode — props',
@@ -127,6 +132,8 @@ export function createCommandSheet(deps: CommandSheetDeps) {
       : store.currentMode === 'props'
         ? (deps.isReplacingProp()
           ? helpPanel('Props Mode — replace', [['LMB prop', 'use as replacement'], ['Library', 'choose replacement'], ['Esc', 'cancel replacement']])
+          : deps.lightJoinWaitsFor() === 'light'
+          ? helpPanel('Props Mode — add a light', [['LMB light', 'add it to the group'], ['Esc', 'cancel']])
           : store.lineDrawing
           ? helpPanel('Props Mode — laying a path', [['LMB', 'add a point'], ['Enter / Esc', 'finish']])
           : store.selectedLine !== null
@@ -140,7 +147,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
           ? helpPanel('Props Mode — placing', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['MMB', 'select + arm prop'], ['Esc', 'put down']])
           : propPastePlacing()
           ? helpPanel('Props Mode — paste', [['LMB', 'place'], ['Alt+scroll / ← →', 'turn'], ['⇧scroll', 'resize'], ['Esc', 'cancel']])
-          : helpPanel('Props Mode — select', [['LMB', 'select'], ['drag', 'box-select many'], ['⇧ drag', 'add boxed props'], ['MMB', 'select + arm prop'],
+          : helpPanel('Props Mode — select', [['LMB', 'select'], ['Ctrl+LMB', 'add / drop a prop or light'], ['drag', 'box-select many'], ['⇧ drag', 'add boxed props'], ['MMB', 'select + arm prop'],
             ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []),
             ['Ctrl+C / X / V', 'copy / cut / paste'], ['Del', 'remove'], ['Esc', 'deselect']]))
         : store.currentMode === 'edit' && edgeExtrusionStaged()

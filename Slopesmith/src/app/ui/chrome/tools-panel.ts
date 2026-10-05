@@ -1,4 +1,5 @@
 import { editMesh } from '../../edit/mesh-target';
+import { selectedSetLights } from '../../state/store';
 import GUI from 'lil-gui';
 import { segmented, toggleBar, label } from '../components/controls';
 import type { GizmoFrame } from '../../viewport/types';
@@ -80,6 +81,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     onIdentify: identifyMultiProp,
     onFocus: index => { viewport.focusProp(index); },
     onRemove: removeFromMultiSel,
+    onRemoveLight: deps.removeLightFromMultiSel,
   });
   propPreview.el.after(multiList.el);
   const bridgeList = new BridgeRailList({ onReverse: edit.reverseBridgeRail, onRemove: edit.removeBridgeRail, onMove: edit.moveBridgeRail });
@@ -165,10 +167,13 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const mixedEditSelection = () => editSelectionCounts().filter(selection => selection.count > 0).length > 1;
   const editPropsSelected = () => store.currentMode === 'edit' && !store.modelEditId && !mixedEditSelection()
     && (store.selectedProp !== null || store.multiSel.length > 0);
-  const editSelection = (): { kind: 'control points' | 'edges' | 'patches' | 'props' | 'mixed selection'; readOnly: boolean } | null => {
+  const editLightSelected = () => store.currentMode === 'edit' && !store.modelEditId && !mixedEditSelection()
+    && !editPropsSelected() && store.selectedLight !== null;
+  const editSelection = (): { kind: 'control points' | 'edges' | 'patches' | 'props' | 'light' | 'mixed selection'; readOnly: boolean } | null => {
     const counts = editSelectionCounts().filter(selection => selection.count > 0);
     if (counts.length > 1) return { kind: 'mixed selection', readOnly: counts.every(selection => selection.readOnly) };
     if (editPropsSelected()) return { kind: 'props', readOnly: false };
+    if (editLightSelected()) return { kind: 'light', readOnly: false };
     if (store.edgeSel.length) return { kind: 'edges', readOnly: false };
     if (store.cellSel.length) return { kind: 'patches', readOnly: false };
     if (store.selectedCorner !== null || store.regionSel.length || store.controlSel.length)
@@ -183,6 +188,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     pastePlacing,
     propPastePlacing: deps.propClipboard.placing,
     isReplacingProp: deps.isReplacingProp,
+    lightJoinWaitsFor: deps.lightJoinWaitsFor,
     courseDrawing: () => viewport.courseDrawing,
     canRotateSelection,
     editSelection,
@@ -286,14 +292,30 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   function buildEditPropTools() {
     const indices = store.multiSel.length ? store.multiSel : [store.selectedProp!];
     const props = indices.map(index => store.mdoc.props?.[index]).filter(prop => !!prop);
+    const lights = selectedSetLights(store).length;
     const section = editSection('prop-selected', 'Selection');
-    detail(section, props.length === 1 ? deps.shortPropName(props[0].name) : `${props.length} props selected`);
+    detail(section, props.length === 1 && !lights ? deps.shortPropName(props[0].name)
+      : `${props.length} prop${props.length === 1 ? '' : 's'}${lights ? ` + ${lights} light${lights === 1 ? '' : 's'}` : ''} selected`);
     detail(section, 'Use the gizmo to move, rotate or scale the selection.');
     tip(section.add({ open: deps.goToPropToolbox }, 'open').name('open in Props mode'),
       'Keep this selection and open its full prop or group settings in Props mode.');
     tip(section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
       'Clear this selection and return to the general Edit tools.');
     labelTools.buildAssignment();
+  }
+
+  /** Edit moves a free light like a placement; Props owns its full panel. */
+  function buildEditLightTools() {
+    const lights = store.mdoc.lights ?? [];
+    const index = lights.findIndex(light => light.id === store.selectedLight);
+    const light = lights[index];
+    const section = editSection('light-selected', 'Selection');
+    detail(section, light?.name ?? `Light ${index + 1}`);
+    detail(section, 'Use the gizmo to move the light.');
+    tip(section.add({ open: deps.goToPropToolbox }, 'open').name('open in Props mode'),
+      'Keep this light selected and open its full settings in Props mode.');
+    tip(section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
+      'Clear this selection and return to the general Edit tools.');
   }
 
   function rebuildTools() {
@@ -376,6 +398,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if ((store.selectedEdgeCrossing || store.selectedCoincidentVertices || cageActive()) && meshSelect.buildMeshSelectionTools(mdoc)) return;
 
     if (editPropsSelected()) { buildEditPropTools(); return; }
+    if (editLightSelected()) { buildEditLightTools(); return; }
 
     // Nothing selected: this is the ONLY state that shows the non-specific Edit tools.
     editPickSection.style.display = '';

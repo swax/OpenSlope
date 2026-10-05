@@ -358,6 +358,9 @@ export interface AuthoredLight {
    *  core and twinkle star a lamp or flare sparkles with (docs/047). Absent / 0 = no glint. Exported verbatim
    *  as the light record's `SpriteRes`, which is the engine's own gate. */
   glint?: number;
+  /** The authored GROUP this light belongs to (docs/015 · Authored groups), shared with the placements it moves,
+   *  turns and sizes with — a lamp's halo. Absent = on its own. */
+  assembly?: string;
 }
 
 /**
@@ -593,9 +596,9 @@ export interface PlacedProp {
   /** The PROP LINE (`PropLine.id`) this placement is a member of (docs/070). The line lays its members out,
    *  so selecting one selects the line, and a re-layout replaces them. Absent = placed on its own. */
   line?: string;
-  /** The authored GROUP this placement belongs to (docs/015 · Authored groups): every placement carrying the same
-   *  id selects, moves, turns and sizes as one, while each keeps its own pose, level and settings. A tag left on
-   *  one placement alone is no group. Absent = on its own. Unrelated to `group`, which names a mined def. */
+  /** The authored GROUP this placement belongs to (docs/015 · Authored groups): every placement and free light
+   *  carrying the same id selects, moves, turns and sizes as one, while each keeps its own pose, level and settings.
+   *  A tag left on one member alone is no group. Absent = on its own. Unrelated to `group`, which names a mined def. */
   assembly?: string;
   /** ADL collision-sound EVENT id (`Sounds.CollisonSound`) played as a positional one-shot when the rider
    *  hits the prop [Trailmap: 420-audio-runtime]. An event id, not a bank slot — resolved through

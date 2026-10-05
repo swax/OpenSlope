@@ -5,6 +5,7 @@ import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
 import type { NativeArt } from '../../core/export/provider';
 import { boostPadPreset, type BoostPadKind } from '../../core/props/boost-pad';
 import { promoteGem } from '../../core/props/gem';
+import { dropOrphanedAssemblyLights, wholeAssembly } from '../../core/props/assembly';
 import {
   applyBehaviour, groupMemberDefaults, instanceBehaviour, resolvePropDefaults, sameBehaviour, sanitizePropBehaviour,
   stampBehaviour, type ResolvedPropDefaults, type StampBehaviour,
@@ -17,7 +18,7 @@ import { decodeProps, type LevelProps, type PropsPayload } from '../../core/refe
 import type { UvScrollEffect } from '../../core/effects/world-effects';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../../core/lighting/sign-lights';
 import { authoredGroupLights, type GroupDef, type GroupsPayload } from '../../core/reference/groups';
-import type { ArmedProp, HeldEffect, Store } from '../state/store';
+import { selectedSetLights, setSelectedSet, type ArmedProp, type HeldEffect, type Store } from '../state/store';
 import type { Mode, Viewport } from '../viewport/viewport';
 import type { PropLibrary } from './library';
 import type { PropPreview } from './preview';
@@ -404,6 +405,7 @@ export function createPropOps(deps: PropOpsDeps) {
     if (store.currentMode !== 'props') setMode('props');
     pickInterceptor = null;
     replacement = { doc: store.mdoc, selection, targets };
+    lightJoin = null;
     rebuildTools(); updateCmdSheet();
   }
 
@@ -411,6 +413,52 @@ export function createPropOps(deps: PropOpsDeps) {
     if (!replacement) return;
     replacement = null;
     rebuildTools(); updateCmdSheet();
+  }
+
+  /**
+   * A selected GROUP waiting for a light (docs/015 · Authored groups): its panel's ⊞ add a light…, completed by the
+   * next click on a free light, which joins it. Like a replacement it belongs to this document and this selection,
+   * and lapses the moment either changes.
+   */
+  let lightJoin: { doc: Store['mdoc']; group: string } | null = null;
+
+  /** What the next world click should pick to complete a pending tie — or null when none is pending. */
+  function lightJoinWaitsFor(): 'light' | null {
+    const join = lightJoin;
+    if (!join) return null;
+    if (store.currentMode !== 'props' || store.mdoc !== join.doc || store.armedProp
+      || wholeAssembly(store.mdoc, store.multiSel) !== join.group) lightJoin = null;
+    return lightJoin ? 'light' : null;
+  }
+
+  /** Start waiting for a light to add to the selected group. */
+  function startLightJoin() {
+    replacement = null;
+    const group = wholeAssembly(store.mdoc, store.multiSel);
+    lightJoin = group ? { doc: store.mdoc, group } : null;
+    rebuildTools(); updateCmdSheet();
+  }
+
+  function cancelLightJoin() {
+    if (!lightJoin) return;
+    lightJoin = null;
+    rebuildTools(); updateCmdSheet();
+  }
+
+  /** Complete a pending tie with the clicked light, which joins the group; the group stays selected. Answers
+   *  whether the click was the tie's to take. */
+  function finishLightJoin(lightId: string): boolean {
+    if (!lightJoinWaitsFor()) return false;
+    const group = lightJoin!.group;
+    lightJoin = null;
+    const light = store.mdoc.lights?.find(entry => entry.id === lightId);
+    if (!light) return true;
+    light.assembly = group;
+    store.selectedLight = null; store.selectedProp = null;
+    store.multiSel = [...store.multiSel];
+    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    toast(`${light.name ?? `${light.kind} light`} now moves with its group.`, 'ok');
+    return true;
   }
 
   /** Consume even a cancelled request, so a late asset load cannot arm a prop or replace another target. */
@@ -589,7 +637,10 @@ export function createPropOps(deps: PropOpsDeps) {
     // A screen attached to this board goes with it: the thing it named no longer exists, and a rectangle
     // hanging where a billboard used to stand is worse than no screen (docs/051).
     dropScreensForProp(store.mdoc, id);
+    const group = store.mdoc.props[store.selectedProp]?.assembly;
     store.mdoc.props.splice(store.selectedProp, 1);
+    // A group's lights go with its last prop (docs/015 · Authored groups).
+    if (group) dropOrphanedAssemblyLights(store.mdoc, [group]);
     store.selectedProp = null;
     scheduleRebuild();
     rebuildTools();
@@ -600,21 +651,37 @@ export function createPropOps(deps: PropOpsDeps) {
   function deleteMultiSelProps() {
     replacement = null;
     if (!store.multiSel.length || !store.mdoc.props) return;
+    const groups = new Set(store.multiSel.map(i => store.mdoc.props?.[i]?.assembly).filter((id): id is string => !!id));
+    // The free lights selected beside the props go with them (docs/015 · Authored groups).
+    const lights = new Set(selectedSetLights(store));
+    if (lights.size) store.mdoc.lights = (store.mdoc.lights ?? []).filter(light => !light.id || !lights.has(light.id));
     for (const i of [...store.multiSel].sort((a, b) => b - a)) {
       const id = store.mdoc.props[i]?.id;
       if (id && store.mdoc.effects) detachEffectFromProp(store.mdoc.effects, id);
       dropScreensForProp(store.mdoc, id);
       store.mdoc.props.splice(i, 1);
     }
+    dropOrphanedAssemblyLights(store.mdoc, groups); // a deleted group takes its lights (docs/015)
     store.multiSel = [];
     scheduleRebuild();
     rebuildTools();
   }
 
-  /** Drop ONE prop from the box selection (the list row's ✕) — the prop itself stays placed. */
+  /** Drop ONE prop from the box selection (the list row's ✕) — the prop itself stays placed. The set's lights
+   *  stay with it while it still has a prop to hold them; with none left, the first stays selected on its own. */
   function removeFromMultiSel(index: number) {
-    store.multiSel = store.multiSel.filter(i => i !== index);
+    const lights = selectedSetLights(store);
+    const props = store.multiSel.filter(i => i !== index);
+    if (!props.length && lights.length) { store.multiSel = []; store.selectedLight = lights[0]; }
+    else setSelectedSet(store, props, lights);
     scheduleRebuild(); // its outline drops; the group gizmo re-seats on the smaller set's centroid
+    rebuildTools();
+  }
+
+  /** Drop one free light from the selected set (its list row's ✕) — the light itself stays. */
+  function removeLightFromMultiSel(id: string) {
+    setSelectedSet(store, [...store.multiSel], selectedSetLights(store).filter(light => light !== id));
+    scheduleRebuild(); // its outline drops
     rebuildTools();
   }
 
@@ -656,6 +723,7 @@ export function createPropOps(deps: PropOpsDeps) {
     propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
     stampHeldEffects, interceptNextPick,
     replaceSelectedProp, cancelPropReplacement, isReplacingProp,
+    lightJoinWaitsFor, startLightJoin, cancelLightJoin, finishLightJoin, removeLightFromMultiSel,
     shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
     ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
     reloadImportedProps,

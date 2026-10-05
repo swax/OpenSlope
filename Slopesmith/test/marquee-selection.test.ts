@@ -2,13 +2,16 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createPointerRouter } from '../src/app/viewport/input/pointer-router';
-import { createStore } from '../src/app/state/store';
+import { createStore, selectedSetLights } from '../src/app/state/store';
 import { defaultMountain, migrateMountain } from '../src/core/doc/mountain';
 import type { V3 } from '../src/core/doc/types';
 
 Object.defineProperty(globalThis, 'document', {
   configurable: true, value: { getElementById: () => ({ textContent: '', className: '' }) },
 });
+// The status toast a light's tie reports through arms a timer.
+Object.defineProperty(globalThis, 'window', { configurable: true,
+  value: { setTimeout: () => 0, clearTimeout() {}, addEventListener() {}, removeEventListener() {} } });
 const { createViewportCallbacks } = await import('../src/app/viewport-callbacks');
 const store = createStore({ mdoc: migrateMountain(defaultMountain()), currentMode: 'props', storedUi: {} });
 store.mdoc.props = [-5, 0, 5].map((x, index) => ({
@@ -17,7 +20,7 @@ store.mdoc.props = [-5, 0, 5].map((x, index) => ({
 const rendered = { single: null as number | null, many: [] as number[] };
 const callbacks = createViewportCallbacks({
   store, edit: { viewportCallbacks: {}, resetGizmoMode() {} },
-  propOps: () => ({ isReplacingProp: () => false }),
+  propOps: () => ({ isReplacingProp: () => false, lightJoinWaitsFor: () => null, finishLightJoin: () => false }),
   viewport: () => ({ setPlacedPropSelection(single: number | null, many: number[]) {
     rendered.single = single; rendered.many = [...many];
   } }),
@@ -111,4 +114,65 @@ drag(350, 450, true, false);
 drag(350, 450, false, true);
 drag(350, 450);
 assert.deepEqual(editModes, ['add', 'add', 'replace'], 'Edit vertices/edges/patches retain the same Shift-drag routing');
+
+// Props Ctrl/Cmd+click builds a set prop by prop, a group going in and out whole (docs/015 · Authored groups).
+{
+  store.currentMode = 'props';
+  store.selectedProp = null; store.multiSel = [];
+  const toggle = callbacks.onToggleProp!.bind(callbacks);
+  toggle(0);
+  assert.equal(store.selectedProp, 0, 'Ctrl+click on nothing selected selects that prop on its own');
+  assert.deepEqual(store.multiSel, []);
+  toggle(2);
+  assert.deepEqual(store.multiSel, [0, 2], 'a second Ctrl+click makes a set of the two');
+  assert.equal(store.selectedProp, null);
+  assert.deepEqual(rendered, { single: null, many: [0, 2] }, 'shown as a set under its centre gizmo');
+  toggle(0);
+  assert.equal(store.selectedProp, 2, 'dropping one of two leaves the other as an ordinary selection');
+  assert.deepEqual(rendered, { single: 2, many: [] });
+  toggle(2);
+  assert.equal(store.selectedProp, null, 'and dropping the last leaves nothing');
+  store.mdoc.props![1].assembly = store.mdoc.props![2].assembly = 'group:0000';
+  toggle(0);
+  toggle(1);
+  assert.deepEqual(store.multiSel, [0, 1, 2], 'Ctrl+click on a group member adds the whole group');
+  toggle(2);
+  assert.deepEqual(store.selectedProp, 0, 'and Ctrl+click on one drops the whole group');
+  delete store.mdoc.props![1].assembly; delete store.mdoc.props![2].assembly;
+}
+
+// Props Ctrl/Cmd+click on a light adds it to the selection beside the props, as a prop would be (docs/015).
+{
+  store.mdoc.lights = [
+    { id: 'light:0000', kind: 'point', pos: [0, 5, 0], color: '#ffffff', intensity: 1, reach: 10 },
+    { id: 'light:0001', kind: 'point', pos: [3, 5, 0], color: '#ffffff', intensity: 1, reach: 10 },
+  ];
+  store.selectedProp = null; store.multiSel = []; store.selectedLight = null;
+  const toggleLight = callbacks.onToggleLight!.bind(callbacks);
+  const toggle = callbacks.onToggleProp!.bind(callbacks);
+  assert.equal(toggleLight('light:0000'), false, 'with nothing selected it leaves the click to select the light');
+  store.selectedProp = 1;
+  assert.equal(toggleLight('light:0000'), true);
+  assert.deepEqual(store.multiSel, [1], 'a selected prop and a Ctrl+clicked light make a set…');
+  assert.deepEqual(selectedSetLights(store), ['light:0000'], '…with the light in it');
+  assert.equal(store.mdoc.lights[0].assembly, undefined, 'and nothing is grouped until ⊞ group is pressed');
+  toggle(0);
+  assert.deepEqual(store.multiSel, [0, 1], 'Ctrl+clicking another prop keeps the light in the set');
+  assert.deepEqual(selectedSetLights(store), ['light:0000']);
+  toggleLight('light:0001');
+  assert.deepEqual(selectedSetLights(store), ['light:0000', 'light:0001'], 'and another light joins it');
+  toggleLight('light:0000');
+  assert.deepEqual(selectedSetLights(store), ['light:0001'], 'Ctrl+clicking a light again drops it');
+  callbacks.onSelectProps!([2]);
+  assert.deepEqual(selectedSetLights(store), [], 'a plain new selection lets the lights go');
+  store.multiSel = []; store.selectedProp = null; store.selectedLight = 'light:0000';
+  toggle(2);
+  assert.deepEqual(store.multiSel, [2], 'Ctrl+clicking a prop with a light selected makes a set of the two');
+  assert.deepEqual(selectedSetLights(store), ['light:0000']);
+  assert.equal(store.selectedLight, null);
+  toggle(2);
+  assert.equal(store.selectedLight, 'light:0000', 'dropping the only prop leaves the light selected on its own');
+  store.selectedLight = null;
+  store.mdoc.lights = [];
+}
 console.log('Marquee selection: props, course points and Edit modifier routing passed.');

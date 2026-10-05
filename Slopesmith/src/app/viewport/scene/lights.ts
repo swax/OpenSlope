@@ -132,14 +132,18 @@ export function createLightsLayer(stage: Stage) {
   /** Where the selected light sits in the list right now, or -1. The selection names a light rather than the
    *  slot it happens to occupy, so it is resolved fresh on every rebuild: deleting a light below it moves its
    *  index and leaves the selection exactly where it was (docs/039). */
+  /** The lights riding in a multi-selection of props, by id. */
+  let setLights = new Set<string>();
   const selectedIndex = (): number =>
     selectedLight === null ? -1 : freeLights.findIndex(light => light.id === selectedLight);
 
   /** Rebuild the free-light bulb cloud from the doc and keep the selected light's one expanded rig + move
-   * handle in sync. Parallels setPlacedProps without drawing every cone at once. */
-  function setFreeLights(newLights: AuthoredLight[], selectedId: string | null) {
+   * handle in sync. Parallels setPlacedProps without drawing every cone at once. `setIds` are the lights riding in
+   * a multi-selection of props (docs/015): outlined as selected, but moved by the set's gizmo, not one of their own. */
+  function setFreeLights(newLights: AuthoredLight[], selectedId: string | null, setIds: readonly string[] = []) {
     freeLights = newLights;
     selectedLight = selectedId;
+    setLights = new Set(setIds);
     buildFreeLightGizmos();
     const selIdx = selectedIndex();
     if (selIdx >= 0) {
@@ -162,7 +166,8 @@ export function createLightsLayer(stage: Stage) {
         colors: freeLights.map(light => light.color),
         icons: freeLights.map(light => light.kind === 'spot' ? 'spotlight' : 'bulb'),
         aimTargets: freeLights.map((light, index) => lightAimTarget(freeLightToPlaced(light, index))),
-        selectedIndex: selIdx < 0 ? null : selIdx,
+        selectedIndex: freeLights.flatMap((light, index) =>
+          index === selIdx || (light.id !== undefined && setLights.has(light.id)) ? [index] : []),
       }) : null;
     if (freeLightMarkers) {
       // Free lights remain semantic editable-light picks rather than derived source-only picks.

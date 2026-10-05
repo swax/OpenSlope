@@ -172,6 +172,20 @@ export function freeLightToPlaced(a: AuthoredLight, index: number): PlacedLight 
   };
 }
 
+/** What the Add light tool drops a new free light as: its kind, colour, brightness, reach, cone and glint. */
+export interface FreeLightPreset {
+  kind: 'point' | 'spot'; color: string; intensity: number; reach: number; cone: number; glint: number;
+}
+
+/** A new free light at `pos`, as the Add light tool's `preset` would drop it — a spot aimed straight down. */
+export function newFreeLight(preset: FreeLightPreset, id: string, pos: V3): AuthoredLight {
+  const light: AuthoredLight = { id, kind: preset.kind, pos, color: preset.color, intensity: preset.intensity,
+    reach: preset.reach };
+  if (preset.kind === 'spot') { light.dir = [0, -1, 0]; light.cone = preset.cone; }
+  if (preset.glint) light.glint = preset.glint;
+  return light;
+}
+
 /** Every hand-placed free light resolved into rig form. */
 export function authoredFreeLights(lights: AuthoredLight[] | undefined): PlacedLight[] {
   return (lights ?? []).map(freeLightToPlaced);

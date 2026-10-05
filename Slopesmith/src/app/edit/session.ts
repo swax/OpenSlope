@@ -1,7 +1,9 @@
 import type { LabelDefinition, QuadMeshDoc, V3 } from '../../core/doc/types';
 import { nextLabelColor, nextLabelId } from '../../core/doc/labels';
 import { writePropRotation } from '../../core/props/pose';
-import { assemblyOf, withWholeAssemblies } from '../../core/props/assembly';
+import {
+  assemblyOf, carryAssemblyLights, lightAssemblyOf, placementPoses, withWholeAssemblies,
+} from '../../core/props/assembly';
 import {
   meshCreaseVertices, meshDirNeighbors, meshResetShape, meshSmoothVertices, meshSetHandle, meshSetTwist,
   HANDLE_DIRS, type HandleDir,
@@ -29,7 +31,7 @@ import {
 import {
   controlPointIsLocked, edgeIsLocked, lockedEdgeSet, lockedVertexSet, quadIsLocked, setQuadsLocked,
 } from '../../core/mesh/locks';
-import type { Store } from '../state/store';
+import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
 import {
   coincidentVertexIndices, controlPointIndex, controlPointIndices, controlPointName, directedEdgeIndex, edgeCrossingIndex, edgeIndex, edgeIndices,
   namedCoincidentVertices, namedEdge, namedEdgeCrossing, namedEdges, quadIndex, quadIndices, quadName,
@@ -792,9 +794,10 @@ export function createEditSession(deps: EditSessionDeps) {
   /** Edit-mode placement selection (a placed prop's box + move gizmo) yields to any mesh pick — one
    *  selection at a time owns the toolbox and the gizmo. */
   function dropPlacementSelection() {
-    if (store.selectedProp === null && !store.multiSel.length) return;
+    if (store.selectedProp === null && !store.multiSel.length && store.selectedLight === null) return;
     store.selectedProp = null;
     store.multiSel = [];
+    store.selectedLight = null; // a free light selected in Edit is a placement selection too
     scheduleRebuild();
   }
 
@@ -853,16 +856,19 @@ export function createEditSession(deps: EditSessionDeps) {
     const incomingPatches = quadNames(doc, selection.patches);
     const currentProps = store.multiSel.length ? store.multiSel
       : store.selectedProp !== null ? [store.selectedProp] : [];
+    // Shift and Ctrl boxes add to or take from the set, keeping its lights; a plain box starts over.
+    const currentLights = mode === 'replace' ? [] : selectedEditLights();
     // A group goes in or out whole, however much of it the box caught (docs/015 · Authored groups).
-    const incomingProps = store.modelEditId ? [] : withWholeAssemblies(store.mdoc.props ?? [],
+    const incomingProps = store.modelEditId ? [] : withWholeAssemblies(store.mdoc,
       selection.props.filter(index => index >= 0 && index < (store.mdoc.props?.length ?? 0)));
 
     const points = mergeMarqueeSet(currentPoints, incomingPoints, controlPointKey, mode);
     store.edgeSel = mergeMarqueeSet(store.edgeSel, incomingEdges, nameKey, mode);
     store.cellSel = mergeMarqueeSet(store.cellSel, incomingPatches, name => name, mode).sort();
-    store.multiSel = mergeMarqueeSet(currentProps, incomingProps, index => `${index}`, mode)
-      .sort((a, b) => a - b);
+    const mergedProps = mergeMarqueeSet(currentProps, incomingProps, index => `${index}`, mode).sort((a, b) => a - b);
+    setSelectedSet(store, mergedProps, mergedProps.length ? currentLights : []);
     store.selectedProp = null;
+    store.selectedLight = null; // a box selects mesh and props; a light it does not keep in the set lets go
     store.selectedCorner = null;
     store.controlSel = points;
     store.regionSel = points.flatMap(point => point.kind === 'vertex' ? [point.vertex] : []).sort();
@@ -884,14 +890,45 @@ export function createEditSession(deps: EditSessionDeps) {
   function toggleEditProp(index: number) {
     if (store.currentMode !== 'edit' || index < 0 || index >= (store.mdoc.props?.length ?? 0)) return;
     const props = new Set(selectedEditPropIndices());
-    const members = assemblyOf(store.mdoc.props ?? [], index) ?? [index];
+    const members = assemblyOf(store.mdoc, index) ?? [index];
     if (props.has(index)) for (const member of members) props.delete(member);
     else for (const member of members) props.add(member);
+    selectEditSet([...props], selectedEditLights());
+  }
+
+  /** The free lights the Edit selection holds: those riding in its set of props, or the one light selected alone. */
+  function selectedEditLights(): string[] {
+    return store.multiSel.length ? selectedSetLights(store) : store.selectedLight === null ? [] : [store.selectedLight];
+  }
+
+  /** Make `props` (with the free lights beside them) the Edit placement selection, keeping every mesh family. A
+   *  set is held by its props' gizmo, so with no prop left a light stays selected on its own. */
+  function selectEditSet(props: number[], lights: readonly string[], lastLight?: string) {
+    const sorted = [...new Set(props)].sort((a, b) => a - b);
     store.selectedProp = null;
-    store.multiSel = [...props].sort((a, b) => a - b);
+    store.selectedLight = null;
+    if (!sorted.length && lights.length) {
+      store.multiSel = [];
+      store.selectedLight = lastLight && lights.includes(lastLight) ? lastLight : lights[0];
+    } else setSelectedSet(store, sorted, lights);
     resetGizmoMode();
     renderEditMarqueeSelection();
     refreshEditSelectionUi();
+    if (lights.length) scheduleRebuild(); // the lights layer outlines the set's lights
+  }
+
+  /** Ctrl/Cmd+click on a free light: add it to the selected props, or drop it — a group's light adds or drops its
+   *  whole group (docs/015 · Authored groups). False when there are no props to add it to, so the click selects
+   *  the light on its own. */
+  function toggleEditLight(id: string): boolean {
+    if (store.currentMode !== 'edit') return false;
+    const group = lightAssemblyOf(store.mdoc, id);
+    if (group) { toggleEditProp(group[0]); return true; }
+    const props = selectedEditPropIndices();
+    if (!props.length) return false;
+    const lights = selectedEditLights();
+    selectEditSet(props, lights.includes(id) ? lights.filter(light => light !== id) : [...lights, id], id);
+    return true;
   }
 
   /** The mixed-count chooser calls this to keep one family and hand that already-highlighted set back to its
@@ -1688,12 +1725,14 @@ export function createEditSession(deps: EditSessionDeps) {
       if (store.regionSel.length && !store.controlSel.some(point => point.kind !== 'vertex'))
         view().setRegionMarks(selectedVertexIndices().map(vertex => getVertex(doc, vertex)));
       let propsMoved = false;
+      const propsBefore = placementPoses(store.mdoc.props ?? [], selectedEditPropIndices());
       for (const index of selectedEditPropIndices()) {
         const prop = store.mdoc.props?.[index];
         if (!prop) continue;
         prop.pos[0] += delta[0]; prop.pos[1] += delta[1]; prop.pos[2] += delta[2];
         propsMoved = true;
       }
+      carryAssemblyLights(store.mdoc, propsBefore, selectedSetLights(store)); // a group's lights go where its props go (docs/015)
       if (propsMoved) scheduleRebuild();
     },
     onRotateMixedEditSelection(update) {
@@ -1718,6 +1757,7 @@ export function createEditSession(deps: EditSessionDeps) {
         view().setRegionMarks(selectedVertexIndices().map(vertex => getVertex(doc, vertex)));
       let propsRotated = false;
       const selectedProps = new Set(selectedEditPropIndices());
+      const propsBefore = placementPoses(store.mdoc.props ?? [], [...selectedProps]);
       for (const item of update.props) {
         if (!selectedProps.has(item.index)) continue;
         const prop = store.mdoc.props?.[item.index];
@@ -1726,6 +1766,7 @@ export function createEditSession(deps: EditSessionDeps) {
         writePropRotation(prop, item);
         propsRotated = true;
       }
+      carryAssemblyLights(store.mdoc, propsBefore, selectedSetLights(store)); // a group's lights turn with its props (docs/015)
       if (propsRotated) scheduleRebuild();
     },
     onRotateControlPoints(targets) {
@@ -1928,7 +1969,7 @@ export function createEditSession(deps: EditSessionDeps) {
     },
     activeEditFamily, mixedEditSelection, transformSelectionActive, rotatableSelection, selectedFreePoint, setGizmoMode,
     resetGizmoMode,
-    toggleEditProp,
+    toggleEditProp, toggleEditLight,
     beginEdgeExtrusion, flipEdgeExtrusionSide, commitEdgeExtrusion, cancelEdgeExtrusion,
     clearCellSel, clearEdgeSel, exitRegion, deselectEdit, refreshHandles, narrowEditSelection,
     selectEdgeCrossing, weldSelectedEdgeCrossing, selectCoincidentVertices, weldSelectedCoincidentVertices,

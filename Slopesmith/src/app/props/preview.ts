@@ -29,6 +29,9 @@ export interface AssemblyPreviewMember {
   pos: V3; yaw: number; pitch?: number; roll?: number; scale: number;
 }
 
+/** A light in a component list: what kind it is, its colour and how bright. */
+export interface PreviewLight { kind: string; color: string; intensity: number }
+
 const ORBIT_SENSITIVITY = 0.01;                 // radians of orbit per pixel dragged
 const MAX_ELEVATION = 1.45;                       // clamp the pitch just shy of straight over / under the model
 
@@ -182,15 +185,16 @@ export class PropPreview {
 
   /**
    * Show an authored GROUP (docs/015 · Authored groups): every member where it stands, each drawn from its own
-   * level, with the member list under the stats as a mined group's component list. `members` carry world poses;
-   * the view frames whatever they span, so no origin needs choosing.
+   * level, with the member list under the stats as a mined group's component list, its lights included.
+   * `members` carry world poses; the view frames whatever they span, so no origin needs choosing.
    */
-  showSet(name: string, members: readonly AssemblyPreviewMember[], instance?: string | null) {
+  showSet(name: string, members: readonly AssemblyPreviewMember[], lights: readonly PreviewLight[] = [],
+    instance?: string | null) {
     this.el.classList.add('on');
     this.nameEl.textContent = name;
     this.modelEl.textContent = '';
     this.instanceEl.textContent = instance ?? '';
-    this.setMemberNames(members.map(m => m.name));
+    this.setMemberNames(members.map(m => m.name), lights);
     const entries: ThumbEntry[] = [];
     const origin = members[0]?.pos ?? [0, 0, 0]; // world positions can run to kilometres; the view only needs offsets
     for (const m of members) {
@@ -234,11 +238,20 @@ export class PropPreview {
     return ico;
   }
 
-  /** The component list for an authored group: one row per member placement. */
-  private setMemberNames(names: readonly string[]) {
+  /** The coloured dot a light's row leads with, and its row. */
+  private lightRow(light: PreviewLight) {
+    const dot = document.createElement('span');
+    dot.className = 'pp-dot';
+    dot.style.background = light.color;
+    this.memberRow(dot, `${light.kind} light · ×${light.intensity.toFixed(light.intensity >= 10 ? 0 : 1)}`);
+  }
+
+  /** The component list for an authored group: one row per member placement, then one per light. */
+  private setMemberNames(names: readonly string[], lights: readonly PreviewLight[]) {
     this.membersEl.replaceChildren();
-    this.membersEl.classList.toggle('on', names.length > 0);
+    this.membersEl.classList.toggle('on', names.length + lights.length > 0);
     for (const name of names) this.memberRow(this.modelMarker(), name);
+    for (const light of lights) this.lightRow(light);
   }
 
   /** The component list under the stats line — one row per member model (▪) and light (a coloured dot): what
@@ -253,12 +266,7 @@ export class PropPreview {
       // members that differ only in their trailing number are two different models.
       row(this.modelMarker(), m.name);
     }
-    for (const L of group.lights) {
-      const dot = document.createElement('span');
-      dot.className = 'pp-dot';
-      dot.style.background = L.color;
-      row(dot, `${L.kind} light · ×${L.intensity.toFixed(L.intensity >= 10 ? 0 : 1)}`);
-    }
+    for (const L of group.lights) this.lightRow(L);
   }
 
   hide() { this.el.classList.remove('on', 'orbit'); this.token++; }

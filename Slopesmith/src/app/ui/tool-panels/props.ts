@@ -14,18 +14,20 @@ import { openSoundLibrary } from '../../effects/sound-library';
 import { AUTHORED_MODEL_LEVEL, modelIdFromNumber } from '../../../core/doc/models';
 import { SURFACE_AUTHOR_OPTIONS, surfaceTypeLabel } from '../../../core/reference/surface-types';
 import type {
-  NativeCollisionProfile, PlacedProp, PropBehaviour, PropLine, PropSheet, Screen, V3,
+  AuthoredLight, NativeCollisionProfile, PlacedProp, PropBehaviour, PropLine, PropSheet, Screen, V3,
 } from '../../../core/doc/types';
-import type { ArmedProp } from '../../state/store';
+import { selectedSetLights, setSelectedSet, type ArmedProp } from '../../state/store';
 import {
   applyBehaviour, baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
   type ResolvedPropDefaults,
 } from '../../../core/props/defaults';
 import { expandGroupProps, type GroupDef, type GroupPropDef } from '../../../core/reference/groups';
 import {
-  assemblyOf, assemblyRefusal, breakAssembly, createAssembly, scalePlacements, turnPlacements,
-  unpackGroupPlacement, wholeAssembly, withWholeAssemblies,
+  assemblyOf, assemblyRefusal, breakAssembly, carryAssemblyLights, createAssembly, lightAssemblyOf, placementPoses,
+  scalePlacements, turnPlacements, unpackGroupPlacement, wholeAssembly, withWholeAssemblies,
 } from '../../../core/props/assembly';
+import { newFreeLight } from '../../../core/lighting/sign-lights';
+import { nextLightId } from '../../../core/doc/ids';
 import type { AssemblyPreviewMember } from '../../props/preview';
 import { effectTemplateLabel } from '../../../core/props/effect-defaults';
 import { freeScreen, screenForProp, screensOfProp } from '../../props/screens';
@@ -1006,7 +1008,7 @@ export function createPropTools(ctx: ToolsContext) {
     addEmitterSection(host);
   }
 
-  // ---- authored groups (docs/015 · Authored groups): placements tied together, each still its own prop ----
+  // ---- authored groups (docs/015 · Authored groups): props and lights tied together, each still its own ----
 
   /** A placement's settings as a record another placement can take: a legacy placement's inferred collision
    *  profile materialized, so what it does now is what the copy does. */
@@ -1016,45 +1018,66 @@ export function createPropTools(ctx: ToolsContext) {
         typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile)) };
   }
 
-  /** The selected authored group's members, when the box selection is exactly one group. */
+  /** The selected authored group's props, when the selection is exactly one group — no other prop, and no free
+   *  light Ctrl+clicked in beside it. */
   function selectedAssembly(): number[] | null {
-    return wholeAssembly(store.mdoc.props ?? [], store.multiSel) ? [...store.multiSel].sort((a, b) => a - b) : null;
+    return !selectedSetLights(store).length && wholeAssembly(store.mdoc, store.multiSel)
+      ? [...store.multiSel].sort((a, b) => a - b) : null;
   }
 
-  /** What a group is called: its first member, and how many more it holds. */
+  /** How a selection reads on its buttons: its props, and its free lights when it has some. */
+  function setText(props: number, lights: number): string {
+    return `${plural(props)}${lights ? ` + ${lights} light${lights === 1 ? '' : 's'}` : ''}`;
+  }
+
+  /** The free lights of the group `members` belong to. */
+  function assemblyLights(members: readonly number[]): AuthoredLight[] {
+    const id = store.mdoc.props?.[members[0]]?.assembly;
+    return id ? (store.mdoc.lights ?? []).filter(light => light.assembly === id) : [];
+  }
+
+  /** What a group is called: its first member, and how many more it holds, lights included. */
   function assemblyLabel(members: readonly number[]): string {
     const first = store.mdoc.props?.[members[0]];
-    return `${first ? shortPropName(first.name) : 'group'} +${members.length - 1}`;
+    return `${first ? shortPropName(first.name) : 'group'} +${members.length + assemblyLights(members).length - 1}`;
   }
+
+  /** A light's name in a Members list or a panel. */
+  const lightLabel = (light: AuthoredLight) => light.name ?? `${light.kind} light`;
 
   /** Select a whole group, or one of its members on its own. */
   function selectAssemblyMembers(members: number[]) {
-    store.selectedProp = null; store.multiSel = members;
+    store.selectedProp = null; store.selectedLight = null; store.multiSel = members;
     scheduleRebuild(); rebuildTools();
   }
   function selectAssemblyMember(index: number) {
-    store.multiSel = []; store.selectedProp = index;
+    store.multiSel = []; store.selectedLight = null; store.selectedProp = index;
+    scheduleRebuild(); rebuildTools();
+  }
+  function selectAssemblyLight(id: string) {
+    store.multiSel = []; store.selectedProp = null; store.selectedLight = id;
     scheduleRebuild(); rebuildTools();
   }
 
   /** ⊞ group: tie the box selection into one new group, which the panel then shows. */
   function groupSelection() {
-    const props = store.mdoc.props ?? [];
-    const refusal = assemblyRefusal(props, store.multiSel);
+    const lights = selectedSetLights(store);
+    const refusal = assemblyRefusal(store.mdoc.props ?? [], store.multiSel, lights.length);
     if (refusal) { toast(refusal, 'warn'); return; }
-    createAssembly(props, store.multiSel);
+    createAssembly(store.mdoc, store.multiSel, lights);
+    // The lights are the group's now, so the selection is the group itself — selected through its props.
+    setSelectedSet(store, [...store.multiSel], []);
     scheduleRebuild(); rebuildTools();
-    toast(`Grouped ${plural(store.multiSel.length)} — clicking any of them now selects the group.`, 'ok');
+    toast(`Grouped ${setText(store.multiSel.length, lights.length)} — clicking any of them now selects the group.`, 'ok');
   }
 
   /** ⇲ break group on a MINED group placement: its props, each where it stood, and its lights as free lights. */
   function breakGroupPlacement(index: number, def: GroupDef) {
-    const props = store.mdoc.props ?? [];
-    const name = shortPropName(props[index]?.name ?? def.name);
+    const name = shortPropName(store.mdoc.props?.[index]?.name ?? def.name);
     const { indices, lights } = unpackGroupPlacement(store.mdoc, index, def);
     if (!indices.length) return;
     // The pieces stay selected, so ⊞ group is one click away; a group this one belonged to is selected whole.
-    const pieces = withWholeAssemblies(props, indices);
+    const pieces = withWholeAssemblies(store.mdoc, indices);
     store.selectedProp = pieces.length === 1 ? pieces[0] : null;
     store.multiSel = pieces.length > 1 ? pieces : [];
     scheduleRebuild(); rebuildTools();
@@ -1062,17 +1085,19 @@ export function createPropTools(ctx: ToolsContext) {
   }
 
   /** The rows a group member's own panel opens with: back to its group, what it belongs to, and a way to give
-   *  every other member its settings. Answers their elements, for the caller to place. */
+   *  every other prop of it its settings. Answers their elements, for the caller to place. */
   function addAssemblyMemberRows(prop: PlacedProp, members: number[]): HTMLElement[] {
     const props = store.mdoc.props ?? [];
     const label = assemblyLabel(members);
     const others = members.map(i => props[i]).filter(other => other && other !== prop);
-    const othersText = `${others.length} other member${others.length === 1 ? '' : 's'}`;
+    const othersText = `${others.length} other prop${others.length === 1 ? '' : 's'}`;
     const back = tip(gui.add({ back: () => selectAssemblyMembers(members) }, 'back').name('◀ back to group'),
       `Select the whole group again — ${label}.`);
     const about = note(gui, `Member of ${label}. Its settings are its own.`,
       'Moving it here moves it within the group. A click on any member in the world selects the whole group; the '
         + 'group’s Members list opens one on its own.');
+    const rows = [back.domElement, about];
+    if (!others.length) return rows; // its group's other members are lights
     const copy = tip(gui.add({ copy: () => {
       const settings = settingsOf(prop);
       delete settings.memberBehaviour; // a mined group's per-model record means nothing on another placement
@@ -1083,10 +1108,35 @@ export function createPropTools(ctx: ToolsContext) {
       scheduleRebuild(); rebuildTools();
       toast(`${shortPropName(prop.name)}’s settings copied to ${othersText} of ${label}.`, 'ok');
     } }, 'copy').name(`⇉ copy settings to ${othersText}`),
-    `Give every other member of the group this prop’s settings.`,
+    'Give every other prop in the group this prop’s settings.',
     'Contact, ride surface, mode layer, hit sound, ambient emitter and self-lighting. Position, size, effects and '
       + 'materials stay each member’s own.');
-    return [back.domElement, about, copy.domElement];
+    return [...rows, copy.domElement];
+  }
+
+  /** While a tie waits for a click (docs/015), the panel is that prompt and its way out — as replace's is. */
+  function addLightJoinPrompt(text: string) {
+    note(gui, text);
+    tip(gui.add({ cancel: ctx.cancelLightJoin }, 'cancel').name('◀ cancel (Esc)'), 'Leave things as they were.');
+  }
+
+  /** The rows a group's LIGHT opens with: back to its group, what it belongs to, and a way out of it. Nothing
+   *  for a light on its own — Ctrl+click it beside props and ⊞ group them to put it in one. */
+  function addAssemblyLightRows(light: AuthoredLight) {
+    const members = light.id ? lightAssemblyOf(store.mdoc, light.id) : null;
+    if (!members) return;
+    const label = assemblyLabel(members);
+    tip(gui.add({ back: () => selectAssemblyMembers(members) }, 'back').name('◀ back to group'),
+      `Select the whole group again — ${label}.`);
+    note(gui, `Member of ${label} — it moves, turns and sizes with the group.`,
+      'Moving it here moves it within the group. A click on it in the world selects the whole group; the group’s '
+        + 'Members list opens it on its own.');
+    tip(gui.add({ leave: () => {
+      delete light.assembly;
+      scheduleRebuild(); rebuildTools();
+      toast(`${lightLabel(light)} left ${label}; it stays where it is.`, 'ok');
+    } }, 'leave').name('⇥ leave group'),
+    'Take this light out of the group. It stays where it is, and the group no longer carries it.');
   }
 
   /** How a group member collides, in the few words a Members button has room for. */
@@ -1098,32 +1148,48 @@ export function createPropTools(ctx: ToolsContext) {
     return memberContactText[collisionProfileContactState(profile)];
   }
 
+  /** The group's centre on the ground: its props' mean position, at the lowest base among them. What the panel
+   *  turns and sizes the group about, so a set standing on flat ground stays standing on it. */
+  function assemblyPivot(members: readonly number[]): V3 {
+    const placed = members.map(i => store.mdoc.props?.[i]).filter((prop): prop is PlacedProp => !!prop);
+    const mean = (k: number) => placed.reduce((sum, prop) => sum + prop.pos[k], 0) / placed.length;
+    return [mean(0), Math.min(...placed.map(prop => prop.pos[1] + prop.scale * placedBaseOffset(prop))), mean(2)];
+  }
+
   /**
-   * A selected authored GROUP's panel: its members, each a button into that prop's own panel, a turn and a size
-   * for the whole set, and the group's actions. Moving is the selection gizmo's, which turns and scales the set too.
+   * A selected authored GROUP's panel: its members, each a button into that prop's or light's own panel, a turn
+   * and a size for the whole set, and the group's actions. Moving is the selection gizmo's, which turns and scales
+   * the set too; every one of these carries the group's lights.
    */
   function buildAssemblyTools(members: number[]) {
     const props = store.mdoc.props ?? [];
     const id = props[members[0]]?.assembly;
     if (!id) return;
+    if (ctx.lightJoinWaitsFor() === 'light') {
+      addLightJoinPrompt('Click a light in the world to add it to this group.');
+      return;
+    }
+    const lights = assemblyLights(members);
+    const lightsText = (n: number) => `${n} light${n === 1 ? '' : 's'}`;
     tip(gui.add({ unpack: () => {
-      breakAssembly(store.mdoc.props ?? [], id);
-      scheduleRebuild(); rebuildTools(); // the members stay selected, now as a plain set
-      toast(`Broke the group into ${plural(members.length)}.`, 'ok');
+      breakAssembly(store.mdoc, id);
+      scheduleRebuild(); rebuildTools(); // the props stay selected, now as a plain set
+      toast(`Broke the group into ${plural(members.length)}${lights.length ? ` and ${lightsText(lights.length)}` : ''}.`, 'ok');
     } }, 'unpack').name('⇲ break group'),
-    'Release the members into props of their own. Nothing moves, and each keeps its settings.');
+    'Release the members into props and lights of their own. Nothing moves, and each keeps its settings.');
     if (propClipboard.canCopy()) {
       tip(gui.add({ copy: propClipboard.copy }, 'copy').name('⧉ copy group (Ctrl+C)'),
-        'Copy the group; Ctrl+V holds it on the cursor and places a new group of its own.');
+        'Copy the group, lights included; Ctrl+V holds it on the cursor and places a new group of its own.');
       tip(gui.add({ cut: propClipboard.cut }, 'cut').name('cut group (Ctrl+X)'),
         'Copy the group and remove it.');
     }
-    gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete group (${plural(members.length)})`);
+    gui.add({ del: () => deleteMultiSelProps() }, 'del')
+      .name(`✕ delete group (${plural(members.length)}${lights.length ? ` + ${lightsText(lights.length)}` : ''})`);
     addDeselect();
 
     const levels = new Set(members.map(i => props[i]?.level));
-    const memberSection = editSection('props-assembly-members', `Members (${members.length})`, true);
-    note(memberSection, 'Each member is a prop of its own. Open one to change its settings.',
+    const memberSection = editSection('props-assembly-members', `Members (${members.length + lights.length})`, true);
+    note(memberSection, 'Each member is a prop or light of its own. Open one to change it.',
       'Members can come from different levels and keep their own contact, sounds, effects, screens and materials. '
         + 'The group only holds them together.');
     for (const index of members) {
@@ -1133,32 +1199,54 @@ export function createPropTools(ctx: ToolsContext) {
       tip(memberSection.add({ open: () => selectAssemblyMember(index) }, 'open')
         .name(`▸ ${label} · ${memberSummary(prop)}`), `Open ${shortPropName(prop.name)}’s own panel.`);
     }
+    for (const light of lights) {
+      const lightId = light.id;
+      if (!lightId) continue;
+      tip(memberSection.add({ open: () => selectAssemblyLight(lightId) }, 'open')
+        .name(`▸ ${lightLabel(light)} · ${light.kind} light`), `Open ${lightLabel(light)}’s own panel.`);
+    }
+    tip(memberSection.add({ add: () => {
+      const list = (store.mdoc.lights ??= []);
+      const [x, y, z] = assemblyPivot(members);
+      const light = newFreeLight(lightTool, nextLightId(list), [x, y + 4, z]);
+      light.assembly = id;
+      list.push(light);
+      selectAssemblyLight(light.id!);
+      toast(`Added a ${light.kind} light to the group — drag it into place.`, 'ok');
+    } }, 'add').name('＋ add light'),
+    'Add a free light to the group at its centre, set up as the Add light tool would drop one.',
+    'It moves, turns and sizes with the group from then on. Drag it where it belongs on its own panel.');
+    tip(memberSection.add({ join: ctx.startLightJoin }, 'join').name('⊞ add a light…'),
+      'Then click a light in the world to add it to this group.',
+      'A light already in another group moves to this one. It stays where it is, and goes with this group from then on.');
 
     // Turn and size read the first member, and change every member by the same amount about the group's centre
-    // on the ground — the lowest base among them — so a set standing on flat ground stays standing on it.
+    // on the ground. The lights are carried from the props' poses either side of the change.
     const transformSection = editSection('props-assembly-transform', 'Transform', false);
     const live = () => (store.mdoc.props ?? []);
-    const pivot = (): V3 => {
-      const placed = members.map(i => live()[i]).filter((prop): prop is PlacedProp => !!prop);
-      const mean = (k: number) => placed.reduce((sum, prop) => sum + prop.pos[k], 0) / placed.length;
-      return [mean(0), Math.min(...placed.map(prop => prop.pos[1] + prop.scale * placedBaseOffset(prop))), mean(2)];
+    const change = (apply: () => void) => {
+      const before = placementPoses(live(), members);
+      apply();
+      carryAssemblyLights(store.mdoc, before);
     };
     const frame = {
       get turn() { return live()[members[0]]?.yaw ?? 0; },
       set turn(value: number) {
         const first = live()[members[0]];
-        if (first && Number.isFinite(value)) turnPlacements(live(), members, value - first.yaw, pivot());
+        if (first && Number.isFinite(value))
+          change(() => turnPlacements(live(), members, value - first.yaw, assemblyPivot(members)));
       },
       get size() { return live()[members[0]]?.scale ?? 1; },
       set size(value: number) {
         const first = live()[members[0]];
-        if (first && value > 0 && first.scale > 0) scalePlacements(live(), members, value / first.scale, pivot());
+        if (first && value > 0 && first.scale > 0)
+          change(() => scalePlacements(live(), members, value / first.scale, assemblyPivot(members)));
       },
     };
     tip(transformSection.add(frame, 'turn', 0, 360, 1).name('turn (°)').listen().onChange(scheduleRebuild),
       'Spin the whole group about the vertical through its centre.', 'Reads the first member’s turn.');
     tip(transformSection.add(frame, 'size', 0.1, 5, 0.05).name('size ×').listen().onChange(scheduleRebuild),
-      'Scale the whole group — its spacing and every member’s size together.',
+      'Scale the whole group — its spacing and every member’s size together, its lights’ reach too.',
       'Reads the first member’s size; every member scales by the same factor, about the group’s centre on the ground.');
   }
 
@@ -1397,7 +1485,7 @@ export function createPropTools(ctx: ToolsContext) {
       }
       const actionRows: HTMLElement[] = [];
       // A member of an authored group opened from its group's panel: the way back, before anything else.
-      const assembly = assemblyOf(store.mdoc.props ?? [], store.selectedProp!);
+      const assembly = assemblyOf(store.mdoc, store.selectedProp!);
       if (assembly) actionRows.push(...addAssemblyMemberRows(prop, assembly));
       const animation = propLevels.get(prop.level)?.models.find(model => model.id === prop.model)?.animation;
       if (animation) {
@@ -1937,11 +2025,17 @@ export function createPropTools(ctx: ToolsContext) {
   function buildMultiPropTools() {
     const group = selectedAssembly();
     if (group) { buildAssemblyTools(group); return; }
-    multiList.show(store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })));
-    tip(gui.add({ group: groupSelection }, 'group').name(`⊞ group ${plural(store.multiSel.length)}`),
-      'Tie the selected props into a group that selects, moves, turns and sizes as one.',
-      'Each keeps its own level, settings, effects and screens — the group only holds them together. Clicking any '
-        + 'member selects the whole group; its panel opens each member on its own.');
+    const lightIds = selectedSetLights(store);
+    const setLights = lightIds.map(id => store.mdoc.lights?.find(light => light.id === id))
+      .filter((light): light is AuthoredLight => !!light);
+    const count = setText(store.multiSel.length, setLights.length);
+    multiList.show(store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })),
+      setLights.map(light => ({ id: light.id!, label: lightLabel(light), color: light.color })));
+    tip(gui.add({ group: groupSelection }, 'group').name(`⊞ group ${count}`),
+      'Tie the selection into a group that selects, moves, turns and sizes as one.',
+      'Each member keeps its own level, settings, effects and screens — the group only holds them together. '
+        + 'Clicking any member selects the whole group; its panel opens each member on its own. Ctrl+click a light '
+        + 'to bring it into the selection first.');
     // Shared by Props mode and an Edit marquee narrowed to props.
     if (store.multiSel.some(i => {
       const prop = store.mdoc.props?.[i];
@@ -1952,15 +2046,15 @@ export function createPropTools(ctx: ToolsContext) {
         'The chosen prop supplies its settings and effects. Trigger volumes and prop-line members stay unchanged. Undo restores the whole set.');
     }
     if (propClipboard.canCopy()) {
-      tip(gui.add({ copy: propClipboard.copy }, 'copy').name(`⧉ copy ${plural(store.multiSel.length)} (Ctrl+C)`),
+      tip(gui.add({ copy: propClipboard.copy }, 'copy').name(`⧉ copy ${count} (Ctrl+C)`),
         'Copy the set; Ctrl+V holds it on the cursor to place.');
-      tip(gui.add({ cut: propClipboard.cut }, 'cut').name(`cut ${plural(store.multiSel.length)} (Ctrl+X)`),
-        'Copy the set and remove the original placements.');
+      tip(gui.add({ cut: propClipboard.cut }, 'cut').name(`cut ${count} (Ctrl+X)`),
+        'Copy the set and remove the originals.');
     }
     if (propClipboard.canPaste())
       tip(gui.add({ paste: () => void propClipboard.paste() }, 'paste').name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
         'Hold the copied props on the cursor in Props mode, then click to place them.');
-    gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete ${plural(store.multiSel.length)}`);
+    gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete ${count}`);
     addDeselect();
   }
 
@@ -2016,6 +2110,7 @@ export function createPropTools(ctx: ToolsContext) {
       addDeselect();
       return;
     }
+    addAssemblyLightRows(light); // a group's light opens with the way back to its group (docs/015)
     const section = editSection('props-authored-light', `${mountainName} light`);
     addAuthoredLightDetails(section, light, lightIndex, mountainName, scheduleRebuild, rebuildTools);
     gui.add({ del: () => deleteSelectedLight() }, 'del').name('✕ delete light');
@@ -2043,7 +2138,8 @@ export function createPropTools(ctx: ToolsContext) {
     else if (sel) show(sel.level, sel.model, shortPropName(sel.name), defOfPlaced(sel),
       placedGroupKey(sel, store.selectedProp!), sel.id ?? `#${store.selectedProp}`);
     // an authored group previews every member where it stands, across levels (docs/015 · Authored groups)
-    else if (assembly) propPreview.showSet(assemblyLabel(assembly), assemblyPreviewMembers(assembly));
+    else if (assembly) propPreview.showSet(assemblyLabel(assembly), assemblyPreviewMembers(assembly),
+      assemblyLights(assembly));
     // a prop line shows the model it lays out, named by the line (docs/070)
     else if (store.selectedLine !== null && ctx.propLines.selected()) {
       const line = ctx.propLines.selected()!;

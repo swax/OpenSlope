@@ -272,7 +272,10 @@ the knot state is already empty, rather than scheduling a full `renderDoc` merel
 **Multi-select** (select mode): a **left-drag** rubber-bands a box — the press is deferred, so a still
 click still selects on release while a drag past the tap threshold draws the marquee — and every placed
 prop whose origin projects inside becomes one selection set. **Shift+left-drag** adds the boxed props to
-the current selection, including a single selected prop. Overlapping props stay selected, and an empty
+the current selection, including a single selected prop. **Ctrl/Cmd+click** adds one prop to the selection or drops it,
+as in Edit and Effects mode. A group's member adds or drops the whole group, one prop left on its own becomes an
+ordinary selection again, and a Ctrl+click that misses keeps the set. Ctrl+click on a free light adds it to the
+set too — listed, outlined and moved with the props, and tied in by **⊞ group** ([015](015-groups.md#authored-groups)). Overlapping props stay selected, and an empty
 Shift-drag changes nothing. A plain drag replaces the set. Each member shows the amber outline, and
 the one gizmo parks at the set's **centroid**; dragging it moves every member by the same data-space
 delta (the viewport reports deltas via `onMoveProps`, the host applies them to its `multiSel` indices).
@@ -290,6 +293,11 @@ In **Edit mode**, selecting a prop, group or set shows only **Transform** (Move 
 and **Labels**. **open in Props mode** keeps those placements selected and opens their full prop or group
 toolbox. A mixed mesh-and-prop selection first offers its usual type chooser; choosing props opens this compact
 Edit panel. Contact, materials, member settings and group actions live in Props mode.
+A free light clicks the same way while **Sources** shows the bulbs (and the Prop pick filter is on): Edit selects it
+under its move gizmo with **open in Props mode** for its full settings, and a group's light selects its group.
+**Ctrl/Cmd+click** adds a light to the selected props, or drops it, as in Props mode — the Edit panel counts it
+("1 prop + 1 light selected"), the gizmo carries it, and Props opens the set ready to **⊞ group**. A shift or
+ctrl box keeps the set's lights; a plain click elsewhere, a plain box and Esc let a light go.
 
 **Copy / paste** (Props or Edit mode): **Ctrl+C** copies the selected prop or box-selected set, **Ctrl+X** cuts it,
 and **Ctrl+V** holds the copies on the cursor the way a Library pick is held — a translucent ghost of the whole
@@ -302,7 +310,7 @@ clearance above the ground — a seated prop lands seated. The turn is added to 
 outermost of its YXZ angles, so tilted props keep their tilt. A copy is the whole placement — pose, behaviour,
 labels, its fitted screens — under a fresh id, sharing the source's effect slot as **＋ place** does
 ([069](069-prop-defaults.md)). A prop line's member pastes as an ordinary prop, and an Effects trigger volume is
-not copied. A copied authored group pastes as a new group of its own; a lone member of one pastes ungrouped. The clipboard lives for the session, so it carries props between mountains; there, the effect slot
+not copied. A copied authored group pastes as a new group of its own, its lights with it; a lone member of one pastes ungrouped. The clipboard lives for the session, so it carries props between mountains; there, the effect slot
 is not trusted and copies of the author's own models are left out, since the same model number names a
 different model elsewhere (`core/props/clipboard.ts`). The idle Prop Tools offer **paste** while the clipboard
 holds something, and the set's panel offers **copy**, **cut**, and **paste**. In Edit mode, a selection containing

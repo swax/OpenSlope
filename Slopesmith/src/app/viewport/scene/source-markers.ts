@@ -20,8 +20,8 @@ export interface SourceMarkerOptions {
   icons?: readonly LightSourceMarkerIcon[];
   /** Cone-centre target in the marker cloud's local space; rotates spotlight silhouettes on screen. */
   aimTargets?: readonly THREE.Vector3[];
-  /** One marker receives the bold black selected outline; null/omitted leaves every marker thin. */
-  selectedIndex?: number | null;
+  /** The markers that receive the bold black selected outline — one, several, or null/omitted for none. */
+  selectedIndex?: number | readonly number[] | null;
 }
 
 /** Build a tiny vector-like RGBA icon without a DOM canvas, so the same marker code remains testable in Node. */
@@ -278,34 +278,28 @@ export function sourceMarkerPoints(stage: Stage, kind: SourceMarkerKind, origin:
   return points;
 }
 
-/** Update the one bold-outline marker without rebuilding or splitting the batched clickable cloud. */
-export function setSourceMarkerSelected(points: THREE.Points | null, index: number | null) {
+/** Update the bold-outline markers — one, several (a multi-selection's lights), or none — without rebuilding or
+ *  splitting the batched clickable cloud. */
+export function setSourceMarkerSelected(points: THREE.Points | null, index: number | readonly number[] | null) {
   if (!points) return;
   const selected = points.userData.sourceSelectionGeometry as THREE.BufferGeometry | undefined;
   if (!selected) return;
   const positions = points.geometry.getAttribute('position');
-  if (index === null || index < 0 || index >= positions.count) {
-    selected.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-    selected.setAttribute('sourceIcon', new THREE.Float32BufferAttribute([], 1));
-    selected.setAttribute('sourceAimTarget', new THREE.Float32BufferAttribute([], 3));
-    if (points.material instanceof THREE.PointsMaterial && points.material.vertexColors)
-      selected.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
-  } else {
-    selected.setAttribute('position', new THREE.Float32BufferAttribute([
-      positions.getX(index), positions.getY(index), positions.getZ(index),
-    ], 3));
-    const icons = points.geometry.getAttribute('sourceIcon');
-    selected.setAttribute('sourceIcon', new THREE.Float32BufferAttribute([icons?.getX(index) ?? 0], 1));
-    const target = points.geometry.getAttribute('sourceAimTarget');
-    selected.setAttribute('sourceAimTarget', new THREE.Float32BufferAttribute([
-      target?.getX(index) ?? positions.getX(index) + 1,
-      target?.getY(index) ?? positions.getY(index), target?.getZ(index) ?? positions.getZ(index),
-    ], 3));
-    const colors = points.geometry.getAttribute('color');
-    if (colors) selected.setAttribute('color', new THREE.Float32BufferAttribute([
-      colors.getX(index), colors.getY(index), colors.getZ(index),
-    ], 3));
-  }
+  const indices = (index === null ? [] : typeof index === 'number' ? [index] : index)
+    .filter(i => i >= 0 && i < positions.count);
+  const icons = points.geometry.getAttribute('sourceIcon');
+  const target = points.geometry.getAttribute('sourceAimTarget');
+  const colors = points.geometry.getAttribute('color');
+  selected.setAttribute('position', new THREE.Float32BufferAttribute(
+    indices.flatMap(i => [positions.getX(i), positions.getY(i), positions.getZ(i)]), 3));
+  selected.setAttribute('sourceIcon', new THREE.Float32BufferAttribute(indices.map(i => icons?.getX(i) ?? 0), 1));
+  selected.setAttribute('sourceAimTarget', new THREE.Float32BufferAttribute(indices.flatMap(i => [
+    target?.getX(i) ?? positions.getX(i) + 1, target?.getY(i) ?? positions.getY(i), target?.getZ(i) ?? positions.getZ(i),
+  ]), 3));
+  if (colors) selected.setAttribute('color', new THREE.Float32BufferAttribute(
+    indices.flatMap(i => [colors.getX(i), colors.getY(i), colors.getZ(i)]), 3));
+  else if (!indices.length && points.material instanceof THREE.PointsMaterial && points.material.vertexColors)
+    selected.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
   selected.computeBoundingSphere();
 }
 

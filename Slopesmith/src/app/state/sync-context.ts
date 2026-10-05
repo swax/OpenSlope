@@ -1,6 +1,6 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { MeshControlPointId } from '../../core/mesh/control-points';
-import type { Store } from './store';
+import { selectedSetLights, setSelectedSet, type Store } from './store';
 import type { NamedEdge } from './mesh-names';
 
 /** Keep selections attached to their identities across a same-map snapshot. Array slots are never identity:
@@ -14,7 +14,9 @@ export function reconcileSyncContext(store: Store, before: EditDoc, mesh: EditDo
     return at < 0 ? null : at;
   };
   store.selectedProp = remap(store.selectedProp, before.props, after.props);
-  store.multiSel = store.multiSel.flatMap(index => remap(index, before.props, after.props) ?? []);
+  // The free lights riding in the set keep riding in it, by id, while they still exist (docs/015).
+  const setLights = selectedSetLights(store);
+  setSelectedSet(store, store.multiSel.flatMap(index => remap(index, before.props, after.props) ?? []), setLights);
   const oldRail = store.selectedRail === null ? undefined : before.rails?.[store.selectedRail];
   store.selectedRail = remap(store.selectedRail, before.rails, after.rails);
   const rail = store.selectedRail === null ? undefined : after.rails?.[store.selectedRail];

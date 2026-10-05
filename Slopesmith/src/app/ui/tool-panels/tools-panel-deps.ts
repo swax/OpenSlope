@@ -85,6 +85,8 @@ export type ToolsPanelDeps = {
   // multi-select list callbacks
   identifyMultiProp: (index: number) => void;
   removeFromMultiSel: (index: number) => void;
+  /** Drop one free light from the selected set (docs/015 · Authored groups). */
+  removeLightFromMultiSel: (id: string) => void;
   // prop helpers
   defOfPlaced: (pp: PlacedProp) => GroupDef | null;
   placedBaseOffset: (pp: { level: string; model: number; group?: string }) => number;
@@ -100,6 +102,11 @@ export type ToolsPanelDeps = {
   replaceSelectedProp: () => void;
   cancelPropReplacement: () => void;
   isReplacingProp: () => boolean;
+  /** A selected group waiting for a light to join it (docs/015): what the next world click should pick. */
+  lightJoinWaitsFor: () => 'light' | null;
+  /** Start waiting from the selected group, or give it up. */
+  startLightJoin: () => void;
+  cancelLightJoin: () => void;
   // prop defaults (docs/069)
   propDefaults: (level: string, model: number) => ResolvedPropDefaults;
   /** What a group picked from the library stamps: each member its own model's defaults. */
@@ -169,7 +176,7 @@ export type ToolsPanelDeps = {
   /** Jump to Effects mode; the mode switch carries the current Props selection to its effect host. A native
    * reference caller can ask to follow its first resolved Run edge directly to the receiving prop/effect. */
   goToEffects: (target?: { sourceIndex: number; called: true }) => void;
-  /** Open the Edit-mode prop selection in Props, retaining its members and transform handle. */
+  /** Open the Edit-mode prop or light selection in Props, retaining it and its transform handle. */
   goToPropToolbox: () => void;
   selectSpecialProp: (id: string) => void;
   goToGemToolbox: (id: string, mode: 'props' | 'effects') => void;
