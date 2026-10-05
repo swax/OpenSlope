@@ -1,8 +1,8 @@
 import { installStyles } from '../ui/components/styles';
 
 /**
- * The Props-mode multi-selection list: one row per box-selected prop, mounted in the Tools panel under the
- * preview card. Clicking a row IDENTIFIES its prop (a white flash box in 3D + the preview card), double-clicking
+ * The Props-mode multi-selection list: one row per box-selected prop, then one per free light Ctrl+clicked in
+ * beside them (docs/015 · Authored groups), mounted in the Tools panel under the preview card. Clicking a row IDENTIFIES its prop (a white flash box in 3D + the preview card), double-clicking
  * frames it, and the row's ✕ drops the prop from the selection (the prop itself stays placed). The host owns the
  * index set — this is just the list view; the delete-all / clear buttons live with the host's other Tools controls.
  */
@@ -27,6 +27,8 @@ const css = `
   font: 11px/16px system-ui, sans-serif; text-align: center; cursor: pointer; }
 .ms-card .ms-x:hover { background: #2a4258; color: #ff8d8d; }
 .ms-hint { font: 10px system-ui, sans-serif; color: #567089; letter-spacing: .02em; }
+.ms-row.light { cursor: default; }
+.ms-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #ffffff30; }
 `;
 
 export class MultiSelectList {
@@ -35,7 +37,10 @@ export class MultiSelectList {
   private listEl = document.createElement('div');
   private activeIdx: number | null = null; // the last-identified prop's doc index (row highlight)
 
-  constructor(private cb: { onIdentify(index: number): void; onFocus(index: number): void; onRemove(index: number): void }) {
+  constructor(private cb: {
+    onIdentify(index: number): void; onFocus(index: number): void; onRemove(index: number): void;
+    onRemoveLight(id: string): void;
+  }) {
     installStyles('prop-multi-select', css);
     this.el.className = 'ms-card';
     this.titleEl.className = 'ms-title';
@@ -48,9 +53,10 @@ export class MultiSelectList {
 
   /** (Re)build the rows from the host's selection. Each item carries its DOC index (stable while the set
    *  lives — placements only re-index on delete, which rebuilds the whole selection). */
-  show(items: { index: number; label: string }[]) {
+  show(items: { index: number; label: string }[], lights: readonly { id: string; label: string; color: string }[] = []) {
     this.el.classList.add('on');
-    this.titleEl.textContent = `${items.length} prop${items.length === 1 ? '' : 's'} selected`;
+    const lightsText = lights.length ? ` + ${lights.length} light${lights.length === 1 ? '' : 's'}` : '';
+    this.titleEl.textContent = `${items.length} prop${items.length === 1 ? '' : 's'}${lightsText} selected`;
     if (this.activeIdx !== null && !items.some(it => it.index === this.activeIdx)) this.activeIdx = null;
     this.listEl.replaceChildren();
     for (const it of items) {
@@ -72,6 +78,24 @@ export class MultiSelectList {
         if (event.detail > 1) this.cb.onFocus(it.index);
       };
       row.append(name, x);
+      this.listEl.appendChild(row);
+    }
+    for (const light of lights) {
+      const row = document.createElement('div');
+      row.className = 'ms-row light';
+      const dot = document.createElement('span');
+      dot.className = 'ms-dot';
+      dot.style.background = light.color;
+      const name = document.createElement('span');
+      name.className = 'ms-name';
+      name.textContent = light.label;
+      name.title = light.label;
+      const x = document.createElement('button');
+      x.className = 'ms-x';
+      x.textContent = '✕';
+      x.title = 'remove from selection (keeps the light)';
+      x.onclick = ev => { ev.stopPropagation(); this.cb.onRemoveLight(light.id); };
+      row.append(dot, name, x);
       this.listEl.appendChild(row);
     }
   }

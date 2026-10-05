@@ -55,6 +55,10 @@ serves the `GroupsPayload`; `groupDefIndex(levels)` is the export's lookup.
 
 ## Placement model — a group IS a placed prop
 
+A group placed from the library now lands as an **authored group** (below): each member a placement of its own,
+its lights free lights, all tied together. What follows describes the older form, which a mountain may still
+hold, and which a prop line still lays out when its template is a group (docs/070).
+
 A placed group is one `PlacedProp` carrying `group: <def id>` (`model`/`name` = the leader). Everything else
 derives, so the whole prop machinery is reused verbatim: selection, the move gizmo, MMB pickup (re-arms the
 whole group), undo/save/persist, the ghost (which previews every member), and the placement matrix. In the
@@ -72,11 +76,13 @@ gizmos, not the editable free-light ones).
 - **Prop Library ▸ Groups chip** — one tile per def: a thumbnail of the WHOLE assembly
   (`ThumbRenderer.renderSet` — every member at its group-local pose), a `⧉N` member-count badge (`✸` marks a
   light member), and a tooltip listing the members + how often the source level places the assembly. Click
-  to arm; one click on the mountain places the set.
+  to arm; one click on the mountain places the set as an authored group: every member a prop where the
+  assembly puts it, with the settings it was held with (docs/069 · Groups), each light a free light, and the
+  leader carrying the held effect. A one-member def without lights lands as a plain prop.
 - **Preview card** — holding or selecting a group shows the assembled set in the live drag-to-orbit view
   (`prepareSet`), with the **component list** right below the name: `▪` per member model, a coloured dot +
   kind/intensity per light. A plain prop shows no list.
-- **Tools** — a selected group shows the usual turn / size / delete (labelled *delete group*); the
+- **Tools** — a selected group placement shows the usual turn / size / delete (labelled *delete group*); the
   base-keeping scale nudge uses the assembly's lowest member. Its contact, sound and lighting can differ per
   member: the **Members** list opens each member's own panel (docs/069 · Groups).
 - **⇲ break group** replaces the placement with its props (`unpackGroupPlacement`). Each member stands where it
@@ -87,30 +93,43 @@ gizmos, not the editable free-light ones).
 
 ## Authored groups
 
-An **authored group** ties any placements together (`PlacedProp.assembly`, `core/props/assembly.ts`). It is the
-other way round from a mined group: every member stays an ordinary placement, with its own pose, level,
-settings, effects, screens and materials. So a group can mix levels, and export, Test, collision and sound treat
-its members as the plain props they are. The tag only changes editing:
+An **authored group** ties any placements and free lights together (`PlacedProp.assembly`,
+`AuthoredLight.assembly`, `core/props/assembly.ts`). It is the other way round from a mined group: every member
+stays an ordinary placement or free light, with its own pose, level, settings, effects, screens and materials.
+So a group can mix levels, and export, Test, collision and sound treat its members as the plain props and lights
+they are. The tag only changes editing:
 
 - **Making one.** Box-select props and press **⊞ group N props**. A line's members and Effects trigger volumes
-  can't join. A prop already in a group leaves it for the new one. **⇲ break group** removes the tags.
+  can't join. A prop already in a group leaves it for the new one, and a group taken whole brings its lights. **⇲ break group** removes the tags.
 - **Selecting.** In Props and Edit mode alike, a click on any member selects the whole group as a
-  multi-selection. A box that catches part of a group takes all of it, and an Edit-mode Ctrl+click adds or drops
-  the whole group. The selection's centre gizmo moves, turns and scales the set rigidly (docs/012).
+  multi-selection of its props — a click on one of its lights too. A box that catches part of a group takes all
+  of it, and an Edit-mode Ctrl+click adds or drops the whole group. The selection's centre gizmo moves, turns and
+  scales the set rigidly (docs/012).
+- **Lights.** A group's lights go wherever its props go. Every transform of a set that holds a group whole — the
+  gizmo in either mode, the panel's turn and size — carries them (`carryAssemblyLights`): any one prop's pose
+  before and after IS the rigid transform, so each light moves as though fixed to it, its aim turned and its
+  reach scaled with the group. Moving one member on its own panel moves it within the group and leaves the lights
+  be. Deleting a group's last prop deletes its lights, and copying a whole group copies them.
+- **Putting a light in a group.** **Ctrl/Cmd+click** a light in Props or Edit mode and it joins the selection beside the
+  props, exactly as a Ctrl+clicked prop would: listed with its colour under the props, outlined, and carried by the
+  set's gizmo (`Store.multiSelLights`, read through `selectedSetLights`). **⊞ group 2 props + 1 light** then ties
+  them all. A set needs a prop to hold its gizmo, so dropping the last prop leaves the light selected on its own, and
+  lights alone can't make a group. A group's light, Ctrl+clicked, adds or drops its whole group. A group's panel
+  also offers **⊞ add a light…** (click a light: it joins) and **＋ add light**, and a library group brings its
+  own. Copying a set copies its selected lights, which paste selected with the props.
 - **The group panel (Props mode).** The preview card draws every member where it stands, each from its own level. Under it
-  are **Members (N)**, one button per member that opens that prop's own panel, and **Transform**. Turn and
+  are **Members (N)**, one button per member that opens that prop's or light's own panel, with **＋ add light**
+  to add one at the group's centre as the Add light tool would drop it, and **Transform**. Turn and
   size read the first member and change every member by the same amount. They pivot on the group's centre at
   its lowest base, so a set on flat ground stays on it. Then come copy, cut and **✕ delete group**.
   Edit mode shows only transforms and labels, with **open in Props mode** to reach this panel with the group
   still selected.
 - **A member's panel** is the prop's usual panel, headed by **◀ back to group**, the group it belongs to, and
-  **⇉ copy settings to N other members**. That copies contact, surface, mode layer, sounds and self-lighting, but
-  not the pose, effects or materials.
-- **A group of one is no group.** A tag left on a single placement, after its partners are deleted or when one
-  member is pasted alone, is ignored. Copy / paste gives each copied group a fresh id (docs/012).
-
-Placing a mined group from the library still stamps one group placement. Turning that into an authored group
-is a later step.
+  **⇉ copy settings to N other props**. That copies contact, surface, mode layer, sounds and self-lighting, but
+  not the pose, effects or materials. A light's panel is headed by **◀ back to group** and **⇥ leave group**.
+- **A group is selected through its props.** It needs at least one prop and two members in all — a lamp and its
+  halo is a group. A tag that falls short, after deletions or when one member is pasted alone, is ignored. Copy /
+  paste gives each copied group a fresh id (docs/012).
 
 ## Prop tint from the rig (all placements)
 

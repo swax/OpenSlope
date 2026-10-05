@@ -256,6 +256,10 @@ export type Store = {
   armedProp: ArmedProp | null;        // prop (or group def, docs/015) picked from the library, ready to place
   selectedProp: number | null;        // index into mdoc.props of the selected placed prop
   multiSel: number[];                 // box-selected placed props (doc indices) — moved / deleted as a set
+  /** Free lights Ctrl+clicked into the multi-selection (docs/015 · Authored groups), recorded against the very
+   *  `multiSel` array they were added to: whatever replaces that selection lets them go. Read through
+   *  `selectedSetLights`. */
+  multiSelLights: { of: readonly number[]; ids: string[] } | null;
   selectedLight: string | null;       // id (`light:NNNN`) of the selected free light, not its array index —
                                       // deleting one below it must not move the selection onto another
   selectedRail: number | null;        // index into mdoc.rails of the rail being edited (its nodes show)
@@ -297,6 +301,21 @@ export const DEFAULT_AI_RIDERS = 6, MAX_AI_RIDERS = 16;
 export const MIN_VR_RENDER_SCALE = 0.5, MAX_VR_RENDER_SCALE = 3;
 
 /** Build the store from the migrated document + boot mode + the last session's persisted view toggles. */
+/** The free lights in the current multi-selection — none once that selection has been replaced, and none that no
+ *  longer exist. */
+export function selectedSetLights(store: Pick<Store, 'multiSel' | 'multiSelLights' | 'mdoc'>): string[] {
+  const held = store.multiSelLights;
+  if (!held || held.of !== store.multiSel) return [];
+  const lights = store.mdoc.lights ?? [];
+  return held.ids.filter(id => lights.some(light => light.id === id));
+}
+
+/** Make `props` and `lights` the multi-selection. */
+export function setSelectedSet(store: Pick<Store, 'multiSel' | 'multiSelLights'>, props: number[], lights: readonly string[]) {
+  store.multiSel = props;
+  store.multiSelLights = lights.length ? { of: props, ids: [...lights] } : null;
+}
+
 export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: Partial<StoredUi> }): Store {
   const ui = init.storedUi;
   const step = (v: unknown): SnapStep => v === 1 || v === 10 ? v : 5;
@@ -469,6 +488,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     armedProp: null,
     selectedProp: null,
     multiSel: [],
+    multiSelLights: null,
     selectedLight: null,
     selectedRail: null,
     selectedNode: null,

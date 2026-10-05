@@ -477,6 +477,11 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       cone: { type: 'number', description: 'Spot half-angle, degrees; absent = 35.' },
       name: { type: 'string' },
       glint: { type: 'integer', description: 'Sparkle sprite resolution 16/32/64; absent/0 = none.' },
+      assembly: {
+        type: 'string',
+        description: 'Authored group id, shared with the placements this light moves, turns and sizes with in the '
+          + 'editor (a lamp\'s halo). A group needs at least one placement.',
+      },
     },
     required: ['kind', 'pos', 'color', 'intensity', 'reach'],
     additionalProperties: true,

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
 import { railHasTube } from '../../../core/rails/rails';
-import { assemblyOf } from '../../../core/props/assembly';
 import type { MeshAdjacency } from '../../../core/mesh/topology';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import { makeTexRef, parseTexRef, resolveTerrainTexRef, type TexRef } from '../../../core/paint/textures';
@@ -124,7 +123,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** RMB remains the third-person look fallback only when no highlighted Play target consumes the press. */
   let rideOrbitMouse = false;
   // props select mode defers the LMB press: a still click selects on release, a drag becomes the marquee
-  let propClickPending: { x: number; y: number; shift: boolean } | null = null;
+  let propClickPending: { x: number; y: number; shift: boolean; ctrl: boolean } | null = null;
   // Info uses the same click-or-marquee contract for authored course knots.
   let infoClickPending: { x: number; y: number; shift: boolean } | null = null;
   // mountain Edit (cage on) defers the LMB press the same way: a still click selects a control point / edge /
@@ -646,8 +645,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** Props mode click. Placing (a prop armed): commit the ghost's pose on the terrain, nothing else is
    *  pickable. Select (nothing armed): whatever's nearest under the cursor wins — an authored/reference prop,
    *  light, rail node, gem, or bare terrain — closest-hit so it reads like "click what you see". MMB copies a
-   *  prop instead of selecting it. */
-  function pickOrPlaceProp() {
+   *  prop instead of selecting it. With `toggle` (Ctrl/Cmd), a placed prop is added to the selection or dropped
+   *  from it, as in Edit and Effects mode — a free light too — and a click off everything keeps the set being
+   *  built. */
+  function pickOrPlaceProp(toggle = false) {
     // rail drawing: a terrain click appends a height-adjusted, grid-snapped node; nothing else
     // is pickable while laying a rail, so the flow stays a straight chain of clicks.
     if (layers.rails.railArmed) {
@@ -704,14 +705,18 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // A screen sits a hand's width proud of the board it covers, so it wins the click there — which is what
     // makes an attached screen editable at all (the board behind it would otherwise always be nearer).
     if (pick?.target === 'screen') { selectScreen(pick.source, pick.screenIndex); return; }
-    if (pick?.target === 'light') { selectLight(pick.lightIndex); return; }
+    if (pick?.target === 'light') {
+      // Ctrl/Cmd+click adds a light to the selection beside the props, as it does a prop.
+      const lightId = toggle ? layers.lights.freeLights[pick.lightIndex]?.id : undefined;
+      if (!lightId || !stage.cb.onToggleLight?.(lightId)) selectLight(pick.lightIndex);
+      return;
+    }
     if (pick?.target === 'prop' && pick.source === 'authored') {
-      // a line's member answers as its line: the line lays it out, so the line is what there is to edit
+      // a line's member answers as its line: the line lays it out, so the line is what there is to edit. (A
+      // group's member answers as its group too; the host decides that, since it knows the group's lights.)
       const line = lineOwning(pick.propIndex);
-      // …and a group's member as its group, which moves, turns and sizes as one (docs/015 · Authored groups)
-      const group = line ? null : assemblyOf(layers.props.lastPlacedProps, pick.propIndex);
       if (line) selectLineNode(line, null);
-      else if (group) selectPropSet(group);
+      else if (toggle) toggleProp(pick.propIndex);
       else selectProp(pick.propIndex);
       return;
     }
@@ -737,6 +742,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // Bare mesh components are not selectable in Props view. Keep the current scene-object selection intact
     // and acknowledge the exact component instead of treating it as an empty-space deselect.
     if (rejectUnsupportedMeshPick(() => false)) return;
+    if (toggle) return; // a Ctrl+click that misses keeps the set it was building
     layers.props.clearSelection();
     layers.refDecor.clearPropSelection();
     layers.refDecor.clearSourceSelection();
@@ -836,7 +842,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.propLines.seatNode(id, n);
   }
 
-  /** Clear every scene-object selection a placed-prop selection replaces. */
+  /** Clear the scene-object selections a placed-prop selection replaces. */
   function clearForPropSelection() {
     stage.cb.onSelectKnot(null);
     layers.selection.placeCornerMarker(null);
@@ -858,10 +864,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.props.seatProp(i);
   }
 
-  /** Select placed props `indices` together — a group's members — under the set's centre gizmo. */
-  function selectPropSet(indices: number[]) {
+  /** Add placed prop `i` to the selection, or drop it — the host knows the selection and the prop's group. */
+  function toggleProp(i: number) {
     clearForPropSelection();
-    stage.cb.onSelectProps?.(indices, false);
+    stage.cb.onToggleProp?.(i);
   }
 
   /** Select a reference prop READ-ONLY: outline the clicked instance (every submesh of its model, seated by
@@ -1016,7 +1022,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
     if (e.button !== 0) return; // MMB (pan) handled by OrbitControls; ignore here
     // Replace owns the click before gizmos and marquee selection can move or deselect its target.
-    if (access.mode() === 'props' && stage.cb.isReplacingProp?.()) {
+    if (access.mode() === 'props' && stage.cb.isPickingProp?.()) {
       stage.castAt(e);
       pickPropAtPointer(true);
       e.stopImmediatePropagation();
@@ -1093,7 +1099,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // props select mode (nothing armed): defer the press — a still click selects on release (pointerUp),
     // a drag past the tap threshold rubber-bands a multi-selection instead (see pointerMove).
     if (access.mode() === 'props' && !layers.props.propArm && !layers.rails.railArmed && !layers.lights.lightArmed) {
-      propClickPending = { x: e.clientX, y: e.clientY, shift: e.shiftKey };
+      propClickPending = { x: e.clientX, y: e.clientY, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey };
       (e.target as Element).setPointerCapture?.(e.pointerId);
       return;
     }
@@ -1146,7 +1152,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.weldTool.active && layers.weldTool.onCommit()) return;
     // props mode: place the armed prop at its ghost, or (select mode) grab what's under the cursor / clear.
     // Runs for a mouse click (pointerDown) and a touch tap (pointerUp).
-    if (access.mode() === 'props') { pickOrPlaceProp(); return; }
+    if (access.mode() === 'props') { pickOrPlaceProp(ctrl); return; }
     if (access.mode() === 'effects') {
       if (layers.rails.railArmed) pickOrPlaceProp();
       else pickAttachedEffect(ctrl);
@@ -1162,6 +1168,19 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       filteredNoticeSent = true;
       return true;
     };
+
+    // Edit mode: a free light selects like a placement — moved by its gizmo here, its full panel Props mode's. Any
+    // other click lets a selected light go first, so its gizmo cannot take the handle back from what it picks.
+    if (access.mode() === 'edit' && stage.cb.onEditLightPick) {
+      const lightPick = sel.editPickKinds.prop
+        ? layers.scenePicking.pick({ lights: true, props: 'standard', occludeWithSurfaces: true, surfaceEpsilon: 1e-3 })
+        : null;
+      const lightId = lightPick?.target === 'light' ? layers.lights.freeLights[lightPick.lightIndex]?.id : undefined;
+      if (lightId && stage.cb.onEditLightPick(lightId, ctrl)) return;
+      // …except a Ctrl+click on a prop, which builds a set with the light already selected.
+      const buildingSet = ctrl && lightPick?.target === 'prop' && lightPick.source === 'authored';
+      if (!buildingSet && stage.cb.onEditLightPick(null)) layers.lights.clearSelection();
+    }
 
     if (access.mode() === 'edit') {
       const coincident = layers.createEdge.pickCoincidentVertices();
@@ -1707,10 +1726,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
     // a deferred props-mode press that never dragged is a click: select what's under it now
     if (propClickPending) {
+      const { ctrl } = propClickPending;
       propClickPending = null;
       (e.target as Element).releasePointerCapture?.(e.pointerId);
       stage.castAt(e);
-      pickOrPlaceProp();
+      pickOrPlaceProp(ctrl);
       return;
     }
     // a deferred Edit-mode press that never dragged is a click: select the corner / knot / nub (Shift = range)

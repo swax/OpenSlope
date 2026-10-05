@@ -327,7 +327,7 @@ export function installShortcuts(deps: ShortcutDeps) {
         // up its lock; an unlocked one ends — the keyboard mirror of the click-on / click-off flow.
         const selectionLive = activeEditFamily() !== null || store.selected !== null
           || !!store.selectedEdgeCrossing || !!store.selectedCoincidentVertices
-          || store.selectedProp !== null || store.multiSel.length > 0
+          || store.selectedProp !== null || store.multiSel.length > 0 || store.selectedLight !== null
           || store.refControlSel.length > 0 || store.refEdgeSel.length > 0 || store.refCellSel.length > 0;
         if (store.modelEditId && !selectionLive) {
           if (store.modelEditLocked) { store.modelEditLocked = false; rebuildTools(); updateCmdSheet(); return; }
@@ -336,6 +336,7 @@ export function installShortcuts(deps: ShortcutDeps) {
         deselectEdit(); return;
       }
       if (store.currentMode === 'props' && propOps.isReplacingProp()) { propOps.cancelPropReplacement(); return; }
+      if (store.currentMode === 'props' && propOps.lightJoinWaitsFor()) { propOps.cancelLightJoin(); return; }
       if (store.currentMode === 'props' && store.armedProp) { propOps.disarmProp(); return; }
       if (store.currentMode === 'props' && propClipboard.placing()) { propClipboard.cancel(); return; } // …and a held paste
       if (store.currentMode === 'paint' && store.paintBrush) { disarmBrush(); return; }

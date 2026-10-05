@@ -89,13 +89,17 @@ art starts solid, your own art starts decorative and silent.
 
 ## Groups
 
-A group (docs/015) places as **one** placement, but its members are different models: a tree's trunk and its
-leaves. So a group can carry settings **per member**, in `PlacedProp.memberBehaviour`, keyed by the member's
+A mined group (docs/015) is held as **one** placement, but its members are different models: a tree's trunk and
+its leaves. So a group can carry settings **per member**, in `PlacedProp.memberBehaviour`, keyed by the member's
 model id.
 
 - **From the library**, each member starts with its own model's defaults (`groupMemberDefaults`). A GARI tree
   arrives with a solid, thudding trunk inside ride-through, rustling leaves. When every member's defaults are
   the same, the group carries no per-member record and behaves as one placement.
+- **Placed, the record becomes the props' own settings.** A group from the library lands as an authored group
+  (docs/015): each member a placement of its own, holding exactly what its entry said. From then on each is an
+  ordinary prop with an ordinary panel. Everything below about `memberBehaviour` on a placement applies to group
+  placements made before that, and to a prop line laying out a group (docs/070).
 - **When present, `memberBehaviour` has an entry for every member.** A member with no entry (a group placed
   before this, or a member the group def gained later) behaves as its placement's own fields say.
 - **Only the leader inherits the placement's ambient loop.** A group placed before per-member settings keeps

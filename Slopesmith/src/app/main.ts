@@ -26,14 +26,14 @@ import { MOUNTAIN_KEY, VIEW_KEY, UI_KEY, loadStored, isValidView, createPersiste
 import { mapNameInUrl, showMapInUrl } from './state/map-url';
 import { createHistory } from './state/history';
 import { createRebuilder } from './state/rebuild';
-import { createStore } from './state/store';
+import { createStore, selectedSetLights, setSelectedSet } from './state/store';
 import { reconcileSyncContext } from './state/sync-context';
 import { quadIndex, quadIndices, quadName } from './state/mesh-names';
 import { reconcileTJunctionGeometry } from '../core/mesh/t-junctions';
 import { createNetWatcher, type NetChange } from '../core/mesh/incremental';
 import { AUTHORED_MODEL_LEVEL, createAuthoredModel, duplicateAuthoredModel, findModel, modelEditDocFor, modelIdFromNumber, modelNumber, rebaseModelToPlacement } from '../core/doc/models';
 import { applyBehaviour } from '../core/props/defaults';
-import { assemblyOf } from '../core/props/assembly';
+import { assemblyOf, lightAssemblyOf } from '../core/props/assembly';
 import { turnD4 } from '../core/paint/orientation';
 import { recordFromReferenceProp, revisedPropName } from '../core/props/adopt';
 import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
@@ -229,11 +229,36 @@ viewportCallbacks.onEditPropPick = (index, toggle) => {
   if (store.modelEditId) exitModelEdit(false); // selecting a placement is a click off the edited model
   edit.deselectEdit(); // one selection at a time: the placement takes the toolbox + gizmo
   // A group's member answers as its group, as it does in Props mode (docs/015 · Authored groups).
-  if (assemblyOf(store.mdoc.props ?? [], index)) { edit.toggleEditProp(index); rebuildTools(); return true; }
+  if (assemblyOf(store.mdoc, index)) { edit.toggleEditProp(index); rebuildTools(); return true; }
   store.selectedProp = index;
   store.multiSel = [];
   rebuildTools();
   scheduleRebuild();
+  return true;
+};
+// Edit mode: a free light selects like a placement — its gizmo moves it here, and its full panel is Props mode's.
+// A group's light answers as its group (docs/015 · Authored groups). With null, a click landed elsewhere, so a
+// selected light lets go before that click selects what it picked.
+viewportCallbacks.onEditLightPick = (id, toggle = false) => {
+  if (id === null) {
+    if (store.selectedLight === null) return false;
+    store.selectedLight = null;
+    rebuildTools(); scheduleRebuild(); updateCmdSheet();
+    return true;
+  }
+  if (modalEditToolActive()) return false;
+  if (store.modelEditId && store.modelEditLocked) {
+    toast(`Editing ${findModel(store.mdoc, store.modelEditId)?.name ?? 'model'} is locked — ✔ done editing to leave.`, 'warn');
+    return true;
+  }
+  if (store.modelEditId) exitModelEdit(false);
+  // Ctrl+click adds the light to the selected props, as it does a prop; with no props to add it to, it selects alone.
+  if (toggle && edit.toggleEditLight(id)) return true;
+  edit.deselectEdit();
+  const group = lightAssemblyOf(store.mdoc, id);
+  if (group) { edit.toggleEditProp(group[0]); rebuildTools(); return true; }
+  store.selectedLight = id;
+  rebuildTools(); scheduleRebuild(); updateCmdSheet();
   return true;
 };
 // Edit mode: a plain click off everything deselects a selected placement, then ends an unlocked model
@@ -760,7 +785,7 @@ function renderMountainObjects() {
 }
 
 function renderMountainDetails() {
-  viewport.setFreeLights(store.mdoc.lights ?? [], store.selectedLight);
+  viewport.setFreeLights(store.mdoc.lights ?? [], store.selectedLight, selectedSetLights(store));
   viewport.setRails(store.mdoc.rails ?? [], store.selectedRail, store.selectedNode);
   viewport.setPropLines(propLines.displayLines(), store.selectedLine, store.selectedLineNode); // docs/070
   viewport.setGems(store.mdoc.gems ?? [], store.selectedGem);
@@ -1617,6 +1642,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   setAuthoredModelTexture: (model, ref) => setAuthoredModelTextureByNumber(model, ref),
   setAuthoredModelFrames: (model, frames) => setAuthoredModelFramesByNumber(model, frames),
   identifyMultiProp: propOps.identifyMultiProp, removeFromMultiSel: propOps.removeFromMultiSel,
+  removeLightFromMultiSel: propOps.removeLightFromMultiSel,
   defOfPlaced: propOps.defOfPlaced, placedBaseOffset: propOps.placedBaseOffset,
   shortPropName: propOps.shortPropName, propBaseOffset: propOps.propBaseOffset,
   armProp: propOps.armProp, armGroupById: propOps.armGroupById,
@@ -1624,6 +1650,9 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   replaceSelectedProp: () => { propOps.replaceSelectedProp(); setPropLibWanted(true); },
   cancelPropReplacement: propOps.cancelPropReplacement,
   isReplacingProp: propOps.isReplacingProp,
+  lightJoinWaitsFor: propOps.lightJoinWaitsFor,
+  startLightJoin: propOps.startLightJoin,
+  cancelLightJoin: propOps.cancelLightJoin,
   propDefaults: propOps.propDefaults, groupDefaults: propOps.groupDefaults, modelEffect: propOps.modelEffect,
   placementsOfModel: propOps.placementsOfModel,
   saveModelDefaults: propOps.saveModelDefaults, applyBehaviourToPlaced: propOps.applyBehaviourToPlaced,
@@ -1673,12 +1702,18 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   goToEffects,
   goToPropToolbox: () => {
     const indices = store.multiSel.length ? [...store.multiSel] : store.selectedProp === null ? [] : [store.selectedProp];
+    const setLights = selectedSetLights(store), light = store.selectedLight;
     // A one-prop marquee opens that prop's inspector, just like a direct click does.
-    const selected = indices.length === 1 ? indices[0] : null, many = indices.length > 1 ? indices : [];
+    const selected = indices.length === 1 && !setLights.length ? indices[0] : null;
+    const many = selected === null ? indices : [];
     setMode('props');
-    // Leaving Edit detaches its gizmo. Restore the same placements under the Props transform handle.
-    store.selectedProp = selected; store.multiSel = many;
+    // Leaving Edit detaches its gizmo. Restore the same placements under the Props transform handle — or the same
+    // light under its own, which the light layer seats on the rebuild.
+    store.selectedProp = selected;
+    setSelectedSet(store, many, many.length ? setLights : []);
+    store.selectedLight = indices.length ? null : light;
     viewport.setPlacedPropSelection(selected, many);
+    if (store.selectedLight !== null || setLights.length) scheduleRebuild();
     rebuildTools(); updatePaintUi();
   },
   selectSpecialProp: specialProps.select,

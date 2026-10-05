@@ -1,7 +1,7 @@
 import type { V3 } from '../../core/doc/types';
 import { copyPlacements, pasteGhost, pastePlacements, type PropClipboard } from '../../core/props/clipboard';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
-import type { Store } from '../state/store';
+import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
 import type { EditSession } from '../edit/session';
 import type { Viewport } from '../viewport/viewport';
 import type { Mode } from '../viewport/types';
@@ -68,7 +68,8 @@ export function createPropClipboard(deps: PropClipboardDeps) {
 
   function capture(): PropClipboard | null {
     if (!canCopy()) return null;
-    const clip = copyPlacements(store.mdoc, selection(), (x, z, nearY) => viewport.groundHeightAt(x, z, nearY));
+    const clip = copyPlacements(store.mdoc, selection(), (x, z, nearY) => viewport.groundHeightAt(x, z, nearY),
+      selectedSetLights(store));
     if (!clip) { toast('nothing copied — Effects trigger volumes are copied in Effects mode', 'warn'); return null; }
     clipboard = clip;
     store.clipboardKind = 'props';
@@ -135,10 +136,13 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     const clip = placingClip;
     placingClip = null;
     viewport.setPropArmed(null);
-    const { indices, skipped } = pastePlacements(store.mdoc, clip, { pos, yaw, scale });
+    const { indices, skipped, lights } = pastePlacements(store.mdoc, clip, { pos, yaw, scale });
     resetGizmoMode();
-    store.selectedProp = indices.length === 1 ? indices[0] : null;
-    store.multiSel = indices.length > 1 ? indices : [];
+    // A light that landed in a group is selected with its group; the rest ride in the set beside the props.
+    const free = lights.filter(id => !store.mdoc.lights?.find(light => light.id === id)?.assembly);
+    const set = indices.length > 1 || (indices.length === 1 && free.length);
+    store.selectedProp = set ? null : indices[0] ?? null;
+    setSelectedSet(store, set ? indices : [], set ? free : []);
     scheduleRebuild(); rebuildTools(); updateCmdSheet();
     const pasted = label(indices.map(index => store.mdoc.props![index].name));
     const missing = skipped ? ` · ${plural(skipped)} skipped — their models belong to another mountain` : '';

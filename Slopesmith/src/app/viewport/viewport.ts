@@ -3433,7 +3433,9 @@ export class Viewport {
     this.setArmedPlacement(on ? 'light' : null);
   }
   get lightPlacing(): boolean { return this.lights.lightPlacing; }
-  setFreeLights(lights: AuthoredLight[], selectedId: string | null) { this.lights.setFreeLights(lights, selectedId); }
+  setFreeLights(lights: AuthoredLight[], selectedId: string | null, setIds: readonly string[] = []) {
+    this.lights.setFreeLights(lights, selectedId, setIds);
+  }
 
   // ---- prop lines (docs/070): the path + node handles in PropLinesLayer; the members are placed props ----
 

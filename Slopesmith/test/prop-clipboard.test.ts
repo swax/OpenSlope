@@ -239,7 +239,7 @@ function sourceDoc(): Doc {
   installShortcuts({
     store, viewport: { riding: false, pastePlacing: false, edgeExtrusionStaged: false },
     edit: { ...meshClipboard, mixedEditSelection: () => mixed },
-    propClipboard: session, propOps: { isReplacingProp: () => false }, cageActive: () => true, chatFocused: () => false,
+    propClipboard: session, propOps: { isReplacingProp: () => false, lightJoinWaitsFor: () => null }, cageActive: () => true, chatFocused: () => false,
   } as unknown as Parameters<typeof installShortcuts>[0]);
   const press = (key: string, extra: Partial<KeyboardEvent> = {}) => {
     let prevented = false;

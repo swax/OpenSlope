@@ -24,7 +24,7 @@ const vite = await createServer({ root: process.cwd(), logLevel: 'error',
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 let page: Page | undefined;
 type Observation = { slopesmith: {
-  snapshot(): { mode: string; selection: { prop: number | null; props: number[] } };
+  snapshot(): { mode: string; selection: { prop: number | null; props: number[]; light: string | null } };
   doc(): EditDoc;
   refresh(): unknown;
   errors(): unknown[];
@@ -47,6 +47,7 @@ try {
     ...(i ? { assembly: 'group:fixture' } : {}),
   }));
   doc.quadLabels = { 0: ['label:mixed'] };
+  doc.lights = [{ id: 'light:fixture', kind: 'point', pos: [90, 10, 50], color: '#ffcc88', intensity: 1, reach: 20 }];
   const response = await fetch(`${api.url}/api/projects`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ document: doc }),
   });
@@ -151,9 +152,60 @@ try {
   assert.deepEqual(await selected(), { prop: null, props: [0, 1, 2] });
   await button('deselect (Esc)').click();
   assert.equal(await button('open in Props mode').count(), 0);
+
+  // A free light selects in Edit like a placement: moved by its gizmo, its full panel a button away in Props.
+  const sources = page.getByRole('button', { name: 'Sources', exact: true }).first();
+  if (await sources.getAttribute('aria-pressed') !== 'true') await sources.click();
+  await page.evaluate(() => (window as unknown as Observation).slopesmith.refresh());
+  const bulb = await page.locator('[data-agent-ref="light:fixture"]').boundingBox();
+  assert(bulb, 'the free light is mirrored once Sources shows it');
+  const lightHit = await page.evaluate(box => {
+    for (let dy = -12; dy <= 12; dy += 2) for (let dx = -12; dx <= 12; dx += 2) {
+      const x = box.x + box.width / 2 + dx, y = box.y + box.height / 2 + dy;
+      if ((window as unknown as Observation).slopesmith.pickAt(x, y)?.target === 'light') return { x, y };
+    }
+    return null;
+  }, bulb);
+  assert(lightHit, 'the free light has a pickable bulb');
+  await page.mouse.click(lightHit.x, lightHit.y);
+  await page.waitForFunction(() => (window as unknown as Observation).slopesmith.snapshot().selection.light === 'light:fixture');
+  await button('open in Props mode').waitFor({ state: 'visible' });
+  // Details are read-only inputs, so their text is their value rather than the panel's inner text.
+  const details = await panel.locator('input').evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value));
+  assert(details.some(value => /Use the gizmo to move the light/i.test(value)), details.join(' | '));
+  assert(!/Contact|Members \(|colour|delete light/i.test(await panel.innerText()), 'Edit keeps the light compact');
+  await page.screenshot({ path: join(root, 'edit-light.png') });
+  await button('open in Props mode').click();
+  await page.waitForFunction(() => (window as unknown as Observation).slopesmith.snapshot().mode === 'props');
+  assert.equal((await page.evaluate(() => (window as unknown as Observation).slopesmith.snapshot().selection)).light,
+    'light:fixture', 'Props opens the same light');
+  assert(await button('✕ delete light').isVisible(), 'with its full panel');
+  await enterEdit();
+  assert.equal((await page.evaluate(() => (window as unknown as Observation).slopesmith.snapshot().selection)).light,
+    null, 'Esc in Edit lets the light go');
+
+  // Ctrl+click builds a set of props and lights in Edit as it does in Props, and Props opens it ready to group.
+  await page.mouse.click(hit.x, hit.y);
+  await page.waitForFunction(() => (window as unknown as Observation).slopesmith.snapshot().selection.prop === 0);
+  // Let the gizmo render on the prop before pressing: its invisible pickers follow it only when a frame draws, and
+  // a press before then is hit-tested against where they last stood — over the light, which had the gizmo earlier.
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done(null)))));
+  await page.mouse.move(lightHit.x, lightHit.y);
+  await page.keyboard.down('Control');
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+  await page.waitForFunction(() => [...document.querySelectorAll('#dock-right input')]
+    .some(input => (input as HTMLInputElement).value === '1 prop + 1 light selected'));
+  assert.deepEqual(await selected(), { prop: null, props: [0] }, 'the prop holds the set, the light rides beside it');
+  await page.screenshot({ path: join(root, 'edit-prop-light.png') });
+  await button('open in Props mode').click();
+  await page.waitForFunction(() => (window as unknown as Observation).slopesmith.snapshot().mode === 'props');
+  assert(await button('⊞ group 1 prop + 1 light').isVisible(), await panel.innerText());
+  await enterEdit();
   assert.deepEqual(await page.evaluate(() => (window as unknown as Observation).slopesmith.errors()), []);
   assert.deepEqual(errors, []);
-  console.log(`EDIT PROP TOOLS PASS: compact single/group/multi selection, transforms, labels and Props handoff. Screenshots: ${root}`);
+  console.log(`EDIT PROP TOOLS PASS: compact single/group/multi selection, transforms, labels, a free light and Props handoff. Screenshots: ${root}`);
 } catch (error) {
   if (page) {
     await page.screenshot({ path: join(root, 'failure.png') });
