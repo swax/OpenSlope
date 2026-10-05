@@ -125,4 +125,21 @@ assert.equal(doc.exits, 5, 'stopping the ride always returns the cursor to the e
 target.dispatchEvent(mouseButton('mousedown', 2));
 assert.equal(target.requests, 5, 'the stopped ride no longer re-captures on a click');
 
+// RMB reports a held look on its own, so the chase camera can tell a held look from a released one — including
+// where capture is unavailable and the editor's fallback move path is what steers.
+{
+  const coarseDoc = new FakeDocument();
+  (coarseDoc.defaultView as unknown as FakeWindow).matchMedia = () => ({ matches: false });
+  const coarseTarget = new FakeTarget(coarseDoc);
+  const coarse = createRidePointerLock({ target: coarseTarget as unknown as HTMLElement, onMove: () => {} });
+  coarse.attach();
+  assert.equal(coarse.supported, false);
+  coarseTarget.dispatchEvent(mouseButton('mousedown', 2));
+  assert.equal(coarse.looking, true, 'RMB down holds the look even without pointer capture');
+  assert.equal(coarseTarget.requests, 0, 'an unsupported device is never asked to capture');
+  coarseDoc.dispatchEvent(mouseButton('mouseup', 2));
+  assert.equal(coarse.looking, false, 'RMB up lets the look go');
+  coarse.detach();
+}
+
 console.log('pointer lock checks passed');

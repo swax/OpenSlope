@@ -65,11 +65,14 @@ const CAM_BLOCK_ANCHOR_Y = 1.25;
 // The rider root supplies the chase bearing in the original. Slopesmith's closest equivalent is travel: it stays
 // stable while the visible deck spins in the air or yaws across a rail. At walking speed facing is the fallback.
 const CAM_TRAVEL_MIN = 1.5;
-// A ride owns the editor camera, but the player can still inspect the rider by orbiting the chase seat with
-// RMB. These offsets are deliberately layered over the followed travel bearing / trajectory pitch: physics
+// A ride owns the editor camera, but the player can still look around by orbiting the chase seat with RMB or a
+// touch drag. These offsets are deliberately layered over the followed travel bearing / trajectory pitch: physics
 // keeps supplying the moving subject, while the pointer supplies only a view-relative yaw and pitch.
 const CAM_ORBIT_YAW_PER_PIXEL = 0.006, CAM_ORBIT_PITCH_PER_PIXEL = 0.004;
 const CAM_ORBIT_PITCH_MIN = -0.8, CAM_ORBIT_PITCH_MAX = 0.55;
+// Letting go is a glance, not a new chase seat: once nothing has held or moved the look for this long, the offsets
+// ease back out (per second) and the chase view settles behind the rider again — ~95% of the way in 0.4 s.
+const CAM_ORBIT_RETURN_DELAY = 0, CAM_ORBIT_RETURN_RATE = 8;
 // Desktop third-person wheel/pinch zoom scales the existing camera-to-subject boom, preserving its exact line.
 // The bounds keep the near seat outside the avatar and the far seat useful without turning the rider into a dot.
 export const THIRD_PERSON_ZOOM_MIN = 0.35, THIRD_PERSON_ZOOM_MAX = 4;
@@ -141,6 +144,7 @@ export function createRideCamera(o: RideCameraDeps) {
   let camTrajectoryPitch = 0;                    // smoothed rider flight-path contribution
   let targetTrajectoryPitch = 0;
   let orbitYaw = 0, orbitPitch = 0;
+  let orbitHeld = false, orbitIdle = 0; // seconds of chase view since the last look input or hold
   let thirdPersonZoom = clampThirdPersonZoom(o.initialThirdPersonZoom ?? 1);
   const camTmp = new THREE.Vector3();
   const orbitHeading = new THREE.Vector3();
@@ -202,6 +206,7 @@ export function createRideCamera(o: RideCameraDeps) {
     // trajectory response directly.
     const kBoost = t >= 1 ? 1 : 1 - Math.exp(-CAM_BOOST_FOLLOW_RATE * Math.max(0, t));
     camBoostBlend += (Number(boost) - camBoostBlend) * kBoost;
+    returnOrbit(t);
     const boom = CAM_BOOM * thirdPersonZoom * THREE.MathUtils.lerp(1, CAM_BOOST_SCALE, camBoostBlend);
     const baseYaw = Math.atan2(camHeading.x, camHeading.z);
     orbitHeading.set(Math.sin(baseYaw + orbitYaw), 0, Math.cos(baseYaw + orbitYaw));
@@ -261,6 +266,7 @@ export function createRideCamera(o: RideCameraDeps) {
     camOriginUnburied = false;
     camCorrectionDistance = 0;
     camBoost = false;
+    orbitIdle = 0; // first person's look stays aimed; V back to chase gets the full delay before it returns
 
     firstUp.copy(up);
     if (firstUp.lengthSq() < 1e-8) firstUp.copy(WORLD_UP); else firstUp.normalize();
@@ -426,9 +432,28 @@ export function createRideCamera(o: RideCameraDeps) {
 
   function setThirdPersonZoom(scale: number) { thirdPersonZoom = clampThirdPersonZoom(scale); }
 
-  /** Add a desktop RMB-look delta to the rider-relative camera seat. The view stays where it was aimed after
-   * release, making pause + orbit useful for inspecting a character pose from any side. */
+  /** Ease the chase seat back behind the rider once the look has been let go for `CAM_ORBIT_RETURN_DELAY`. Only
+   *  the chase view does this; first person's look is the player's own aim and stays put. */
+  function returnOrbit(t: number) {
+    if (orbitHeld) { orbitIdle = 0; return; }
+    if (!(t > 0)) return;
+    const before = orbitIdle;
+    orbitIdle += t;
+    if (orbitIdle <= CAM_ORBIT_RETURN_DELAY || (!orbitYaw && !orbitPitch)) return;
+    const easing = orbitIdle - Math.max(before, CAM_ORBIT_RETURN_DELAY);
+    const keep = Math.exp(-CAM_ORBIT_RETURN_RATE * easing);
+    orbitYaw = Math.abs(orbitYaw * keep) < 1e-4 ? 0 : orbitYaw * keep;
+    orbitPitch = Math.abs(orbitPitch * keep) < 1e-4 ? 0 : orbitPitch * keep;
+  }
+
+  /** Whether something is still holding the look — a pressed RMB, a finger on the look surface, or a pause being
+   *  inspected. Held, the aimed view stays; the return clock starts only once it is let go. */
+  function holdOrbit(held: boolean) { orbitHeld = held; }
+
+  /** Add a desktop RMB / touch / right-stick look delta to the rider-relative camera seat. The chase view holds
+   * where it was aimed while the look is held, then snaps back behind the rider as soon as it is let go. */
   function orbit(deltaX: number, deltaY: number) {
+    orbitIdle = 0;
     orbitYaw = Math.atan2(Math.sin(orbitYaw - deltaX * CAM_ORBIT_YAW_PER_PIXEL),
       Math.cos(orbitYaw - deltaX * CAM_ORBIT_YAW_PER_PIXEL));
     orbitPitch = THREE.MathUtils.clamp(
@@ -466,7 +491,7 @@ export function createRideCamera(o: RideCameraDeps) {
     };
   }
 
-  return { update, updateFirstPerson, setHeading, resetAim, setThirdPersonZoom, orbit, telemetry };
+  return { update, updateFirstPerson, setHeading, resetAim, setThirdPersonZoom, orbit, holdOrbit, telemetry };
 }
 
 export type RideCamera = ReturnType<typeof createRideCamera>;

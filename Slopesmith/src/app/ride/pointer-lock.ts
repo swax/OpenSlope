@@ -102,8 +102,10 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
     else release();
   }
 
+  // Attached even where capture is unsupported: RMB still has to report `looking` so the chase camera knows the
+  // look is held. Every lock-specific listener below is inert without a lock, and `request` checks `supported`.
   function attach() {
-    if (attached || !supported) return;
+    if (attached) return;
     attached = true;
     doc.addEventListener('keydown', keyDown, true);
     doc.addEventListener('mousemove', mouseMove);
@@ -134,6 +136,8 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
     get supported() { return supported; },
     get locked() { return locked(); },
     get firstPerson() { return firstPerson; },
+    /** RMB is down for a look — the chase camera holds its aim until it is released. */
+    get looking() { return rightHeld; },
   };
 }
 
