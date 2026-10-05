@@ -29,8 +29,8 @@ import {
   type Awareness, type PresenceChange, type PresenceEntry, type SessionMember,
 } from './presence';
 import {
-  assign, changesSince, claimTopology, closeRoom, discardRoom, joinRoom, onWire, roomDigest, roomFor,
-  roomSection, type RegisterAssignment,
+  assign, changesSince, claimTopology, closeRoom, discardRoom, joinRoom, landedFrom, noteLanded, onWire,
+  roomDigest, roomFor, roomSection, type RegisterAssignment,
 } from './room';
 import { awarenessPolicyFor, type AwarenessPolicy } from './awareness-policy';
 import { CAPACITY_CLOSE_CODE, CAPACITY_CLOSE_REASON, reservePlayerSeat } from './capacity';
@@ -164,8 +164,11 @@ export type ServerMessage =
   | { t: 'digest'; projectId: string; at: number; root: string; sections: Record<string, string> }
   /** The repair: one divergent section's registers, or the document when what diverged was the topology. */
   | { t: 'sections'; projectId: string; at: number; registers: RegisterAssignment[]; document?: EditDoc }
-  /** What everybody the caught-up client missed did while it was away, so it can be told rather than guess. */
-  | { t: 'caught-up'; projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc }
+  /** What everybody the caught-up client missed did while it was away, so it can be told rather than guess, and
+   *  the highest of its own batches the room had answered before it rejoined, so a batch whose acknowledgement
+   *  died with the old socket is not replayed over somebody's later write. */
+  | { t: 'caught-up'; projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc;
+    landed: number }
   /** The disposable states that changed during one room window, encoded once and shared by every socket. */
   | { t: 'awareness-batch'; projectId: string; peers: AwarenessPeer[] }
   /** The cadence browsers on this room should use when publishing disposable awareness. */
@@ -507,6 +510,12 @@ async function joinMap(sessionId: string, wanted: string | null,
   watchProject(sessionId, wanted);
   const session = sessionById(sessionId);
   if (!session || !wanted || session.projectId !== wanted) return;
+  // Read before anything is awaited. A reconnecting tab sends this watch before anything else on its new socket,
+  // so the room has now answered every batch the old socket delivered and none from the new one. Read after the
+  // awaits below, it could count a batch sent on this socket since, and that would not mean an older batch
+  // the old socket was carrying ever arrived.
+  const opened = roomFor(wanted);
+  const landed = opened ? landedFrom(opened, session.replica) : 0;
   const project = await projectManifest(wanted);
   const refusal = writeRefusal(session.member, project, asked);
   session.writable = !refusal;
@@ -523,8 +532,8 @@ async function joinMap(sessionId: string, wanted: string | null,
   const missed = changesSince(room, asked.at);
   session.at = room.at;
   send(sessionId, missed === null
-    ? { t: 'caught-up', projectId: wanted, at: room.at, changes: [], document: room.doc }
-    : { t: 'caught-up', projectId: wanted, at: room.at, changes: onWire(missed) });
+    ? { t: 'caught-up', projectId: wanted, at: room.at, changes: [], document: room.doc, landed }
+    : { t: 'caught-up', projectId: wanted, at: room.at, changes: onWire(missed), landed });
 }
 
 // ---- what a client says ----
@@ -558,6 +567,7 @@ function onAssign(sessionId: string, message: Extract<ClientMessage, { t: 'assig
   const allowed = refusedRename.length ? changes.filter(([key]) => key !== renameKey) : changes;
   const written = assign(room, allowed, session.member.username);
   session.at = written.at;
+  noteLanded(room, session.replica, Number.isSafeInteger(message.batch) ? message.batch! : 0);
   send(sessionId, {
     t: 'landed', batch: message.batch ?? 0, at: written.at,
     retired: written.retired, refused: [...written.refused, ...refusedRename.map(([key]) => key)],
@@ -1028,6 +1038,9 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
 
     const sessionId = randomUUID();
     const clientId = (url.searchParams.get('client') ?? '').slice(0, 64) || sessionId;
+    // A client that names no replica is one nothing is remembered for across a reconnection, so a batch whose
+    // acknowledgement it lost is replayed, as it always was.
+    const replica = (url.searchParams.get('replica') ?? '').slice(0, 64) || sessionId;
     const deviceLabel = (url.searchParams.get('device') ?? 'device')
       // eslint-disable-next-line no-control-regex -- strips control characters from a client-supplied device label
       .replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 32) || 'device';
@@ -1066,7 +1079,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     const replay: ServerMessage = { t: 'chat-history', lines: scrollbackFor(member.id) };
     peer.send(JSON.stringify(replay));
     const live = openSession({
-      sessionId, clientId, deviceLabel, member, projectId,
+      sessionId, clientId, replica, deviceLabel, member, projectId,
       ...(decision.identity.kind === 'member' ? { accountSessionId: decision.identity.sessionId } : {}),
       writable: holds(member.role, 'editor'),
       send: (message: unknown) => peer.send(JSON.stringify(message)),

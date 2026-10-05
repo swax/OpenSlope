@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { forgetAccounts } from '../src/server/accounts/store';
 import { configureCheckpoints } from '../src/server/projects';
-import { configureSessions, forgetSessions } from '../src/server/session/presence';
+import { configureSessions, forgetSessions, sessionById } from '../src/server/session/presence';
 import { configureRooms, forgetRooms, roomFor } from '../src/server/session/room';
 import { startApiService, type ApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
@@ -105,6 +105,17 @@ interface Client {
   diverged: string[];
   repairs: number;
   writable: boolean;
+  /** Every catch-up this replica was handed, in the words it arrived in. */
+  caughtUp: { at: number; landed?: number }[];
+  /** While set, an assignment goes out as far as the replica can tell and never reaches the room — the frame a
+   *  dying socket swallows. */
+  blackhole: boolean;
+  /** The socket dies under this replica, from the server's side, as a Wi-Fi handover or a restart kills it. The
+   *  channel reconnects by itself, so what it says on the way back is exactly what a browser says. */
+  drop(): void;
+  /** The next batch this replica sends lands, and the socket dies carrying its acknowledgement. Everything after
+   *  that acknowledgement dies with it, because one socket delivers in order. */
+  loseNextAck(): void;
   close(): void;
 }
 
@@ -125,6 +136,8 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
     diverged: [] as string[],
     repairs: 0,
     writable: false,
+    caughtUp: [] as { at: number; landed?: number }[],
+    blackhole: false,
     aware: [] as AwarenessFrame[],
     peers: [] as PeerAwareness[],
     picked: { vertices: [] as string[], quads: [] as string[] },
@@ -139,7 +152,7 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
           kind: 'assign', changes: structuredClone(changes),
           bytes: frameBytes({ t: 'assign', batch, changes }),
         });
-        return channel.assign(changes, batch);
+        return held.blackhole || channel.assign(changes, batch);
       },
       claim: (ids, doc, batch) => {
         held.sent.push({ kind: 'claim', ids: [...ids], bytes: frameBytes({ t: 'claim', ids, at: 0, document: doc, batch }) });
@@ -168,7 +181,10 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
   });
   const channel = createSessionChannel({
     clientId: name,
+    replica: sync.replica,
     url: () => `ws://127.0.0.1:${service!.port}/api/session?client=${encodeURIComponent(name)}`,
+    // As main.ts has it: a socket that closes under the replica puts what it had in flight on hold.
+    onStatus: status => { if (status === 'closed') sync.disconnect(); },
     onJoined: view => { joined = true; held.writable = view.writable; if (view.writable) sync.connect(); },
     onSync: push => { held.received.push(...push.changes as unknown as unknown[][]); sync.applySync(push.changes, push.by); },
     onLanded: ack => { held.landed.push(ack); sync.landed(ack); },
@@ -176,9 +192,15 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
     onTopology: push => sync.applyTopology(migrateMountain(push.document)),
     onDigest: answer => { held.diverged.splice(0, held.diverged.length, ...sync.compareDigest(answer)); },
     onSections: repair => { held.repairs++; sync.repair(repair); },
-    onCaughtUp: missed => sync.caughtUp(missed),
+    onCaughtUp: missed => { held.caughtUp.push({ at: missed.at, landed: missed.landed }); sync.caughtUp(missed); },
     onAware: peer => { held.peers.push(peer); },
   });
+  /** This replica's session on the server, for the faults below to be injected where they really happen. */
+  const live = () => {
+    const session = sessionById(channel.sessionId() ?? '');
+    if (!session) throw new Error(`${name} has no session on the server`);
+    return session;
+  };
   channel.start();
   await until(() => channel.isOpen(), `${name} to connect`);
   channel.watch(projectId);
@@ -197,12 +219,23 @@ async function connect(name: string, projectId: string, document: EditDoc): Prom
     get diverged() { return held.diverged; },
     get repairs() { return held.repairs; },
     get writable() { return held.writable; },
+    get caughtUp() { return held.caughtUp; },
+    get blackhole() { return held.blackhole; },
+    set blackhole(value: boolean) { held.blackhole = value; },
     get aware() { return held.aware; },
     get peers() { return held.peers; },
     get picked() { return held.picked; },
     render: () => { reconcileTJunctionGeometry(held.doc); sync.noteEdit(); },
     awareness,
     sync, channel,
+    drop: () => live().close(1012, 'the socket died'),
+    loseNextAck: () => {
+      const session = live(), send = session.send;
+      session.send = message => {
+        if ((message as { t?: string }).t === 'landed') session.close(1012, 'the acknowledgement died with it');
+        else send(message);
+      };
+    },
     close: () => { awareness.stop(); channel.close(); },
   };
   opened.push(client);
@@ -832,6 +865,66 @@ try {
     'while writing a different value to the same register moves it on exactly once, however many times that '
     + 'register has been written before');
 
+  // ---- a lost acknowledgement is not replayed over a later write ----
+  //
+  // A batch can land and lose only its acknowledgement with the socket. The replica cannot tell that from a batch
+  // that never arrived, so it holds it, and replaying it on reconnecting overwrote whatever somebody had written
+  // over it meanwhile. Last-writer-wins in arrival order says the later write stands. So the room says how far it
+  // got with this replica's batches, and the replica lets those go before deciding what to replay.
+  const cy = await connect('cy', projectId, migrateMountain(structuredClone(room.doc)));
+  const bo = await connect('bo', projectId, migrateMountain(structuredClone(room.doc)));
+  const lostKey = vertexRegister(room.doc.vertexIds[70]);
+  cy.loseNextAck();
+  writeRegister(cy.doc, lostKey, [71, 71, 71]);
+  cy.sync.noteEdit();
+  cy.sync.flush();
+  await until(() => same(readRegister(room.doc, lostKey), [71, 71, 71]) && !cy.sync.status().connected,
+    'the batch to land and the socket to die with its acknowledgement');
+  check(cy.sync.status().held === 1 && !cy.landed.length,
+    'a batch whose acknowledgement died with the socket is held: the replica cannot tell it from one that never '
+    + 'arrived');
+  const lostFrom = { sent: cy.sent.length, caughtUp: cy.caughtUp.length };
+  writeRegister(bo.doc, lostKey, [72, 72, 72]);
+  bo.sync.noteEdit();
+  bo.sync.flush();
+  await until(() => same(readRegister(room.doc, lostKey), [72, 72, 72]), 'the later write to land');
+  const laterAt = room.at;
+  await until(() => cy.caughtUp.length > lostFrom.caughtUp, 'the replica to reconnect and be caught up');
+  await idle([cy, bo], 200);
+  const replayed = cy.sent.slice(lostFrom.sent).flatMap(entry => entry.changes ?? [])
+    .filter(([key]) => key === lostKey);
+  check(cy.caughtUp[cy.caughtUp.length - 1].at >= laterAt && replayed.length === 0,
+    'reconnecting after somebody else wrote the same register, it does not replay the batch the room had landed');
+  check(same(readRegister(room.doc, lostKey), [72, 72, 72]) && same(readRegister(cy.doc, lostKey), [72, 72, 72])
+    && same(readRegister(bo.doc, lostKey), [72, 72, 72]),
+    'so the later write stands in the room and on both replicas: last-writer-wins in arrival order');
+  check(cy.sync.status().landed && !cy.sync.pending().length,
+    'and the replica settles with nothing held and nothing left to send');
+
+  // ---- a reloaded page counts its batches afresh ----
+  //
+  // The tab id outlives a reload, and the count batches are numbered by does not. The page before got as far as
+  // its batch 1 here; that must not vouch for this page's batch 1, which never arrived.
+  cy.close();
+  const reloaded = await connect('cy', projectId, migrateMountain(structuredClone(room.doc)));
+  const swallowedKey = vertexRegister(room.doc.vertexIds[71]);
+  reloaded.blackhole = true;
+  writeRegister(reloaded.doc, swallowedKey, [73, 73, 73]);
+  reloaded.sync.noteEdit();
+  reloaded.sync.flush();
+  const reloadedFrom = reloaded.caughtUp.length;
+  reloaded.drop();
+  reloaded.blackhole = false;
+  await until(() => reloaded.caughtUp.length > reloadedFrom, 'the reloaded page to reconnect and be caught up');
+  await idle([reloaded, bo], 200);
+  check(reloaded.caughtUp[reloaded.caughtUp.length - 1].landed === 0
+    && same(readRegister(room.doc, swallowedKey), [73, 73, 73])
+    && same(readRegister(bo.doc, swallowedKey), [73, 73, 73]),
+    'a page reloaded under the same tab id has its own lost batch replayed: the room counts batches per page, '
+    + 'not per tab');
+  reloaded.close();
+  bo.close();
+
   ada.close();
   await wait(150);
 } catch (error) {
@@ -961,6 +1054,76 @@ try {
   sync.replayHeld();
   check(sent.length === before + 1 && same(readRegister(doc, key), [2, 2, 2]),
     'and putting it back is the same ordinary assignment it would have been all along');
+  sync.stop();
+}
+
+// ---- which held batches the room had already landed ----
+//
+// The same decision, with the room's answer simply said. A held value from a batch at or below the one the room
+// reports landed is let go; one from a later batch, or a change never sent at all, is replayed. A register two
+// batches carried is judged by the later one, because that is the value it is holding.
+{
+  let clock = 1_000_000;
+  const sent: { batch: number; changes: RegisterAssignment[] }[] = [];
+  let doc = migrateMountain(defaultMountain());
+  let summary: Reconciliation | null = null;
+  const [landedKey, lostKey, bothKey, offlineKey] = [2, 3, 4, 5].map(at => vertexRegister(doc.vertexIds[at]));
+  const sync = createRegisterSync({
+    getDoc: () => doc,
+    setDoc: next => { doc = next; },
+    channel: {
+      assign: (changes, batch) => { sent.push({ batch, changes: structuredClone(changes) }); return true; },
+      claim: () => true,
+      checkDrift: () => true,
+      fetchSections: () => true,
+    },
+    onReconcile: made => { summary = made; },
+    now: () => clock,
+  });
+  sync.adopt(doc);
+  sync.connect();
+
+  writeRegister(doc, landedKey, [1, 1, 1]);
+  writeRegister(doc, bothKey, [1, 1, 1]);
+  sync.noteEdit();
+  sync.flush();
+  writeRegister(doc, lostKey, [2, 2, 2]);
+  writeRegister(doc, bothKey, [2, 2, 2]);
+  sync.noteEdit();
+  sync.flush();
+  sync.disconnect();
+  writeRegister(doc, offlineKey, [3, 3, 3]);
+  sync.noteEdit();
+  sync.flush();
+  check(sent.length === 2 && sync.status().held === 4,
+    'two batches that were never acknowledged and a change made offline are all held');
+  clock += 30_000;
+  sync.caughtUp({ changes: [[landedKey, [9, 9, 9]]], landed: sent[0].batch });
+  const replay = (sent[2]?.changes ?? []).map(([key]) => key).sort();
+  check(sent.length === 3 && same(replay, [lostKey, bothKey, offlineKey].sort()),
+    'reconnecting, what the room had landed is let go, and what it had not, or was never sent, is replayed');
+  check(same(readRegister(doc, landedKey), [9, 9, 9]) && same(readRegister(doc, bothKey), [2, 2, 2]),
+    'so a write made over the landed batch stands, and a register two batches carried replays the later value');
+  sync.landed({ batch: sent[2].batch });
+
+  writeRegister(doc, lostKey, [4, 4, 4]);
+  sync.noteEdit();
+  sync.flush();
+  sync.disconnect();
+  clock += REPLAY_THRESHOLD_MS + 60_000;
+  sync.caughtUp({ changes: [[lostKey, [5, 5, 5]]], landed: sent[3].batch });
+  check(!summary && sync.status().held === 0 && sent.length === 4 && same(readRegister(doc, lostKey), [5, 5, 5]),
+    'past the threshold, a batch the room had landed is not put in front of the author: nothing of theirs is '
+    + 'left to decide about');
+
+  writeRegister(doc, lostKey, [6, 6, 6]);
+  sync.noteEdit();
+  sync.flush();
+  sync.disconnect();
+  clock += 1_000;
+  sync.caughtUp({ changes: [] });
+  check(sent.length === 6 && same(sent[5].changes, [[lostKey, [6, 6, 6]]]),
+    'and a room that says nothing about landed batches has every held batch replayed, as before');
   sync.stop();
 }
 

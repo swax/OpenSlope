@@ -173,6 +173,9 @@ export function createSessionChannel(deps: {
   clientId: string;
   /** A browser-local name that distinguishes this participant from the same account on another device. */
   deviceLabel?: string;
+  /** Whose batch numbers `assign` carries — the register sync's `replica`. The room remembers how far it got
+   *  with them, so a reconnection does not replay a batch whose acknowledgement died with the socket. */
+  replica?: string;
   /** Where the channel connects. Defaults to this page's own origin. */
   url?: () => string;
   onWelcome?: (welcome: SessionWelcome) => void;
@@ -191,8 +194,10 @@ export function createSessionChannel(deps: {
   onDigest?: (answer: { projectId: string; at: number; root: string; sections: Record<string, string> }) => void;
   /** The repair for the sections that diverged. */
   onSections?: (repair: { projectId: string; at: number; registers: RegisterAssignment[]; document?: EditDoc }) => void;
-  /** What this tab missed while it was away. */
-  onCaughtUp?: (missed: { projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc }) => void;
+  /** What this tab missed while it was away, and the highest of its batches the room had answered. */
+  onCaughtUp?: (missed: {
+    projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc; landed?: number;
+  }) => void;
   /** A peer's live selection, drag, and player pose. */
   onAware?: (peer: PeerAwareness) => void;
   /** A subscribed sharer's latest camera and display state. */
@@ -275,6 +280,13 @@ export function createSessionChannel(deps: {
       + `?client=${encodeURIComponent(deps.clientId)}`
       + `&device=${encodeURIComponent(deps.deviceLabel ?? 'device')}`;
   });
+  /** Where the socket connects. The replica is added to whichever address is used, so a caller that supplies its
+   *  own still says whose batches it carries. */
+  const address = (): string => {
+    const base = url();
+    if (!deps.replica) return base;
+    return `${base}${base.includes('?') ? '&' : '?'}replica=${encodeURIComponent(deps.replica)}`;
+  };
 
   const post = (message: unknown): boolean => {
     if (socket?.readyState !== WebSocket.OPEN) return false;
@@ -428,7 +440,7 @@ export function createSessionChannel(deps: {
       }
       case 'caught-up': {
         const missed = message as unknown as
-          { projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc };
+          { projectId: string; at: number; changes: RegisterAssignment[]; document?: EditDoc; landed?: number };
         at = Math.max(at, missed.at);
         deps.onCaughtUp?.(missed);
         return;
@@ -544,7 +556,7 @@ export function createSessionChannel(deps: {
     if (!wanted || socket) return;
     deps.onStatus?.('connecting');
     let opened: WebSocket;
-    try { opened = new WebSocket(url()); }
+    try { opened = new WebSocket(address()); }
     catch { schedule(); return; }
     socket = opened;
     opened.onopen = () => {

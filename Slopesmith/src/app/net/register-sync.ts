@@ -286,12 +286,24 @@ export function createRegisterSync(deps: {
   let active = false;
   let connected = false;
   let awayAt = 0;
+  /**
+   * The name of the count this replica numbers its batches by, and the count.
+   *
+   * The count starts again at every page load, and the tab id outlives a reload and is copied into a duplicated
+   * tab. So the room is told this name rather than the tab id when it remembers how far it got with the batches
+   * (`caughtUp`). Otherwise a reloaded page's batch 3 would read as landed because the page before it got to 500.
+   */
+  const replica = `replica-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   let batches = 0;
   /** Batches sent and not yet acknowledged, with the assignments each carried, oldest first. */
   const inFlight = new Map<number, RegisterAssignment[]>();
   /** Registers changed while the channel was down. Coalesced by key, because the last value is the only one
    *  worth replaying. */
   const holding = new Map<RegisterKey, RegisterValue>();
+  /** For held registers whose batch went out and was never acknowledged: the batch the held value went out in.
+   *  The room may have landed it and lost only the acknowledgement, which `caughtUp` finds out. A register held
+   *  for a change never sent is not in here, because nothing the room says can account for that one. */
+  const heldBatches = new Map<RegisterKey, number>();
   /** What the room held for each of those when this tab took it away, so a summary can say which are
    *  contested. */
   let holdingFrom = new Map<RegisterKey, RegisterValue>();
@@ -494,10 +506,23 @@ export function createRegisterSync(deps: {
     });
   }
 
+  /** Hold a change this tab has not sent. It is newer than whatever batch the register was held from before, so
+   *  that batch no longer says anything about it. */
+  function hold(key: RegisterKey, value: RegisterValue): void {
+    holding.set(key, value);
+    heldBatches.delete(key);
+  }
+
+  function release(): void {
+    holding.clear();
+    heldBatches.clear();
+    holdingFrom = new Map();
+  }
+
   function sendAssignments(changes: RegisterAssignment[]): void {
     const batch = ++batches;
     if (deps.channel.assign(changes, batch)) inFlight.set(batch, changes);
-    else for (const [key, value] of changes) holding.set(key, value);
+    else for (const [key, value] of changes) hold(key, value);
   }
 
   /** Remember the geometry a key this tab just wrote stands on, so awareness can say what it is working on. */
@@ -574,7 +599,7 @@ export function createRegisterSync(deps: {
     if (!connected) {
       changes.forEach(([key, value], at) => {
         if (!holding.has(key)) holdingFrom.set(key, priors[at]);
-        holding.set(key, value);
+        hold(key, value);
       });
       report();
       return;
@@ -586,8 +611,7 @@ export function createRegisterSync(deps: {
   /** Put the held changes back, as a fresh assignment like any other. */
   function replayHeld(): void {
     const changes = [...holding].map(([key, value]) => [key, value] as RegisterAssignment);
-    holding.clear();
-    holdingFrom = new Map();
+    release();
     awayAt = 0;
     if (!changes.length) { report(); return; }
     absorb(changes);
@@ -597,8 +621,7 @@ export function createRegisterSync(deps: {
   }
 
   function discardHeld(): void {
-    holding.clear();
-    holdingFrom = new Map();
+    release();
     awayAt = 0;
     report();
   }
@@ -642,7 +665,7 @@ export function createRegisterSync(deps: {
     detach(): void {
       active = false;
       connected = false;
-      holding.clear();
+      release();
       inFlight.clear();
       report();
     },
@@ -650,9 +673,17 @@ export function createRegisterSync(deps: {
     disconnect(): void {
       if (connected) awayAt = clockNow();
       connected = false;
-      // Anything in flight was never acknowledged, so it is held rather than assumed to have landed.
-      for (const sent of inFlight.values()) {
-        for (const [key] of sent) if (!holding.has(key)) holding.set(key, shadowRead(key));
+      // Anything in flight was never acknowledged, so it is held rather than assumed to have landed, together
+      // with the last batch that carried it, because the room may have landed that batch and lost only the
+      // acknowledgement. A register already held keeps its value and where it came from.
+      const fromFlight = new Set<RegisterKey>();
+      for (const [batch, sent] of inFlight) {
+        for (const [key] of sent) {
+          if (holding.has(key) && !fromFlight.has(key)) continue;
+          fromFlight.add(key);
+          holding.set(key, shadowRead(key));
+          heldBatches.set(key, batch);
+        }
       }
       inFlight.clear();
       report();
@@ -688,7 +719,7 @@ export function createRegisterSync(deps: {
       if (unsent.length) {
         absorb(unsent);
         if (connected) sendAssignments(unsent);
-        else for (const [key, value] of unsent) holding.set(key, value);
+        else for (const [key, value] of unsent) hold(key, value);
       }
       if (changed) deps.onApplied?.('document');
       report();
@@ -723,8 +754,14 @@ export function createRegisterSync(deps: {
      * tab was holding, and re-asserting them is what "I kept editing" means. Past it they are summarised
      * instead, because replaying blind would silently overwrite however long somebody else has spent on
      * exactly those registers.
+     *
+     * Neither applies to a batch the room had already landed when the old socket died taking only its
+     * acknowledgement. Its value is in what just arrived, along with whatever anybody wrote over it since, and
+     * replaying it would undo that later write. `landed` is the highest batch the room had answered from this
+     * replica, and a held value that went out at or below it is let go. Whatever is left was never landed, and
+     * now that its socket is gone it never will be, so it is held like a change that was never sent.
      */
-    caughtUp(missed: { changes: readonly RegisterAssignment[]; document?: EditDoc }): void {
+    caughtUp(missed: { changes: readonly RegisterAssignment[]; document?: EditDoc; landed?: number }): void {
       connected = true;
       if (missed.document) {
         // A fresh page starts its room sequence at zero, so a room whose retained tail begins later answers
@@ -738,6 +775,13 @@ export function createRegisterSync(deps: {
         digest = null;
         deps.onApplied?.('registers');
       }
+      const landed = missed.landed ?? 0;
+      for (const [key, batch] of heldBatches) {
+        if (batch > landed) continue;
+        holding.delete(key);
+        holdingFrom.delete(key);
+      }
+      heldBatches.clear();
       if (!holding.size) { awayAt = 0; report(); return; }
       const awayMs = awayAt ? clockNow() - awayAt : 0;
       if (awayMs <= REPLAY_THRESHOLD_MS) { replayHeld(); return; }
@@ -817,6 +861,8 @@ export function createRegisterSync(deps: {
     resetSteps(): void { step = null; },
 
     status,
+    /** The name the channel gives the room for the count this replica's batches are numbered by. */
+    replica,
     /**
      * The mesh this tab is working on right now — what awareness tells the room (`app/net/awareness.ts`).
      *

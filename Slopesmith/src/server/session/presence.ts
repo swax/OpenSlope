@@ -104,6 +104,9 @@ export interface LiveSession {
   /** The opaque account session that authorized this socket. Absent on an open owner server. */
   accountSessionId?: string;
   clientId: string;
+  /** Whose batch numbers this socket's assignments carry: one page load's register sync, which numbers them from
+   *  one again after a reload that keeps `clientId` (`room.ts`, `noteLanded`). */
+  replica: string;
   deviceLabel: string;
   member: SessionMember;
   /** The map this tab is looking at, which is what presence is keyed on. */

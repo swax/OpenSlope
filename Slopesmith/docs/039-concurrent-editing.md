@@ -253,6 +253,23 @@ One case needs deciding rather than defaulting: after a disconnection, replaying
 overwriting whatever others did to exactly those registers while you were gone. That is right for thirty
 seconds and wrong for an hour. Past a threshold, present a reconciliation summary instead of replaying blind.
 
+A held change is not always one the room lacks. A batch can land and lose only its acknowledgement with the
+socket, and the replica cannot tell that from a batch that never arrived. Replaying it would overwrite whatever
+somebody wrote over it since, which breaks last-writer-wins in arrival order. So the room remembers the highest
+batch it has answered from each replica, and `caught-up` reports it. A held value from a batch at or below that
+number is already in the room, and the replica lets it go before deciding what to replay or summarise.
+
+- **The replica is one page load, not the tab.** The tab id outlives a reload and is copied into a duplicated
+  tab, but batch numbers restart with each page. The socket therefore names the register sync's own `replica`.
+- **The number is read when the `watch` arrives,** before the room has answered anything sent on the new
+  socket. One socket is answered in order, so the highest batch answered vouches for earlier batches from the
+  same socket and nothing more.
+- **The record lives with the open room.** If the room closed while the replica was away, it has forgotten,
+  and the held batch is replayed as before.
+
+`test/sync.test.ts` loses an acknowledgement on a real socket and checks that a later write survives the
+reconnection. It also checks that a page reloaded under the same tab id still replays its own lost batch.
+
 ## Undo
 
 Whole-document snapshots cannot survive shared editing — restoring one would erase everyone else's work along
