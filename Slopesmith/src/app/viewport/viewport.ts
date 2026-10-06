@@ -118,7 +118,7 @@ import { createGizmoReadout, type GizmoReadout } from './gizmo/readout';
 import { createBridgePreviewLayer, type BridgePreviewLayer } from './tools/bridge-preview';
 import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch';
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
-import { createTrailToolLayer, type TrailToolLayer } from './tools/create-trail';
+import { createTrailToolLayer, type TrailShape, type TrailToolLayer } from './tools/create-trail';
 import { createPathHandlesLayer, type PathHandleSide, type PathHandlesLayer, type ShownPath } from './scene/path-handles';
 import { createCourseDrawLayer, type CourseDrawHandlers, type CourseDrawLayer } from './tools/course-draw';
 import { fadeObject } from './shared/fade';
@@ -558,7 +558,10 @@ export class Viewport {
         this.cb.onTrailKnotDrag?.(dragging);
         return;
       }
-      if (this.gizmoKind === 'trailknot') this.cb.onTrailKnotDrag?.(dragging);
+      if (this.gizmoKind === 'trailknot') {
+        if (!dragging) this.trailTool.clearSnap();
+        this.cb.onTrailKnotDrag?.(dragging);
+      }
       if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner) this.cb.onPathHandleDrag?.(this.pathHandles.owner, dragging);
       const meshTransform = this.gizmoKind === 'corner' || this.gizmoKind === 'corners' || this.gizmoKind === 'editmixed'
         || this.gizmoKind === 'controlpoints' || this.gizmoKind === 'handle' || this.gizmoKind === 'cagehandle';
@@ -652,6 +655,7 @@ export class Viewport {
       append: pos => this.cb.onAppendTrailKnot?.(pos),
       select: knot => this.cb.onSelectTrailKnot?.(knot),
       transform: (knots, handles) => this.cb.onTransformTrail?.(knots, handles),
+      hover: pos => this.cb.onTrailHover?.(pos),
     });
     this.pathHandles = createPathHandlesLayer(this.stage); // the selected path's Bézier handles (docs/014)
     this.pathHandles.setHost({ select: (owner, node, side) => this.cb.onSelectPathHandle?.(owner, node, side) });
@@ -2664,7 +2668,8 @@ export class Viewport {
     else if (this.gizmoKind === 'light' && this.lights.selectedLight !== null) this.cb.onMoveLight?.(this.lights.selectedLight, p);
     else if (this.gizmoKind === 'railnode' && this.rails.selectedRail !== null && this.rails.selectedNode !== null) this.cb.onMoveRailNode?.(this.rails.selectedRail, this.rails.selectedNode, p);
     else if (this.gizmoKind === 'linenode' && this.propLines.selectedLine !== null && this.propLines.selectedNode !== null) this.cb.onMoveLineNode?.(this.propLines.selectedLine, this.propLines.selectedNode, p);
-    else if (this.gizmoKind === 'trailknot' && this.trailTool.selectedKnot !== null) this.cb.onMoveTrailKnot?.(this.trailTool.selectedKnot, p);
+    else if (this.gizmoKind === 'trailknot' && this.trailTool.selectedKnot !== null)
+      this.cb.onMoveTrailKnot?.(this.trailTool.selectedKnot, this.trailTool.snapDrag(p)); // an end can land on another trail's knot
     else if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner && this.pathHandles.selected) {
       const { node, side } = this.pathHandles.selected;
       this.cb.onMovePathHandle?.(this.pathHandles.owner, node, side, p, this.independentDrag);
@@ -2782,14 +2787,13 @@ export class Viewport {
   }
 
   /** Show a trail's centre-spline knots in Edit mode (none hides them), `knot` carrying the gizmo — or, with a
-   *  `pivot`, the whole trail carrying it there (docs/023). */
+   *  `pivot`, the whole trail carrying it there; `shape` splits them into the trail's own and its branches', and
+   *  says where drawing goes on (docs/023). */
   setTrailKnots(knots: readonly V3[], knot: number | null, handles?: readonly (PathHandles | null | undefined)[],
-    pivot: V3 | null = null) {
-    this.trailTool.setKnots(knots, knot, handles, pivot);
+    pivot: V3 | null = null, shape?: TrailShape) {
+    this.trailTool.setKnots(knots, knot, handles, pivot, shape);
   }
   setCreateTrailSurfaceLift(value: number) { this.trailTool.setSurfaceLift(value); }
-  /** Create Trail draws onto the trail's start or its end (docs/023). */
-  setTrailDrawEnd(end: 'start' | 'end') { this.trailTool.setDrawEnd(end); }
   setCreateTrailPreviewListener(listener: (() => void) | null) { this.createTrailPreviewListener = listener; listener?.(); }
 
   /** Info ▸ Course ▸ reset course: arm clicking a new run onto the terrain. The knot gizmo goes — every click

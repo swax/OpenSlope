@@ -54,7 +54,16 @@
 #lowerright.on { display: flex; }
 .ll-panel { background: rgba(20,26,32,0.82); color: #cfe0ee; border-radius: 6px; padding: 7px 10px;
   font: 12px/1.5 system-ui, sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,0.4); pointer-events: none; }
-.ll-title { font-weight: 600; margin-bottom: 3px; opacity: 0.75; }
+/* The panel lets the viewport have every click; its title is the one control on it, folding the key to itself. */
+.ll-title { display: flex; align-items: center; gap: 5px; width: 100%; margin: 0 0 3px; padding: 0; border: 0;
+  background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; opacity: 0.75;
+  cursor: pointer; pointer-events: auto; }
+.ll-title:hover { opacity: 1; }
+.ll-title:focus-visible { outline: 1px solid #6fb7ff; outline-offset: 2px; border-radius: 2px; }
+.ll-caret { display: inline-block; width: 9px; font-size: 10px; line-height: 1; transition: transform 0.12s; }
+.ll-collapsed .ll-caret { transform: rotate(-90deg); }
+.ll-collapsed .ll-title { margin-bottom: 0; }
+.ll-collapsed .ll-body { display: none; }
 /* a group caption inside a long key (Surface types), quieter than the panel title above it */
 .ll-group { font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; opacity: 0.5; margin-bottom: 1px; }
 .ll-row { display: flex; align-items: center; gap: 7px; white-space: nowrap; }

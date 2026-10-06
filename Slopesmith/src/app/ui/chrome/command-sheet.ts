@@ -1,10 +1,15 @@
 import type { Store } from '../../state/store';
 import { rideControlHelp } from '../../ride/control-help';
+import { foldHeader, foldOnClick, refold } from '../components/fold-panel';
 
 const helpRow = ([key, description]: [string, string]) => `<div class="ll-row"><b>${key}</b> ${description}</div>`;
+/** A help panel under a folding header. Its fold is remembered per mode — the title before any " — " — so folding
+ *  "Edit Mode" keeps every Edit-mode help folded, whatever it is about, and leaves Props mode's open. */
 const helpPanel = (title: string, ...groups: [string, string][][]) =>
-  `<div class="ll-title">${title}</div>`
-  + groups.filter(group => group.length).map(group => group.map(helpRow).join('')).join('<div class="ll-sep"></div>');
+  foldHeader(title, `help:${title.split(' — ')[0]}`)
+  + '<div class="ll-body">'
+  + groups.filter(group => group.length).map(group => group.map(helpRow).join('')).join('<div class="ll-sep"></div>')
+  + '</div>';
 
 export type CommandSheetDeps = {
   store: Store;
@@ -41,6 +46,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
   const lowerLeft = document.getElementById('lowerleft')!;
   const toolHelp = document.getElementById('toolhelp')!;
   const lowerRight = document.getElementById('lowerright')!;
+  for (const panel of [cmdSheet, paintControls, toolHelp]) foldOnClick(panel);
 
   function editSelectionHelp() {
     const selection = editSelection();
@@ -194,6 +200,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
       toolHelp.innerHTML = '';
     }
     lowerRight.classList.toggle('on', !!toolHelp.innerHTML);
+    for (const panel of [cmdSheet, paintControls, toolHelp]) refold(panel);
 
     const panel = document.querySelector<HTMLElement>(store.currentMode === 'props' ? '.pl-pal' : '.sp-pal');
     const overPanel = (store.currentMode === 'paint' || store.currentMode === 'props') && panel && panel.style.display !== 'none';

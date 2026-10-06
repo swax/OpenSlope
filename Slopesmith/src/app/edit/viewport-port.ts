@@ -38,8 +38,12 @@ export interface EditViewportPort {
   setCreateEdgePath(points: readonly V3[]): void;
   readonly createTubePoints: readonly V3[];
   /** Show a trail's centre-spline knots (none hides them), `knot` carrying the move gizmo (docs/023). */
-  setTrailKnots(knots: readonly V3[], knot: number | null, handles?: readonly (PathHandles | null | undefined)[], pivot?: V3 | null): void;
-  setTrailDrawEnd(end: 'start' | 'end'): void;
+  setTrailKnots(knots: readonly V3[], knot: number | null, handles?: readonly (PathHandles | null | undefined)[],
+    pivot?: V3 | null,
+    shape?: {
+      main: number; branches: readonly (readonly V3[])[]; draw?: { end: 'start' | 'end' } | { branch: number };
+      snaps?: readonly V3[];
+    }): void;
   setCreateTrailSurfaceLift(value: number): void;
   projectedVerticesInsidePatches(quads: readonly number[]): number[];
   setPasteTool(clip: MeshVertexClipboard | null): void;

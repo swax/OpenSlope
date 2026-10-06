@@ -511,8 +511,8 @@ export interface TrailRunSpec {
   spline: readonly TrailCubic[];
   from?: number;
   to?: number;
-  /** Per-run section and dressing, over the network's own defaults. */
-  options?: TrailOptions;
+  /** Per-run section and dressing, over the network's own defaults — and a held span count. */
+  options?: TrailLayoutOptions;
 }
 
 /** A knitted junction: the patch fan filling the opening the retracted ribbons left around a node. */
@@ -661,11 +661,12 @@ function halfWithin(spline: readonly TrailCubic[], profile: readonly number[] | 
  * to the furthest such distance around it so the opening left behind is a simple polygon. A node with one
  * trail is not a junction and is left alone.
  *
- * **It fills the opening with a fan.** The opening is bounded by each trail's end cross-section — its two
- * lanes, three vertices — and by a CROTCH between each neighbouring pair, the point where their rims meet.
- * That is 4 vertices per trail, always even, so a vertex in the middle turns it into two quads per trail: a
- * three-way junction is six patches around a valence-6 centre, which is what the shipped levels knit by hand.
- * The rim vertices are the ribbons' own, so the network comes out as one connected surface.
+ * **It carries every lane on into the junction.** Each trail's centre seam runs on to a HUB at the node, and
+ * each pair of neighbouring trails' facing rims runs on to the CROTCH where they meet. Between a seam spoke and a
+ * crotch spoke lies one lane of one trail, so the opening fills with one patch per lane — two per trail — each
+ * wound and parameterised as the lane it continues: a three-way junction is six quads around a valence-6 hub,
+ * which is what the shipped levels knit by hand. The end vertices are the ribbons' own, so the network comes out
+ * as one connected surface.
  */
 export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[],
   options: TrailNetworkOptions = {}): TrailNetworkResult {
@@ -779,26 +780,12 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
       binding = { need: Math.max(...list.map(arm => arm.half)) * 1.2, pair: [list[0], list[0]], wedge: 0 };
       for (let i = 0; i < list.length; i++) {
         const a = list[i], b = list[(i + 1) % list.length];
-        const meet = rimMeet(a, b);
-        let wedgeRadians = b.bearing - a.bearing;
-        while (wedgeRadians <= 0) wedgeRadians += Math.PI * 2;
         /**
-         * Two trails must not only stop overlapping — their cross-sections must stop overlapping IN BEARING
-         * from the junction, or the opening is not a simple ring and no fan can cover it. A trail of half-
-         * width h seen from `R` away subtends `atan(h/R)` either side of its own heading, so the two of them
-         * together have to fit inside the wedge with a little to spare.
+         * Two neighbouring trails' facing rims have to meet before either ribbon ends: the crotch where they do
+         * is a corner of both lanes' junction patches, and a lane patch runs from its ribbon's end back to it.
          */
-        let angular = 0;
-        if (wedgeRadians < Math.PI * 0.97) {
-          const target = wedgeRadians * 0.85;
-          let lo = 1, hi = 8000;
-          for (let step = 0; step < 24; step++) {
-            const middle = (lo + hi) / 2;
-            if (Math.atan(a.half / middle) + Math.atan(b.half / middle) <= target) hi = middle; else lo = middle;
-          }
-          angular = hi;
-        }
-        const asked = Math.max(meet.a, meet.b, angular);
+        const meet = rimMeet(a, b);
+        const asked = Math.max(meet.a, meet.b);
         if (asked > binding.need) {
           let wedge = ((b.bearing - a.bearing) * 180) / Math.PI;
           while (wedge <= 0) wedge += 360;
@@ -807,14 +794,25 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
       }
       return binding.need;
     };
-    if (settle(maxReach) > maxReach) {
+    /**
+     * Find it by working OUT from the node, not in from the far limit: trails that part at a junction are not
+     * bound to go on parting — a bypass leaves its trail and bends back to rejoin it, so far out it runs alongside
+     * again — and only the nearest reach that is enough decides the fan. Step out until one is, then narrow it.
+     */
+    let below = 0, enough = -1;
+    for (let candidate = Math.min(2, maxReach); ; candidate = Math.min(maxReach, candidate * 1.25 + 1)) {
+      if (settle(candidate) <= candidate) { enough = candidate; break; }
+      below = candidate;
+      if (candidate >= maxReach) break;
+    }
+    if (enough < 0) {
       const [a, b] = binding.pair;
       return { ok: false, error: `Junction ${node}: runs ${a.run} and ${b.run} still leave it `
         + `${binding.wedge.toFixed(0)}° apart ${maxReach} m out, at ${a.half.toFixed(0)} and `
         + `${b.half.toFixed(0)} m half-width — their rims would need ${binding.need.toFixed(0)} m to stop `
         + 'crossing. Narrow them or widen the fork.' };
     }
-    let low = 0, high = maxReach;
+    let low = below, high = enough;
     for (let step = 0; step < 16; step++) {
       const middle = (low + high) / 2;
       if (settle(middle) <= middle) high = middle; else low = middle;
@@ -823,6 +821,10 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
     // rather than pinching to nothing at the crotch.
     reach.set(node, Math.min(maxReach, high * 1.15));
     settle(reach.get(node)!);
+    // Start the ring at the lowest-numbered run, so the fan's crotches and patches come out in the same order
+    // however the bearings turn — the order an owned trail names them by (trail-object.ts).
+    const first = list.reduce((best, arm, i) => arm.run < list[best].run ? i : best, 0);
+    list.push(...list.splice(0, first));
   }
 
   // ---- generate every ribbon, cut back to its junctions -----------------------------------------------------
@@ -851,6 +853,8 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const vertices = out.vertices.slice();
   const quads = out.quads.map(quad => quad.slice());
   const junctions: TrailJunction[] = [];
+  /** Every junction patch and the lane it carries on — its run, which lane, and which end of the run. */
+  const laneOf: { quad: number; run: number; lane: 0 | 1; atHead: boolean }[] = [];
   const point = (v: number): V3 => [vertices[v * 3], vertices[v * 3 + 1], vertices[v * 3 + 2]];
 
   for (const [node, list] of arms) {
@@ -871,13 +875,14 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
       };
     });
 
+    // A crotch between every neighbouring pair, `crotches[i]` between trail i's right rim and trail i+1's left.
     const crotches: number[] = [];
     for (let i = 0; i < ends.length; i++) {
       const a = ends[i], b = ends[(i + 1) % ends.length];
       let wedge = b.arm.bearing - a.arm.bearing;
       while (wedge <= 0) wedge += Math.PI * 2;
       /** Walk both rims back toward the node from where the ribbons stopped, and return where they meet.
-       *  Refused if they meet behind the node or further out than the fan reaches. */
+       *  Refused if they meet behind the node or further out than the ribbons stop. */
       const back = (from: V3, along: V3, other: V3, otherAlong: V3): V3 | null => {
         const determinant = along[0] * otherAlong[2] - along[2] * otherAlong[0];
         if (Math.abs(determinant) < 1e-9) return null;
@@ -889,86 +894,55 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
         return [from[0] - along[0] * s, 0, from[2] - along[2] * s];
       };
       const aPoint = point(a.right), bPoint = point(b.left);
-      // Where their two rims meet. A wedge at or past a straight line has no such point: there the fan
-      // simply rounds the back of the junction.
-      const met = wedge < Math.PI * 0.97
-        ? back(aPoint, a.arm.out, bPoint, b.arm.out) : null;
-      const bisect = a.arm.bearing + wedge / 2;
-      const plan: V3 = met ?? [
-        centre[0] + Math.cos(bisect) * R, 0, centre[2] + Math.sin(bisect) * R,
-      ];
+      const met = wedge < Math.PI * 0.97 ? back(aPoint, a.arm.out, bPoint, b.arm.out) : null;
       /**
-       * Hold every crotch out at a fraction of the fan's reach.
-       *
-       * One reach serves the whole junction, and it is set by the tightest fork at it. At a node with both a
-       * tight fork and a wide one — a trail splitting in two while a third crosses — the wide side's rims meet
-       * almost at the node while its ribbons stop a hundred metres out, so the crotch between them collapses
-       * onto the middle of the fan and the two patches either side of it turn over. Pushing it back out along
-       * the wedge's own bisector keeps the opening star-shaped about the junction, which is the one property
-       * a fan needs to be a fan.
+       * Where the rims do not meet ahead of the node — a wide side, where the two trails part at or past a straight
+       * line — the crotch is where their rim LINES cross, which is on the wedge's bisector, `h / sin(wedge / 2)`
+       * out: abeam the node for a trail running straight through, the outer corner of a bend. The two lane
+       * patches either side of it come out squared off rather than bulging past the rims.
        */
-      const reachOut = Math.hypot(plan[0] - centre[0], plan[2] - centre[2]);
-      if (reachOut < R * 0.45) {
-        plan[0] = centre[0] + Math.cos(bisect) * R * 0.45;
-        plan[2] = centre[2] + Math.sin(bisect) * R * 0.45;
-      }
-      // Sit the crotch on the plane through the two rim points it joins, so the fan stays on the hillside.
+      const bisect = a.arm.bearing + wedge / 2;
+      const out = Math.min(R * 2, ((a.arm.half + b.arm.half) / 2) / Math.max(0.2, Math.sin(wedge / 2)));
+      const plan: V3 = met ?? [centre[0] + Math.cos(bisect) * out, 0, centre[2] + Math.sin(bisect) * out];
+      // Sit the crotch on the plane through the two rim points it joins, so the junction stays on the hillside.
       plan[1] = (aPoint[1] + bPoint[1]) / 2;
       crotches.push(vertices.length / 3);
       vertices.push(...plan);
     }
 
-    // The opening, walked the way the trails leave: each trail's two lanes, then the crotch to the next one.
-    let ring: number[] = [];
-    for (let i = 0; i < ends.length; i++) ring.push(ends[i].left, ends[i].seam, ends[i].right, crotches[i]);
-    // The fan has to wind the way the ribbons do, and which way that is depends on the document's frame.
-    const ringArea = (loop: number[]) => {
-      let area = 0;
-      for (let i = 0; i < loop.length; i++) {
-        const p = loop[i] * 3, q = loop[(i + 1) % loop.length] * 3;
-        area += vertices[p] * vertices[q + 2] - vertices[q] * vertices[p + 2];
-      }
-      return area / 2;
-    };
-    // Reversing alone would pair each quad across a crotch and half a trail end; rotating the reversed ring by
-    // one puts the trail ends back on their own patches, which is what makes a junction read as trail.
-    if (Math.sign(ringArea(ring)) !== upright) {
-      const backwards = ring.slice().reverse();
-      ring = [...backwards.slice(1), backwards[0]];
-    }
-
-    // The fan turns about the junction ITSELF, not about the average of its corners. Every trail radiates
-    // from that point, so it is inside the opening whatever shape the opening is; a centroid of a ring with
-    // one crotch far out and another close in can sit outside it, and the patches on that side turn over.
+    // The hub is the junction ITSELF, where every trail's centre line runs to.
     const hub = vertices.length / 3;
     vertices.push(centre[0], ends.reduce((s, e) => s + vertices[e.seam * 3 + 1], 0) / ends.length, centre[2]);
 
     /**
-     * A fan cell that turns over is a crotch in the wrong place, and there is no repairing it downstream:
-     * an inverted locked patch fails the mountain's own check and the retopologiser's after it. Where the
-     * rims genuinely cannot be resolved the junction is refused by name, and the recipe drops the lesser of
-     * the two trails and knits the network again without it.
+     * One patch per lane: each trail's two lanes carry on from its end cross-section, the seam to the hub and the
+     * rim to its crotch, written as the ribbon writes its own lane quads — a station further along, or one
+     * before the first — so it winds as the ribbon does and wears the lane's tile the same way round.
+     *
+     * A patch that turns over is a crotch in the wrong place, and there is no repairing it downstream: an
+     * inverted locked patch fails the mountain's own check and the retopologiser's after it. Where the rims
+     * genuinely cannot be resolved the junction is refused by name, and the caller drops or moves a trail.
      */
     const fan: number[] = [];
-    for (let i = 0; i < ring.length; i += 2) {
-      const a = ring[i], b = ring[(i + 1) % ring.length], c = ring[(i + 2) % ring.length];
-      const corners = [a, b, hub, c];              // perimeter a → b → c → hub
-      if (Math.sign(patchPlanArea(vertices, corners)) !== upright) {
-        const polar = (v: number) => {
-          const dx = vertices[v * 3] - centre[0], dz = vertices[v * 3 + 2] - centre[2];
-          return `${((Math.atan2(dz, dx) * 180) / Math.PI).toFixed(0)}°/${Math.hypot(dx, dz).toFixed(0)}m`;
-        };
-        const near = list
-          .map(arm => ({ arm, d: Math.hypot(vertices[a * 3] - centre[0] - arm.out[0] * R,
-            vertices[a * 3 + 2] - centre[2] - arm.out[2] * R) }))
-          .sort((x, y) => x.d - y.d);
-        return { ok: false, error: `Junction ${node}: runs ${near[0].arm.run} and `
-          + `${near[1 % near.length].arm.run} leave it in a shape their fan cannot be knitted over — one of `
-          + `them has to go. [reach ${R.toFixed(0)} m, halves ${list.map(arm => arm.half.toFixed(0)).join('/')}, `
-          + `cell ${i} of ring ${ring.map(polar).join(' ')}]` };
+    for (let i = 0; i < ends.length; i++) {
+      const end = ends[i];
+      const before = crotches[(i + ends.length - 1) % ends.length], after = crotches[i];
+      // Leaving the junction the ribbon's left is the skier's; arriving, its left is the skier's right.
+      const lanes: [number[], number[]] = end.arm.atHead
+        ? [[before, hub, end.left, end.seam], [hub, after, end.seam, end.right]]
+        : [[end.right, end.seam, after, hub], [end.seam, end.left, hub, before]];
+      for (const lane of [0, 1] as const) {
+        const corners = lanes[lane];
+        if (Math.sign(patchPlanArea(vertices, corners)) !== upright) {
+          const beside = ends[(i + (lane === (end.arm.atHead ? 0 : 1) ? ends.length - 1 : 1)) % ends.length];
+          return { ok: false, error: `Junction ${node}: runs ${end.arm.run} and ${beside.arm.run} leave it in a shape `
+            + 'its lanes cannot be carried into — one of them has to go, or leave at a wider angle. '
+            + `[reach ${R.toFixed(0)} m, halves ${list.map(arm => arm.half.toFixed(0)).join('/')}]` };
+        }
+        fan.push(quads.length);
+        laneOf.push({ quad: quads.length, run: end.arm.run, lane, atHead: end.arm.atHead });
+        quads.push(corners);
       }
-      fan.push(quads.length);
-      quads.push(corners);
     }
     junctions.push({ node, center: hub, quads: fan, reachM: R, runs: list.map(arm => arm.run) });
     created.push(...fan);
@@ -983,21 +957,16 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const added = { vertices: vertices.length / 3 - out.vertices.length / 3, quads: quads.length - out.quads.length };
   const network: QuadMeshDoc = { ...out, vertices, quads, ...appendMeshIds(out, added.vertices, added.quads) };
 
-  // A junction wears whatever the widest trail through it wears: it is that trail's snow, opened out.
+  // A junction patch is its lane carried on, so it wears the lane's tile at the ribbon's end — its ordinary one: a
+  // junction is not a turn, so the tight-turn stripes stop where the ribbon does even when its last span is tight.
   const quadPaint = { ...(network.quadPaint ?? {}) };
   const quadTex = { ...(network.quadTex ?? {}) };
   const quadOrient = { ...(network.quadOrient ?? {}) };
-  for (const junction of junctions) {
-    const widest = junction.runs
-      .map(run => ({ run, half: arms.get(junction.node)!.find(arm => arm.run === run)!.half }))
-      .sort((a, b) => b.half - a.half)[0].run;
-    const dress = { ...MESA_TRAIL_DEFAULTS, ...optionsFor(runs[widest]) };
-    const tile = dress.textures?.standard?.[0]?.[0];
-    for (const quad of junction.quads) {
-      quadPaint[quad] = dress.surface;
-      // A junction has no direction of travel, so its tile is laid square rather than turned onto one.
-      if (tile) { quadTex[quad] = tile; quadOrient[quad] = { rot: 0, mirror: false }; }
-    }
+  for (const { quad, run, lane, atHead } of laneOf) {
+    const dress = { ...MESA_TRAIL_DEFAULTS, ...optionsFor(runs[run]) };
+    quadPaint[quad] = dress.surface;
+    const tile = textureForSpan(dress.textures, atHead ? 0 : ribbons[run].spans.length - 1, Infinity);
+    if (tile) { quadTex[quad] = tile.tiles[lane]; quadOrient[quad] = { ...tile.orient }; }
   }
   network.quadPaint = quadPaint;
   if (Object.keys(quadTex).length) { network.quadTex = quadTex; network.quadOrient = quadOrient; }

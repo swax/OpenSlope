@@ -8,9 +8,11 @@ import type { AuthoredTrail, QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { quadIsLocked } from '../src/core/mesh/locks';
 import { meshFromDoc } from '../src/core/mesh/topology';
 import {
-  cutTrail, removeTrailPatches, resolveTrail, setTrailKnotValue, trailIsConnected, trailKnotStations, trailOwningQuad,
-  TRAIL_SETTINGS_DEFAULTS, withoutTrailKnot,
+  branchEndpoints, branchesWithKnotAt, branchesWithoutKnot, cutTrail, joinBranch, mergeTrailInto, removeTrailPatches, resolveTrail, reverseTrail,
+  setTrailKnotValue, trailAllKnots, trailIsConnected, trailKnotPlace, trailKnotRef, trailKnotStations, trailOwningQuad,
+  trailPreview, TRAIL_SETTINGS_DEFAULTS, withoutTrailKnot,
 } from '../src/core/mesh/trail-object';
+import { checkManifold } from '../src/core/mesh/ops';
 import { MESA_TRAIL_TEXTURES, trimTrailSpline, type TrailCubic } from '../src/core/mesh/trail';
 import { check, failures } from './check';
 
@@ -159,6 +161,171 @@ if (!created.ok) process.exit(1);
     'tiles: a straight run into a tight arc wears both sets', tiles.map(t => t.tile).join());
   check(tiles.every(t => t.orient?.rot === (tight.has(t.tile!) ? 3 : 1) && !t.orient.mirror),
     'tiles: standard halves turn a quarter, tight ones three quarters', tiles.map(t => t.orient?.rot).join());
+}
+
+// ---- branches: the trail split at a knot, the branch, and a six-patch junction round a six-way hub (docs/023) ------
+{
+  const main = trailOf([[0, 0, 0], [0, 0, 120], [0, 0, 240]]);
+  const branched: AuthoredTrail = { ...main, branches: [{ knot: 1, knots: [[100, 0, 180], [180, 0, 220]] }] };
+  const cut = cutTrail(emptyDoc(), branched);
+  check(cut.ok, 'branch: a trail with a branch cuts', cut.ok ? '' : cut.error);
+  if (!cut.ok) process.exit(1);
+  const { doc, trail } = cut;
+  check(trail.network?.junctions === 1 && trail.network.runSpans.length === 3,
+    'branch: the trail splits at the knot — two runs and the branch, one junction', JSON.stringify(trail.network));
+  const owned = resolveTrail(doc, trail);
+  check(!!owned && owned.quads.length === doc.quads.length && owned.vertices.length === doc.vertices.length / 3,
+    'branch: the trail owns all of it, junction included');
+  const hub = owned!.vertices.at(-1)!;
+  const around = doc.quads.filter(quad => quad.includes(hub)).length;
+  const hubAt: V3 = [doc.vertices[hub * 3], doc.vertices[hub * 3 + 1], doc.vertices[hub * 3 + 2]];
+  check(around === 6 && Math.hypot(hubAt[0], hubAt[2] - 120) < 1e-9,
+    'branch: the junction is six patches round one six-way vertex, at the branch knot', `${around} at ${hubAt.join()}`);
+  check(checkManifold(doc.quads).ok, 'branch: the network is one manifold surface');
+  // Where the trail runs straight on past the branch, the crotch on the far side is on its rim, level with the knot:
+  // the two lanes there carry on into the junction as plain rectangles.
+  const crotches = owned!.vertices.slice(-4, -1).map(v => [doc.vertices[v * 3], doc.vertices[v * 3 + 2]]);
+  check(crotches.some(([x, z]) => Math.abs(x + 6.5) < 1e-6 && Math.abs(z - 120) < 1e-6),
+    'branch: across from the branch, the crotch is on the rim abeam the knot', JSON.stringify(crotches));
+  check(owned!.quads.every(quad => quadIsLocked(doc, quad)), 'branch: every patch of it is locked, junction too');
+  check(trailOwningQuad(doc, [trail], owned!.quads.at(-1)!)?.id === trail.id, 'branch: a junction patch finds its trail');
+
+  // Nudging the branch's tip keeps the shape, so every vertex and patch keeps its name; growing it keeps the
+  // trail's own runs' names, which come first.
+  const nudged = cutTrail(doc, { ...trail, branches: [{ knot: 1, knots: [[100, 0, 180], [180, 0.5, 220]] }] });
+  check(nudged.ok && nudged.trail.vertices.join() === trail.vertices.join() && nudged.trail.quads.join() === trail.quads.join(),
+    'branch: a re-cut that keeps the shape keeps every name', nudged.ok ? JSON.stringify(nudged.trail.network) : '');
+  const grown = cutTrail(doc, { ...trail, branches: [{ knot: 1, knots: [[100, 0, 180], [180, 0, 220], [260, 0, 240]] }] });
+  const [first, second] = trail.network!.runSpans;
+  const keep = (first + 1) * 3 + (second + 1) * 3;
+  check(grown.ok && grown.trail.network!.runSpans[2] > trail.network!.runSpans[2]
+    && grown.trail.vertices.slice(0, keep).join() === trail.vertices.slice(0, keep).join()
+    && grown.trail.quads.slice(0, (first + second) * 2).join() === trail.quads.slice(0, (first + second) * 2).join(),
+  'branch: growing the branch keeps the names of the trail it leaves');
+  // Moving the junction knot moves the hub with it.
+  const shifted = cutTrail(doc, { ...trail, knots: [[0, 0, 0], [10, 0, 120], [0, 0, 240]] });
+  const shiftedHub = shifted.ok ? resolveTrail(shifted.doc, shifted.trail)!.vertices.at(-1)! : -1;
+  check(shifted.ok && Math.abs(shifted.doc.vertices[shiftedHub * 3] - 10) < 1e-9, 'branch: the hub follows its knot');
+
+  // Taking the branch off cuts one ribbon again and leaves nothing of the network behind.
+  const plain = cutTrail(doc, { ...trail, branches: undefined });
+  check(plain.ok && !plain.trail.network && resolveTrail(plain.doc, plain.trail)?.runSpans.length === 1
+    && plain.doc.quads.length === plain.trail.quads.length && plain.doc.vertices.length / 3 === plain.trail.vertices.length,
+  'branch: taking it off cuts one ribbon again, with nothing left over');
+
+  // A branch curving hard from the junction wears the tight-turn stripes on its first span, but the junction patches
+  // carrying its lanes on wear the ordinary tiles: the stripes stop where the ribbon does.
+  const curling = cutTrail(emptyDoc(), { ...main, branches: [{ knot: 1, knots: [[25, 0, 135], [45, 0, 125], [55, 0, 100], [50, 0, 70]] }] });
+  if (curling.ok) {
+    const stripes = new Set((MESA_TRAIL_TEXTURES.tight ?? []).flat());
+    const ordinary = new Set(MESA_TRAIL_TEXTURES.standard.flat());
+    const tiles = resolveTrail(curling.doc, curling.trail)!.quads.map(quad => curling.doc.quadTex?.[quad] ?? '');
+    const [a, b] = curling.trail.network!.runSpans;
+    check(stripes.has(tiles[(a + b) * 2]) && tiles.slice(-6).every(tile => ordinary.has(tile)),
+      'branch: a tight first span wears the stripes; no junction patch does', tiles.slice(-6).join());
+  } else check(false, 'branch: a branch curling from the junction cuts', curling.error);
+
+  // A branch too tight to the trail is refused in the trail's own words.
+  const tight = cutTrail(emptyDoc(), { ...main, branches: [{ knot: 1, knots: [[2, 0, 240]] }] });
+  check(!tight.ok && /knot 2|branch/.test(tight.error) && !/\bRun \d|\bruns \d/.test(tight.error),
+    'branch: a refused junction names the branch and knot, not run numbers', tight.ok ? '' : tight.error);
+
+  // The ghost: one more knot on the branch shows only the patches that knot changes.
+  const preview = trailPreview(doc, { ...trail, branches: [{ knot: 1, knots: [[100, 0, 180], [180, 0, 220], [260, 0, 240]] }] });
+  check(preview.ok && preview.quads.length > 0 && preview.quads.length < preview.doc.quads.length,
+    'preview: the next branch knot ghosts what it adds and reshapes, not the whole trail',
+    preview.ok ? `${preview.quads.length} of ${preview.doc.quads.length}` : preview.error);
+  const fresh = trailPreview(doc, { ...trail, branches: [...trail.branches!] });
+  check(fresh.ok && fresh.quads.length === 0, 'preview: the trail as it stands ghosts nothing');
+
+  // The knots are one list: the trail's own, then each branch's.
+  check(trailAllKnots(branched).length === 5 && trailKnotRef(branched, 3)?.branch === 0 && trailKnotRef(branched, 3)?.knot === 0
+    && trailKnotRef(branched, 1)?.branch === null && trailKnotPlace(branched, 0, 1) === 4 && trailKnotRef(branched, 5) === null,
+  'knots: a branch’s knots follow the trail’s in one list');
+  check(branchesWithoutKnot(branched.branches, 1).length === 0 && branchesWithoutKnot(branched.branches, 0)[0].knot === 0
+    && branchesWithKnotAt(branched.branches, 0)[0].knot === 2,
+  'knots: deleting the junction knot takes its branch; other edits carry it along');
+}
+
+// ---- merging: an end on another trail's knot joins the two, end to end or as a branch (docs/023 · Merging) --------
+{
+  const join = (a: readonly V3[]) => a.map(p => p.join()).join(' ');
+  // Reversed, a trail is the same ground from the other end: handles swap sides, the seam and a fixed bank mirror.
+  const there = { ...trailOf([[0, 0, 0], [0, 0, 100], [0, 0, 200]], { centerBias: 0.4 }),
+    handles: [{ out: [1, 0, 2] as V3 }], knotSettings: [null, { bankDegrees: 5, centerBias: 0.3 }], branches: [{ knot: 1, knots: [[50, 0, 120]] as V3[] }] };
+  const back = reverseTrail(there);
+  check(join(back.knots) === '0,0,200 0,0,100 0,0,0' && back.handles?.[2]?.in?.join() === '1,0,2' && !back.handles?.[2]?.out
+    && back.knotSettings?.[1]?.bankDegrees === -5 && Math.abs(back.knotSettings![1]!.centerBias! - 0.7) < 1e-12
+    && Math.abs(back.settings.centerBias - 0.6) < 1e-12 && back.branches?.[0].knot === 1,
+  'reverse: knots, handles, knot values and branches run the other way');
+
+  const target = trailOf([[0, 0, 0], [0, 0, 100], [0, 0, 200]]);
+  // On its last knot, from either end of the other trail.
+  const onward = trailOf([[0, 0, 200], [0, 0, 300], [0, 0, 400]], { widthM: 20 });
+  const tail = mergeTrailInto(target, 2, onward, 'start');
+  const tailBack = mergeTrailInto(target, 2, reverseTrail(onward), 'end');
+  check(tail.ok && tail.joined === 'ends' && join(tail.trail.knots) === '0,0,0 0,0,100 0,0,200 0,0,300 0,0,400'
+    && tailBack.ok && join(tailBack.trail.knots) === join(tail.trail.knots) && tail.trail.id === target.id,
+  'merge: on the last knot the two run on as one trail, from either end of the other');
+  check(tail.ok && !tail.trail.knotSettings?.[2] && tail.trail.knotSettings?.[3]?.widthM === 20 && tail.trail.knotSettings?.[4]?.widthM === 20,
+    'merge: the joined knots keep their own width; the shared knot is the target\'s');
+  // On its first knot: the other trail runs on ahead of it.
+  const ahead = mergeTrailInto(target, 0, trailOf([[0, 0, -200], [0, 0, 0]]), 'end');
+  const withBranch = { ...target, branches: [{ knot: 1, knots: [[60, 0, 140]] as V3[] }] };
+  const aheadBranched = mergeTrailInto(withBranch, 0, trailOf([[0, 0, -200], [0, 0, -100], [0, 0, 0]]), 'end');
+  check(ahead.ok && join(ahead.trail.knots) === '0,0,-200 0,0,0 0,0,100 0,0,200'
+    && aheadBranched.ok && aheadBranched.trail.branches?.[0].knot === 3,
+  'merge: on the first knot the other trail runs on ahead, and the target\'s branches move along');
+  const joined = tail.ok ? cutTrail(emptyDoc(), tail.trail) : null;
+  check(!!joined?.ok && joined.trail.quads.length > 0, 'merge: the joined trail cuts');
+
+  // On a middle knot the other trail becomes its branch, laid outward from the junction.
+  const side = trailOf([[120, 0, 160], [60, 0, 120], [0, 0, 100]]);
+  const fork = mergeTrailInto(target, 1, side, 'end');
+  check(fork.ok && fork.joined === 'branch' && fork.trail.branches?.[0].knot === 1
+    && join(fork.trail.branches[0].knots) === '60,0,120 120,0,160',
+  'merge: on a middle knot it becomes the branch there');
+  const forked = fork.ok ? cutTrail(emptyDoc(), fork.trail) : null;
+  check(!!forked?.ok && forked.trail.network?.junctions === 1, 'merge: … cut as a three-way junction');
+  check(!mergeTrailInto(withBranch, 1, side, 'end').ok, 'merge: a knot carrying a branch takes no second');
+  check(!mergeTrailInto(target, 1, { ...side, branches: [{ knot: 1, knots: [[70, 0, 90]] }] }, 'end').ok,
+    'merge: a trail with branches does not become one');
+}
+
+// ---- a branch tip lands too: rejoining its own trail, or running on into another trail's end (docs/023 · Merging) ---
+{
+  const join = (a: readonly V3[]) => a.map(p => p.join()).join(' ');
+  const line = trailOf([[0, 0, 0], [0, 0, 120], [0, 0, 240], [0, 0, 360], [0, 0, 480]]);
+  const bypassing: AuthoredTrail = { ...line, branches: [{ knot: 1, knots: [[70, 0, 180], [80, 0, 240], [70, 0, 300], [0, 0, 360]] }] };
+  // Its tip on knot 3 of its own trail: the branch rejoins there, a bypass with a junction at each end.
+  const rejoined = joinBranch(bypassing, 0, { trail: bypassing, knot: 3 });
+  check(rejoined.ok && rejoined.joined === 'rejoin' && rejoined.trail.branches![0].to === 3
+    && join(rejoined.trail.branches![0].knots) === '70,0,180 80,0,240 70,0,300',
+  'rejoin: a branch tip on its own trail\'s knot rejoins it there, the tip giving way to the knot');
+  const bypass = rejoined.ok ? cutTrail(emptyDoc(), rejoined.trail) : null;
+  check(!!bypass?.ok && bypass.trail.network?.junctions === 2 && bypass.trail.network.runSpans.length === 4,
+    'rejoin: cut as a bypass — the trail in three runs and the branch, two junctions', bypass?.ok ? JSON.stringify(bypass.trail.network) : bypass?.error);
+  if (bypass?.ok) {
+    const owned = resolveTrail(bypass.doc, bypass.trail)!;
+    const hubs = [owned.vertices.at(-5)!, owned.vertices.at(-1)!];
+    check(hubs.every(hub => bypass.doc.quads.filter(quad => quad.includes(hub)).length === 6) && checkManifold(bypass.doc.quads).ok,
+      'rejoin: each junction is a six-pole, and the whole is one surface');
+  }
+  check(branchEndpoints(rejoined.ok ? rejoined.trail : bypassing).has(3), 'rejoin: the knot it rejoins carries a branch now');
+  check(!joinBranch(bypassing, 0, { trail: bypassing, knot: 1 }).ok, 'rejoin: not the knot it leaves');
+  const rejoinedTrail = rejoined.ok ? rejoined.trail : bypassing;
+  check(branchesWithoutKnot(rejoinedTrail.branches, 3)[0].to === undefined && branchesWithoutKnot(rejoinedTrail.branches, 2)[0].to === 2
+    && branchesWithKnotAt(rejoinedTrail.branches, 0)[0].to === 4 && reverseTrail(rejoinedTrail).branches?.[0].to === 1,
+  'rejoin: deleting the knot frees the branch; other edits carry the rejoin along');
+
+  // Its tip on another trail's end: that trail goes on as the rest of the branch.
+  const forking: AuthoredTrail = { ...line, branches: [{ knot: 1, knots: [[80, 0, 160], [200, 0, 200]] }] };
+  const onward = { ...trailOf([[300, 0, 220], [200, 0, 200]]), id: 'trail:0001' }; // ends on the tip, so it runs on backward
+  const extended = joinBranch(forking, 0, { trail: onward, knot: 1 });
+  check(extended.ok && extended.joined === 'extend' && join(extended.trail.branches![0].knots) === '80,0,160 200,0,200 300,0,220',
+    'extend: a branch tip on another trail\'s end runs on into it');
+  check(!joinBranch(forking, 0, { trail: { ...trailOf([[150, 0, 0], [200, 0, 200], [250, 0, 400]]), id: 'trail:0001' }, knot: 1 }).ok,
+    'extend: not into another trail\'s middle — that would be a branch of a branch');
 }
 
 // ---- each knot's own section (docs/023 · Per-knot section) -------------------------------------------------------

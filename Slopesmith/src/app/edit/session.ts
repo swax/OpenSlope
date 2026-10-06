@@ -55,7 +55,7 @@ type EditCallbackName =
   | 'onScaleControlPoints' | 'onScaleCorners' | 'onSlideCorners'
   | 'onSlideBegin' | 'onSlideRecut' | 'onSlideMergePending' | 'onSlideEnd' | 'onEditTransformBegin' | 'onEditTransformEnd'
   | 'onCreateEdgePoint' | 'onCreateTubeAxisChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
-  | 'onAppendTrailKnot' | 'onSelectTrailKnot' | 'onMoveTrailKnot' | 'onTrailKnotDrag' | 'onTransformTrail'
+  | 'onAppendTrailKnot' | 'onSelectTrailKnot' | 'onMoveTrailKnot' | 'onTrailKnotDrag' | 'onTransformTrail' | 'onTrailHover'
   | 'onSelectEditCell' | 'onSelectCellLoop' | 'onSelectEdge' | 'onSelectEdgeLoop'
   | 'onExtrudeEdges' | 'onCommitExtrudeEdges' | 'onExtrudeStageChange' | 'onExtrudeEdgeSelection' | 'onExtrudeEdgesInvalid' | 'onRefSelectionChange'
   | 'onMoveCorner' | 'onMoveHandle' | 'onMoveCageHandle' | 'onMoveTwist';
@@ -1960,6 +1960,7 @@ export function createEditSession(deps: EditSessionDeps) {
     onMoveTrailKnot(knot, pos) { trails.moveKnot(knot, pos); },
     onTrailKnotDrag(dragging) { trails.knotDrag(dragging); },
     onTransformTrail(knots, handles) { trails.transformTrail(knots, handles); },
+    onTrailHover(pos) { trails.previewHover(pos); },
     onLoopCut(quad, edge, t) {
       const { mesh, adj } = meshContext(mdoc());
       const result = applyLoopCut(mdoc(), planLoopCut(mesh, adj, quad, edge), t);

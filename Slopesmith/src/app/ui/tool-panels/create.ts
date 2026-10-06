@@ -26,7 +26,8 @@ export function createCreateTools(ctx: ToolsContext) {
     armCreateTrail, undoCreateTrailPoint, finishCreateTrail,
     selectedTrail, trailStatus, trailError, resumeTrail, setTrailSetting,
     deleteSelectedTrailKnot, deleteSelectedTrail, dissolveSelectedTrail, selectOverlappingVertices, deselectEdit,
-    selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings, resumeEnds, trailDrawEnd,
+    selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings, resumeEnds,
+    armBranch, removeBranch, selectedKnotRole, drawingBranch, trailDrawAnchor,
   } = edit;
 
   let createEdgeTotalRow: ReturnType<typeof detail> | null = null;
@@ -354,20 +355,30 @@ export function createCreateTools(ctx: ToolsContext) {
     const drawing = store.surgeryTool === 'trail';
     const status = trailStatus();
     const knot = store.trailKnot;
-    const spline = editSection('trail-placement', drawing ? 'Create Trail' : 'Trail');
+    const role = selectedKnotRole();
+    const branching = drawing ? drawingBranch() : null;
+    const spline = editSection('trail-placement', branching !== null ? `Add Branch at knot ${branching + 1}` : drawing ? 'Create Trail' : 'Trail');
     createTrailPointsRow = detail(spline, `${status?.knots ?? 0}`, 'knots');
+    if (status?.branches) detail(spline, `${status.branches}`, 'branches');
     if (drawing) createTrailNextRow = detail(spline, '—', 'next');
     createTrailSpansRow = detail(spline, '—', 'spans · patches');
-    if (knot !== null && status) detail(spline, `${knot + 1} of ${status.knots}`, 'selected knot');
+    if (role?.kind === 'trail' && status) detail(spline, `${role.knot + 1} of ${status.knots}${role.branch ? ' · branches' : ''}`, 'selected knot');
+    else if (role?.kind === 'branch') detail(spline, `${role.knot + 1} of ${role.of} on the branch at knot ${role.junction + 1}`
+      + (role.rejoins ? ' · it rejoins the trail' : ''), 'selected knot');
     createTrailErrorBanner = errorBanner(spline, '');
     if (status?.broken) errorBanner(spline, 'Something cut into this trail’s patches, so it can no longer re-cut them. '
       + 'Dissolve it to keep the patches as mesh, or delete it.');
     if (status?.connected) note(spline, 'Joined to other patches: moving it stretches them, and its patch count is held.');
-    note(spline, drawing
-      ? 'click to add knots · click a knot to pick it up, then drag its arrows · Shift locks the next segment to world X, Y, or Z'
-      : 'drag the gizmo to move the whole trail (E turns it, R scales it) · click a knot to reshape it');
+    note(spline, branching !== null
+      ? 'click to lay the branch’s knots — the ghost shows the patches and the junction each click would cut · '
+        + 'a knot of this trail (amber) rejoins it, another trail’s end runs on into it · Enter finishes'
+      : drawing
+        ? 'click to add knots · the ghost shows what each click would cut · a knot on another trail’s (amber) joins the two · '
+          + 'click a knot to pick it up, then drag its arrows · Shift locks the next segment to world X, Y, or Z'
+        : 'drag the gizmo to move the whole trail (E turns it, R scales it) · click a knot to reshape it · '
+          + 'drop an end knot on another trail’s knot to join them');
     const trail = selectedTrail();
-    if (trail && knot !== null && status && !status.draft) buildTrailKnotTools(trail, knot);
+    if (trail && role?.kind === 'trail' && status && !status.draft) buildTrailKnotTools(trail, role.knot);
     refreshCreateTrailSummary();
 
     const settings = trailSettingsTarget();
@@ -413,6 +424,18 @@ export function createCreateTools(ctx: ToolsContext) {
         'Lay more knots onto the start of this trail, ahead of its first knot.');
       if (ends.includes('end')) tip(actions.add({ end: () => resumeTrail('end') }, 'end').name('✚ add points after the end'),
         'Lay more knots onto the end of this trail, after its last knot.');
+      // A middle knot carries one branch: lay it, or take it off. A branch's tip grows the branch.
+      if (role?.kind === 'trail' && role.end === null && !role.branch)
+        tip(actions.add({ branch: armBranch }, 'branch').name('⑂ add a branch here'),
+          'Lay a branch off this knot, a click per knot, with a ghost of what each click would cut.',
+          'The trail splits at this knot and meets the branch in a junction of six patches around one six-way vertex. '
+          + 'A knot carries one branch.');
+      if (role?.kind === 'trail' && role.branch)
+        tip(actions.add({ unbranch: removeBranch }, 'unbranch').name('✕ remove this knot’s branch'),
+          'Take the branch off, with its patches and the junction; the trail runs through this knot again.');
+      if (role?.kind === 'branch' && role.tip)
+        tip(actions.add({ grow: armBranch }, 'grow').name('✚ add points to the branch'),
+          'Lay more knots onto the end of this branch.');
     }
     if (knot !== null) tip(actions.add({ del: deleteSelectedTrailKnot }, 'del').name('✕ delete this knot (Del)'),
       'Remove the selected knot and re-cut the trail. A trail left with one knot is removed.');
@@ -482,8 +505,7 @@ export function createCreateTools(ctx: ToolsContext) {
     // A point following the trail shows the trail's value, which a trail setting just changed.
     for (const control of createTrailKnotSection?.controllers ?? []) control.updateDisplay();
     if (!createTrailNextRow) return;
-    const knots = selectedTrail()?.knots;
-    const start = trailDrawEnd() === 'start' ? knots?.[0] : knots?.at(-1), hover = viewport.createTrailPreviewPoint;
+    const start = trailDrawAnchor(), hover = viewport.createTrailPreviewPoint;
     const next = start && hover
       ? Math.hypot(hover[0] - start[0], hover[1] - start[1], hover[2] - start[2])
       : null;

@@ -257,6 +257,12 @@ if (deleted.ok) {
     if (longer.ok) {
       longer.doc.trails = [longer.trail];
       roundTrip('trail re-cut', cut.doc, longer.doc);
+      // A branch off its middle knot: the trail splits, and the junction is cut with it.
+      const branched = cutTrail(longer.doc, { ...longer.trail, branches: [{ knot: 1, knots: [[520, 0, 160]] }] });
+      if (branched.ok) {
+        branched.doc.trails = [branched.trail];
+        roundTrip('trail branch', longer.doc, branched.doc);
+      } else check(false, 'trail branch: the branched trail cuts', branched.error);
     } else check(false, 'trail re-cut: the longer trail cuts', longer.error);
   } else check(false, 'trail cut: the trail cuts', cut.error);
 }
