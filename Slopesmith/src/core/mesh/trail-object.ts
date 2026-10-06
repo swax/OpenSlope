@@ -2,10 +2,10 @@ import type {
   AuthoredTrail, PathHandles, QuadMeshDoc, TrailCutShape, TrailKnotSettings, TrailPath, TrailSettings, V3,
 } from '../doc/types';
 import { nameIndex } from '../doc/ids';
-import { railBezierSegments } from '../rails/rails';
+import { pathHandleOffsets, railBezierSegments } from '../rails/rails';
 import { setQuadsLocked } from './locks';
 import { assignMap, finishMeshRewrite, looseVertexIds } from './ops/contract';
-import { liveQuadEdges } from './primitives';
+import { liveQuadEdges, undirectedEdgeKey } from './primitives';
 import {
   applyTrailNetwork, applyTrailSpline, layoutTrailSpline, MESA_TRAIL_DEFAULTS, MESA_TRAIL_TEXTURES,
   type TrailKnotProfile, type TrailLayout, type TrailLayoutOptions, type TrailRunSpec, type TrailStation,
@@ -356,6 +356,112 @@ export function mergeTrailPoints(trail: AuthoredTrail, from: number, into: numbe
   };
 }
 
+/**
+ * Cut every path that runs through `point` in two there, so each arm there is a path's end: two pieces where one path
+ * runs through, three at a fork, four at a crossing. A path's first piece keeps its place, and the rest follow every
+ * path, in order along it, each with its path's settings. The handles either side of a cut are fixed where the curve
+ * already ran — an end's automatic handle would aim along its own chord — so no piece changes shape. The points stay
+ * as they are, and nothing fuses: the pieces are apart so each can be set on its own. `pieces` gives each old path's
+ * pieces; null when no path runs through `point`.
+ */
+export function splitPathsAt(trail: AuthoredTrail, point: number): { trail: AuthoredTrail; pieces: number[][] } | null {
+  const kept: TrailPath[] = [], added: TrailPath[] = [], pieces: number[][] = [];
+  trail.paths.forEach((path, index) => {
+    const cuts = path.points.flatMap((at, i) => at === point && i > 0 && i < path.points.length - 1 ? [i] : []);
+    if (!cuts.length) { kept.push(path); pieces.push([index]); return; }
+    const offsets = pathHandleOffsets(pathKnots(trail, path), path.handles);
+    const bounds = [0, ...cuts, path.points.length - 1];
+    const parts = bounds.slice(1).map((last, k) => {
+      const first = bounds[k];
+      const handles = handlesOf(path).slice(first, last + 1);
+      if (k > 0) handles[0] = { out: offsets[first].out! };
+      if (k < cuts.length) handles[handles.length - 1] = { in: offsets[last].in! };
+      return withHandles({ ...path, points: path.points.slice(first, last + 1) }, handles);
+    });
+    kept.push(parts[0]);
+    pieces.push([index, ...parts.slice(1).map((_, k) => trail.paths.length + added.length + k)]);
+    added.push(...parts.slice(1));
+  });
+  return added.length ? { trail: { ...trail, paths: [...kept, ...added] }, pieces } : null;
+}
+
+/**
+ * Break `point` apart, so the paths no longer meet there: every path running on through it is cut there
+ * (`splitPathsAt`), and every arm there ends at a point of its own at the same place — two sides mid-path, three at a
+ * fork, four at a crossing. The first arm of path `first` (or of the first path there) keeps the point; each other
+ * arm gets a new point after all the others, carrying the point's own values. A loop broken open this way is one
+ * path again: where its pieces' far ends now meet alone, they fuse (`fusePathsAt`). `pieces` gives each old path's
+ * paths now; null where fewer than two arms meet.
+ */
+export function disconnectPoint(trail: AuthoredTrail, point: number, first?: number):
+{ trail: AuthoredTrail; pieces: number[][] } | null {
+  if ((pointArms(trail)[point] ?? 0) < 2) return null;
+  const split = splitPathsAt(trail, point) ?? { trail, pieces: trail.paths.map((_, index) => [index]) };
+  const points = [...split.trail.points];
+  const settings = points.map((_, i) => trail.pointSettings?.[i] ?? null);
+  const order = split.trail.paths.map((_, index) => index);
+  const leading = first === undefined ? [] : split.pieces[first] ?? [];
+  order.sort((a, b) => Number(!leading.includes(a)) - Number(!leading.includes(b)) || a - b);
+  let kept = false;
+  const own = (): number => {
+    if (!kept) { kept = true; return point; }
+    settings.push(trail.pointSettings?.[point] ?? null);
+    return points.push(copy(trail.points[point])) - 1;
+  };
+  const paths = [...split.trail.paths];
+  for (const index of order) {
+    const path = paths[index];
+    if (!pathCuts(path)) continue;
+    const last = path.points.length - 1;
+    paths[index] = { ...path, points: path.points.map((at, i) => at === point && (i === 0 || i === last) ? own() : at) };
+  }
+  let next: AuthoredTrail = { ...split.trail, points, paths };
+  const list = trimKnotSettings(settings);
+  if (list.length) next.pointSettings = list; else delete next.pointSettings;
+  let pieces = split.pieces;
+  // A closed loop cut open elsewhere: its first and last pieces meet at its old closing point, and only there.
+  trail.paths.forEach((path, index) => {
+    const closing = path.points[0];
+    if (pieces[index].length < 2 || closing === point || path.points.at(-1) !== closing) return;
+    const fused = fusePathsAt(next, closing);
+    if (!fused) return;
+    next = fused.trail;
+    pieces = pieces.map(list => [...new Set(list.map(piece => fused.paths[piece]!))]);
+  });
+  return { trail: next, pieces };
+}
+
+/**
+ * A trail split into one trail per connected network — what a disconnect leaves. The network holding its first path
+ * keeps the trail, and so its id, patches and names, which re-cut in place; each other is a new trail with no id or
+ * patches yet, to be named and cut fresh. Each path's and point's new place, as the trail it went to (by its place in
+ * `trails`) and its place there.
+ */
+export function separateTrail(trail: AuthoredTrail): {
+  trails: AuthoredTrail[];
+  paths: { trail: number; path: number }[];
+  points: ({ trail: number; point: number } | null)[];
+} {
+  const groups: number[][] = [], seen = new Set<number>();
+  trail.paths.forEach((_, index) => {
+    if (seen.has(index)) return;
+    const group = connectedPaths(trail, index);
+    group.forEach(path => seen.add(path));
+    groups.push(group);
+  });
+  const paths: { trail: number; path: number }[] = [];
+  const points: ({ trail: number; point: number } | null)[] = trail.points.map(() => null);
+  const trails = groups.map((group, g) => {
+    const tidied = compactTrail({ ...trail, paths: trail.paths.map((path, i) => group.includes(i) ? path : { ...path, points: [] }) });
+    tidied.paths.forEach((at, i) => { if (at !== null) paths[i] = { trail: g, path: at }; });
+    tidied.points.forEach((at, i) => { if (at !== null) points[i] = { trail: g, point: at }; });
+    if (g === 0) return tidied.trail;
+    const { network: _network, name: _name, ...fresh } = tidied.trail;
+    return { ...fresh, id: '', vertices: [], quads: [] };
+  });
+  return { trails, paths, points };
+}
+
 /** `other` taken into `trail`: its points after `trail`'s, its paths after `trail`'s, with `trail`'s id and names.
  *  Returns how far its points and paths moved. */
 export function joinTrails(trail: AuthoredTrail, other: AuthoredTrail): { trail: AuthoredTrail; points: number; paths: number } {
@@ -488,6 +594,53 @@ export function trailPathQuads(doc: QuadMeshDoc, trail: AuthoredTrail): string[]
     out = lists;
   }
   pathQuadsMemo.set(trail, out);
+  return out;
+}
+
+/** The inside of the trails: live vertex indices, and edges by `undirectedEdgeKey`. */
+export interface TrailInterior { vertices: ReadonlySet<number>; edges: ReadonlySet<string> }
+
+const interiorMemo = new WeakMap<QuadMeshDoc, { quads: unknown; trails: unknown; out: TrailInterior }>();
+
+/**
+ * The trails' inside edges and vertices, as live indices: an edge every patch on which (two or more) is a trail's,
+ * and a vertex every edge and patch round which is. Only its trail moves them, so a click there is better spent on
+ * the trail itself; the open rim is not inside, and stays pickable for the welds, bridges and extrusions that join
+ * other patches to a trail.
+ */
+export function trailInterior(doc: QuadMeshDoc): TrailInterior {
+  const memo = interiorMemo.get(doc);
+  if (memo && memo.quads === doc.quads && memo.trails === doc.trails) return memo.out;
+  const at = nameIndex(doc.quadIds), owned = new Set<number>();
+  for (const trail of doc.trails ?? []) for (const id of trail.quads) {
+    const quad = at.get(id);
+    if (quad !== undefined) owned.add(quad);
+  }
+  const edges = new Set<string>(), vertices = new Set<number>();
+  if (owned.size) {
+    // Every edge of a trail patch, with how many of its patches are a trail's and how many it has at all.
+    const sides = new Map<string, { trail: number; all: number; ends: [number, number] }>();
+    for (const quad of owned) for (const [a, b] of liveQuadEdges(doc.quads[quad] ?? [])) {
+      const key = undirectedEdgeKey(a, b), side = sides.get(key);
+      if (side) side.trail++; else sides.set(key, { trail: 1, all: 0, ends: [a, b] });
+    }
+    const outside = new Set<number>();
+    doc.quads.forEach((corners, quad) => {
+      for (const [a, b] of liveQuadEdges(corners)) {
+        const side = sides.get(undirectedEdgeKey(a, b));
+        if (side) side.all++;
+      }
+      if (!owned.has(quad)) for (const vertex of corners) outside.add(vertex);
+    });
+    for (const [a, b] of doc.freeEdges ?? []) { outside.add(a); outside.add(b); }
+    for (const [key, side] of sides) {
+      if (side.all >= 2 && side.all === side.trail) edges.add(key);
+      else for (const vertex of side.ends) outside.add(vertex);
+    }
+    for (const [key, side] of sides) if (edges.has(key)) for (const vertex of side.ends) if (!outside.has(vertex)) vertices.add(vertex);
+  }
+  const out = { vertices, edges };
+  interiorMemo.set(doc, { quads: doc.quads, trails: doc.trails, out });
   return out;
 }
 
@@ -640,14 +793,17 @@ const quadKey = (vertices: readonly number[], corners: readonly number[]) =>
 /**
  * What cutting `trail` into `doc` would lay down that is not there already — the new and the reshaped patches,
  * as a standalone mesh and the patches of it to show. The Create Trail ghost: the next point, the path about to
- * be laid and the junction it makes, before the click that lays it.
+ * be laid and the junction it makes, before the click that lays it; and the merge a dragged point would make,
+ * before the drop. The patches of `also` — trails `trail` would take in — count as already there.
  */
-export function trailPreview(doc: QuadMeshDoc, trail: AuthoredTrail):
+export function trailPreview(doc: QuadMeshDoc, trail: AuthoredTrail, also: readonly AuthoredTrail[] = []):
 { ok: true; doc: QuadMeshDoc; quads: number[] } | { ok: false; error: string } {
   const plan = planCut(doc, trail);
   if (!plan.ok) return plan;
   const { piece, owned } = plan;
-  const standing = new Set(owned ? owned.quads.map(quad => quadKey(doc.vertices, doc.quads[quad])) : []);
+  // What stands already: the trail's own patches — and those of `also`, trails it would take in.
+  const held = [...(owned?.quads ?? []), ...also.flatMap(other => resolveTrail(doc, other)?.quads ?? [])];
+  const standing = new Set(held.map(quad => quadKey(doc.vertices, doc.quads[quad])));
   const quads = piece.doc.quads.flatMap((corners, quad) => standing.has(quadKey(piece.doc.vertices, corners)) ? [] : [quad]);
   return { ok: true, doc: piece.doc, quads };
 }

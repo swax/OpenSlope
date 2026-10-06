@@ -25,7 +25,7 @@ export function createCreateTools(ctx: ToolsContext) {
     armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube, armLoopCut,
     armCreateTrail, undoCreateTrailPoint, finishCreateTrail,
     trailStatus, trailError, resumeTrail, setTrailSetting,
-    deleteSelectedTrailKnot, deleteSelectedTrail, dissolveSelectedTrail, selectOverlappingVertices, deselectEdit,
+    deleteSelectedTrailKnot, disconnectSelectedPoint, deleteSelectedTrail, dissolveSelectedTrail, selectOverlappingVertices, deselectEdit,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings, resumeEnds,
     armPathFrom, selectedPointRole, drawingFrom, focusSettings, selectWholeNetwork, trailDrawAnchor,
   } = edit;
@@ -443,6 +443,13 @@ export function createCreateTools(ctx: ToolsContext) {
           'Lay a new path from this point, a click per point, with a ghost of what each click would cut.',
           'The paths meet in a junction here: one patch per lane around a hub, six for a three-way fork. The new path has '
           + 'settings of its own, starting from the last ones used.');
+      // Any point two sides or more meet at can come apart: each side then ends at a point of its own.
+      if (role && role.arms >= 2 && status && !status.draft)
+        tip(actions.add({ disconnect: disconnectSelectedPoint }, 'disconnect').name('✂ disconnect here'),
+          `Break this point apart: each of the ${role.arms} sides meeting here ends at a point of its own, at the same place, `
+          + 'so they no longer join — drag the point to pull its side away.',
+          'A path running through is cut here, keeping its shape. A side no longer joined to the rest becomes a trail of its '
+          + 'own. Dropping a point back onto another joins them again.');
       if (status && status.networkPaths > status.paths)
         tip(actions.add({ network: selectWholeNetwork }, 'network').name('select the whole network (Ctrl+A)'),
           'Select every path joined to the selected ones, to move or set them together.');

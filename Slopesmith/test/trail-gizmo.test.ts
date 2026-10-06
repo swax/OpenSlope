@@ -16,6 +16,9 @@ const stage = {
   worldRoot: new THREE.Group(), scene: new THREE.Scene(), ray: new THREE.Ray(),
   gizmo: { dragging: false, object: null as THREE.Object3D | null },
   gizmoKind: null as string | null, gizmoKnot: -1,
+  pointMarkerRadius: (_at: THREE.Vector3, px: number) => px * 0.1,
+  camera: new THREE.PerspectiveCamera(50, 800 / 600, 0.1, 5000), pointer: new THREE.Vector2(),
+  renderer: { domElement: { getBoundingClientRect: () => ({ width: 800, height: 600 }) } },
   attachGizmo(obj: THREE.Object3D, kind: string, idx: number) { this.gizmoKind = kind; this.gizmoKnot = idx; this.gizmo.object = obj; },
   detachGizmo() { this.gizmoKind = null; this.gizmo.object = null; },
 };
@@ -90,6 +93,21 @@ function drag(pose: (obj: THREE.Object3D) => void): { knots: V3[]; handles: (Pat
   check(out.knots.every((k, i) => near(k, [pivot[0] + (knots[i][0] - pivot[0]) * 2, knots[i][1], knots[i][2]])),
     'scale: knots stretch about the pivot on the scaled axis only');
   check(near(out.handles[1]!.out!, [20, 0, 20]), 'scale: a dragged handle stretches with them');
+}
+
+// Snapping: a dragged point lands on a point it overlaps on screen, however far apart the two are in depth.
+{
+  stage.camera.position.set(0, 400, 0);
+  stage.camera.up.set(0, 0, -1);
+  stage.camera.lookAt(0, 0, 0);
+  stage.camera.updateMatrixWorld();
+  const target: V3 = [0, 0, 0];
+  layer.setKnots(knots, 1, null, { ...shape, dragSnaps: [target] });
+  stage.gizmo.dragging = true;
+  check(near(layer.snapDrag([0, 200, 0]), target), 'snap: a point 200 m above another, overlapping it down the view, lands on it');
+  check(near(layer.snapDrag([40, 0, 0]), [40, 0, 0]), 'snap: one level with it but apart on screen does not');
+  stage.gizmo.dragging = false;
+  layer.knotDragging(false);
 }
 
 if (failures) process.exitCode = 1;
