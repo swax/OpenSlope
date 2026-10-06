@@ -3,7 +3,8 @@
 import type { AuthoredTrail, QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { nameIndex } from '../src/core/doc/ids';
 import { quadIsLocked } from '../src/core/mesh/locks';
-import { cutTrail, resolveTrail, trailPathQuads } from '../src/core/mesh/trail-object';
+import { cutTrail, pathKnots, resolveTrail, trailPathQuads } from '../src/core/mesh/trail-object';
+import { railBezierSegments } from '../src/core/rails/rails';
 import type { TrailShape, TrailTransform } from '../src/app/viewport/tools/create-trail';
 import { check, failures } from './check';
 
@@ -103,6 +104,8 @@ check(store.cellSel.join() === trail()!.quads.join() && trail()!.quads.every(id 
 {
   tools.selectKnot(0);
   check(shown.knot === 0 && store.trailPoint?.point === 0, 'pick: the clicked point carries the gizmo');
+  check(!!shown.shape?.snaps?.some(p => p.join() === '0,0,0') && !shown.shape?.dragSnaps?.some(p => p.join() === '0,0,0'),
+    'pick: the next point drawn may land on the picked one, but the picked one dragged never lands on itself');
   const base = store.mdoc, before = trail()!;
   tools.knotDrag(true);
   tools.moveKnot(0, [30, 0, -60]); // long enough to add spans …
@@ -353,11 +356,20 @@ check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-p
   const d = draw([900, 0, -150], [980, 0, -60]);
   selectPaths(byId(d), 0);
   const end = pick(byId(d), 1);
-  check(!!shown.shape?.snaps?.some(p => p.join() === '1000,0,0'), 'join: a picked point snaps to the other trail\'s points');
+  check(!!shown.shape?.dragSnaps?.some(p => p.join() === '1000,0,0') && !shown.shape?.snaps?.length,
+    'join: a picked point snaps to the other trail\'s points; nothing being drawn, no next point snaps');
   tools.knotDrag(true);
+  tools.moveKnot(end, [990, 0, -20]);
+  runFrames();
+  check(!ghostNow(), 'join: a point dragged over no other point ghosts nothing');
   tools.moveKnot(end, [1000, 0, 0]);
   runFrames();
+  const merging = ghostNow()?.length ?? 0;
+  const own = byId(a).quads.length + byId(d).quads.length;
+  check(merging > 0 && merging < own, 'join: on the other’s point, the drag ghosts the merge — the patches it reshapes, not every one',
+    `${merging} of ${own}`);
   tools.knotDrag(false);
+  check(!ghostNow(), 'join: the drop clears the ghost');
   check(!store.mdoc.trails!.some(other => other.id === d) && knotsOf(byId(a))[0] === '900,0,-150' && byId(a).paths.length === 2
     && store.mdoc.quads.every(corners => corners.length === 4),
   'join: an end dropped on the other\'s end joins them into one path, its old patches gone', knotsOf(byId(a)).join(' '));
@@ -367,7 +379,7 @@ check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-p
   // A middle point snaps too, but not onto itself or the points beside it.
   selectPaths(byId(a), 0);
   pick(byId(a), byId(a).paths[0].points[2]);
-  const snaps = shown.shape?.snaps?.map(p => p.join()) ?? [];
+  const snaps = shown.shape?.dragSnaps?.map(p => p.join()) ?? [];
   check(snaps.length > 0 && !snaps.includes('1000,0,0') && !snaps.includes('1000,0,100') && !snaps.includes('1000,0,200'),
     'join: a picked middle point snaps to any point but its own and its neighbours', snaps.join(' '));
   store.trailPoint = null;
@@ -410,6 +422,58 @@ check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-p
   check(!store.mdoc.trails!.some(other => other.id === x) && byId(w).paths.length === 2 && byId(w).network?.junctionArms.join() === '4',
     'crossing: a middle point dropped on another trail’s middle point crosses the two there — one network, four arms',
     JSON.stringify(byId(w).network));
+  store.trailPoint = null;
+
+  // ---- disconnecting a point: each side ends at a point of its own, and comes apart ------------------------------
+  const s = draw([5000, 0, 0], [5000, 0, 120], [5060, 0, 220]);
+  selectPaths(byId(s), 0);
+  pick(byId(s), 1);
+  const curve = (of: AuthoredTrail, path: number) => railBezierSegments(pathKnots(of, of.paths[path]), of.paths[path].handles);
+  const whole = curve(byId(s), 0);
+  const count = store.mdoc.trails!.length;
+  tools.disconnectSelectedPoint();
+  const other = store.mdoc.trails!.at(-1)!;
+  check(store.mdoc.trails!.length === count + 1 && knotsOf(byId(s)).join(' ') === '5000,0,0 5000,0,120'
+    && knotsOf(other).join(' ') === '5000,0,120 5060,0,220' && !byId(s).network && !other.network,
+  'disconnect: mid-path, the two sides come apart — a trail each, nothing joining them', knotsOf(other).join(' '));
+  const picked = pickedNow();
+  check(tools.trailSelection().length === 2 && picked?.trail === s && byId(s).points[picked.point].join() === '5000,0,120',
+    'disconnect: both sides stay selected, and the clicked path’s side keeps the point picked');
+  const sides = [...curve(byId(s), 0), ...curve(other, 0)];
+  check(sides.length === whole.length && sides.every((seg, i) => seg.every((p, k) => p.every((v, c) => Math.abs(v - whole[i][k][c]) < 1e-9))),
+    'disconnect: the sides keep the curve the path had');
+  tools.knotDrag(true);
+  tools.moveKnot(shown.knot!, [4985, 0, 120]);
+  runFrames();
+  tools.knotDrag(false);
+  check(knotsOf(byId(s)).at(-1) === '4985,0,120' && knotsOf(byId(other.id))[0] === '5000,0,120' && store.mdoc.trails!.length === count + 1,
+    'disconnect: dragged away, the point takes only its own side');
+
+  const f = draw([5300, 0, 0], [5300, 0, 150], [5300, 0, 300]);
+  selectPaths(byId(f), 0);
+  pick(byId(f), 1);
+  tools.armPathFrom();
+  tools.appendKnot([5400, 0, 220]);
+  tools.finishCreateTrail();
+  selectPaths(byId(f), 0);
+  pick(byId(f), 1);
+  const forked = store.mdoc.trails!.length;
+  tools.disconnectSelectedPoint();
+  check(store.mdoc.trails!.length === forked + 2
+    && [byId(f), ...store.mdoc.trails!.slice(-2)].every(part => part.paths.length === 1 && !part.network),
+  'disconnect: at a fork, three sides — three trails, no junction');
+
+  selectPaths(byId(w), 0);
+  pick(byId(w), 1);
+  const crossed = store.mdoc.trails!.length;
+  tools.disconnectSelectedPoint();
+  check(store.mdoc.trails!.length === crossed + 3 && !byId(w).network, 'disconnect: at a crossing, four');
+
+  selectPaths(byId(ring), 0);
+  pick(byId(ring), 2);
+  tools.disconnectSelectedPoint();
+  check(byId(ring).paths.length === 1 && knotsOf(byId(ring)).join(' ') === '2500,0,250 2350,0,100 2500,0,0 2650,0,100 2500,0,250'
+    && !byId(ring).network, 'disconnect: a loop broken at a point opens there, still one path', knotsOf(byId(ring)).join(' '));
   store.trailPoint = null;
 }
 

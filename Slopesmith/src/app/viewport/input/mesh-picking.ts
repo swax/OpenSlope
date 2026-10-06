@@ -7,6 +7,7 @@ import { cubicPoint } from '../../../core/math/bezier';
 import type { MeshControlPoint, MeshControlPointId } from '../../../core/mesh/control-points';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import type { ReferenceMesh } from '../../../core/reference/terrain';
+import type { TrailInterior } from '../../../core/mesh/trail-object';
 import { CTRL_NET_SEG, EDGE_PICK_PX } from '../constants';
 import type { Stage } from '../stage';
 
@@ -60,6 +61,8 @@ export interface MeshPickingAccess {
   subCage(): boolean;
   referenceSubCage(): boolean;
   authoredControlPoints(): readonly MeshControlPoint[];
+  /** The trails' inside vertices and edges, which a selection pick passes by (docs/023), or null for none. */
+  trailInterior(): TrailInterior | null;
 }
 
 /**
@@ -87,13 +90,17 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
 
   /** Nearest control-net corner to the cursor in SCREEN space (within a pixel radius), front-most when
    *  several overlap. Screen-space so you grab the control point you SEE: a 3D surface-distance test missed
-   *  corners on steep faces, where the corner floats well off the rendered surface the ray hits. */
-  function pickCorner(): number | null {
+   *  corners on steep faces, where the corner floats well off the rendered surface the ray hits. A `selecting`
+   *  pick (Edit's selection click) passes a trail's inside corners by, as the patch beneath is the trail's. */
+  function pickCorner(selecting = false): number | null {
     const rect = stage.renderer.domElement.getBoundingClientRect();
     const cx = ((stage.pointer.x + 1) / 2) * rect.width;  // cursor -> CSS pixels (stage.pointer is the click NDC)
     const cy = ((1 - stage.pointer.y) / 2) * rect.height;
-    return cornerAtScreen(cx, cy);
+    return cornerAtScreen(cx, cy, 16, selecting ? access.trailInterior()?.vertices : undefined);
   }
+
+  /** Whether a selection pick passes the edge a–b by: it is inside a trail. */
+  const insideTrail = (a: number, b: number) => access.trailInterior()?.edges.has(ekey(a, b)) ?? false;
 
   /** Nearest visible non-corner dot in the explicitly pinned authored sub-cages. Screen-space picking matches the point
    * sprites (and works on edge-on/overhanging views where a terrain ray is the wrong interaction primitive). */
@@ -167,15 +174,16 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     return best >= 0 ? best : null;
   }
 
-  /** The control-net corner nearest a CSS-pixel point, within a click radius, front-most when several overlap. */
-  function cornerAtScreen(cx: number, cy: number, pxThresh = 16): number | null {
+  /** The control-net corner nearest a CSS-pixel point, within a click radius, front-most when several overlap;
+   *  never one of `skip`. */
+  function cornerAtScreen(cx: number, cy: number, pxThresh = 16, skip?: ReadonlySet<number>): number | null {
     const net = access.net();
     if (!net) return null;
     const rect = stage.renderer.domElement.getBoundingClientRect();
     const maxD2 = reach(pxThresh) ** 2, v = new THREE.Vector3(), points = net.positions;
     let best = -1, bestZ = Infinity;
     for (let vertex = 0; vertex < points.length / 3; vertex++) {
-      if (access.vertexHidden(vertex) || !access.authoredControlPointVisible({ kind: 'vertex', vertex })) continue;
+      if (access.vertexHidden(vertex) || skip?.has(vertex) || !access.authoredControlPointVisible({ kind: 'vertex', vertex })) continue;
       const i = vertex * 3;
       v.set(points[i], points[i + 1], -points[i + 2]).project(stage.camera);
       if (v.z < -1 || v.z > 1) continue;
@@ -196,8 +204,9 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
 
   /** The control-net edge nearest the cursor on the selected terrain quad. Distance is measured against the
    *  actual sampled cubic cage edge in SCREEN space—not its endpoint chord—inside a generous pick band. A
-   *  corner still wins first, and a miss falls through to the cell face: vertex > edge > face. */
-  function pickEdgeAt(quad: number): [number, number] | null {
+   *  corner still wins first, and a miss falls through to the cell face: vertex > edge > face. A `selecting` pick
+   *  passes a trail's inside edges by, so a click there lands on its patch. */
+  function pickEdgeAt(quad: number, selecting = false): [number, number] | null {
     const preview = access.preview();
     if (!preview || !access.net() || access.quadHidden(quad)) return null;
     const [A, B, C, D] = preview.mesh.quads[quad];
@@ -208,13 +217,14 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
       const d2 = curveScreenDist2(a, b);
       if (d2 < bestD2) { bestD2 = d2; best = a < b ? [a, b] : [b, a]; }
     }
-    return bestD2 <= reach(EDGE_PICK_PX) ** 2 ? best : null;
+    if (!best || bestD2 > reach(EDGE_PICK_PX) ** 2) return null;
+    return selecting && insideTrail(best[0], best[1]) ? null : best;
   }
 
   /** Orthographic edge-on fallback: a face ray has zero area when viewed exactly from the side, so scan the
    *  visible control net directly in screen space. Pixel distance wins; coincident lines prefer the front-most
    *  edge, matching cornerAtScreen's overlap rule. Called only after the terrain raycast misses. */
-  function pickAnyEdgeAt(): [number, number] | null {
+  function pickAnyEdgeAt(selecting = false): [number, number] | null {
     const net = access.net();
     if (!net) return null;
     const limit = reach(EDGE_PICK_PX) ** 2;
@@ -222,7 +232,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     const c = net.positions, mid = new THREE.Vector3();
     for (let a = 0; a < net.adj.neighbors.length; a++) {
       for (const b of net.adj.neighbors[a] ?? []) {
-        if (b <= a || access.edgeHidden(a, b)) continue; // each visible undirected edge once
+        if (b <= a || access.edgeHidden(a, b) || (selecting && insideTrail(a, b))) continue; // each visible undirected edge once
         const d2 = curveScreenDist2(a, b);
         if (d2 > limit) continue;
         mid.set((c[a * 3] + c[b * 3]) / 2, (c[a * 3 + 1] + c[b * 3 + 1]) / 2,
@@ -370,7 +380,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
       : surfaceHit.object === reference ? 'reference' : 'authored';
 
     // Pinned sub-cage dots are points too. They win over corners exactly as their Edit click path does.
-    const authoredPoint = pickSubCagePoint() ?? (pickCorner() !== null ? { kind: 'vertex' as const } : null);
+    const authoredPoint = pickSubCagePoint() ?? (pickCorner(true) !== null ? { kind: 'vertex' as const } : null);
     const referencePoint = pickReferenceSubCagePoint() ?? (pickReferenceCorner() !== null ? { kind: 'vertex' as const } : null);
     if (surfaceSource === 'authored' && authoredPoint) return { kind: 'vertex', source: 'authored' };
     if (surfaceSource === 'reference' && referencePoint) return { kind: 'vertex', source: 'reference' };
@@ -385,11 +395,11 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
       const preview = access.preview();
       const quad = preview && surfaceHit?.faceIndex != null
         ? Math.floor(surfaceHit.faceIndex / preview.facesPerCell) : null;
-      if (quad !== null && pickEdgeAt(quad)) return { kind: 'line', source: 'authored' };
+      if (quad !== null && pickEdgeAt(quad, true)) return { kind: 'line', source: 'authored' };
     } else if (surfaceSource === 'reference') {
       if (pickRefEdge()) return { kind: 'line', source: 'reference' };
     } else {
-      if (pickFreeEdgeAt() || (stage.isOrtho && pickAnyEdgeAt())) return { kind: 'line', source: 'authored' };
+      if (pickFreeEdgeAt() || (stage.isOrtho && pickAnyEdgeAt(true))) return { kind: 'line', source: 'authored' };
     }
 
     return surfaceSource ? { kind: 'surface', source: surfaceSource } : null;

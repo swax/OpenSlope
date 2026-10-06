@@ -1,8 +1,8 @@
 import type { AuthoredTrail, PathHandles, QuadMeshDoc, TrailKnotSettings, TrailPath, TrailSettings, V3 } from '../../core/doc/types';
 import { nameIndex, nextTrailId } from '../../core/doc/ids';
 import {
-  compactTrail, connectedPaths, cutTrail, extendPath, fusePathsAt, joinTrails, mergeTrailPoints, pathCuts, pathEndsAt, pathKnots,
-  pathsThrough, pointArms, removeTrailPatches, resolveTrail, setTrailKnotValue, trailIsConnected, trailOwningQuad, trailPathQuads,
+  compactTrail, connectedPaths, cutTrail, disconnectPoint, extendPath, fusePathsAt, joinTrails, mergeTrailPoints, pathCuts, pathEndsAt, pathKnots,
+  pathsThrough, pointArms, removeTrailPatches, resolveTrail, separateTrail, setTrailKnotValue, trailIsConnected, trailOwningQuad, trailPathQuads,
   trailPathStations, trailPreview, trimPath, withNewPoint, withoutTrailPaths, withoutTrailPoint, withPath, type TrailRenumbering,
 } from '../../core/mesh/trail-object';
 import type { TrailStation } from '../../core/mesh/trail';
@@ -106,6 +106,8 @@ export function createTrailTools(deps: TrailToolDeps) {
   let drag: { base: QuadMeshDoc; trails: AuthoredTrail[]; picks: TrailPick[] } | null = null;
   let pendingMove: { trails: AuthoredTrail[]; base: QuadMeshDoc } | null = null;
   let moveFrame = 0;
+  /** Whether the ghost shows the merge a drag's drop would make now — so ending the drag clears only its own. */
+  let dropGhost = false;
   let lastError: string | null = null;
   /** The cell highlight is drawn from names, so it is refreshed on the render after a cut has landed. */
   let cellsStale = false;
@@ -286,9 +288,9 @@ export function createTrailTools(deps: TrailToolDeps) {
         lines.push({ nodes: path.points.map(point => indexOf(trail.id, point)), handles: path.handles });
       }
     }
-    // Points catch the path being drawn, or the picked point dragged (docs/023 · Networks).
-    const snaps = snapTargets().map(target => target.pos);
-    view().setTrailKnots(knots, picked >= 0 ? picked : null, whole ? selectionCentre() : null, { paths: lines, draw, snaps });
+    // Points catch the path being drawn, and the picked point dragged (docs/023 · Networks).
+    const snaps = snapTargets('draw').map(target => target.pos), dragSnaps = snapTargets('drag').map(target => target.pos);
+    view().setTrailKnots(knots, picked >= 0 ? picked : null, whole ? selectionCentre() : null, { paths: lines, draw, snaps, dragSnaps });
     if (rendered && cellsStale) { cellsStale = false; view().refreshEditCells(); seatMoveGizmo(); }
   }
 
@@ -311,14 +313,15 @@ export function createTrailTools(deps: TrailToolDeps) {
   // ---- joining (docs/023 · Networks) ----------------------------------------------------------------------------
 
   /**
-   * The points what is moving may land on: every point of every trail, but the end the path being drawn grows from;
-   * or, for a picked point about to be dragged, every point but itself and its neighbours along its paths, which it
-   * would fold a path onto.
+   * The points what is moving may land on. The next point `draw`n: every point of every trail but the one the path
+   * being drawn grows from. The picked point, `drag`ged: every point but itself and its neighbours along its paths,
+   * which it would fold a path onto — mid-draw too, and none while its trail is not in the document yet.
    */
-  function snapTargets(): SnapTarget[] {
+  function snapTargets(moving: 'draw' | 'drag'): SnapTarget[] {
     const drawn = drawingTrail();
     let skip: TrailPointRef[] = [];
-    if (drawn && drawing) {
+    if (moving === 'draw') {
+      if (!drawn || !drawing) return [];
       const anchor = drawAnchorPoint();
       skip = anchor === null ? [] : [{ trail: drawn.id, point: anchor }];
     } else {
@@ -342,8 +345,8 @@ export function createTrailTools(deps: TrailToolDeps) {
   }
 
   /** The point at exactly `pos` — where the viewport snapped — if what is moving may land on it. */
-  const targetAt = (pos: readonly number[]): SnapTarget | null =>
-    snapTargets().find(target => Math.hypot(target.pos[0] - pos[0], target.pos[1] - pos[1], target.pos[2] - pos[2]) < 1e-6) ?? null;
+  const targetAt = (pos: readonly number[], moving: 'draw' | 'drag'): SnapTarget | null =>
+    snapTargets(moving).find(target => Math.hypot(target.pos[0] - pos[0], target.pos[1] - pos[1], target.pos[2] - pos[2]) < 1e-6) ?? null;
 
   /** Whether other patches are joined to a trail in the document — which then cannot be taken into another. */
   function joinedToMesh(trail: AuthoredTrail): boolean {
@@ -635,7 +638,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     if (!trail || !drawing) return;
     store.trailPoint = null; // keep the gizmo off the newest point so it does not catch the next click
     previewAt = null; previewError = null;
-    const laid = lay(trail, drawing, [pos[0], pos[1], pos[2]], targetAt(pos));
+    const laid = lay(trail, drawing, [pos[0], pos[1], pos[2]], targetAt(pos, 'draw'));
     if (laid.kind === 'error') { lastError = laid.error; toast(laid.error, 'err'); }
     else if (laid.kind === 'start') startAt(laid.drawing, laid.trail);
     else {
@@ -704,7 +707,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     const trail = drawingTrail();
     let shown: AuthoredTrail | null = null, reason: string | null = null;
     if (trail && drawing && previewAt) {
-      const laid = lay(trail, drawing, previewAt, targetAt(previewAt));
+      const laid = lay(trail, drawing, previewAt, targetAt(previewAt, 'draw'));
       if (laid.kind === 'error') reason = laid.error;
       else if (laid.kind === 'cut' && laid.trail.paths.some(pathCuts)) shown = laid.trail;
     }
@@ -772,32 +775,57 @@ export function createTrailTools(deps: TrailToolDeps) {
     }
     flushMove();
     drag = null;
+    clearDropGhost();
     const failed = lastError;
     const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
-    const target = !failed && picked && trail && inDoc(trail) ? targetAt(trail.points[picked.point]) : null;
+    const target = !failed && picked && trail && inDoc(trail) ? targetAt(trail.points[picked.point], 'drag') : null;
     if (picked && trail && target) dropOn(trail, picked.point, target);
     syncTrailView();
     rebuildTools(); updateCmdSheet();
     if (failed) toast(`${failed} The trail keeps its last shape.`, 'err');
   }
 
+  /** What `point` of `trail` dropped on `target` makes: one point there — and, when the point is another trail's, one
+   *  network, `target`'s trail taking `trail` in after its own paths (`pathShift` of them) — or why it cannot. */
+  function mergeOnto(trail: AuthoredTrail, point: number, target: SnapTarget):
+  { merged: TrailRenumbering; pathShift: number; remove: AuthoredTrail[] } | { error: string } {
+    if (target.trail.id === trail.id) return { merged: mergeTrailPoints(trail, point, target.point), pathShift: 0, remove: [] };
+    if (joinedToMesh(trail)) return { error: JOINED_TRAIL };
+    const joined = joinTrails(target.trail, trail);
+    return { merged: mergeTrailPoints(joined.trail, point + joined.points, target.point), pathShift: joined.paths, remove: [trail] };
+  }
+
+  /** While a dragged point sits on a point it may land on, ghost the merge a drop there would make — the junction
+   *  the paths would meet in, or the one path two ends fuse into — over the drag's own live cut. */
+  function showDropGhost() {
+    const picked = drag ? pickedPoint() : null, trail = picked ? byId(picked.trail) : null;
+    const target = picked && trail && inDoc(trail) ? targetAt(trail.points[picked.point], 'drag') : null;
+    const merge = picked && trail && target ? mergeOnto(trail, picked.point, target) : null;
+    const preview = merge && 'merged' in merge
+      ? trailPreview(store.mdoc, merge.merged.trail, merge.remove.length ? [trail!] : []) : null;
+    const quads = preview?.ok && preview.quads.length ? preview.quads.map(quad => preview.doc.quads[quad]) : null;
+    if (!quads && !dropGhost) return;
+    dropGhost = !!quads;
+    view().setLoftPreview(quads, preview?.ok ? preview.doc : null);
+  }
+
+  function clearDropGhost() {
+    if (dropGhost) view().setLoftPreview(null);
+    dropGhost = false;
+  }
+
   /** `point` of `trail`, dropped on `target`: one point now — and one network, when it is another trail's. */
   function dropOn(trail: AuthoredTrail, point: number, target: SnapTarget) {
     const before = selectionPicks();
-    let merged: TrailRenumbering, pathShift = 0;
-    let remove: AuthoredTrail[] = [];
-    if (target.trail.id === trail.id) merged = mergeTrailPoints(trail, point, target.point);
-    else {
-      if (joinedToMesh(trail)) { lastError = JOINED_TRAIL; toast(JOINED_TRAIL, 'err'); return; }
-      const joined = joinTrails(target.trail, trail);
-      pathShift = joined.paths;
-      merged = mergeTrailPoints(joined.trail, point + joined.points, target.point);
-      remove = [trail];
-    }
+    const merge = mergeOnto(trail, point, target);
+    if ('error' in merge) { lastError = merge.error; toast(merge.error, 'err'); return; }
+    const { merged, pathShift, remove } = merge;
     // The selected paths of either trail, renumbered into the one it makes.
     const paths = before.flatMap(pick => pick.trail.id === trail.id ? pick.paths.map(path => path + pathShift)
       : pick.trail.id === target.trail.id ? pick.paths : []).flatMap(path => merged.paths[path] ?? []);
     if (!apply([merged.trail], { select: { [merged.trail.id]: [...new Set(paths)] }, remove })) return;
+    // A join mid-draw renumbers the path being drawn, perhaps into another trail: the drawing ends there.
+    if (drawing?.id === trail.id) endDrawing();
     const at = merged.points[target.point];
     store.trailPoint = at === null ? null : { trail: merged.trail.id, point: at };
     toast(target.trail.id === trail.id ? 'points joined — the paths meet there now' : 'joined into the other trail — one network now', 'ok');
@@ -808,6 +836,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     const move = pendingMove;
     pendingMove = null;
     if (move) apply(move.trails, { base: move.base, quiet: true });
+    if (drag) showDropGhost();
   }
 
   function queueMove(trails: AuthoredTrail[]) {
@@ -915,6 +944,41 @@ export function createTrailTools(deps: TrailToolDeps) {
     }
     syncTrailView();
     rebuildTools(); updateCmdSheet();
+  }
+
+  /**
+   * Break the picked point apart (the panel's "disconnect here"): each side there ends at a point of its own, at the
+   * same place — two mid-path, three at a fork — and a side no longer joined to the rest becomes a trail of its own,
+   * cut fresh. The selected paths stay selected as their pieces, and the focus path's side keeps the point picked,
+   * so a drag pulls that side away.
+   */
+  function disconnectSelectedPoint() {
+    const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
+    if (!picked || !trail || !inDoc(trail) || drawingTrail()) return;
+    const broken = disconnectPoint(trail, picked.point, focus()?.path ?? undefined);
+    if (!broken) return;
+    const parts = separateTrail(broken.trail);
+    const taken = [...docTrails()];
+    const nexts = parts.trails.map((part, i) => {
+      if (i === 0) return part;
+      const made = { ...part, id: nextTrailId(taken) };
+      taken.push(made);
+      return made;
+    });
+    const select: Record<string, number[]> = {};
+    for (const path of selectionPicks().find(pick => pick.trail.id === trail.id)?.paths ?? []) {
+      for (const piece of broken.pieces[path] ?? []) {
+        const at = parts.paths[piece];
+        if (at) (select[nexts[at.trail].id] ??= []).push(at.path);
+      }
+    }
+    const sides = pointArms(trail)[picked.point] ?? 0;
+    if (!apply(nexts, { select })) return;
+    const at = parts.points[picked.point];
+    store.trailPoint = at ? { trail: nexts[at.trail].id, point: at.point } : null;
+    syncTrailView();
+    rebuildTools(); updateCmdSheet();
+    toast(`disconnected into ${sides} sides${nexts.length > 1 ? `, ${nexts.length} trails now` : ''} · drag the point to pull its side away`, 'ok');
   }
 
   /** Every selected path, or the one being drawn: what a setting change applies to. */
@@ -1037,7 +1101,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     },
     appendKnot, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
     selectKnot, knotDrag, moveKnot, transformTrail, focusPath, selectTrailNode, setTrailHandles, deleteSelectedTrailKnot,
-    setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
+    disconnectSelectedPoint, setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings,
   };
 }

@@ -933,7 +933,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         const hit = stage.ray.intersectObject(access.terrain(), false)[0];
         if (hit && hit.faceIndex != null) {
           const quad = Math.floor(hit.faceIndex / preview.facesPerCell);
-          const edge = layers.picking.pickEdgeAt(quad);
+          const edge = layers.picking.pickEdgeAt(quad, true);
           if (edge) {
             if (!filtered('line', 'authored')) {
               layers.edgeExtrusion.setSideHint(quad); stage.cb.onSelectEdgeLoop?.(edge, e.shiftKey); return;
@@ -943,7 +943,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
             stage.cb.onSelectCellLoop?.(quad, e.shiftKey); return;            // face double-click → the face-loop strip
           }
         }
-        const edge = stage.isOrtho ? layers.picking.pickAnyEdgeAt() : null;
+        const edge = stage.isOrtho ? layers.picking.pickAnyEdgeAt(true) : null;
         if (edge) {
           if (!filtered('line', 'authored')) {
             layers.edgeExtrusion.setSideHint(null); stage.cb.onSelectEdgeLoop?.(edge, e.shiftKey); return;
@@ -1363,9 +1363,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && sel.editPickKinds.prop && rejectUnsupportedPropPick(true, ctrl)) return;
 
     // mountain control-net editing: with the cage shown, click a terrain corner to select it and seat
-    // the translate gizmo on it; dragging a gizmo handle then moves it on a constrained axis / plane.
+    // the translate gizmo on it; dragging a gizmo handle then moves it on a constrained axis / plane. A trail's
+    // inside corners and edges are passed by, so the click lands on its patch and selects its path (docs/023).
     if (access.isMountain() && layers.cage.cage && access.mode() === 'edit') {
-      const ci = layers.picking.pickCorner();
+      const ci = layers.picking.pickCorner(true);
       if (ci !== null && !filteredEditPick('vertex', 'authored')) {
         if ((shift || ctrl) && layers.selection.referenceMeshSelectionActive()) return; // modified picks never cross surfaces/families
         stage.cb.onSelectKnot(null);
@@ -1453,7 +1454,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       const hit = stage.ray.intersectObject(access.terrain(), false)[0];
       if (hit && hit.faceIndex != null) {
         const quad = Math.floor(hit.faceIndex / preview.facesPerCell); // face index → quad id (topology-general)
-        const edge = layers.picking.pickEdgeAt(quad);
+        const edge = layers.picking.pickEdgeAt(quad, true);
         if (edge && !filteredEditPick('line', 'authored')) {
           if ((shift || ctrl) && layers.selection.referenceMeshSelectionActive()) return;
           stage.cb.onSelectKnot(null);
@@ -1472,7 +1473,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
           return;
         }
       }
-      const edge = stage.isOrtho ? layers.picking.pickAnyEdgeAt() : null;
+      const edge = stage.isOrtho ? layers.picking.pickAnyEdgeAt(true) : null;
       if (edge && !filteredEditPick('line', 'authored')) {
         if ((shift || ctrl) && layers.selection.referenceMeshSelectionActive()) return;
         stage.cb.onSelectKnot(null);
@@ -1705,7 +1706,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (!(e.ctrlKey || e.metaKey) || access.mode() !== 'edit' || !access.isMountain() || !layers.cage.cage
       || layers.transforms.mode !== 'move') return false;
     stage.castAt(e);
-    return layers.picking.pickSubCagePoint() !== null || layers.picking.pickCorner() !== null;
+    return layers.picking.pickSubCagePoint() !== null || layers.picking.pickCorner(true) !== null;
   }
 
   function pointerUp(e: PointerEvent) {

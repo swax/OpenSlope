@@ -864,5 +864,32 @@ for (const reverse of [false, true]) {
     && toastEl.textContent.includes('knots'), 'lock: a trail point is refused, pointing at the trail\'s knots', toastEl.textContent);
 }
 
+// ---- deleting or dissolving something locked: refused with a reason — the patches are their owner's ------------
+{
+  const { store, session } = editor();
+  const cb = session.viewportCallbacks;
+  setQuadsLocked(store.mdoc, [0], true);
+  const before = store.mdoc;
+  cb.onSelectCorner(1); // a corner of the locked patch, shared with the next
+  session.deleteSelectedMesh();
+  check(store.mdoc === before && toastEl.className.includes('err') && toastEl.textContent.includes('locked by hand'),
+    'lock: deleting a point of a locked patch is refused, saying why', toastEl.textContent);
+  session.dissolveSelectedMesh();
+  check(store.mdoc === before && toastEl.textContent.startsWith('Can’t dissolve'), 'lock: … and so is dissolving it');
+  cb.onSelectEdge?.([0, 1], 'replace');
+  session.deleteSelectedMesh();
+  check(store.mdoc === before, 'lock: … and deleting an edge of it');
+
+  store.mdoc.trails = [{ id: 'trail:0000', points: [], paths: [{ points: [], settings: { ...TRAIL_SETTINGS_DEFAULTS } }],
+    vertices: store.mdoc.quads[0].map(vertex => store.mdoc.vertexIds[vertex]), quads: [store.mdoc.quadIds[0]] }];
+  cb.onSelectCorner(1);
+  check(session.meshLockReason('delete')?.includes('of a trail') === true, 'lock: a trail’s patch points at the trail instead');
+
+  const far = store.mdoc.vertices.length / 3 - 1; // the last corner, nowhere near the locked patch
+  cb.onSelectCorner(far);
+  session.deleteSelectedMesh();
+  check(store.mdoc !== before && store.mdoc.quads.length === before.quads.length - 1, 'lock: an unlocked point still deletes');
+}
+
 console.log(failures ? '\nSELECTION: FAIL' : '\nSELECTION: PASS');
 process.exit(failures ? 1 : 0);

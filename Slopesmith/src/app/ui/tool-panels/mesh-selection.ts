@@ -33,7 +33,7 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
     hideSelectedMesh, showAllHidden, hiddenMeshCount, toggleSelectedControlCages, selectedControlCagesVisible, canEditCurvature,
     selectedPatchLockState, toggleSelectedPatchLocks,
     selectConnected, selectOverlappingVertices,
-    deleteSelectedMesh, dissolveSelectedMesh, flipSelectedMesh, meshDeleteTargetCount, canDeleteMeshSelection,
+    deleteSelectedMesh, dissolveSelectedMesh, flipSelectedMesh, meshDeleteTargetCount, canDeleteMeshSelection, meshLockReason,
     ripEdges, insertCellEdge, resetCellShape, creaseVertices, smoothVertices, createPatchesFromEdges,
     startBridge, beginEdgeExtrusion, beginPointWeld, beginEdgeWeld, weldSelectedEdgeCrossing, weldSelectedCoincidentVertices,
   } = edit;
@@ -415,7 +415,10 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
       : freeEdges && !count
       ? `delete ${freeEdges === 1 ? 'edge' : `${freeEdges} edges`} (Del)`
       : `delete ${count} ${count === 1 ? 'patch' : 'patches'} (Del)`;
-    tip(g.add({ del: deleteSelectedMesh }, 'del').name(label), title);
+    // Locked patches (a trail's, or locked by hand) are their owner's to remove: the button says why it cannot.
+    const locked = meshLockReason('delete');
+    const button = tip(g.add({ del: deleteSelectedMesh }, 'del').name(label), locked ?? title);
+    if (locked) button.disable();
   }
 
   /** Standard modelling distinction: Dissolve preserves a surface by fusing incident patches; Delete removes
@@ -427,10 +430,11 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
     const result = applyMeshDissolve(doc,
       { vertices: vertexIndices(doc, vertices), edges: edgeIndices(doc, store.edgeSel) });
     const noun = store.edgeSel.length ? (store.edgeSel.length === 1 ? 'edge' : 'edges') : (vertices.length === 1 ? 'point' : 'points');
-    const button = tip(g.add({ dissolve: dissolveSelectedMesh }, 'dissolve').name(`dissolve ${noun} (D)`), result.ok
+    const locked = meshLockReason('dissolve');
+    const button = tip(g.add({ dissolve: dissolveSelectedMesh }, 'dissolve').name(`dissolve ${noun} (D)`), locked ?? (result.ok
       ? 'Remove the selection while preserving the surface as one larger quad. Intermediate boundary points used by neighboring patches remain in place and are highlighted as red T-junctions.'
-      : result.error);
-    if (!result.ok) button.disable();
+      : result.error));
+    if (!result.ok || locked) button.disable();
   }
 
   /** Standard last row for every Edit selection; routed through the host's exact Escape clearing path. */

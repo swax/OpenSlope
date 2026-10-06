@@ -127,16 +127,25 @@ translate gizmo goes on it, and a drag re-cuts the trail live — before the las
 picked point also shows the drawn path's two pink Bézier handles there, which drag the same way (docs/014 · Bézier
 handles) and bend that path through the point; at a junction each path has its own. Backspace removes the picked
 point, or else the newest; Enter or Escape finishes, leaving the path selected. A trail that never had a path of two
-points was never in the document and is dropped.
+points was never in the document and is dropped. The point bulbs — and the ghost, and the rings below — hold their
+size on screen however far off the camera is (6.5 px, the picked one 8.5 px), each with a dark rim that keeps it
+apart from the pale ribbon under it.
 
 **Joining.** Any point can land on any point. While a path is drawn, and while a picked point is dragged, every
-point of every trail catches it within 14 px on screen (`TrailShape.snaps`) — all but the point a path grows from,
-or a dragged point's own neighbours along its paths, which it would fold a path onto: it sits exactly on the point,
-marked amber, and the ghost shows the result. The FIRST point of a new trail laid on a FREE END (one path's end with
+point it may land on is ringed in amber — a dark-centred ring where it is another trail's, round the bulb where it is
+shown — so where it can attach is plain before it gets there. Each catches it within 14 px on screen, measured in the view alone — two points that overlap there
+catch at any depth, since nobody can line them up along the view by eye — the next point
+drawn by `TrailShape.snaps`: every point of every trail but the one the path grows from; the picked point dragged by
+`dragSnaps`: every point but itself and its neighbours along its paths, which it would fold a path onto, so a point
+picked mid-draw is never caught by its own place. It sits exactly on the point, filled amber, and the ghost shows the
+result: for a point drawn, what the click would lay; for a point dragged, over the drag's own live cut, the merge
+its drop would make — the junction the paths would meet in, or the one path two ends fuse into — computed as the
+drop computes it, and gone with the drop. The FIRST point of a new trail laid on a FREE END (one path's end with
 nothing else there) goes on drawing that path; on any other point it starts a new path there. A LATER point laid on
 one ends the path on it — a fork from a middle point, a merge, a bypass back onto its own trail, a loop closed on
 its own first point — and the drawing ends. A dragged point dropped on another becomes it (`mergeTrailPoints`):
-dropped on a middle point of another path it makes a crossing. When the point is another trail's, the two trails
+dropped on a middle point of another path it makes a crossing; one dropped mid-draw ends the drawing, the path it
+was drawing renumbered by the join. When the point is another trail's, the two trails
 become one network (`joinTrails`): the other trail's id, the first taken out with its patches — one history step —
 and refused if other patches are joined to the trail taken in, which would have to be cut afresh. Wherever two path
 ends come to meet alone and the two paths are cut alike, they FUSE into one path (`fusePathsAt`): the
@@ -146,7 +155,10 @@ the direction of travel. Paths cut differently stay two and meet in a joint.
 
 **Selecting.** A click on a trail patch selects the PATH it belongs to: its patches become the patch selection, its
 point bulbs and guide show, and the Tools panel is the path's own. Every patch is exactly one path's — its runs'
-ribbons, and the junction patches carrying its lanes on (`trailPathQuads`). Ctrl+click adds or drops a whole path, a
+ribbons, and the junction patches carrying its lanes on (`trailPathQuads`). Only the trail moves its vertices and
+edges, so a click on one inside it — its centre seam, the station lines between its patches, a hub
+(`trailInterior`) — passes to the patch beneath and selects the path too; the open rim stays a vertex or an edge
+like any other, for the welds, bridges and extrusions that join other patches to the trail. Ctrl+click adds or drops a whole path, a
 box takes every path it catches whole, and a double-click, Ctrl+A or the panel's **select the whole network** takes
 every path joined to the selection. The selected paths are not stored anywhere; they are whichever whole paths'
 patches are exactly the patch selection, so any other selection is already "not a trail" (the picked point is kept,
@@ -161,7 +173,13 @@ follow. It is World-framed: the mesh's Surface slide does not apply to a trail.
 **The panel** exposes the points, the selected paths' section (target width and length, centre dish and seam, turn
 density), banking, the Mesa matched-half/tight-turn texture preset, **✚ add points before the start** and **after
 the end** (the one selected path's: both with no point picked, the picked end's with an end picked), **⑂ start a new
-path here** (any picked point but a free end), **✕ delete this point**, **select the whole network**, **select
+path here** (any picked point but a free end), **✂ disconnect here** (any point two arms or more meet at,
+`disconnectPoint`: every path running through it is cut there, keeping its shape — the handles either side of the cut
+fixed where the curve ran — and every arm ends at a point of its own at the same place, carrying the point's values:
+two sides mid-path, three at a fork, four at a crossing. A loop broken this way opens into one path. Sides no longer
+joined become trails of their own (`separateTrail`): the network holding the first path keeps the trail and re-cuts
+in place, the others are cut fresh. The selected paths stay selected as their pieces, and the clicked path's side
+keeps the point picked, so a drag pulls it away; dropped back on a point, it joins again), **✕ delete this point**, **select the whole network**, **select
 overlapping vertices**, **⇥ dissolve network into patches** and **✕ delete path**. Every setting re-cuts as it
 changes, applies to every selected path — the panel shows the clicked path's values — and becomes the next new
 path's starting value. Deleting a point takes it out of every path through it, each then running straight past it,
@@ -204,12 +222,14 @@ point drag cuts once per frame, each time from the document as it stood when the
 pile up each other's minted and retired ids.
 
 **Ownership.** Every owned patch is locked from the moment it is cut: sculpt brushes and Edit transforms leave it
-alone, and only the trail moves it. Patches joined to a ribbon — a Weld Loops seam, a retopologised mountain — share
+alone, and only the trail moves it. Edit's Delete and Dissolve refuse a vertex, edge or patch selection that would
+take or rewrite a locked patch — a trail's, or one locked by hand — and say why (`meshLockReason`): a trail's paths
+go with the trail's own delete. Patches joined to a ribbon — a Weld Loops seam, a retopologised mountain — share
 its rim vertices, so a re-cut moves those vertices and the joined patches stretch to follow. While anything shares
 its vertices the trail keeps its layout: each run shares exactly the spans it already has out across its point
 segments (`spanCount`, by the same length and turn demand the adaptive count reads), and a spline with more segments
 than spans is refused — and so is a path or a junction added or removed. A trail whose ribbons something has cut into
-— a split, a delete — no longer resolves; its panel says so and offers only dissolve and delete. **Dissolve** forgets
+— a loop cut, say — no longer resolves; its panel says so and offers only dissolve and delete. **Dissolve** forgets
 the whole network's paths and leaves the patches as ordinary (still locked) mesh, the escape hatch for hand work on
 them.
 

@@ -559,7 +559,7 @@ export class Viewport {
         return;
       }
       if (this.gizmoKind === 'trailknot') {
-        if (!dragging) this.trailTool.clearSnap();
+        this.trailTool.knotDragging(dragging);
         this.cb.onTrailKnotDrag?.(dragging);
       }
       if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner) this.cb.onPathHandleDrag?.(this.pathHandles.owner, dragging);
@@ -869,6 +869,7 @@ export class Viewport {
       subCage: () => this.cageLayer.subCage,
       referenceSubCage: () => this.cageLayer.referenceSubCage,
       authoredControlPoints: () => this.cageLayer.authoredControlPoints,
+      trailInterior: () => this.cb.trailInterior?.() ?? null,
     });
     // depth-only mask sharing the terrain geometry; shown only in cage-only view so hidden wires dim
     this.cageLayer.setDepthMaskGeometry(this.terrain.geometry);
@@ -1238,6 +1239,7 @@ export class Viewport {
       this.cageLayer.scaleHandleNubs(); // keep the tangent nubs screen-constant as the camera moves
       this.selection.scaleEditMarkers(); // ...and the corner marker + cage handle spheres
       this.weldTool.scaleMarker();
+      this.trailTool.scaleMarkers(); // ...and the trail's point bulbs and snap rings
       sceneMs += performance.now() - phaseStarted;
       // Last before submission: seat the headset rig on whatever the rider is standing on this frame — the board
       // the physics above has just moved, or their own feet — so the view and the world agree.

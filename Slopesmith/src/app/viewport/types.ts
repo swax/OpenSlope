@@ -8,6 +8,7 @@ import type { EdgeExtrusionPlacement, EdgeExtrusionPlan } from '../../core/mesh/
 import type { PlacementEndpoint } from './input/placement-constraint';
 import type { EdgeCrossing } from '../../core/mesh/edge-crossings';
 import type { CoincidentVertices } from '../../core/mesh/coincident-vertices';
+import type { TrailInterior } from '../../core/mesh/trail-object';
 import type { ExternalSoundEmitter } from '../../core/effects/external-sound';
 import type { TextureFlipEffect } from '../../core/effects/world-effects';
 import type { RigLight } from '../../core/reference/lights';
@@ -584,6 +585,9 @@ export interface ViewportCallbacks {
   onTransformTrail?(xf: TrailTransform): void;
   /** Edit mode, drawing a trail: where a click would lay the next point now, or null — for the ghost of it. */
   onTrailHover?(pos: V3 | null): void;
+  /** Edit mode: the trails' inside vertices and edges (docs/023), which a selection click passes by to the patch
+   *  beneath — so it selects the trail's path instead. */
+  trailInterior?(): TrailInterior | null;
   /** A Bézier handle of the selected path was clicked (docs/014). */
   onSelectPathHandle?(owner: PathOwner, node: number, side: PathHandleSide): void;
   /** The selected handle's gizmo moved it to this data-space point; `independent` (Alt) breaks it from its twin. */

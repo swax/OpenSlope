@@ -9,12 +9,18 @@ import type { TrailTransform } from '../types';
 
 export type { TrailTransform };
 
-const POINT_GEO = new THREE.SphereGeometry(1.15, 10, 8);
+const POINT_GEO = new THREE.SphereGeometry(1, 12, 8); // unit: every marker is sized on screen, each frame
 const POINT_COLOR = 0x50d8d0;
-const SNAP_COLOR = 0xffc040; // amber: a point about to land on one already there
+const SNAP_COLOR = 0xffc040; // amber: a point a moving one may land on, and the one it is about to
+const RIM_COLOR = 0x041416; // the dark edge that keeps a marker apart from the ribbon under it
 /** How near, on screen, the cursor or a dragged point has to come to another point to snap onto it. */
 const SNAP_PX = 14;
 const LINE_COLOR = 0x8ffff8;
+/** Marker radii on screen, px: a point's bulb, the picked one's, the dark rim round each, the amber ring round a
+ *  point a moving one may land on (with a dark middle, where no bulb fills it), and the point it is about to. */
+const POINT_PX = 6.5, PICKED_PX = 8.5, RIM_PX = 2, CATCH_PX = 12, CATCH_RING_PX = 3, SNAPPED_PX = 10;
+/** Draw order among the markers, which all draw over everything (each marker group's own order is 10 000). */
+const enum Layer { Catch = 1, CatchHole, Rim, Bulb, PickedRim, Picked, SnapRim, Snapped }
 
 /**
  * A trail's centre splines in Edit mode (docs/023): a bulb per shown point, the rail Catmull-Rom guide along each
@@ -27,8 +33,11 @@ const LINE_COLOR = 0x8ffff8;
  * placement, and the guide runs on to the cursor — from the end of the path being drawn, or from the point a new
  * path leaves (`TrailShape.draw`). Each hover is reported too, so the host can ghost what the click would lay.
  *
- * Points a moving point may land on (`TrailShape.snaps`, docs/023 · Networks) catch the cursor, and a dragged point,
- * within `SNAP_PX` on screen: the point lands exactly there, marked in amber, and the host joins the two.
+ * Points a moving point may land on (`TrailShape.snaps` for the next one drawn, `dragSnaps` for the picked one
+ * dragged; docs/023 · Networks) are ringed in amber while it moves, and catch the cursor, or the dragged point,
+ * within `SNAP_PX` on screen — overlapping in the view, at whatever depth — and the point lands exactly there,
+ * filled amber, and the host joins the two. Every marker keeps its size on screen however far off the camera is,
+ * with a dark rim to stand out from the ribbon.
  *
  * Paths selected with no point picked carry the gizmo at their patches' centre (kind `'trail'`): Move, Rotate and
  * Scale report the transform from the drag's start (`TrailTransform`), and the host takes every point and dragged
@@ -41,11 +50,13 @@ export interface TrailShapePath {
 }
 
 /** What the shown points are part of: the paths through them, where drawing goes on — the end of one of those
- *  paths, or a new path from the shown point `from` — and the points a moving point snaps onto. */
+ *  paths, or a new path from the shown point `from` — and the points the next point drawn (`snaps`) and the picked
+ *  point dragged (`dragSnaps`) snap onto. */
 export interface TrailShape {
   paths: readonly TrailShapePath[];
   draw?: { path: number | null; end: 'start' | 'end'; from: number | null };
   snaps?: readonly V3[];
+  dragSnaps?: readonly V3[];
 }
 
 export function createTrailToolLayer(
@@ -58,8 +69,9 @@ export function createTrailToolLayer(
   let knots: V3[] = [];
   let paths: TrailShapePath[] = [];
   let draw: TrailShape['draw'] = undefined;
-  /** Points to snap onto, and the one the hover or a drag sits on now. */
+  /** Points to snap onto — the next point drawn, and the picked one dragged — and the one it sits on now. */
   let snaps: V3[] = [];
+  let dragSnaps: V3[] = [];
   let snapped: V3 | null = null;
   let selected: number | null = null;
   let hover: PlacementEndpoint | null = null;
@@ -73,22 +85,51 @@ export function createTrailToolLayer(
   let wholePivot: V3 | null = null;
   /** A whole-selection drag's start, scene space: the anchor's pose. */
   let wholeDrag: { pivot: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 } | null = null;
-  const pointMat = new THREE.MeshBasicMaterial({ color: POINT_COLOR, depthTest: false, depthWrite: false });
-  const snapDot = new THREE.Mesh(POINT_GEO, new THREE.MeshBasicMaterial({ color: SNAP_COLOR, depthTest: false, depthWrite: false }));
-  const selectedMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false });
-  const dots = new THREE.Group();
+  const markerMat = (color: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false });
+  const pointMat = markerMat(POINT_COLOR), selectedMat = markerMat(0xffffff), rimMat = markerMat(RIM_COLOR);
+  const snapMat = markerMat(SNAP_COLOR);
+  /** A marker `px` across on screen, drawn at `layer`; never hit by a scene-wide pick (pickKnot tests the rims). */
+  const marker = (material: THREE.Material, layer: Layer, px: number) => {
+    const mesh = new THREE.Mesh(POINT_GEO, material);
+    mesh.renderOrder = layer;
+    mesh.userData.px = px;
+    mesh.raycast = () => { /* picked explicitly */ };
+    return mesh;
+  };
+  const dots = new THREE.Group(); // a bulb and a rim per shown point
   const knotDots: THREE.Mesh[] = [];
-  const hoverDot = new THREE.Mesh(POINT_GEO, pointMat);
+  const knotRims: THREE.Mesh[] = [];
+  const catches = new THREE.Group(); // an amber ring per point a moving one may land on
+  const catchRings: THREE.Mesh[] = [];
+  const cursor = new THREE.Group(); // the next point's ghost, or the point it snaps onto
+  const hoverRim = marker(rimMat, Layer.Rim, POINT_PX + RIM_PX);
+  const hoverDot = marker(pointMat, Layer.Bulb, POINT_PX);
+  const snapRim = marker(rimMat, Layer.SnapRim, SNAPPED_PX + RIM_PX);
+  const snapDot = marker(snapMat, Layer.Snapped, SNAPPED_PX);
+  cursor.add(hoverRim, hoverDot, snapRim, snapDot);
   const lineMat = new THREE.LineBasicMaterial({ color: LINE_COLOR, depthTest: false, depthWrite: false });
   const line = new THREE.Line(new THREE.BufferGeometry(), lineMat); // a new path, from its point to the cursor
   const pathLines: THREE.Line[] = [];
   const moveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected knot, Z negated by hand
   const wholeHandle = new THREE.Object3D(); // …and for the whole trail, at its ribbon's centre
-  for (const object of [dots, hoverDot, line, snapDot]) {
+  for (const object of [dots, catches, cursor, line]) {
     object.visible = false;
     object.renderOrder = 10_000;
     object.raycast = () => { /* the knot bulbs are picked explicitly by pickKnot */ };
     stage.worldRoot.add(object);
+  }
+  const scratch = new THREE.Vector3();
+
+  /** Hold every shown marker at its size on screen, wherever the camera has gone (the render loop calls it). */
+  function scaleMarkers() {
+    for (const group of [dots, catches, cursor]) {
+      if (!group.visible) continue;
+      for (const child of group.children) {
+        if (!child.visible) continue;
+        const px = (child.userData.px as number | undefined) ?? POINT_PX;
+        child.scale.setScalar(Math.max(1e-4, stage.pointMarkerRadius(child.getWorldPosition(scratch), px)));
+      }
+    }
   }
   moveHandle.visible = false;
   stage.scene.add(moveHandle);
@@ -112,20 +153,41 @@ export function createTrailToolLayer(
     target.visible = true;
   }
 
-  /** The snap knot nearest a point, by `distance` in the scene, within `SNAP_PX` on screen of it — or null. */
-  function snapNear(distance: (at: THREE.Vector3) => number): V3 | null {
-    let best: V3 | null = null, bestRatio = 1;
-    for (const target of snaps) {
-      const at = dataToScene(target);
-      const ratio = distance(at) / (SNAP_PX * stage.worldPerPixel(at));
-      if (ratio <= bestRatio) { best = target; bestRatio = ratio; }
+  /** Where a scene-space point shows on the canvas, in CSS px, and its depth there — null off the view. */
+  function onScreen(at: THREE.Vector3): { x: number; y: number; z: number } | null {
+    const rect = stage.renderer.domElement.getBoundingClientRect();
+    const v = at.clone().project(stage.camera);
+    if (v.z < -1 || v.z > 1) return null;
+    return { x: ((v.x + 1) / 2) * rect.width, y: ((1 - v.y) / 2) * rect.height, z: v.z };
+  }
+
+  /** The cursor on the canvas, in CSS px. */
+  function cursorOnScreen(): { x: number; y: number } {
+    const rect = stage.renderer.domElement.getBoundingClientRect();
+    return { x: ((stage.pointer.x + 1) / 2) * rect.width, y: ((1 - stage.pointer.y) / 2) * rect.height };
+  }
+
+  /**
+   * The snap point showing nearest `from` on the canvas, within `SNAP_PX` — the front-most of any showing together
+   * — or null. Only the view counts, never depth: two points overlapping on screen are as near as anyone can line
+   * them up by eye, whatever lies between them along the view.
+   */
+  function snapNear(targets: readonly V3[], from: { x: number; y: number } | null): V3 | null {
+    if (!from) return null;
+    let best: V3 | null = null, bestD2 = SNAP_PX * SNAP_PX, bestZ = Infinity;
+    for (const target of targets) {
+      const at = onScreen(dataToScene(target));
+      if (!at) continue;
+      const d2 = (at.x - from.x) ** 2 + (at.y - from.y) ** 2;
+      if (d2 > SNAP_PX * SNAP_PX) continue;
+      if (d2 < bestD2 - 0.25 || (Math.abs(d2 - bestD2) <= 0.25 && at.z < bestZ)) { best = target; bestD2 = d2; bestZ = at.z; }
     }
     return best;
   }
 
   function placement(axisLocked = false): PlacementEndpoint | null {
     // A point under the cursor takes the new one exactly, so the host can join the two there.
-    snapped = snapNear(at => stage.ray.ray.distanceToPoint(at));
+    snapped = snapNear(snaps, cursorOnScreen());
     if (snapped) return { pos: [snapped[0], snapped[1], snapped[2]], vertex: null };
     // a trail is drawn over the ground, so every knot takes the surface (lifted), not just the first
     return resolvePlacementEndpoint(
@@ -133,27 +195,48 @@ export function createTrailToolLayer(
     );
   }
 
+  /** Whether the picked point is being dragged now. */
+  const draggingKnot = () => stage.gizmoKind === 'trailknot' && stage.gizmo.dragging;
+
+  /** Keep `pool` at `count` markers, made by `make` for the one at each place, in `group`. */
+  function fill(pool: THREE.Mesh[], group: THREE.Group, count: number, make: (i: number) => THREE.Mesh) {
+    while (pool.length < count) { const mesh = make(pool.length); pool.push(mesh); group.add(mesh); }
+    while (pool.length > count) group.remove(pool.pop()!);
+  }
+
   function redraw() {
-    while (knotDots.length < knots.length) {
-      const dot = new THREE.Mesh(POINT_GEO, pointMat);
-      dot.renderOrder = 10_000;
-      dot.raycast = () => { /* scene-wide picks pass the bulbs by; knotAtPointer tests them itself */ };
-      dot.userData.trailKnot = knotDots.length;
-      knotDots.push(dot);
-      dots.add(dot);
-    }
-    while (knotDots.length > knots.length) dots.remove(knotDots.pop()!);
+    fill(knotDots, dots, knots.length, () => marker(pointMat, Layer.Bulb, POINT_PX));
+    fill(knotRims, dots, knots.length, i => {
+      const rim = marker(rimMat, Layer.Rim, POINT_PX + RIM_PX);
+      rim.userData.trailKnot = i; // a click on a point has to hit the bulb or its rim
+      return rim;
+    });
     knots.forEach((knot, i) => {
+      const px = i === selected ? PICKED_PX : POINT_PX;
       knotDots[i].position.set(knot[0], knot[1], knot[2]);
       knotDots[i].material = i === selected ? selectedMat : pointMat;
-      knotDots[i].scale.setScalar(i === selected ? 1.5 : 1);
+      knotDots[i].userData.px = px;
+      knotDots[i].renderOrder = i === selected ? Layer.Picked : Layer.Bulb; // over any point at the same place
+      knotRims[i].position.set(knot[0], knot[1], knot[2]);
+      knotRims[i].userData.px = px + RIM_PX;
+      knotRims[i].renderOrder = i === selected ? Layer.PickedRim : Layer.Rim;
     });
     dots.visible = knots.length > 0;
-    hoverDot.visible = !!(active && hover) && !snapped;
-    if (hover) hoverDot.position.set(hover.pos[0], hover.pos[1], hover.pos[2]);
-    snapDot.visible = !!snapped && (!!(active && hover) || stage.gizmo.dragging);
-    if (snapped) { snapDot.position.set(snapped[0], snapped[1], snapped[2]); snapDot.scale.setScalar(1.8); }
-    const next = active && hover ? hover.pos : null;
+    // Where the point moving now may land: the next one drawn, or the picked one dragged.
+    const dragging = draggingKnot();
+    const targets = dragging ? dragSnaps : active ? snaps : [];
+    fill(catchRings, catches, targets.length * 2, i => i % 2
+      ? marker(rimMat, Layer.CatchHole, CATCH_PX - CATCH_RING_PX) : marker(snapMat, Layer.Catch, CATCH_PX));
+    catchRings.forEach((ring, i) => { const at = targets[i >> 1]; ring.position.set(at[0], at[1], at[2]); });
+    catches.visible = targets.length > 0;
+    const ghost = !!(active && hover) && !snapped && !dragging;
+    hoverDot.visible = hoverRim.visible = ghost;
+    if (hover) for (const dot of [hoverDot, hoverRim]) dot.position.set(hover.pos[0], hover.pos[1], hover.pos[2]);
+    snapDot.visible = snapRim.visible = !!snapped && (!!(active && hover) || dragging);
+    if (snapped) for (const dot of [snapDot, snapRim]) dot.position.set(snapped[0], snapped[1], snapped[2]);
+    cursor.visible = ghost || snapDot.visible;
+    scaleMarkers();
+    const next = active && hover && !dragging ? hover.pos : null;
     while (pathLines.length < paths.length) {
       const pathLine = new THREE.Line(new THREE.BufferGeometry(), lineMat);
       pathLine.renderOrder = 10_000;
@@ -246,6 +329,7 @@ export function createTrailToolLayer(
     paths = (shape?.paths ?? []).map(path => ({ nodes: [...path.nodes], handles: path.handles }));
     draw = shape?.draw;
     snaps = (shape?.snaps ?? []).map(p => [p[0], p[1], p[2]] as V3);
+    dragSnaps = (shape?.dragSnaps ?? []).map(p => [p[0], p[1], p[2]] as V3);
     wholePivot = pivot ? [pivot[0], pivot[1], pivot[2]] : null;
     selected = knot !== null && knot < knots.length ? knot : null;
     redraw();
@@ -256,7 +340,7 @@ export function createTrailToolLayer(
   function knotAtPointer(): number | null {
     if (!dots.visible) return null;
     const hits: THREE.Intersection[] = [];
-    for (const dot of knotDots) THREE.Mesh.prototype.raycast.call(dot, stage.ray, hits);
+    for (const rim of knotRims) THREE.Mesh.prototype.raycast.call(rim, stage.ray, hits);
     hits.sort((a, b) => a.distance - b.distance);
     const hit = hits[0]?.object.userData.trailKnot;
     return typeof hit === 'number' ? hit : null;
@@ -308,12 +392,13 @@ export function createTrailToolLayer(
     setActive, setKnots, pickKnot, onHover, onCommit, refresh, wholeDragging, wholeChanged,
     /** A dragged point at `pos`: onto a point it may land on when it is near enough on screen, else where it is. */
     snapDrag(pos: V3): V3 {
-      snapped = snapNear(at => at.distanceTo(dataToScene(pos)));
+      snapped = snapNear(dragSnaps, onScreen(dataToScene(pos)));
       redraw();
       return snapped ? [snapped[0], snapped[1], snapped[2]] : pos;
     },
-    /** A drag ended: no snap any more. */
-    clearSnap() { snapped = null; redraw(); },
+    /** A point drag began — ring where it may land — or ended: no snap any more. */
+    knotDragging(dragging: boolean) { if (!dragging) snapped = null; redraw(); },
+    scaleMarkers,
     setSurfaceLift(value: number) { surfaceLiftM = Math.max(0, value); refresh(); },
     /** Hover changes, for the panel's next-segment read-out. */
     setListener(next: (() => void) | null) { listener = next; },

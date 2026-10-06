@@ -43,6 +43,7 @@ import type { EditMarqueeSelection, EditTransformTarget, RigidCornerUpdate, View
 import { toast } from '../ui/components/toast';
 import { createTopologyTools } from './topology';
 import { createTrailTools } from './trails';
+import { trailInterior } from '../../core/mesh/trail-object';
 import { createMeshClipboardSession } from './clipboard';
 import type { EditViewportPort } from './viewport-port';
 
@@ -56,6 +57,7 @@ type EditCallbackName =
   | 'onSlideBegin' | 'onSlideRecut' | 'onSlideMergePending' | 'onSlideEnd' | 'onEditTransformBegin' | 'onEditTransformEnd'
   | 'onCreateEdgePoint' | 'onCreateTubeAxisChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
   | 'onAppendTrailKnot' | 'onSelectTrailKnot' | 'onMoveTrailKnot' | 'onTrailKnotDrag' | 'onTransformTrail' | 'onTrailHover'
+  | 'trailInterior'
   | 'onSelectEditCell' | 'onSelectCellLoop' | 'onSelectEdge' | 'onSelectEdgeLoop'
   | 'onExtrudeEdges' | 'onCommitExtrudeEdges' | 'onExtrudeStageChange' | 'onExtrudeEdgeSelection' | 'onExtrudeEdgesInvalid' | 'onRefSelectionChange'
   | 'onMoveCorner' | 'onMoveHandle' | 'onMoveCageHandle' | 'onMoveTwist';
@@ -1614,8 +1616,29 @@ export function createEditSession(deps: EditSessionDeps) {
       && (selectedAuthoredVertexIds().length > 0 || meshDeleteTargetCount() > 0 || selectedFreeEdgeCount() > 0);
   }
 
+  /**
+   * Why deleting or dissolving the selection is refused: it would take or rewrite locked patches, which only their
+   * owner changes — a trail's (docs/023), or ones locked by hand under Visibility. Null when it touches none.
+   */
+  function meshLockReason(verb: 'delete' | 'dissolve'): string | null {
+    const doc = mdoc();
+    const input = verb === 'delete' ? selectedMeshDeleteInput() : { vertices: selectedVertexIndices(), edges: edgeSelIndices() };
+    const locked = meshDeleteTargets(doc, input).filter(quad => quadIsLocked(doc, quad));
+    if (!locked.length) return null;
+    const trailed = locked.filter(quad => trails.trailAtQuad(quad)).length, plain = locked.length - trailed;
+    const patches = (n: number) => `${n} ${n === 1 ? 'patch' : 'patches'}`;
+    const why = [
+      ...(trailed ? [`${patches(trailed)} of a trail, which only the trail changes — select its path alone to delete it, `
+        + 'or dissolve the trail into patches first'] : []),
+      ...(plain ? [`${patches(plain)} locked by hand — unlock ${plain === 1 ? 'it' : 'them'} under Visibility first`] : []),
+    ];
+    return `Can’t ${verb} this: it would ${verb === 'delete' ? 'take' : 'rewrite'} ${why.join(', and ')}.`;
+  }
+
   function deleteSelectedMesh() {
     if (store.currentMode !== 'edit' || !cageActive() || mixedEditSelection()) return;
+    const locked = meshLockReason('delete');
+    if (locked) { toast(locked, 'err'); return; }
     const selectedPoints = new Set(selectedAuthoredVertexIds()).size;
     const selectedFreeEdges = selectedFreeEdgeCount();
     const result = applyMeshDelete(mdoc(), selectedMeshDeleteInput());
@@ -1633,6 +1656,8 @@ export function createEditSession(deps: EditSessionDeps) {
 
   function dissolveSelectedMesh() {
     if (mixedEditSelection()) return;
+    const locked = meshLockReason('dissolve');
+    if (locked) { toast(locked, 'err'); return; }
     const selection = { vertices: selectedVertexIndices(), edges: edgeSelIndices() };
     const result = applyMeshDissolve(mdoc(), selection);
     if (!result.ok) { toast(result.error, 'err'); return; }
@@ -1964,6 +1989,7 @@ export function createEditSession(deps: EditSessionDeps) {
     onTrailKnotDrag(dragging) { trails.knotDrag(dragging); },
     onTransformTrail(xf) { trails.transformTrail(xf); },
     onTrailHover(pos) { trails.previewHover(pos); },
+    trailInterior() { return store.modelEditId || !mdoc().trails?.length ? null : trailInterior(mdoc()); },
     onLoopCut(quad, edge, t) {
       const { mesh, adj } = meshContext(mdoc());
       const result = applyLoopCut(mdoc(), planLoopCut(mesh, adj, quad, edge), t);
@@ -2109,7 +2135,7 @@ export function createEditSession(deps: EditSessionDeps) {
     ...topology,
     ...trails,
     ...clipboard,
-    deleteSelectedMesh, dissolveSelectedMesh, canDissolveSelectedMesh, meshDeleteTargetCount, canDeleteMeshSelection,
+    deleteSelectedMesh, dissolveSelectedMesh, canDissolveSelectedMesh, meshDeleteTargetCount, canDeleteMeshSelection, meshLockReason,
     flipSelectedMesh, canFlipSelectedMesh,
   };
 }

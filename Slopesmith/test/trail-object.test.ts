@@ -9,9 +9,9 @@ import { quadIsLocked } from '../src/core/mesh/locks';
 import { meshFromDoc } from '../src/core/mesh/topology';
 import { migrateLegacyTrail, normalizeTrails } from '../src/core/doc/trails';
 import {
-  connectedPaths, cutTrail, fusePathsAt, joinTrails, junctionPoints, mergeTrailPoints, pointArms, removeTrailPatches,
-  resolveTrail, reversePath, setTrailKnotValue, trailIsConnected, trailOwningQuad, trailPathQuads, trailPathStations,
-  trailPreview, trailRunList, TRAIL_SETTINGS_DEFAULTS, withoutTrailPaths, withoutTrailPoint,
+  connectedPaths, cutTrail, disconnectPoint, fusePathsAt, joinTrails, junctionPoints, mergeTrailPoints, pointArms, removeTrailPatches,
+  resolveTrail, reversePath, separateTrail, setTrailKnotValue, splitPathsAt, trailIsConnected, trailOwningQuad, trailPathQuads, trailPathStations,
+  trailInterior, trailPreview, trailRunList, TRAIL_SETTINGS_DEFAULTS, withoutTrailPaths, withoutTrailPoint,
 } from '../src/core/mesh/trail-object';
 import { checkManifold } from '../src/core/mesh/ops';
 import { MESA_TRAIL_TEXTURES, trimTrailSpline, type TrailCubic } from '../src/core/mesh/trail';
@@ -80,6 +80,12 @@ if (!created.ok) process.exit(1);
   check(dist(at(doc, trail.vertices[1]), [0, 0, 0]) < 1e-9 && dist(at(doc, trail.vertices[16]), [0, 0, 100]) < 1e-9,
     'create: the centre seam runs from the first knot to the last');
   check(doc.quadTex?.[owned!.quads[0]] === 'MESA/0044.png', 'create: the Mesa tiles are laid');
+  // Inside: the centre seam and the four inner station lines, and the centre of each inner station — not the rims,
+  // and not the two end stations, whose station lines are the ribbon's open ends.
+  const inside = trailInterior({ ...doc, trails: [trail] });
+  const centres = [1, 2, 3, 4].map(station => owned!.vertices[station * 3 + 1]);
+  check(inside.edges.size === 5 + 2 * 4 && inside.vertices.size === 4 && centres.every(vertex => inside.vertices.has(vertex)),
+    'create: the inside is the seam, the inner station lines and their centres', `${inside.edges.size} / ${inside.vertices.size}`);
 }
 
 // ---- moving a knot without changing the span count re-cuts in place ------------------------------------------------
@@ -140,6 +146,9 @@ if (!created.ok) process.exit(1);
     quadIds: [...doc.quadIds, 'host-quad'],
   };
   check(trailIsConnected(host, owned), 'joined: a patch sharing rim vertices joins the trail');
+  const inside = trailInterior({ ...host, trails: [trail] });
+  check(inside.edges.size === 13 && inside.vertices.size === 4 && !inside.vertices.has(l0) && !inside.vertices.has(l1),
+    'joined: the rim a patch is welded to stays outside the trail');
   const bent = cutTrail(host, withKnots(trail, [[0, 0, 0], [0, 0, 60], [30, 0, 160]]));
   check(bent.ok, 'joined: a longer spline still cuts');
   if (bent.ok) {
@@ -361,6 +370,28 @@ if (!created.ok) process.exit(1);
   const unlike = { ...two, paths: [two.paths[0], { ...two.paths[1], settings: { ...two.paths[1].settings, widthM: 20 } }] };
   const kept = mergeTrailPoints(unlike, 3, 2);
   check(kept.trail.paths.length === 2 && junctionPoints(kept.trail).has(2), 'merge: cut differently, they stay two paths and meet in a joint');
+
+  // A split cuts each path running on through the point; where paths only end, there is nothing to cut.
+  const loop = { ...two.paths[0], points: [0, 1, 2, 1, 0] };
+  const twice = splitPathsAt({ ...two, paths: [loop] }, 1);
+  check(twice?.trail.paths.map(path => path.points.join('-')).join() === '0-1,1-2-1,1-0' && twice.pieces[0].join() === '0,1,2',
+    'split: a path through the point twice is cut at both, its first piece in its place and the rest after');
+  check(splitPathsAt(two, 0) === null && splitPathsAt(two, 2) === null, 'split: a path’s end has nothing to split');
+
+  // Disconnecting: each arm ends at a point of its own, carrying the point's values; apart, a trail each.
+  const tee = { ...withPathThrough(trailOf([[0, 0, 0], [0, 0, 100], [0, 0, 200]]), [1, [80, 0, 160]]),
+    pointSettings: [null, { widthM: 25 }] };
+  const apart = disconnectPoint(tee, 1, 1)!;
+  const arms = pointArms(apart.trail);
+  check(apart.trail.points.length === 6 && !junctionPoints(apart.trail).size && arms.every(count => count === 1 || count === 0)
+    && [1, 4, 5].every(point => apart.trail.pointSettings?.[point]?.widthM === 25 && apart.trail.points[point].join() === '0,0,100'),
+  'disconnect: a fork’s three arms each end at a copy of the point, with its values', arms.join());
+  check(apart.trail.paths[1].points[0] === 1, 'disconnect: the first arm of the path asked for keeps the point');
+  const parts = separateTrail(apart.trail);
+  check(parts.trails.length === 3 && parts.trails[0].id === tee.id && parts.trails.slice(1).every(part => !part.id && !part.quads.length)
+    && parts.trails.every(part => part.paths.length === 1 && part.points.length === 2),
+  'separate: three networks, three trails — the first keeps the trail, the others are new');
+  check(disconnectPoint(tee, 0) === null, 'disconnect: a free end has nothing to come apart');
   const jointCut = cutTrail(emptyDoc(), kept.trail);
   check(jointCut.ok && jointCut.trail.network?.junctionArms.join() === '2' && checkManifold(jointCut.doc.quads).ok,
     'merge: … and the joint cuts as one surface', jointCut.ok ? '' : jointCut.error);
