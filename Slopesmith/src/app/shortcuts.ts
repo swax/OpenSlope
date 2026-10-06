@@ -216,15 +216,15 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (e.key === 'Enter' && store.surgeryTool === 'tube') { e.preventDefault(); finishCreateTube(); return; }
     if (e.key === 'Enter' && store.surgeryTool === 'trail') { e.preventDefault(); finishCreateTrail(); return; }
     if (e.key === 'Enter' && store.surgeryTool === 'patch') { e.preventDefault(); edit.finishCreatePatch(true); return; }
-    // A trail (docs/023): Delete takes the selected knot, else — while drawing — the newest one, else the trail.
+    // A trail (docs/023): Delete takes the picked point, else — while drawing — the newest one, else the paths.
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.surgeryTool === 'trail') {
       e.preventDefault();
-      if (store.trailKnot !== null) edit.deleteSelectedTrailKnot(); else undoCreateTrailPoint();
+      if (store.trailPoint !== null) edit.deleteSelectedTrailKnot(); else undoCreateTrailPoint();
       return;
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.currentMode === 'edit' && !mod && edit.selectedTrail()) {
       e.preventDefault();
-      if (store.trailKnot !== null) edit.deleteSelectedTrailKnot(); else edit.deleteSelectedTrail();
+      if (store.trailPoint !== null) edit.deleteSelectedTrailKnot(); else edit.deleteSelectedTrail();
       return;
     }
     // A course being redrawn (Scene ▸ Course ▸ reset course): Enter commits it, Backspace takes a point back and

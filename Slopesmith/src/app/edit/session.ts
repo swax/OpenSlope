@@ -187,6 +187,8 @@ export function createEditSession(deps: EditSessionDeps) {
    *  whole tube). Hidden geometry is excluded and blocks traversal. */
   function selectConnected() {
     if (!canSelectConnected()) return;
+    // Selected trail paths grow to their whole networks, not to whatever mesh is welded on (docs/023).
+    if (trails.trailSelection().length) { trails.selectWholeNetwork(); return; }
     const doc = mdoc();
     const { adj } = meshContext(doc), hidden = hiddenMesh();
     const component = (seeds: number[]) => {
@@ -935,8 +937,8 @@ export function createEditSession(deps: EditSessionDeps) {
         : store.selectedCorner !== null ? [{ kind: 'vertex', vertex: store.selectedCorner } as MeshControlPointId] : [];
     const incomingPoints = selection.points.filter(point => controlPointIndex(doc, point) !== null);
     const incomingEdges = namedEdges(doc, selection.edges);
-    // A trail goes in or out whole too, however many of its patches the box caught (docs/023).
-    const incomingPatches = trails.withWholeTrails(quadNames(doc, selection.patches));
+    // A trail path goes in or out whole too, however many of its patches the box caught (docs/023).
+    const incomingPatches = trails.withWholePaths(quadNames(doc, selection.patches));
     const currentProps = store.multiSel.length ? store.multiSel
       : store.selectedProp !== null ? [store.selectedProp] : [];
     // Shift and Ctrl boxes add to or take from the set, keeping its lights; a plain box starts over.
@@ -1138,18 +1140,19 @@ export function createEditSession(deps: EditSessionDeps) {
     store.anchorControl = anchor ?? target;
   }
 
-  /** A trail's patches select as one (docs/023): the whole ribbon, which is what shows its knots and panel. */
-  function selectTrailAt(quad: number): boolean {
-    const trail = trails.trailAtQuad(quad);
-    if (!trail) return false;
+  /** A trail's patches select a path at a time (docs/023): a click the path the patch belongs to, which is what
+   *  shows its points and panel; a double-click (`network`) every path joined to it. */
+  function selectTrailAt(quad: number, network = false): boolean {
+    const cells = network ? trails.networkCellsAt(quad) : trails.pathCellsAt(quad);
+    if (!cells) return false;
     dropPlacementSelection();
     resetGizmoMode();
     dropCornerSel();
     clearEdgeSel();
     store.cellLoopSeed = null;
-    store.cellSel = [...trail.quads];
+    store.cellSel = cells;
     store.anchorCell = quadName(mdoc(), quad);
-    store.trailKnot = null;
+    store.trailPoint = null;
     store.pathHandle = null;
     view().refreshEditCells();
     seatEditMoveGizmo();
@@ -1164,7 +1167,7 @@ export function createEditSession(deps: EditSessionDeps) {
     const name = quadName(doc, quad);
     if (name === null) return;
     const naming = quadNaming(doc);
-    const trail = mode === 'toggle' ? trails.trailAtQuad(quad) : null;
+    const path = mode === 'toggle' ? trails.pathCellsAt(quad) : null;
     const wasSelected = store.cellSel.includes(name);
     // Plain/Ctrl clicks are flat set operations and must stay O(selection), not O(the whole mountain).
     // Only Shift-range needs the derived surface topology used to trace a rectangular patch block.
@@ -1178,10 +1181,10 @@ export function createEditSession(deps: EditSessionDeps) {
       const at = quadIndex(doc, cell);
       return at !== null && !quadIsHidden(at, hidden);
     });
-    // Ctrl on a trail patch adds or drops the whole trail, never one patch of it.
-    if (trail) {
-      const owned = new Set(trail.quads);
-      cells = wasSelected ? cells.filter(cell => !owned.has(cell)) : [...new Set([...cells, ...trail.quads])];
+    // Ctrl on a trail patch adds or drops the whole path, never one patch of it.
+    if (path) {
+      const owned = new Set(path);
+      cells = wasSelected ? cells.filter(cell => !owned.has(cell)) : [...new Set([...cells, ...path])];
     }
     if (mode === 'toggle') {
       store.cellSel = cells;
@@ -1201,7 +1204,7 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function selectCellLoop(quad: number, additive: boolean) {
-    if (!additive && selectTrailAt(quad)) return;
+    if (!additive && selectTrailAt(quad, true)) return;
     dropPlacementSelection();
     const doc = mdoc();
     const name = quadName(doc, quad);
@@ -1959,7 +1962,7 @@ export function createEditSession(deps: EditSessionDeps) {
     onSelectTrailKnot(knot) { trails.selectKnot(knot); },
     onMoveTrailKnot(knot, pos) { trails.moveKnot(knot, pos); },
     onTrailKnotDrag(dragging) { trails.knotDrag(dragging); },
-    onTransformTrail(knots, handles) { trails.transformTrail(knots, handles); },
+    onTransformTrail(xf) { trails.transformTrail(xf); },
     onTrailHover(pos) { trails.previewHover(pos); },
     onLoopCut(quad, edge, t) {
       const { mesh, adj } = meshContext(mdoc());

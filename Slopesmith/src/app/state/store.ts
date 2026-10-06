@@ -194,8 +194,8 @@ export type Store = {
   trailMaxBankDegrees: number;       // absolute auto-bank clamp
   trailSurfaceLift: number;          // vertical lift for knots clicked on an existing surface, metres
   trailMesaTextures: boolean;        // apply the measured Mesa matched-half/tight-turn texture preset
-  trailKnot: number | null;          // knot of the shown trail carrying the move gizmo (the trail itself is
-                                     // the one being drawn, or the one whose patches are exactly cellSel)
+  trailPoint: { trail: string; point: number } | null; // trail point carrying the move gizmo (its paths are the
+                                     // one being drawn, or the ones whose patches are exactly cellSel)
   // The selected path's Bézier handle carrying the gizmo (docs/014) — on a rail, a prop line or a trail; at most
   // one path is selected in any mode, so one slot serves them all. Its node is also that family's selected node.
   pathHandle: { family: 'rail' | 'line' | 'trail'; id: string; node: number; side: 'in' | 'out' } | null;
@@ -449,7 +449,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     trailMaxBankDegrees: 20,
     trailSurfaceLift: 0.25,
     trailMesaTextures: true,
-    trailKnot: null,
+    trailPoint: null,
     pathHandle: null,
     weldTool: null,
     weldSource: [],

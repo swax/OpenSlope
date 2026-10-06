@@ -15,6 +15,13 @@ import type { ReferenceScreenPickDetails } from '../../core/reference/screens';
 import type { PropAlphaMode } from '../../core/reference/props';
 import type { RideEvent } from '../../core/session/ride-event';
 
+/** A drag of the selected trail paths' gizmo as it stands, from its start, in data space: where a point goes, and how
+ *  an offset (a Bézier handle) turns and stretches (docs/023). */
+export interface TrailTransform {
+  point(p: readonly number[]): V3;
+  vector(v: readonly number[]): V3;
+}
+
 /**
  * One frame of a rigid Rotate / Scale over a corner, edge or cell selection: absolute positions for the
  * moved corners, absolute offsets for the directed boundary handles and interior twists that rotate with
@@ -565,18 +572,17 @@ export interface ViewportCallbacks {
   onSelectCoincidentVertices?(diagnostic: CoincidentVertices | null): void;
   /** Edit mode, Create Tube: its transient axis endpoints changed, so the host can refresh the generated shell. */
   onCreateTubeAxisChange?(): void;
-  /** Edit mode, trail drawing (docs/023): a click on no knot asks for one at this lifted surface point. */
+  /** Edit mode, trail drawing (docs/023): a click on no point asks for one at this lifted surface point. */
   onAppendTrailKnot?(pos: V3): void;
-  /** Edit mode: a knot bulb of the shown trail was clicked. */
+  /** Edit mode: a shown trail point's bulb was clicked (its place in the shown list). */
   onSelectTrailKnot?(knot: number | null): void;
-  /** Edit mode: the selected trail knot's gizmo moved it to this data-space point. */
+  /** Edit mode: the picked trail point's gizmo moved it to this data-space point. */
   onMoveTrailKnot?(knot: number, pos: V3): void;
-  /** Edit mode: a trail knot drag, or a whole-trail drag, began (true) or ended (false). */
+  /** Edit mode: a trail point drag, or a drag of the selected paths, began (true) or ended (false). */
   onTrailKnotDrag?(dragging: boolean): void;
-  /** Edit mode: the whole selected trail's gizmo moved, turned or scaled it — every knot and every dragged Bézier
-   *  handle (offsets, index-parallel with the knots) as they now stand, data space. */
-  onTransformTrail?(knots: V3[], handles: (PathHandles | null)[]): void;
-  /** Edit mode, drawing a trail: where a click would lay the next knot now, or null — for the ghost of it. */
+  /** Edit mode: the selected paths' gizmo moved, turned or scaled them — the transform from the drag's start. */
+  onTransformTrail?(xf: TrailTransform): void;
+  /** Edit mode, drawing a trail: where a click would lay the next point now, or null — for the ghost of it. */
   onTrailHover?(pos: V3 | null): void;
   /** A Bézier handle of the selected path was clicked (docs/014). */
   onSelectPathHandle?(owner: PathOwner, node: number, side: PathHandleSide): void;

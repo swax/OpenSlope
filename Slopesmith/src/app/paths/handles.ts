@@ -1,4 +1,4 @@
-import type { AuthoredTrail, PathHandles, V3 } from '../../core/doc/types';
+import type { PathHandles, V3 } from '../../core/doc/types';
 import { pathNodeHasHandles, resetPathHandles, setPathHandle, type PathHandleList } from '../../core/rails/rails';
 import type { Store } from '../state/store';
 import type { PathHandleSide, PathOwner, ShownPath } from '../viewport/scene/path-handles';
@@ -10,15 +10,18 @@ import type { PathHandleSide, PathOwner, ShownPath } from '../viewport/scene/pat
  * (`PathHandles`, index-parallel with the nodes) and show them through one viewport layer. This is the host half:
  * which path is selected — at most one in any mode — which of its handles carries the gizmo, and what a drag on
  * one does, which differs by family only in what has to follow: a rail or motion path just redraws, a prop line
- * lays its members out again, and a trail re-cuts its ribbon (through the trail tools, which own its drag).
+ * lays its members out again, and a trail path re-cuts its network (through the trail tools, which own its drag).
+ * Of a trail it is one path's handles that show — the path the panel is about — named by its trail and place.
  */
 
 export type PathHandleDeps = {
   store: Store;
   viewport: { setPathHandles(path: ShownPath | null, handle: { node: number; side: PathHandleSide } | null): void };
-  /** The trail Edit mode has selected or is drawing, if any. */
-  selectedTrail: () => AuthoredTrail | null;
-  /** Re-cut a trail with new handles (the trail tools, which also own its drag base). */
+  /** The trail path Edit mode's panel is about, if any: its id (trail and path), knots, handles and picked knot. */
+  trailPath: () => { id: string; nodes: V3[]; handles?: (PathHandles | null)[]; node: number | null } | null;
+  /** A handle of that path was clicked: its knot is the picked trail point. */
+  selectTrailNode: (node: number) => void;
+  /** Re-cut that path with new handles (the trail tools, which also own its drag base). */
   setTrailHandles: (handles: (PathHandles | null)[], live: boolean) => void;
   /** A trail handle drag begins or ends. */
   trailDrag: (dragging: boolean) => void;
@@ -37,16 +40,16 @@ export function assignHandles(path: { handles?: (PathHandles | null)[] }, handle
 }
 
 export function createPathHandleOps(deps: PathHandleDeps) {
-  const { store, viewport, selectedTrail, setTrailHandles, trailDrag, setLineHandles, scheduleRebuild, rebuildTools } = deps;
+  const { store, viewport, trailPath, selectTrailNode, setTrailHandles, trailDrag, setLineHandles, scheduleRebuild, rebuildTools } = deps;
 
-  /** The one path whose handles can show — the trail in Edit mode, else the selected prop line or rail — and its
-   *  selected point, the one whose handles do. */
+  /** The one path whose handles can show — the trail path in Edit mode, else the selected prop line or rail — and
+   *  its selected point, the one whose handles do. */
   function selectedPath(): ShownPath | null {
     const mode = store.currentMode;
     if (mode === 'edit') {
-      const trail = selectedTrail();
-      return trail ? { owner: { family: 'trail', id: trail.id }, nodes: trail.knots, handles: trail.handles,
-        node: store.trailKnot, bulbRadius: BULB_RADIUS.trail } : null;
+      const path = trailPath();
+      return path ? { owner: { family: 'trail', id: path.id }, nodes: path.nodes, handles: path.handles,
+        node: path.node, bulbRadius: BULB_RADIUS.trail } : null;
     }
     if (mode === 'props' && store.selectedLine !== null && !store.lineDrawing) {
       const line = store.mdoc.propLines?.find(candidate => candidate.id === store.selectedLine);
@@ -80,7 +83,7 @@ export function createPathHandleOps(deps: PathHandleDeps) {
     store.pathHandle = { ...owner, node, side };
     if (owner.family === 'rail') store.selectedNode = node;
     else if (owner.family === 'line') store.selectedLineNode = node;
-    else store.trailKnot = node;
+    else selectTrailNode(node);
     scheduleRebuild();
     rebuildTools();
   }
@@ -89,8 +92,8 @@ export function createPathHandleOps(deps: PathHandleDeps) {
   function locate(owner: PathOwner): { nodes: readonly V3[]; handles?: PathHandleList } | null {
     if (owner.family === 'rail') return store.mdoc.rails?.find(rail => rail.id === owner.id) ?? null;
     if (owner.family === 'line') return store.mdoc.propLines?.find(line => line.id === owner.id) ?? null;
-    const trail = selectedTrail();
-    return trail?.id === owner.id ? { nodes: trail.knots, handles: trail.handles } : null;
+    const path = trailPath();
+    return path?.id === owner.id ? { nodes: path.nodes, handles: path.handles } : null;
   }
 
   /** Put a new handle list on its path and let whatever the path lays out follow. */

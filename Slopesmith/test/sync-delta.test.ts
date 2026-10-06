@@ -8,7 +8,7 @@ import {
   writeRegister, type RegisterKey, type RegisterValue,
 } from '../src/core/doc/registers';
 import { applyTopologyDelta, topologyDelta, type TopologyDelta } from '../src/core/doc/topology-delta';
-import type { QuadMeshDoc } from '../src/core/doc/types';
+import type { AuthoredTrail, QuadMeshDoc } from '../src/core/doc/types';
 import { applyMeshDelete } from '../src/core/mesh/ops/delete';
 import { applyMeshDissolve } from '../src/core/mesh/ops/dissolve';
 import { applyLoopCut, planLoopCut } from '../src/core/mesh/ops/loop-cut';
@@ -246,19 +246,20 @@ if (deleted.ok) {
 
 // ---- an owned trail (docs/023): cutting it, and re-cutting it longer, travel as a delta plus its register --------
 {
-  const trail = { id: 'trail:0000', knots: [[400, 0, 0], [400, 0, 100]] as [number, number, number][],
-    settings: { ...TRAIL_SETTINGS_DEFAULTS }, vertices: [] as string[], quads: [] as string[] };
+  const trail: AuthoredTrail = { id: 'trail:0000', points: [[400, 0, 0], [400, 0, 100]],
+    paths: [{ points: [0, 1], settings: { ...TRAIL_SETTINGS_DEFAULTS } }], vertices: [], quads: [] };
   const cut = cutTrail(lab, trail);
   if (cut.ok) {
     cut.doc.trails = [cut.trail];
     roundTrip('trail cut', lab, cut.doc);
-    const longer = cutTrail(cut.doc, { ...cut.trail, knots: [...cut.trail.knots, [450, 0, 180]],
-      handles: [null, { out: [0, 0, 20] }] });
+    const longer = cutTrail(cut.doc, { ...cut.trail, points: [...cut.trail.points, [450, 0, 180]],
+      paths: [{ ...cut.trail.paths[0], points: [0, 1, 2], handles: [null, { out: [0, 0, 20] }] }] });
     if (longer.ok) {
       longer.doc.trails = [longer.trail];
       roundTrip('trail re-cut', cut.doc, longer.doc);
-      // A branch off its middle knot: the trail splits, and the junction is cut with it.
-      const branched = cutTrail(longer.doc, { ...longer.trail, branches: [{ knot: 1, knots: [[520, 0, 160]] }] });
+      // A second path off its middle point: the first splits there, and the junction is cut with it.
+      const branched = cutTrail(longer.doc, { ...longer.trail, points: [...longer.trail.points, [520, 0, 160]],
+        paths: [...longer.trail.paths, { points: [1, 3], settings: { ...TRAIL_SETTINGS_DEFAULTS } }] });
       if (branched.ok) {
         branched.doc.trails = [branched.trail];
         roundTrip('trail branch', longer.doc, branched.doc);

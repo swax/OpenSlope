@@ -1,40 +1,37 @@
-import type { AuthoredTrail, PathHandles, QuadMeshDoc, TrailBranch, TrailKnotSettings, TrailSettings, V3 } from '../../core/doc/types';
-import { withoutPathNode } from '../../core/rails/rails';
+import type { AuthoredTrail, PathHandles, QuadMeshDoc, TrailKnotSettings, TrailPath, TrailSettings, V3 } from '../../core/doc/types';
 import { nameIndex, nextTrailId } from '../../core/doc/ids';
 import {
-  branchEndpoints, branchesWithKnotAt, branchesWithoutKnot, cutTrail, joinBranch, mergeTrailInto, removeTrailPatches, resolveTrail, setTrailKnotValue, trailAllKnots,
-  trailIsConnected, trailKnotRef, trailKnotStations, trailOwningQuad, trailPreview, withoutTrailKnot,
-  type TrailKnotSettingsList,
+  compactTrail, connectedPaths, cutTrail, extendPath, fusePathsAt, joinTrails, mergeTrailPoints, pathCuts, pathEndsAt, pathKnots,
+  pathsThrough, pointArms, removeTrailPatches, resolveTrail, setTrailKnotValue, trailIsConnected, trailOwningQuad, trailPathQuads,
+  trailPathStations, trailPreview, trimPath, withNewPoint, withoutTrailPaths, withoutTrailPoint, withPath, type TrailRenumbering,
 } from '../../core/mesh/trail-object';
 import type { TrailStation } from '../../core/mesh/trail';
 import type { Store } from '../state/store';
 import { commitEditMesh } from './mesh-target';
-import type { EditViewportPort } from './viewport-port';
+import type { EditViewportPort, TrailShape, TrailTransform } from './viewport-port';
 import { toast } from '../ui/components/toast';
 
 /**
- * Owned trails in Edit mode (docs/023): the app half of a centre spline that keeps the ribbon it cut.
+ * Owned trails in Edit mode (docs/023): the app half of a network of centre splines that keeps the patches it cut.
  *
- * Create Trail draws like a rail — a click per knot, and the knots stay live: a click on one picks it up to drag
- * while the trail is still being laid. From its second knot the trail is in the document, patches and all, and
- * every change to a knot or a setting re-cuts it (`cutTrail`), so the patches are never edited on their own: a
- * click on one selects the whole trail, and **dissolve** is the way out for hand work on the patches.
+ * A trail is POINTS and the PATHS through them (docs/023 · Networks), every path alike — its own settings and
+ * handles — and a point paths share is where they meet. A click on a trail patch selects the PATH it belongs to;
+ * Ctrl-click, a box, Ctrl+A and a double-click take in more, up to the whole network. The selection is not stored:
+ * it is the paths whose patches are exactly the patch selection, so any other selection is already "not a trail".
+ * The point carrying the gizmo is kept, in `store.trailPoint`; with none, the selected paths carry the gizmo
+ * together and move, turn or scale as a unit (`transformTrail`) — dragging along whatever they share a point with.
  *
- * The SELECTED trail is not stored: it is the one being drawn, or else the one whose patches are exactly the
- * patch selection. Any other selection is therefore already "not the trail", with nothing to clear. Only the
- * knot carrying the gizmo is kept, in `store.trailKnot`; with none, a finished trail carries the gizmo itself and
- * moves, turns or scales as a unit (`transformTrail`).
+ * Create Trail draws one path, a click per point, and the points stay live: a click on one picks it up to drag
+ * while the path is still being laid. From its second point the path is in the document, patches and all, and
+ * every change to a point or a setting re-cuts the trail (`cutTrail`), so the patches are never edited on their
+ * own; **dissolve** is the way out for hand work on them. While a path is drawn, every hover ghosts what the click
+ * there would lay (`trailPreview`).
  *
- * A trail's BRANCHES (docs/023 · Branches) are drawn like the trail is, from a middle knot, and are the trail's
- * own: its patches, its selection, its re-cut. Their knots follow the trail's in one list (`trailAllKnots`), so a
- * `store.trailKnot` past the trail's own knots is a branch knot. While a trail is drawn, every hover ghosts what
- * the click there would lay (`trailPreview`).
- *
- * MERGING (docs/023 · Merging): an end of a trail laid, or dropped, on another trail's knot joins the two — end to
- * end on one of its ends, as a branch on a middle knot — and the other trail takes it in (`mergeTrailInto`). A new
- * trail's first knot laid on another's just goes on drawing that one, from there. A branch's free tip lands the
- * same way (`joinBranch`): on a knot of its own trail it rejoins it, and on another trail's end that trail goes on
- * as the rest of the branch.
+ * Joining is one rule: a point laid, or dropped, on another point — any point of any trail, snapped to within a few
+ * pixels — becomes that point. The first point of a new trail on a free end goes on drawing that path; on any other
+ * point it starts a new path there. A later point there ends the path on it: a fork, a merge, a crossing, a loop.
+ * Two trails that come to share a point become one network, and two path ends meeting alone become one path when
+ * they are cut alike.
  */
 
 export type TrailToolDeps = {
@@ -50,7 +47,7 @@ export type TrailToolDeps = {
   resetGizmoMode: () => void;
 };
 
-/** A trail's settings and the store's new-trail defaults they mirror. */
+/** A path's settings and the store's new-path defaults they mirror. */
 const STORE_KEYS = {
   widthM: 'trailWidth', centerBias: 'trailCenterBias', dishPercent: 'trailDishPercent', patchLengthM: 'trailPatchLength',
   maxTurnDegrees: 'trailMaxTurnDegrees', bankGainM: 'trailBankGain', maxBankDegrees: 'trailMaxBankDegrees',
@@ -58,17 +55,37 @@ const STORE_KEYS = {
 } as const satisfies Record<keyof TrailSettings, keyof Store>;
 
 export interface TrailStatus {
-  knots: number;
-  branches: number;
+  /** Points of the selected paths (or of the path being drawn). */
+  points: number;
+  /** Paths selected, and in the whole network. */
+  paths: number;
+  networkPaths: number;
+  junctions: number;
   spans: number;
   patches: number;
-  /** Other patches share its vertices, so its patch count is held. */
+  /** Other patches share its vertices, so its layout is held. */
   connected: boolean;
-  /** Something cut into its ribbon; it can only be dissolved or deleted. */
+  /** Something cut into its patches; it can only be dissolved or deleted. */
   broken: boolean;
-  /** Not in the document yet: it has fewer than two knots. */
+  /** Not in the document yet: no path of it has two points. */
   draft: boolean;
 }
+
+/** Some of one trail's paths, selected. */
+export interface TrailPick { trail: AuthoredTrail; paths: number[] }
+
+/** The trail the panel and the handles are about, the paths of it selected, and the one whose settings and handles
+ *  show — null while a new path is about to be laid. */
+export interface TrailFocus { trail: AuthoredTrail; paths: number[]; path: number | null }
+
+/** A point of a trail, by the trail's id. */
+export type TrailPointRef = { trail: string; point: number };
+
+/** The path being drawn: one of the trail's, growing from one end — or, `path` null, a new one about to be laid from
+ *  point `from`. */
+type Drawing = { id: string; path: number | null; end: 'start' | 'end'; from: number | null };
+
+type SnapTarget = { trail: AuthoredTrail; point: number; pos: V3 };
 
 export function createTrailTools(deps: TrailToolDeps) {
   const {
@@ -77,20 +94,17 @@ export function createTrailTools(deps: TrailToolDeps) {
   } = deps;
   const view = () => getViewport();
 
-  /** The trail being drawn, by id — in the document once it has two knots, until then `draft`. */
-  let drawingId: string | null = null;
+  let drawing: Drawing | null = null;
+  /** A trail being drawn that is not in the document yet: no path of it has two points. */
   let draft: AuthoredTrail | null = null;
-  /** Where the trail being drawn grows: onto an end — a trail resumed from its first knot grows backward — or
-   *  onto the branch leaving one of its knots, which the first click there lays. */
-  let drawTarget: { end: 'start' | 'end' } | { branch: number } = { end: 'end' };
   /** The ghost: the hover it is for, the frame that draws it, and why there is none, when the cut refuses. */
   let previewAt: V3 | null = null;
   let previewFrame = 0;
   let previewError: string | null = null;
-  /** A knot drag cuts every frame from the document as it stood when the drag began, so the frames do not
-   *  pile up each other's minted and retired ids: what lands is always one cut of the base. */
-  let drag: { base: QuadMeshDoc; trail: AuthoredTrail } | null = null;
-  let pendingMove: { trail: AuthoredTrail; base: QuadMeshDoc } | null = null;
+  /** A drag cuts every frame from the document as it stood when the drag began, so the frames do not pile up each
+   *  other's minted and retired ids: what lands is always one cut of the base. */
+  let drag: { base: QuadMeshDoc; trails: AuthoredTrail[]; picks: TrailPick[] } | null = null;
+  let pendingMove: { trails: AuthoredTrail[]; base: QuadMeshDoc } | null = null;
   let moveFrame = 0;
   let lastError: string | null = null;
   /** The cell highlight is drawn from names, so it is refreshed on the render after a cut has landed. */
@@ -98,32 +112,93 @@ export function createTrailTools(deps: TrailToolDeps) {
 
   const docTrails = (): readonly AuthoredTrail[] => store.modelEditId ? [] : store.mdoc.trails ?? [];
   const inDoc = (trail: AuthoredTrail) => docTrails().some(other => other.id === trail.id);
+  const byId = (id: string) => docTrails().find(trail => trail.id === id) ?? (draft?.id === id ? draft : null);
 
   function drawingTrail(): AuthoredTrail | null {
-    if (store.surgeryTool !== 'trail' || drawingId === null) { drawingId = null; draft = null; return null; }
-    return docTrails().find(trail => trail.id === drawingId) ?? (draft?.id === drawingId ? draft : null);
+    if (store.surgeryTool !== 'trail' || !drawing) { drawing = null; draft = null; return null; }
+    return byId(drawing.id);
   }
 
-  /** The trail whose patches are exactly the patch selection. */
-  function trailOfSelection(): AuthoredTrail | null {
+  /** Each path's patches — or, for a trail that cannot be found, all of them as one. */
+  const pathCells = (trail: AuthoredTrail): string[][] =>
+    trailPathQuads(store.mdoc, trail) ?? trail.paths.map((_, i) => i === 0 ? [...trail.quads] : []);
+
+  let picksMemo: { cells: readonly string[]; length: number; doc: QuadMeshDoc; trails: unknown; picks: TrailPick[] } | null = null;
+
+  /** The selected paths: whole paths whose patches are, together, exactly the patch selection. */
+  function selectionPicks(): TrailPick[] {
     const cells = store.cellSel;
-    if (!cells.length) return null;
-    const selected = new Set(cells);
-    return docTrails().find(trail => trail.quads.length === selected.size && trail.quads.every(id => selected.has(id))) ?? null;
+    if (picksMemo && picksMemo.cells === cells && picksMemo.length === cells.length && picksMemo.doc === store.mdoc
+      && picksMemo.trails === store.mdoc.trails) return picksMemo.picks;
+    let picks: TrailPick[] = [];
+    if (cells.length && !store.modelEditId) {
+      const selected = new Set(cells);
+      let covered = 0;
+      for (const trail of docTrails()) {
+        if (!trail.quads.some(id => selected.has(id))) continue;
+        const lists = pathCells(trail);
+        const paths = lists.flatMap((ids, path) => ids.length && ids.every(id => selected.has(id)) ? [path] : []);
+        for (const path of paths) covered += lists[path].length;
+        if (paths.length) picks.push({ trail, paths });
+      }
+      if (covered !== selected.size) picks = [];
+    }
+    picksMemo = { cells, length: cells.length, doc: store.mdoc, trails: store.mdoc.trails, picks };
+    return picks;
+  }
+
+  /** The path a patch belongs to. */
+  function pathOfCell(trail: AuthoredTrail, id: string | null): number | null {
+    if (id === null) return null;
+    const at = pathCells(trail).findIndex(ids => ids.includes(id));
+    return at < 0 ? null : at;
+  }
+
+  /** What the panel and the handles are about: the path being drawn, or else the selected paths — of the trail whose
+   *  point is picked, or whose patch was clicked last — and of those the one through the picked point, or clicked. */
+  function focus(): TrailFocus | null {
+    if (store.currentMode !== 'edit') return null;
+    const drawn = drawingTrail();
+    if (drawn && drawing) return { trail: drawn, paths: drawing.path === null ? [] : [drawing.path], path: drawing.path };
+    const picks = selectionPicks();
+    if (!picks.length) return null;
+    const point = store.trailPoint;
+    const pick = (point && picks.find(entry => entry.trail.id === point.trail))
+      ?? picks.find(entry => entry.trail.quads.includes(store.anchorCell ?? '')) ?? picks[0];
+    const clicked = pathOfCell(pick.trail, store.anchorCell);
+    const through = point?.trail === pick.trail.id ? pick.paths.filter(path => pick.trail.paths[path].points.includes(point.point)) : pick.paths;
+    const path = clicked !== null && through.includes(clicked) ? clicked : through[0] ?? pick.paths[0];
+    return { trail: pick.trail, paths: pick.paths, path };
   }
 
   /** The trail the panel and the knot handles are about: the one being drawn, or the selected one. */
-  function selectedTrail(): AuthoredTrail | null {
-    if (store.currentMode !== 'edit') return null;
-    return drawingTrail() ?? trailOfSelection();
-  }
+  const selectedTrail = (): AuthoredTrail | null => focus()?.trail ?? null;
 
   /** The trail owning the patch at `quad` in the edited mountain, if any. */
   function trailAtQuad(quad: number): AuthoredTrail | null {
     return store.modelEditId ? null : trailOwningQuad(store.mdoc, store.mdoc.trails, quad) ?? null;
   }
 
-  /** Every vertex any trail owns, as live indices: the ones a move can only reach through a trail's knots. */
+  /** The patches of the path the patch at `quad` belongs to — what a click on it selects — or null off a trail. */
+  function pathCellsAt(quad: number): string[] | null {
+    const trail = trailAtQuad(quad);
+    if (!trail) return null;
+    const lists = pathCells(trail);
+    const path = pathOfCell(trail, store.mdoc.quadIds[quad] ?? null);
+    return path === null ? [...trail.quads] : [...lists[path]];
+  }
+
+  /** The patches of every path joined to the one at `quad` — a double-click's whole network — or null off a trail. */
+  function networkCellsAt(quad: number): string[] | null {
+    const trail = trailAtQuad(quad);
+    if (!trail) return null;
+    const path = pathOfCell(trail, store.mdoc.quadIds[quad] ?? null);
+    if (path === null) return [...trail.quads];
+    const lists = pathCells(trail);
+    return connectedPaths(trail, path).flatMap(index => lists[index]);
+  }
+
+  /** Every vertex any trail owns, as live indices: the ones a move can only reach through a trail's points. */
   function trailVertexIndices(): Set<number> {
     const at = nameIndex(store.mdoc.vertexIds), out = new Set<number>();
     for (const trail of docTrails()) for (const id of trail.vertices) {
@@ -133,231 +208,264 @@ export function createTrailTools(deps: TrailToolDeps) {
     return out;
   }
 
-  /** Patch names, with every trail any of them belongs to added whole — how a box selects trails. */
-  function withWholeTrails(names: readonly string[]): string[] {
+  /** Patch names, with every path any of them belongs to added whole — how a box selects paths. */
+  function withWholePaths(names: readonly string[]): string[] {
     const caught = new Set(names);
     const out = new Set(names);
-    for (const trail of docTrails()) if (trail.quads.some(id => caught.has(id))) for (const id of trail.quads) out.add(id);
+    for (const trail of docTrails()) {
+      if (!trail.quads.some(id => caught.has(id))) continue;
+      for (const ids of pathCells(trail)) if (ids.some(id => caught.has(id))) for (const id of ids) out.add(id);
+    }
     return [...out];
   }
 
-  /** Push the shown trail's knots to the viewport. Called on every Tools rebuild and every render, which between
-   *  them follow every selection change and every document change. Only a render (`rendered`) lands a cut's cell
+  /** Grow the selected paths to every path joined to them (Ctrl+A, the panel's button): their whole networks. */
+  function selectWholeNetwork(): boolean {
+    const picks = selectionPicks();
+    if (!picks.length) return false;
+    const cells = picks.flatMap(({ trail, paths }) => {
+      const lists = pathCells(trail);
+      return [...new Set(paths.flatMap(path => connectedPaths(trail, path)))].flatMap(path => lists[path]);
+    });
+    if (cells.length === store.cellSel.length) return false;
+    store.cellSel = cells;
+    cellsStale = true;
+    syncTrailView();
+    view().refreshEditCells();
+    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    return true;
+  }
+
+  // ---- what the viewport shows ------------------------------------------------------------------------------
+
+  /** The points the viewport shows, in its order: the path being drawn's (and the point a new path leaves from), or
+   *  every point of the selected paths, trail by trail. */
+  function shownPoints(): TrailPointRef[] {
+    const drawn = drawingTrail();
+    if (drawn && drawing) {
+      const own = drawing.path === null ? [] : drawn.paths[drawing.path]?.points ?? [];
+      const all = drawing.from === null ? own : [drawing.from, ...own];
+      return [...new Set(all)].map(point => ({ trail: drawn.id, point }));
+    }
+    return selectionPicks().flatMap(({ trail, paths }) =>
+      [...new Set(paths.flatMap(path => trail.paths[path].points))].sort((a, b) => a - b).map(point => ({ trail: trail.id, point })));
+  }
+
+  const positionOf = (ref: TrailPointRef): V3 | null => byId(ref.trail)?.points[ref.point] ?? null;
+
+  /** The picked point, if it is one the viewport shows. */
+  function pickedPoint(): TrailPointRef | null {
+    const ref = store.trailPoint;
+    if (!ref) return null;
+    return shownPoints().some(shown => shown.trail === ref.trail && shown.point === ref.point) ? ref : null;
+  }
+
+  /** Push the shown points to the viewport. Called on every Tools rebuild and every render, which between them
+   *  follow every selection change and every document change. Only a render (`rendered`) lands a cut's cell
    *  highlight: the highlight resolves names on the drawn mesh, which is the new one only once it has rendered. */
   function syncTrailView(rendered = false) {
-    const trail = selectedTrail();
-    if (!trail) store.trailKnot = null;
-    const knots = trail ? trailAllKnots(trail) : [];
-    // A knot whose Bézier handle holds the gizmo leaves it there (app/paths/handles.ts).
-    const knot = trail && store.trailKnot !== null && store.trailKnot < knots.length
-      && store.pathHandle?.family !== 'trail' ? store.trailKnot : null;
-    // No knot picked on a finished trail: the gizmo is the whole trail's, at the centre of its ribbon — where a
-    // patch selection's gizmo would sit. Not while drawing, when a click on the ribbon lays the next knot.
-    const whole = !!trail && store.trailKnot === null && !drawingTrail() && inDoc(trail);
-    // A branch that rejoins the trail runs on to the knot it rejoins.
-    const branches = (trail?.branches ?? []).map(branch =>
-      [trail!.knots[branch.knot], ...branch.knots, ...(branch.to !== undefined && trail!.knots[branch.to] ? [trail!.knots[branch.to]] : [])]);
-    let draw: { end: 'start' | 'end' } | { branch: number } = 'end' in drawTarget ? drawTarget : { end: 'end' };
-    if (trail && 'branch' in drawTarget) {
-      const junction = drawTarget.branch;
-      const at = (trail.branches ?? []).findIndex(branch => branch.knot === junction);
-      // A branch not laid yet is its junction alone, so the guide runs from there to the cursor.
-      if (at < 0 && trail.knots[junction]) branches.push([trail.knots[junction]]);
-      draw = { branch: at < 0 ? branches.length - 1 : at };
+    const shown = shownPoints();
+    if (store.trailPoint && !pickedPoint()) store.trailPoint = null;
+    const indexOf = (trail: string, point: number) => shown.findIndex(ref => ref.trail === trail && ref.point === point);
+    const knots = shown.map(ref => positionOf(ref) ?? [0, 0, 0] as V3);
+    // A point whose Bézier handle holds the gizmo leaves it there (app/paths/handles.ts).
+    const picked = store.trailPoint && store.pathHandle?.family !== 'trail' ? indexOf(store.trailPoint.trail, store.trailPoint.point) : -1;
+    const drawn = drawingTrail();
+    // No point picked on selected paths: the gizmo is theirs together, at the centre of their patches — where a
+    // patch selection's gizmo would sit. Not while drawing, when a click on a ribbon lays the next point.
+    const whole = !drawn && !store.trailPoint && shown.length >= 2;
+    const lines: { nodes: number[]; handles?: TrailPath['handles'] }[] = [];
+    let draw: TrailShape['draw'];
+    if (drawn && drawing) {
+      const path = drawing.path === null ? null : drawn.paths[drawing.path];
+      if (path) lines.push({ nodes: path.points.map(point => indexOf(drawn.id, point)), handles: path.handles });
+      draw = { path: path ? 0 : null, end: drawing.end, from: drawing.from === null ? null : indexOf(drawn.id, drawing.from) };
+    } else {
+      for (const { trail, paths } of selectionPicks()) for (const index of paths) {
+        const path = trail.paths[index];
+        lines.push({ nodes: path.points.map(point => indexOf(trail.id, point)), handles: path.handles });
+      }
     }
-    // Knots catch the end or branch tip being drawn, or the picked one dragged (docs/023 · Merging).
-    const snaps = snapTargets(trail).map(target => target.pos);
-    view().setTrailKnots(knots, knot, trail?.handles, whole ? ribbonCentre(trail) : null,
-      { main: trail?.knots.length ?? 0, branches, draw, snaps });
+    // Points catch the path being drawn, or the picked point dragged (docs/023 · Networks).
+    const snaps = snapTargets().map(target => target.pos);
+    view().setTrailKnots(knots, picked >= 0 ? picked : null, whole ? selectionCentre() : null, { paths: lines, draw, snaps });
     if (rendered && cellsStale) { cellsStale = false; view().refreshEditCells(); seatMoveGizmo(); }
   }
 
-  // ---- merging -------------------------------------------------------------------------------------------------
-
-  type SnapTarget = { trail: AuthoredTrail; knot: number; pos: V3 };
-
-  type Landing = { kind: 'end'; end: 'start' | 'end' } | { kind: 'branch'; junction: number };
-
-  /** What of the selected trail can land on a knot now: the end being drawn onto, the free tip of the branch being
-   *  drawn, or the picked end knot or free branch tip, about to be dragged. */
-  function landing(): Landing | null {
-    const trail = selectedTrail();
-    if (!trail) return null;
-    if (drawingTrail()) {
-      if ('end' in drawTarget) return { kind: 'end', end: drawTarget.end };
-      const junction = drawTarget.branch;
-      return trail.branches?.find(branch => branch.knot === junction)?.to !== undefined ? null : { kind: 'branch', junction };
+  /** The mean of the selected patches' vertices as they stand. */
+  function selectionCentre(): V3 {
+    const at = nameIndex(store.mdoc.quadIds), seen = new Set<number>();
+    const sum: V3 = [0, 0, 0];
+    for (const id of store.cellSel) {
+      const quad = at.get(id);
+      if (quad === undefined) continue;
+      for (const vertex of store.mdoc.quads[quad]) {
+        if (seen.has(vertex)) continue;
+        seen.add(vertex);
+        for (let k = 0; k < 3; k++) sum[k] += store.mdoc.vertices[vertex * 3 + k];
+      }
     }
-    const role = selectedKnotRole();
-    if (role?.kind === 'trail' && role.end) return { kind: 'end', end: role.end };
-    if (role?.kind === 'branch' && role.tip) return { kind: 'branch', junction: role.junction };
-    return null;
+    return seen.size ? [sum[0] / seen.size, sum[1] / seen.size, sum[2] / seen.size] : [0, 0, 0];
   }
 
+  // ---- joining (docs/023 · Networks) ----------------------------------------------------------------------------
+
   /**
-   * The knots what is landing may join. A trail END joins other trails: their ends, and — while it has no branches of
-   * its own to lose by becoming one — their middle knots no branch uses. A branch TIP rejoins its own trail at a knot
-   * no branch uses, or runs on into another trail from that trail's end.
+   * The points what is moving may land on: every point of every trail, but the end the path being drawn grows from;
+   * or, for a picked point about to be dragged, every point but itself and its neighbours along its paths, which it
+   * would fold a path onto.
    */
-  function snapTargets(trail: AuthoredTrail | null, mode = landing()): SnapTarget[] {
-    if (!trail || !mode) return [];
-    const others = docTrails().filter(other => other.id !== trail.id);
-    if (mode.kind === 'branch') {
-      const used = branchEndpoints(trail);
-      const own = trail.knots.flatMap((pos, knot) => knot === mode.junction || used.has(knot) ? [] : [{ trail, knot, pos }]);
-      const ends = others.filter(other => !other.branches?.length)
-        .flatMap(other => [0, other.knots.length - 1].map(knot => ({ trail: other, knot, pos: other.knots[knot] })));
-      return [...own, ...ends];
-    }
-    return others.flatMap(other => {
-      const used = branchEndpoints(other);
-      return other.knots.flatMap((pos, knot) => {
-        const end = knot === 0 || knot === other.knots.length - 1;
-        return !end && (trail.branches?.length || used.has(knot)) ? [] : [{ trail: other, knot, pos }];
+  function snapTargets(): SnapTarget[] {
+    const drawn = drawingTrail();
+    let skip: TrailPointRef[] = [];
+    if (drawn && drawing) {
+      const anchor = drawAnchorPoint();
+      skip = anchor === null ? [] : [{ trail: drawn.id, point: anchor }];
+    } else {
+      const picked = pickedPoint(), trail = picked && byId(picked.trail);
+      if (!picked || !trail || !inDoc(trail)) return [];
+      const near = new Set([picked.point]);
+      for (const path of trail.paths) path.points.forEach((point, i) => {
+        if (point === picked.point) { if (i > 0) near.add(path.points[i - 1]); if (i + 1 < path.points.length) near.add(path.points[i + 1]); }
       });
-    });
+      skip = [...near].map(point => ({ trail: trail.id, point }));
+    }
+    const all: SnapTarget[] = [];
+    const trails = drawn && !inDoc(drawn) ? [...docTrails(), drawn] : docTrails();
+    for (const trail of trails) {
+      const used = new Set(trail.paths.flatMap(path => path.points));
+      trail.points.forEach((pos, point) => {
+        if (used.has(point) && !skip.some(ref => ref.trail === trail.id && ref.point === point)) all.push({ trail, point, pos });
+      });
+    }
+    return all;
   }
 
-  /** The knot at exactly `pos` — where the viewport snapped a knot — if what is landing may join it. */
-  const targetAt = (trail: AuthoredTrail, pos: readonly number[], mode = landing()): SnapTarget | null =>
-    snapTargets(trail, mode).find(target => Math.hypot(target.pos[0] - pos[0], target.pos[1] - pos[1], target.pos[2] - pos[2]) < 1e-6) ?? null;
+  /** The point at exactly `pos` — where the viewport snapped — if what is moving may land on it. */
+  const targetAt = (pos: readonly number[]): SnapTarget | null =>
+    snapTargets().find(target => Math.hypot(target.pos[0] - pos[0], target.pos[1] - pos[1], target.pos[2] - pos[2]) < 1e-6) ?? null;
 
-  /**
-   * Land the free tip of `trail`'s branch leaving `junction` on `target` (`joinBranch`): rejoining the trail, or
-   * running on into another, which is taken out with its patches — one document, one history step.
-   */
-  function landBranch(trail: AuthoredTrail, junction: number, target: SnapTarget): boolean {
-    const index = trail.branches?.findIndex(branch => branch.knot === junction) ?? -1;
-    const joined = joinBranch(trail, index, target);
-    if (!joined.ok) { lastError = joined.error; toast(joined.error, 'err'); return false; }
-    const absorbed = joined.joined === 'extend' ? target.trail : null;
-    const base = absorbed
-      ? { ...removeTrailPatches(store.mdoc, absorbed), trails: (store.mdoc.trails ?? []).filter(other => other.id !== absorbed.id) }
-      : store.mdoc;
-    if (!apply(joined.trail, base)) return false;
-    store.trailKnot = null;
-    toast(absorbed
-      ? 'the other trail goes on as the rest of the branch — cut with this trail\'s settings'
-      : `the branch rejoins the trail at knot ${target.knot + 1} — a junction at each end`, 'ok');
-    return true;
-  }
-
-  /**
-   * Join `trail`, whose `end` lies on `target`, into the trail `target` is on, and take `trail` and its patches out —
-   * one document, one history step. Refused with its reason, changing nothing.
-   */
-  function mergeInto(trail: AuthoredTrail, end: 'start' | 'end', target: SnapTarget): boolean {
-    const merged = mergeTrailInto(target.trail, target.knot, trail, end);
-    if (!merged.ok) { lastError = merged.error; toast(merged.error, 'err'); return false; }
-    const base = inDoc(trail)
-      ? { ...removeTrailPatches(store.mdoc, trail), trails: (store.mdoc.trails ?? []).filter(other => other.id !== trail.id) }
-      : store.mdoc;
-    if (!apply(merged.trail, base)) return false;
-    store.trailKnot = null;
-    toast(merged.joined === 'branch'
-      ? `joined as a branch at knot ${target.knot + 1} of the other trail — a three-way junction, cut with that trail's settings`
-      : 'joined end to end into one trail — it keeps the other trail\'s settings, and these knots their own section', 'ok');
-    return true;
-  }
-
-  /** The mean of a trail's own vertices as they stand, or of its knots if its ribbon cannot be found. */
-  function ribbonCentre(trail: AuthoredTrail): V3 {
+  /** Whether other patches are joined to a trail in the document — which then cannot be taken into another. */
+  function joinedToMesh(trail: AuthoredTrail): boolean {
+    if (!inDoc(trail)) return false;
     const owned = resolveTrail(store.mdoc, trail);
-    const points: V3[] = owned
-      ? owned.vertices.map(v => [store.mdoc.vertices[v * 3], store.mdoc.vertices[v * 3 + 1], store.mdoc.vertices[v * 3 + 2]])
-      : trail.knots;
-    const sum = points.reduce<V3>((acc, p) => [acc[0] + p[0], acc[1] + p[1], acc[2] + p[2]], [0, 0, 0]);
-    return [sum[0] / points.length, sum[1] / points.length, sum[2] / points.length];
+    return !!owned && trailIsConnected(store.mdoc, owned);
   }
+
+  const JOINED_TRAIL = 'Other patches are joined to this trail, so it cannot be taken into another — it would have to be cut afresh.';
 
   function status(): TrailStatus | null {
-    const trail = selectedTrail();
-    if (!trail) return null;
+    const at = focus();
+    if (!at) return null;
+    const { trail, paths } = at;
     const owned = inDoc(trail) ? resolveTrail(store.mdoc, trail) : null;
+    const picks = drawingTrail() ? [{ trail, paths }] : selectionPicks();
+    let spans = 0, patches = 0;
+    for (const pick of picks) {
+      if (!inDoc(pick.trail)) continue;
+      const lists = pathCells(pick.trail);
+      const shape = pick.trail.network ?? { runSpans: [pick.trail.quads.length / 2], runPaths: [0] };
+      for (const path of pick.paths) {
+        patches += lists[path]?.length ?? 0;
+        spans += shape.runSpans.reduce((sum, count, run) => sum + (shape.runPaths[run] === path ? count : 0), 0);
+      }
+    }
     return {
-      knots: trail.knots.length,
-      branches: trail.branches?.length ?? 0,
-      spans: trail.network ? trail.network.runSpans.reduce((sum, spans) => sum + spans, 0) : trail.quads.length / 2,
-      patches: trail.quads.length,
+      points: shownPoints().length,
+      paths: picks.reduce((sum, pick) => sum + pick.paths.length, 0),
+      networkPaths: trail.paths.filter(pathCuts).length,
+      junctions: trail.network?.junctionArms.length ?? 0,
+      spans,
+      patches,
       connected: !!owned && trailIsConnected(store.mdoc, owned),
       broken: inDoc(trail) && !owned,
       draft: !inDoc(trail),
     };
   }
 
-  /** Why the last change was refused — or, while drawing, why the knot under the cursor could not be laid. */
+  /** Why the last change was refused — or, while drawing, why the point under the cursor could not be laid. */
   const error = () => lastError ?? (previewError ? `Not here: ${previewError}` : null);
 
   // ---- cutting ------------------------------------------------------------------------------------------------
 
+  type ApplyOptions = {
+    /** The document to cut into: a drag's start. */
+    base?: QuadMeshDoc;
+    /** Keep a refusal to the panel, rather than saying it at once. */
+    quiet?: boolean;
+    /** The paths of each cut trail to select afterwards; a trail not named keeps the paths it had selected. */
+    select?: Record<string, number[]>;
+    /** Trails taken out first, patches and all — taken into one of the cut ones. */
+    remove?: readonly AuthoredTrail[];
+  };
+
   /**
-   * Cut `next` into `base` and install the result: the new mesh, the trail in its list, and the trail's patches
-   * as the patch selection. A cut the generator refuses changes nothing; its reason is kept for the panel and,
-   * unless `quiet`, said at once.
+   * Cut `nexts` into the document and install the result — the new mesh, the trails in their list, and the selected
+   * paths' patches as the patch selection. A cut the generator refuses changes nothing; its reason is kept for the
+   * panel and, unless `quiet`, said at once.
    */
-  function apply(next: AuthoredTrail, base: QuadMeshDoc = store.mdoc, quiet = false): boolean {
-    const cut = cutTrail(base, next);
-    if (!cut.ok) {
-      lastError = cut.error;
-      if (!quiet) toast(cut.error, 'err');
-      return false;
+  function apply(nexts: readonly AuthoredTrail[], options: ApplyOptions = {}): boolean {
+    const before = drag?.picks ?? selectionPicks();
+    let doc = options.base ?? store.mdoc;
+    for (const gone of options.remove ?? []) {
+      doc = { ...removeTrailPatches(doc, gone), trails: (doc.trails ?? []).filter(other => other.id !== gone.id) };
+    }
+    const cuts: AuthoredTrail[] = [];
+    for (const next of nexts) {
+      const cut = cutTrail(doc, next);
+      if (!cut.ok) {
+        lastError = cut.error;
+        if (!options.quiet) toast(cut.error, 'err');
+        return false;
+      }
+      const trails = [...(doc.trails ?? [])];
+      const at = trails.findIndex(trail => trail.id === next.id);
+      if (at >= 0) trails[at] = cut.trail; else trails.push(cut.trail);
+      cut.doc.trails = trails;
+      doc = cut.doc;
+      cuts.push(cut.trail);
     }
     lastError = null;
-    const trails = [...(base.trails ?? [])];
-    const at = trails.findIndex(trail => trail.id === next.id);
-    if (at >= 0) trails[at] = cut.trail; else trails.push(cut.trail);
-    cut.doc.trails = trails;
-    if (draft?.id === next.id) draft = null;
-    commitEditMesh(store, cut.doc);
-    store.cellSel = [...cut.trail.quads];
-    store.anchorCell = cut.trail.quads[0] ?? null;
+    if (draft && nexts.some(next => next.id === draft!.id)) draft = null;
+    commitEditMesh(store, doc);
+    // The selection follows the cut: each cut trail's selected paths by their new patches, everything else as it was.
+    const touched = new Set([...cuts.map(trail => trail.id), ...(options.remove ?? []).map(trail => trail.id)]);
+    const kept = new Set(before.filter(pick => !touched.has(pick.trail.id)).flatMap(pick => pick.trail.quads));
+    const cells = store.cellSel.filter(id => kept.has(id));
+    for (const trail of cuts) {
+      const paths = options.select?.[trail.id] ?? before.find(pick => pick.trail.id === trail.id)?.paths ?? [];
+      const lists = trailPathQuads(doc, trail);
+      cells.push(...paths.flatMap(path => lists?.[path] ?? []));
+    }
+    store.cellSel = cells;
+    if (!store.anchorCell || !cells.includes(store.anchorCell)) store.anchorCell = cells[0] ?? null;
     cellsStale = true;
     scheduleRebuild();
     return true;
   }
 
-  /** The trail with these handles, the field dropped once nothing is overridden. */
-  function withHandles(trail: AuthoredTrail, handles: readonly (PathHandles | null)[] | undefined): AuthoredTrail {
-    const next = { ...trail };
-    if (handles?.length) next.handles = [...handles]; else delete next.handles;
-    return next;
-  }
-
-  /** The trail with these knot values, the field dropped once no knot has any. */
-  function withKnotSettings(trail: AuthoredTrail, list: TrailKnotSettingsList): AuthoredTrail {
-    const next = { ...trail };
-    if (list?.some(Boolean)) next.knotSettings = list.map(entry => entry ?? null); else delete next.knotSettings;
-    return next;
-  }
-
-  /** The trail with these branches, the field dropped once it has none. */
-  function withBranches(trail: AuthoredTrail, branches: readonly TrailBranch[] | undefined): AuthoredTrail {
-    const next = { ...trail };
-    if (branches?.length) next.branches = [...branches].sort((a, b) => a.knot - b.knot); else delete next.branches;
-    return next;
-  }
-
-  /** Give a trail new knots (and the handles, knot values and branches that go with them): re-cut while it has
-   *  two, and while it has fewer take it out of the mesh — a trail being drawn goes back to a draft, any other is
-   *  gone. */
-  function setKnots(trail: AuthoredTrail, knots: V3[], handles = trail.handles, knotSettings = trail.knotSettings,
-    branches = trail.branches): boolean {
-    const next = withBranches(withKnotSettings(withHandles({ ...trail, knots }, handles?.slice(0, knots.length)),
-      knotSettings?.slice(0, knots.length)), branches?.filter(branch => branch.knot < knots.length));
-    if (knots.length >= 2) return apply(next);
-    if (inDoc(trail)) removeTrail(trail);
-    if (drawingId === trail.id) draft = { ...next, vertices: [], quads: [] };
+  /** Put a trail in place after an edit: re-cut while a path of it has two points; while none does, out of the
+   *  document — a trail being drawn goes back to a draft, any other is gone. */
+  function place(next: AuthoredTrail, options: ApplyOptions = {}): boolean {
+    if (next.paths.some(pathCuts)) return apply([next], options);
+    if (inDoc(next)) removeTrails([next]);
+    if (drawing?.id === next.id) {
+      draft = { ...next, vertices: [], quads: [] };
+      delete draft.network;
+    }
     return true;
   }
 
-  /** Take a trail and its patches out of the document. */
-  function removeTrail(trail: AuthoredTrail) {
-    const doc = removeTrailPatches(store.mdoc, trail);
-    doc.trails = (store.mdoc.trails ?? []).filter(other => other.id !== trail.id);
+  /** Take trails and their patches out of the document. */
+  function removeTrails(gone: readonly AuthoredTrail[]) {
+    let doc = store.mdoc;
+    for (const trail of gone) doc = removeTrailPatches(doc, trail);
+    const ids = new Set(gone.map(trail => trail.id));
+    doc.trails = (store.mdoc.trails ?? []).filter(other => !ids.has(other.id));
     commitEditMesh(store, doc);
     store.cellSel = [];
     store.anchorCell = null;
-    store.trailKnot = null;
+    store.trailPoint = null;
     cellsStale = true;
     scheduleRebuild();
   }
@@ -368,15 +476,14 @@ export function createTrailTools(deps: TrailToolDeps) {
     return Object.fromEntries(Object.entries(STORE_KEYS).map(([key, storeKey]) => [key, store[storeKey]])) as unknown as TrailSettings;
   }
 
-  function beginDrawing(id: string, target: { end: 'start' | 'end' } | { branch: number } = { end: 'end' }) {
+  function beginDrawing(next: Drawing) {
     if (!store.cageOn) { store.cageOn = true; applyCage(); persistUi(); }
-    drawTarget = target;
+    drawing = next;
     previewAt = null; previewError = null;
     store.selectedCorner = null; store.selected = null;
     store.surgeryTool = 'trail'; store.createPatchQuads = [];
     store.weldTool = null; store.weldSource = []; store.weldEdgeSource = [];
-    store.trailKnot = null;
-    drawingId = id;
+    store.trailPoint = null;
     view().setWeldTool(false);
     view().setCreateTrailSurfaceLift(store.trailSurfaceLift);
     view().setSurgeryTool('trail');
@@ -384,165 +491,202 @@ export function createTrailTools(deps: TrailToolDeps) {
     scheduleRebuild(); rebuildTools(); updateCmdSheet();
   }
 
-  /** Arm Create Trail: a fresh trail whose knots the next clicks lay. */
+  /** Arm Create Trail: a fresh trail whose first path the next clicks lay. */
   function armCreateTrail() {
     if (store.modelEditId) { toast('Create Trail builds mountain terrain, not a prop model.', 'err'); return; }
     exitRegion();
     resetGizmoMode();
-    draft = { id: nextTrailId(docTrails()), knots: [], settings: settingsFromStore(), vertices: [], quads: [] };
-    beginDrawing(draft.id);
-    toast('click centre-spline knots · click a knot to move it · Shift axis-locks · Enter finishes', 'info');
+    draft = { id: nextTrailId(docTrails()), points: [], paths: [{ points: [], settings: settingsFromStore() }], vertices: [], quads: [] };
+    beginDrawing({ id: draft.id, path: 0, end: 'end', from: null });
+    toast('click centre-spline points · start or end on any trail’s point to join it · Shift axis-locks · Enter finishes', 'info');
   }
 
-  /** What the picked knot of the selected trail is, for the panel's actions: one of the trail's own — an end, or a
-   *  middle knot that can carry a branch or carries one — or one of a branch's, and whether it is that branch's
-   *  tip. */
-  function selectedKnotRole():
-    | { kind: 'trail'; knot: number; end: 'start' | 'end' | null; branch: boolean }
-    | { kind: 'branch'; junction: number; knot: number; of: number; tip: boolean; rejoins: boolean }
-    | null {
-    const trail = selectedTrail(), at = store.trailKnot;
-    const ref = trail && at !== null ? trailKnotRef(trail, at) : null;
-    if (!trail || !ref) return null;
-    if (ref.branch !== null) {
-      const branch = trail.branches![ref.branch];
-      // A branch that rejoins the trail has no free tip: its last knot runs on to the trail.
-      const rejoins = branch.to !== undefined;
-      return { kind: 'branch', junction: branch.knot, knot: ref.knot, of: branch.knots.length, rejoins,
-        tip: !rejoins && ref.knot === branch.knots.length - 1 };
-    }
-    const last = trail.knots.length - 1;
-    return {
-      kind: 'trail', knot: ref.knot, end: ref.knot === 0 ? 'start' : ref.knot === last ? 'end' : null,
-      branch: branchEndpoints(trail).has(ref.knot),
-    };
-  }
-
-  /** The ends "add points" can draw onto, for the selected trail: both with no knot picked, the picked one's
-   *  with an end knot picked, and neither with a middle knot or a branch's knot picked. */
-  function resumeEnds(): ('start' | 'end')[] {
-    if (!trailOfSelection()) return [];
-    if (store.trailKnot === null) return ['start', 'end'];
-    const role = selectedKnotRole();
-    return role?.kind === 'trail' && role.end ? [role.end] : [];
-  }
-
-  /** Lay more knots onto one end of the selected trail (the panel's "add points"): ahead of its first knot, or
-   *  after its last. */
-  function resumeTrail(end: 'start' | 'end') {
-    const trail = trailOfSelection();
-    if (!trail || !resumeEnds().includes(end)) return;
-    draft = null;
-    beginDrawing(trail.id, { end });
-    toast(`click to add knots to the ${end} of the trail · Enter finishes`, 'info');
-  }
-
-  /** Lay a branch off the picked middle knot of the selected trail (the panel's "add a branch"), or more knots onto
-   *  the branch whose tip is picked. Its first click lays the branch and the junction where it meets the trail. */
-  function armBranch() {
-    const trail = trailOfSelection(), role = selectedKnotRole();
-    if (!trail || !role) return;
-    let junction: number;
-    if (role.kind === 'trail' && role.end === null && !role.branch) junction = role.knot;
-    else if (role.kind === 'branch' && role.tip) junction = role.junction;
-    else return;
-    draft = null;
-    beginDrawing(trail.id, { branch: junction });
-    toast(role.kind === 'trail'
-      ? 'click to lay the branch · the ghost shows the junction it makes · Enter finishes'
-      : 'click to add knots to the branch · Enter finishes', 'info');
-  }
-
-  /** Take the picked knot's branch off the trail. */
-  function removeBranch() {
-    const trail = trailOfSelection(), role = selectedKnotRole();
-    if (!trail || role?.kind !== 'trail' || !role.branch) return;
-    // The branch leaving this knot, or rejoining at it.
-    if (apply(withBranches(trail, trail.branches!.filter(branch => branch.knot !== role.knot && branch.to !== role.knot))))
-      toast('branch removed — the trail runs through its knot again', 'ok');
-    syncTrailView();
-    rebuildTools(); updateCmdSheet();
-  }
-
-  /** The knot being drawn added to `trail` at `pos`: the trail as the next click would make it. */
-  function withNextKnot(trail: AuthoredTrail, pos: V3): AuthoredTrail {
-    const knot: V3 = [pos[0], pos[1], pos[2]];
-    if ('branch' in drawTarget) {
-      const junction = drawTarget.branch;
-      const branches = [...(trail.branches ?? [])];
-      const at = branches.findIndex(branch => branch.knot === junction);
-      if (at >= 0) branches[at] = { ...branches[at], knots: [...branches[at].knots, knot] };
-      else branches.push({ knot: junction, knots: [knot] });
-      return withBranches(trail, branches);
-    }
-    if (drawTarget.end === 'end') return { ...trail, knots: [...trail.knots, knot] };
-    // Onto the start: every knot's own handles, values and branch move up one with it.
-    const shift = <T>(list: readonly (T | null)[] | undefined): (T | null)[] | undefined =>
-      list?.some(Boolean) ? [null, ...list] : undefined;
-    return withBranches(withKnotSettings(withHandles({ ...trail, knots: [knot, ...trail.knots] }, shift(trail.handles)),
-      shift(trail.knotSettings)), branchesWithKnotAt(trail.branches, 0));
+  /** The point the next one is laid from: the end of the path being drawn, or the point a new path leaves. */
+  function drawAnchorPoint(): number | null {
+    const trail = drawingTrail();
+    if (!trail || !drawing) return null;
+    if (drawing.path === null) return drawing.from;
+    const points = trail.paths[drawing.path]?.points ?? [];
+    return (drawing.end === 'start' ? points[0] : points.at(-1)) ?? null;
   }
 
   /**
-   * A knot laid on another trail's knot. A new trail's first knot there goes on drawing that trail instead — on from
-   * its end, or as a branch from a middle knot; any later one joins the two trails and ends the drawing.
+   * What the picked point is, for the panel's actions: how many arms meet there, which ends of the focus path stand
+   * on it, and whether it is a FREE end — one path's end with nothing else, which drawing from grows that path.
    */
-  function joinAt(trail: AuthoredTrail, end: 'start' | 'end', target: SnapTarget, pos: V3) {
-    if (!trail.knots.length) {
-      const last = target.trail.knots.length - 1;
-      draft = null;
-      store.cellSel = [...target.trail.quads];
-      store.anchorCell = target.trail.quads[0] ?? null;
-      beginDrawing(target.trail.id, target.knot === 0 ? { end: 'start' } : target.knot === last ? { end: 'end' } : { branch: target.knot });
-      toast(target.knot === 0 || target.knot === last
-        ? 'drawing on from the end of that trail · Enter finishes' : 'drawing a branch from that knot · Enter finishes', 'info');
-      return;
-    }
-    if (mergeInto(withNextKnot(trail, pos), end, target)) endDrawing();
-    syncTrailView();
-    rebuildTools(); updateCmdSheet();
+  function selectedPointRole(): { point: number; arms: number; paths: number; ends: ('start' | 'end')[]; free: boolean } | null {
+    const at = focus(), picked = pickedPoint();
+    if (!at || !picked || picked.trail !== at.trail.id) return null;
+    const arms = pointArms(at.trail)[picked.point] ?? 0;
+    const path = at.path === null ? null : at.trail.paths[at.path];
+    return {
+      point: picked.point, arms, paths: pathsThrough(at.trail, picked.point).length,
+      ends: path ? pathEndsAt(path, picked.point) : [], free: arms === 1,
+    };
   }
 
-  /** A drawing click on no knot: lay one there. */
+  /** The ends "add points" can draw onto: the one selected path's two with no point picked, the picked point's
+   *  with one of its ends picked, and none otherwise. */
+  function resumeEnds(): ('start' | 'end')[] {
+    const at = focus();
+    if (!at || drawingTrail() || at.path === null || selectionPicks().reduce((n, pick) => n + pick.paths.length, 0) !== 1) return [];
+    if (!store.trailPoint) return ['start', 'end'];
+    return selectedPointRole()?.ends ?? [];
+  }
+
+  /** Lay more points onto one end of the selected path (the panel's "add points"). */
+  function resumeTrail(end: 'start' | 'end') {
+    const at = focus();
+    if (!at || at.path === null || !resumeEnds().includes(end)) return;
+    draft = null;
+    beginDrawing({ id: at.trail.id, path: at.path, end, from: null });
+    toast(`click to add points to the ${end} of the path · Enter finishes`, 'info');
+  }
+
+  /** Lay a new path from the picked point (the panel's "new path here"): its first click lays the path and the
+   *  junction it makes. */
+  function armPathFrom() {
+    const at = focus(), role = selectedPointRole();
+    if (!at || !role || !inDoc(at.trail)) return;
+    draft = null;
+    beginDrawing({ id: at.trail.id, path: null, end: 'end', from: role.point });
+    toast('click to lay the new path · the ghost shows the junction it makes · Enter finishes', 'info');
+  }
+
+  type Lay =
+    | { kind: 'start'; drawing: Drawing; trail: AuthoredTrail }
+    | { kind: 'cut'; trail: AuthoredTrail; drawing: Drawing | null; remove?: AuthoredTrail; path: number }
+    | { kind: 'error'; error: string };
+
+  /** The path being drawn with its next point at `pos` — or on `target`, a point already there. */
+  function lay(trail: AuthoredTrail, at: Drawing, pos: V3, target: SnapTarget | null): Lay {
+    const drawn = at.path === null ? null : trail.paths[at.path];
+    if (drawn && !drawn.points.length) {
+      // A fresh trail's first point. On a free end it goes on drawing that path; on any other point, a new path
+      // leaves it.
+      if (!target) {
+        const added = withNewPoint(trail, pos);
+        return { kind: 'cut', trail: withPath(added.trail, at.path!, { ...drawn, points: [added.point] }), drawing: at, path: at.path! };
+      }
+      const host = target.trail;
+      if (pointArms(host)[target.point] === 1) {
+        const path = host.paths.findIndex(candidate => pathCuts(candidate) && pathEndsAt(candidate, target.point).length);
+        return { kind: 'start', trail: host, drawing: { id: host.id, path, end: pathEndsAt(host.paths[path], target.point)[0], from: null } };
+      }
+      return { kind: 'start', trail: host, drawing: { id: host.id, path: null, end: 'end', from: target.point } };
+    }
+
+    // Into another trail: that trail takes this one in, and the two are one network from here on.
+    let next = trail, pointShift = 0, pathShift = 0;
+    let remove: AuthoredTrail | undefined;
+    if (target && target.trail.id !== trail.id) {
+      if (joinedToMesh(trail)) return { kind: 'error', error: JOINED_TRAIL };
+      const joined = joinTrails(target.trail, trail);
+      next = joined.trail; pointShift = joined.points; pathShift = joined.paths;
+      remove = inDoc(trail) ? trail : undefined;
+    }
+    let point: number;
+    if (target) point = target.point;
+    else { const added = withNewPoint(next, pos); next = added.trail; point = added.point; }
+    const anchor = at.path === null ? at.from : null;
+    const from = anchor === null ? null : anchor + pointShift;
+    if (from === point) return { kind: 'error', error: 'A path needs two different points.' };
+
+    let path: number;
+    if (at.path !== null) {
+      path = at.path + pathShift;
+      const grown = next.paths[path];
+      if ((at.end === 'end' ? grown.points.at(-1) : grown.points[0]) === point) return { kind: 'error', error: 'That is the point it grows from.' };
+      next = withPath(next, path, extendPath(grown, point, at.end));
+    } else {
+      path = next.paths.length;
+      next = { ...next, paths: [...next.paths, { points: [from!, point], settings: settingsFromStore() }] };
+    }
+    let end = at.end;
+    // Two path ends meeting alone, cut alike, are one path: where this one lands, and where a new one left.
+    for (const meet of [target ? point : null, from]) {
+      if (meet === null) continue;
+      const fused = fusePathsAt(next, meet);
+      if (!fused) continue;
+      next = fused.trail;
+      path = fused.paths[path] ?? fused.kept;
+      point = fused.points[point] ?? point;
+      const grown = next.paths[path];
+      end = grown.points[0] === point && grown.points.at(-1) !== point ? 'start' : 'end';
+    }
+    // A point laid on one already there ends the path on it.
+    return { kind: 'cut', trail: next, remove, path, drawing: target ? null : { id: next.id, path, end, from: null } };
+  }
+
+  /** Begin drawing on from a point already there: a free end's path, or a new path leaving it. */
+  function startAt(next: Drawing, host: AuthoredTrail) {
+    draft = null;
+    const lists = pathCells(host);
+    store.cellSel = next.path === null ? [] : [...lists[next.path]];
+    store.anchorCell = store.cellSel[0] ?? null;
+    drawing = next;
+    cellsStale = true;
+    toast(next.path === null ? 'drawing a new path from that point · Enter finishes' : 'drawing on from the end of that path · Enter finishes', 'info');
+  }
+
+  /** A drawing click: lay a point there — or, on a point already there, join it. */
   function appendKnot(pos: V3) {
     const trail = drawingTrail();
-    if (!trail) return;
-    store.trailKnot = null; // keep the gizmo off the newest knot so it does not catch the next click
+    if (!trail || !drawing) return;
+    store.trailPoint = null; // keep the gizmo off the newest point so it does not catch the next click
     previewAt = null; previewError = null;
-    const target = targetAt(trail, pos);
-    if (target && 'end' in drawTarget) { joinAt(trail, drawTarget.end, target, pos); return; }
-    if (target && 'branch' in drawTarget) {
-      // The branch's next knot on a knot it can join: lay it there, land the tip, and stop drawing.
-      if (landBranch(withNextKnot(trail, pos), drawTarget.branch, target)) endDrawing();
-      syncTrailView();
-      rebuildTools(); updateCmdSheet();
-      return;
+    const laid = lay(trail, drawing, [pos[0], pos[1], pos[2]], targetAt(pos));
+    if (laid.kind === 'error') { lastError = laid.error; toast(laid.error, 'err'); }
+    else if (laid.kind === 'start') startAt(laid.drawing, laid.trail);
+    else {
+      const ok = place(laid.trail, { select: { [laid.trail.id]: [laid.path] }, remove: laid.remove ? [laid.remove] : [] });
+      if (ok) {
+        if (laid.drawing) drawing = laid.drawing;
+        else {
+          endDrawing();
+          toast('joined — the path ends on that point', 'ok');
+        }
+      }
     }
-    const next = withNextKnot(trail, pos);
-    if ('branch' in drawTarget) apply(next);
-    else setKnots(trail, next.knots, next.handles, next.knotSettings, next.branches);
     syncTrailView();
     rebuildTools(); updateCmdSheet();
   }
 
-  /** Backspace while drawing: take the newest knot back off the end, or the branch, being drawn onto. */
+  /** Backspace while drawing: take the newest point back off the path being drawn. */
   function undoCreateTrailPoint() {
     const trail = drawingTrail();
-    if (!trail?.knots.length) return;
-    store.trailKnot = null;
-    if ('branch' in drawTarget) {
-      const junction = drawTarget.branch;
-      const branch = trail.branches?.find(entry => entry.knot === junction);
-      if (!branch) return;
-      // Its last knot goes, and with it the branch: back to a branch not laid yet.
-      apply(withBranches(trail, (trail.branches ?? []).flatMap(entry => entry !== branch ? [entry]
-        : entry.knots.length > 1 ? [{ ...entry, knots: entry.knots.slice(0, -1) }] : [])));
-    } else if (drawTarget.end === 'end') {
-      const last = trail.knots.length - 1;
-      setKnots(trail, trail.knots.slice(0, -1), trail.handles, trail.knotSettings, branchesWithoutKnot(trail.branches, last));
+    if (!trail || !drawing || drawing.path === null) return;
+    const path = trail.paths[drawing.path];
+    if (!path?.points.length) return;
+    store.trailPoint = null;
+    const left = trimPath(path, drawing.end);
+    // A draft keeps a path down to nothing; one in the document leaves the point it would have left from.
+    if (left.points.length >= 2 || !inDoc(trail)) {
+      const tidied = compactTrail(withPath(trail, drawing.path, left), drawing.path);
+      const index = tidied.paths[drawing.path];
+      if (index !== null) {
+        drawing = { ...drawing, path: index };
+        place(tidied.trail, { select: { [trail.id]: [index] } });
+      } else {
+        drawing = { ...drawing, path: 0 };
+        draft = { id: trail.id, points: [], paths: [{ points: [], settings: path.settings }], vertices: [], quads: [] };
+      }
     } else {
-      setKnots(trail, trail.knots.slice(1), withoutPathNode(trail.handles, 0), withoutTrailKnot(trail.knotSettings, 0),
-        branchesWithoutKnot(trail.branches, 0));
+      // Down to one point on a trail in the document: the path goes, and drawing waits to lay it again from there.
+      const from = left.points[0] ?? null;
+      const tidied = compactTrail({ ...trail, paths: trail.paths.map((other, i) => i === drawing!.path ? { ...other, points: [] } : other) });
+      const at = from === null ? null : tidied.points[from];
+      if (!tidied.trail.paths.some(pathCuts)) {
+        // Its only path: the trail is a draft of that one point again.
+        removeTrails([trail]);
+        const lone = from === null ? null : trail.points[from];
+        draft = { id: trail.id, points: lone ? [lone] : [], paths: [{ points: lone ? [0] : [], settings: path.settings }], vertices: [], quads: [] };
+        drawing = { id: draft.id, path: 0, end: 'end', from: null };
+      } else {
+        apply([tidied.trail], { select: { [trail.id]: [] } });
+        if (at === null) endDrawing(); // it shared no point with the rest: nothing is left to draw from
+        else drawing = { ...drawing, path: null, end: 'end', from: at };
+      }
     }
     syncTrailView();
     rebuildTools(); updateCmdSheet();
@@ -554,28 +698,19 @@ export function createTrailTools(deps: TrailToolDeps) {
     previewFrame ||= requestAnimationFrame(() => { previewFrame = 0; showPreview(); });
   }
 
-  /** Ghost the new and reshaped patches the next knot would cut — the next span, or the branch and the junction
-   *  it makes — or say why a knot there would be refused. */
+  /** Ghost the new and reshaped patches the next point would cut — the next span, or the path and the junction it
+   *  makes — or say why a point there would be refused. */
   function showPreview() {
     const trail = drawingTrail();
     let shown: AuthoredTrail | null = null, reason: string | null = null;
-    if (trail && previewAt) {
-      const next = withNextKnot(trail, previewAt);
-      const target = targetAt(trail, previewAt);
-      if (target && 'end' in drawTarget) {
-        // On another trail's knot: ghost the two joined (a first knot there joins nothing yet).
-        const merged = trail.knots.length ? mergeTrailInto(target.trail, target.knot, next, drawTarget.end) : null;
-        if (merged?.ok) shown = merged.trail; else if (merged) reason = merged.error;
-      } else if (target && 'branch' in drawTarget) {
-        // A branch tip on a knot it can join: ghost it rejoining, or running on into the other trail.
-        const junction = drawTarget.branch;
-        const landed = joinBranch(next, next.branches?.findIndex(branch => branch.knot === junction) ?? -1, target);
-        if (landed.ok) shown = landed.trail; else reason = landed.error;
-      } else if (next.knots.length >= 2) shown = inDoc(trail) ? next : { ...next, vertices: [], quads: [] };
+    if (trail && drawing && previewAt) {
+      const laid = lay(trail, drawing, previewAt, targetAt(previewAt));
+      if (laid.kind === 'error') reason = laid.error;
+      else if (laid.kind === 'cut' && laid.trail.paths.some(pathCuts)) shown = laid.trail;
     }
     const preview = shown ? trailPreview(store.mdoc, shown) : null;
     if (preview && !preview.ok) reason = preview.error;
-    // The panel says why a knot here would be refused; its rebuild clears the ghost, so it goes first.
+    // The panel says why a point here would be refused; its rebuild clears the ghost, so it goes first.
     if (reason !== previewError) { previewError = reason; rebuildTools(); }
     view().setLoftPreview(preview?.ok && preview.quads.length ? preview.quads.map(quad => preview.doc.quads[quad]) : null,
       preview?.ok ? preview.doc : null);
@@ -584,24 +719,29 @@ export function createTrailTools(deps: TrailToolDeps) {
   /** Leave the drawing tool, keeping whatever is selected. */
   function endDrawing() {
     store.surgeryTool = null;
-    drawingId = null; draft = null;
-    store.trailKnot = null;
-    drawTarget = { end: 'end' };
+    drawing = null; draft = null;
+    store.trailPoint = null;
     previewAt = null; previewError = null;
     view().setSurgeryTool(null);
   }
 
-  /** Enter / Esc: stop drawing. A trail that never reached two knots was never in the document and is dropped;
-   *  one that did stays selected with its knots showing. */
+  /** Enter / Esc: stop drawing. A trail that never had a path of two points was never in the document and is
+   *  dropped; the path drawn stays selected with its points showing. */
   function finishCreateTrail() {
     if (store.surgeryTool !== 'trail') return;
     const trail = drawingTrail();
     const kept = trail && inDoc(trail) ? trail : null;
+    const path = kept && drawing?.path !== null && drawing?.path !== undefined ? drawing.path : null;
     endDrawing();
-    if (kept) { store.cellSel = [...kept.quads]; store.anchorCell = kept.quads[0] ?? null; cellsStale = true; }
+    if (kept) {
+      const lists = pathCells(kept);
+      store.cellSel = path !== null && lists[path]?.length ? [...lists[path]] : store.cellSel;
+      store.anchorCell = store.cellSel[0] ?? null;
+      cellsStale = true;
+    }
     syncTrailView();
     scheduleRebuild(); rebuildTools(); updateCmdSheet();
-    if (kept) toast(`trail finished · ${kept.knots.length} knots · ${kept.quads.length} patches — click any of its patches to edit it again`, 'ok');
+    if (kept) toast('path finished — click any of its patches to edit it again', 'ok');
   }
 
   /** The old Cancel: with a trail that edits in place, leaving the tool is finishing it. */
@@ -609,209 +749,295 @@ export function createTrailTools(deps: TrailToolDeps) {
 
   // ---- editing ------------------------------------------------------------------------------------------------
 
+  /** A click on a shown point (by its place in the viewport's list) picks it; null drops the pick. */
   function selectKnot(knot: number | null) {
-    store.trailKnot = knot;
-    store.pathHandle = null; // the knot takes the gizmo back from its handle
+    store.trailPoint = knot === null ? null : shownPoints()[knot] ?? null;
+    store.pathHandle = null; // the point takes the gizmo back from its handle
     syncTrailView();
     rebuildTools(); updateCmdSheet();
   }
 
-  /** A knot drag starts or ends. The end lands the last frame and says why, if the trail could not follow. */
+  /** A point, handle or whole-selection drag starts or ends. The end lands the last frame and says why, if the trail
+   *  could not follow; a point dropped on another point becomes it. */
   function knotDrag(dragging: boolean) {
-    const trail = selectedTrail();
-    if (dragging) { drag = trail && inDoc(trail) ? { base: store.mdoc, trail } : null; lastError = null; return; }
+    if (dragging) {
+      lastError = null;
+      const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
+      if (picked) drag = trail && inDoc(trail) ? { base: store.mdoc, trails: [trail], picks: selectionPicks() } : null;
+      else {
+        const picks = selectionPicks();
+        drag = picks.length ? { base: store.mdoc, trails: picks.map(pick => pick.trail), picks } : null;
+      }
+      return;
+    }
     flushMove();
     drag = null;
     const failed = lastError;
-    // An end knot dropped on another trail's knot joins the two there; a branch's free tip dropped on a knot it can
-    // join lands there.
-    const dropped = selectedTrail(), role = selectedKnotRole();
-    if (dropped && inDoc(dropped) && !failed && role?.kind === 'trail' && role.end) {
-      const target = targetAt(dropped, dropped.knots[role.knot]);
-      if (target) mergeInto(dropped, role.end, target);
-    } else if (dropped && inDoc(dropped) && !failed && role?.kind === 'branch' && role.tip) {
-      const tip = dropped.branches?.find(branch => branch.knot === role.junction)?.knots.at(-1);
-      const target = tip ? targetAt(dropped, tip) : null;
-      if (target) landBranch(dropped, role.junction, target);
-    }
+    const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
+    const target = !failed && picked && trail && inDoc(trail) ? targetAt(trail.points[picked.point]) : null;
+    if (picked && trail && target) dropOn(trail, picked.point, target);
     syncTrailView();
     rebuildTools(); updateCmdSheet();
     if (failed) toast(`${failed} The trail keeps its last shape.`, 'err');
+  }
+
+  /** `point` of `trail`, dropped on `target`: one point now — and one network, when it is another trail's. */
+  function dropOn(trail: AuthoredTrail, point: number, target: SnapTarget) {
+    const before = selectionPicks();
+    let merged: TrailRenumbering, pathShift = 0;
+    let remove: AuthoredTrail[] = [];
+    if (target.trail.id === trail.id) merged = mergeTrailPoints(trail, point, target.point);
+    else {
+      if (joinedToMesh(trail)) { lastError = JOINED_TRAIL; toast(JOINED_TRAIL, 'err'); return; }
+      const joined = joinTrails(target.trail, trail);
+      pathShift = joined.paths;
+      merged = mergeTrailPoints(joined.trail, point + joined.points, target.point);
+      remove = [trail];
+    }
+    // The selected paths of either trail, renumbered into the one it makes.
+    const paths = before.flatMap(pick => pick.trail.id === trail.id ? pick.paths.map(path => path + pathShift)
+      : pick.trail.id === target.trail.id ? pick.paths : []).flatMap(path => merged.paths[path] ?? []);
+    if (!apply([merged.trail], { select: { [merged.trail.id]: [...new Set(paths)] }, remove })) return;
+    const at = merged.points[target.point];
+    store.trailPoint = at === null ? null : { trail: merged.trail.id, point: at };
+    toast(target.trail.id === trail.id ? 'points joined — the paths meet there now' : 'joined into the other trail — one network now', 'ok');
   }
 
   function flushMove() {
     if (moveFrame) { cancelAnimationFrame(moveFrame); moveFrame = 0; }
     const move = pendingMove;
     pendingMove = null;
-    if (move) apply(move.trail, move.base, true);
+    if (move) apply(move.trails, { base: move.base, quiet: true });
   }
 
-  /** The selected knot's gizmo moved it — one of the trail's own, or a branch's. Cuts run once per frame, each from
+  function queueMove(trails: AuthoredTrail[]) {
+    pendingMove = { trails, base: drag?.base ?? store.mdoc };
+    if (!drag) { flushMove(); return; }
+    moveFrame ||= requestAnimationFrame(() => { moveFrame = 0; flushMove(); });
+  }
+
+  /** The picked point's gizmo moved it (by its place in the viewport's list). Cuts run once per frame, each from
    *  the drag's base document. */
-  function moveKnot(at: number, pos: V3) {
-    const trail = drag?.trail ?? selectedTrail();
-    const ref = trail ? trailKnotRef(trail, at) : null;
-    if (!trail || !ref) return;
-    const p: V3 = [pos[0], pos[1], pos[2]];
-    const next = ref.branch === null
-      ? { ...trail, knots: trail.knots.map((knot, i): V3 => i === ref.knot ? p : knot) }
-      : { ...trail, branches: trail.branches!.map((branch, b) => b !== ref.branch ? branch
-        : { ...branch, knots: branch.knots.map((knot, i): V3 => i === ref.knot ? p : knot) }) };
+  function moveKnot(knot: number, pos: V3) {
+    const ref = shownPoints()[knot];
+    const trail = ref ? drag?.trails.find(other => other.id === ref.trail) ?? byId(ref.trail) : null;
+    if (!ref || !trail) return;
+    const next: AuthoredTrail = { ...trail, points: trail.points.map((point, i): V3 => i === ref.point ? [pos[0], pos[1], pos[2]] : point) };
     if (!inDoc(trail)) { draft = next; syncTrailView(); return; }
-    pendingMove = { trail: next, base: drag?.base ?? store.mdoc };
-    if (!drag) { flushMove(); return; }
-    moveFrame ||= requestAnimationFrame(() => { moveFrame = 0; flushMove(); });
+    queueMove([next]);
   }
 
   /**
-   * The whole trail's gizmo moved, turned or scaled it: these are all its knots and dragged handles now. Cut once
-   * per frame from the drag's base document, as a knot drag is; a joined trail stretches what is joined to it.
+   * The selected paths' gizmo moved, turned or scaled them, from the drag's start: every point they run through and
+   * every handle dragged on them goes with it. A point they share with paths not selected moves too, taking those
+   * paths' ends along. Cut once per frame from the drag's base document, as a point drag is.
    */
-  function transformTrail(knots: V3[], handles: (PathHandles | null)[]) {
-    const trail = drag?.trail ?? selectedTrail();
-    if (!trail || !inDoc(trail) || knots.length !== trailAllKnots(trail).length) return;
-    // The list is the trail's own knots, then each branch's in turn.
-    const own = trail.knots.length;
-    let from = own;
-    const branches = trail.branches?.map(branch => {
-      const moved = knots.slice(from, from + branch.knots.length);
-      from += branch.knots.length;
-      return { ...branch, knots: moved };
+  function transformTrail(xf: TrailTransform) {
+    const picks = drag?.picks ?? selectionPicks();
+    if (!picks.length) return;
+    const nexts = picks.map(({ trail, paths }) => {
+      const start = drag?.trails.find(other => other.id === trail.id) ?? trail;
+      const moved = new Set(paths.flatMap(path => start.paths[path].points));
+      const vector = (v: V3 | undefined) => v && xf.vector(v);
+      return {
+        ...start,
+        points: start.points.map((point, i) => moved.has(i) ? xf.point(point) : point),
+        paths: start.paths.map((path, i): TrailPath => !paths.includes(i) || !path.handles ? path : {
+          ...path,
+          handles: path.handles.map(own => own ? { ...(own.in ? { in: vector(own.in) } : {}), ...(own.out ? { out: vector(own.out) } : {}) } as PathHandles : null),
+        }),
+      };
     });
-    pendingMove = {
-      trail: withHandles({ ...trail, knots: knots.slice(0, own), ...(branches ? { branches } : {}) }, handles.slice(0, own)),
-      base: drag?.base ?? store.mdoc,
-    };
-    if (!drag) { flushMove(); return; }
-    moveFrame ||= requestAnimationFrame(() => { moveFrame = 0; flushMove(); });
+    queueMove(nexts);
+  }
+
+  /** The path whose handles show — the focus path — as the handle layer takes it, and its picked point's place on
+   *  it (app/paths/handles.ts). Its id names the trail and the path. */
+  function focusPath(): { id: string; nodes: V3[]; handles?: (PathHandles | null)[]; node: number | null } | null {
+    const at = focus();
+    if (!at || at.path === null) return null;
+    const path = at.trail.paths[at.path];
+    if (!path) return null;
+    const picked = store.trailPoint?.trail === at.trail.id ? store.trailPoint.point : null;
+    const node = picked === null ? -1 : path.points.indexOf(picked);
+    return { id: `${at.trail.id}#${at.path}`, nodes: pathKnots(at.trail, path), handles: path.handles, node: node < 0 ? null : node };
+  }
+
+  /** A handle of the focus path was clicked: its point is the picked one. */
+  function selectTrailNode(node: number) {
+    const at = focus();
+    const point = at && at.path !== null ? at.trail.paths[at.path]?.points[node] : undefined;
+    if (at && point !== undefined) store.trailPoint = { trail: at.trail.id, point };
   }
 
   /**
-   * New Bézier handles for the selected trail (app/paths/handles.ts). A `live` change is one frame of a handle
-   * drag, cut from the drag's base document like a knot drag's; any other re-cuts the trail as it stands.
+   * New Bézier handles for the focus path (app/paths/handles.ts). A `live` change is one frame of a handle drag, cut
+   * from the drag's base document like a point drag's; any other re-cuts the trail as it stands.
    */
   function setTrailHandles(handles: (PathHandles | null)[], live: boolean) {
-    const trail = (live ? drag?.trail : null) ?? selectedTrail();
-    if (!trail) return;
-    const next = withHandles(trail, handles);
+    const at = focus();
+    if (!at || at.path === null) return;
+    const trail = (live ? drag?.trails.find(other => other.id === at.trail.id) : null) ?? at.trail;
+    const changed: TrailPath = { ...trail.paths[at.path] };
+    if (handles.some(Boolean)) changed.handles = handles; else delete changed.handles;
+    const next = withPath(trail, at.path, changed);
     if (!inDoc(trail)) { draft = next; syncTrailView(); return; }
-    if (!live || !drag) { apply(next, store.mdoc, live); return; }
-    pendingMove = { trail: next, base: drag.base };
-    moveFrame ||= requestAnimationFrame(() => { moveFrame = 0; flushMove(); });
+    if (!live || !drag) { apply([next], { quiet: live }); return; }
+    queueMove([next]);
   }
 
-  /** Delete the selected knot. One of the trail's own takes its branch with it, and a trail left with one knot
-   *  has nothing to cut and is removed; a branch's last knot takes the branch. */
+  /** Delete the picked point: every path through it runs straight past it, a path left with one point goes, and a
+   *  trail left with no path is removed. */
   function deleteSelectedTrailKnot() {
-    const trail = selectedTrail(), at = store.trailKnot;
-    const ref = trail && at !== null ? trailKnotRef(trail, at) : null;
-    if (!trail || !ref) return;
-    store.trailKnot = null;
+    const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
+    if (!picked || !trail) return;
+    store.trailPoint = null;
     store.pathHandle = null;
-    if (ref.branch !== null) {
-      // A branch keeps going while it has knots, or rejoins the trail (a straight link from knot to knot).
-      const branches = trail.branches!.flatMap((branch, b) => {
-        if (b !== ref.branch) return [branch];
-        const knots = branch.knots.filter((_, i) => i !== ref.knot);
-        return knots.length || branch.to !== undefined ? [{ ...branch, knots }] : [];
-      });
-      if (inDoc(trail)) apply(withBranches(trail, branches)); else draft = withBranches(trail, branches);
+    const drawn = drawingTrail()?.id === trail.id ? drawing : null;
+    const keep = drawn?.path ?? null;
+    const tidied = withoutTrailPoint(trail, picked.point, inDoc(trail) ? null : keep);
+    const before = selectionPicks().find(pick => pick.trail.id === trail.id)?.paths ?? [];
+    if (drawn && drawing) {
+      const path = drawn.path === null ? null : tidied.paths[drawn.path];
+      const from = drawn.from === null ? null : tidied.points[drawn.from];
+      if ((drawn.path !== null && path === null) || (drawn.path === null && from === null)) {
+        // What was being drawn is gone with the point: stop drawing.
+        place(tidied.trail, { select: { [trail.id]: [] } });
+        endDrawing();
+      } else {
+        drawing = { ...drawing, path, from };
+        place(tidied.trail, { select: { [trail.id]: path === null ? [] : [path] } });
+      }
     } else {
-      const knot = ref.knot;
-      const knots = trail.knots.filter((_, i) => i !== knot);
-      const drawn = drawingTrail()?.id === trail.id;
-      const hadBranch = !!trail.branches?.some(branch => branch.knot === knot);
-      setKnots(trail, knots, withoutPathNode(trail.handles, knot), withoutTrailKnot(trail.knotSettings, knot),
-        branchesWithoutKnot(trail.branches, knot));
-      if (knots.length < 2 && !drawn) toast('trail removed — it needs at least two knots', 'info');
-      else if (hadBranch) toast('knot deleted, and the branch it carried with it', 'info');
+      const select = before.flatMap(path => tidied.paths[path] ?? []);
+      place(tidied.trail, { select: { [trail.id]: select } });
+      if (!tidied.trail.paths.some(pathCuts)) toast('trail removed — no path of it has two points left', 'info');
     }
     syncTrailView();
     rebuildTools(); updateCmdSheet();
   }
 
-  /** A setting changed in the panel: re-cut, and make it the next trail's starting point too. */
-  function setTrailSetting<K extends keyof TrailSettings>(key: K, value: TrailSettings[K]) {
-    (store as unknown as Record<string, unknown>)[STORE_KEYS[key]] = value;
-    const trail = selectedTrail();
-    if (!trail) return;
-    const next = { ...trail, settings: { ...trail.settings, [key]: value } };
-    if (!inDoc(trail)) { draft = next; return; }
-    // Quiet: a slider reports every step of a drag, and the panel's banner already says why a cut was refused.
-    // No Tools rebuild either, which would tear the slider out from under the pointer.
-    apply(next, store.mdoc, true);
+  /** Every selected path, or the one being drawn: what a setting change applies to. */
+  function editedPaths(): TrailPick[] {
+    const trail = drawingTrail();
+    if (trail && drawing) return drawing.path === null ? [] : [{ trail, paths: [drawing.path] }];
+    return selectionPicks();
   }
 
-  // ---- the selected knot's own section (docs/023 · Per-knot section) -----------------------------------------
+  /** A setting changed in the panel: every selected path takes it — re-cut — and so does the next new path. */
+  function setTrailSetting<K extends keyof TrailSettings>(key: K, value: TrailSettings[K]) {
+    (store as unknown as Record<string, unknown>)[STORE_KEYS[key]] = value;
+    const nexts = editedPaths().map(({ trail, paths }) => ({
+      ...trail,
+      paths: trail.paths.map((path, i) => paths.includes(i) ? { ...path, settings: { ...path.settings, [key]: value } } : path),
+    }));
+    const live = nexts.filter(inDoc);
+    for (const next of nexts) if (!inDoc(next)) draft = next;
+    // Quiet: a slider reports every step of a drag, and the panel's banner already says why a cut was refused.
+    // No Tools rebuild either, which would tear the slider out from under the pointer.
+    if (live.length) apply(live, { quiet: true });
+  }
 
-  /** The selected knot: its own values, and the station the trail is cut with there (null while it cannot be
-   *  cut, or is still a draft). */
-  function selectedTrailKnot(): { knot: number; own: TrailKnotSettings; cut: TrailStation | null } | null {
-    const trail = selectedTrail(), knot = store.trailKnot;
-    if (!trail || knot === null || knot >= trail.knots.length) return null;
-    const cut = inDoc(trail) ? trailKnotStations(store.mdoc, trail)?.[knot] ?? null : null;
-    return { knot, own: { ...(trail.knotSettings?.[knot] ?? {}) }, cut };
+  /** The focus path's settings, or the next new path's while one is about to be laid. */
+  function focusSettings(): TrailSettings | null {
+    const at = focus();
+    if (!at) return null;
+    return at.path === null ? settingsFromStore() : at.trail.paths[at.path]?.settings ?? null;
+  }
+
+  // ---- the picked point's own section (docs/023 · Per-point section) -----------------------------------------
+
+  /** The picked point: its own values, and the station the focus path (or the first path through it) is cut with
+   *  there — null while it cannot be cut, or is still a draft. */
+  function selectedTrailKnot(): { point: number; own: TrailKnotSettings; cut: TrailStation | null; settings: TrailSettings } | null {
+    const at = focus(), picked = pickedPoint();
+    if (!at || !picked || picked.trail !== at.trail.id) return null;
+    const trail = at.trail;
+    const through = pathsThrough(trail, picked.point).filter(path => pathCuts(trail.paths[path]));
+    const path = at.path !== null && through.includes(at.path) ? at.path : through[0];
+    if (path === undefined) return null;
+    const node = trail.paths[path].points.indexOf(picked.point);
+    const cut = inDoc(trail) ? trailPathStations(trail, path)?.[node] ?? null : null;
+    return { point: picked.point, own: { ...(trail.pointSettings?.[picked.point] ?? {}) }, cut, settings: trail.paths[path].settings };
+  }
+
+  /** The trail with these point values, the field dropped once no point has any. */
+  function withPointSettings(trail: AuthoredTrail, list: readonly (TrailKnotSettings | null)[]): AuthoredTrail {
+    const next = { ...trail };
+    if (list.some(Boolean)) next.pointSettings = [...list]; else delete next.pointSettings;
+    return next;
   }
 
   /**
-   * Set one of the selected knot's own values, or clear it (`undefined`) so the knot follows the trail again.
+   * Set one of the picked point's own values, or clear it (`undefined`) so the point follows its paths again.
    * Quiet and without a Tools rebuild, like `setTrailSetting`: a slider reports every step of its drag.
    */
   function setTrailKnotSetting<K extends keyof TrailKnotSettings>(key: K, value: TrailKnotSettings[K] | undefined) {
-    const trail = selectedTrail(), knot = store.trailKnot;
-    if (!trail || knot === null || knot >= trail.knots.length) return;
-    const next = withKnotSettings(trail, setTrailKnotValue(trail.knotSettings, trail.knots.length, knot, key, value));
+    const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
+    if (!picked || !trail) return;
+    const next = withPointSettings(trail, setTrailKnotValue(trail.pointSettings, trail.points.length, picked.point, key, value));
     if (!inDoc(trail)) { draft = next; return; }
-    apply(next, store.mdoc, true);
+    apply([next], { quiet: true });
   }
 
-  /** Put the selected knot back on the trail's own settings. */
+  /** Put the picked point back on its paths' own settings. */
   function resetTrailKnotSettings() {
-    const trail = selectedTrail(), knot = store.trailKnot;
-    if (!trail || knot === null || !trail.knotSettings?.[knot]) return;
-    const next = withKnotSettings(trail, trail.knotSettings.map((entry, i) => i === knot ? null : entry));
-    if (!inDoc(trail)) draft = next; else apply(next);
+    const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
+    if (!picked || !trail?.pointSettings?.[picked.point]) return;
+    const next = withPointSettings(trail, trail.pointSettings.map((entry, i) => i === picked.point ? null : entry ?? null));
+    if (!inDoc(trail)) draft = next; else apply([next]);
     rebuildTools();
   }
 
-  /** Delete the selected trail with every patch it owns. */
+  /** Delete the selected paths with their patches, and every point only they ran through; a trail left with no
+   *  path goes. */
   function deleteSelectedTrail() {
-    const trail = selectedTrail();
-    if (!trail) return;
-    if (drawingTrail()?.id === trail.id) { draft = null; finishCreateTrail(); }
-    if (inDoc(trail)) removeTrail(trail);
+    const drawn = drawingTrail();
+    if (drawn && !inDoc(drawn)) { finishCreateTrail(); return; }
+    if (drawn) finishCreateTrail();
+    const picks = selectionPicks();
+    if (!picks.length) return;
+    const emptied = picks.map(({ trail, paths }) => withoutTrailPaths(trail, paths).trail);
+    const left = emptied.filter(trail => trail.paths.some(pathCuts));
+    const gone = picks.map(pick => pick.trail).filter(trail => !left.some(other => other.id === trail.id));
+    if (gone.length) removeTrails(gone);
+    if (left.length) apply(left, { select: Object.fromEntries(left.map(trail => [trail.id, []])) });
+    store.trailPoint = null;
+    const count = picks.reduce((n, pick) => n + pick.paths.length, 0);
     syncTrailView();
     rebuildTools(); updateCmdSheet();
-    toast('trail and its patches deleted', 'ok');
+    toast(count === 1 ? 'path and its patches deleted' : `${count} paths and their patches deleted`, 'ok');
   }
 
-  /** Let the patches go: the trail is removed and its patches stay, selected, as ordinary (still locked) mesh. */
+  /** Let the patches go: the selected paths' trails are removed — whole networks, which own their patches together —
+   *  and their patches stay, selected, as ordinary (still locked) mesh. */
   function dissolveSelectedTrail() {
-    const trail = trailOfSelection();
-    if (!trail) return;
-    store.mdoc.trails = (store.mdoc.trails ?? []).filter(other => other.id !== trail.id);
-    store.trailKnot = null;
+    const picks = selectionPicks();
+    if (!picks.length) return;
+    const ids = new Set(picks.map(pick => pick.trail.id));
+    const cells = picks.flatMap(pick => pick.trail.quads);
+    store.mdoc.trails = (store.mdoc.trails ?? []).filter(other => !ids.has(other.id));
+    store.cellSel = cells;
+    store.trailPoint = null;
     syncTrailView();
     scheduleRebuild(); rebuildTools(); updateCmdSheet();
-    toast(`trail dissolved — its ${trail.quads.length} patches are ordinary mesh now, still locked (Visibility ▸ unlock to edit them)`, 'ok');
+    toast(`trail dissolved — its ${cells.length} patches are ordinary mesh now, still locked (Visibility ▸ unlock to edit them)`, 'ok');
   }
 
   return {
-    selectedTrail, trailAtQuad, trailOfSelection, trailVertexIndices, withWholeTrails, syncTrailView, trailStatus: status, trailError: error,
-    armCreateTrail, resumeTrail, resumeEnds, armBranch, removeBranch, selectedKnotRole, previewHover,
-    trailDrawEnd: () => 'end' in drawTarget ? drawTarget.end : 'end' as const,
-    /** The trail knot whose branch is being drawn, or null. */
-    drawingBranch: () => drawingTrail() && 'branch' in drawTarget ? drawTarget.branch : null,
-    /** The knot the next one is laid from: the end, or the branch tip, being drawn onto. */
+    selectedTrail, trailFocus: focus, trailSelection: selectionPicks, trailAtQuad, trailVertexIndices, withWholePaths,
+    pathCellsAt, networkCellsAt, selectWholeNetwork, syncTrailView, trailStatus: status, trailError: error,
+    armCreateTrail, resumeTrail, resumeEnds, armPathFrom, selectedPointRole, previewHover, focusSettings,
+    /** The point the new path being drawn leaves from, while it has no point of its own yet; else null. */
+    drawingFrom: (): number | null => drawingTrail() && drawing?.path === null ? drawing.from : null,
+    /** The point the next one is laid from: the end being drawn onto, or the point a new path leaves. */
     trailDrawAnchor: (): V3 | null => {
-      const trail = drawingTrail();
-      if (!trail) return null;
-      if ('end' in drawTarget) return (drawTarget.end === 'start' ? trail.knots[0] : trail.knots.at(-1)) ?? null;
-      const junction = drawTarget.branch;
-      return trail.branches?.find(branch => branch.knot === junction)?.knots.at(-1) ?? trail.knots[junction] ?? null;
+      const trail = drawingTrail(), point = drawAnchorPoint();
+      return trail && point !== null ? trail.points[point] ?? null : null;
     },
     appendKnot, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
-    selectKnot, knotDrag, moveKnot, transformTrail, setTrailHandles, deleteSelectedTrailKnot, setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
+    selectKnot, knotDrag, moveKnot, transformTrail, focusPath, selectTrailNode, setTrailHandles, deleteSelectedTrailKnot,
+    setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings,
   };
 }

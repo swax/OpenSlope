@@ -70,9 +70,10 @@ const nodes: V3[] = [[0, 0, 0], [30, 0, 0], [60, 10, 30], [90, 10, 30]];
 
   const empty: QuadMeshDoc = { ...blankMountain(), vertices: [], vertexIds: [], quads: [], quadIds: [], nextId: 0 };
   const knots: V3[] = [[0, 0, 0], [0, 0, 60], [0, 0, 120]];
-  const trail: AuthoredTrail = { id: 'trail:0000', knots, settings: { ...TRAIL_SETTINGS_DEFAULTS }, vertices: [], quads: [] };
+  const path = { points: [0, 1, 2], settings: { ...TRAIL_SETTINGS_DEFAULTS } };
+  const trail: AuthoredTrail = { id: 'trail:0000', points: knots, paths: [path], vertices: [], quads: [] };
   const straight = cutTrail(empty, trail);
-  const curved = cutTrail(empty, { ...trail, handles: setPathHandle(knots, undefined, 1, 'out', [15, 0, 15]) });
+  const curved = cutTrail(empty, { ...trail, paths: [{ ...path, handles: setPathHandle(knots, undefined, 1, 'out', [15, 0, 15]) }] });
   check(straight.ok && curved.ok && curved.layout.stations.some(station => Math.abs(station.center[0]) > 1)
     && straight.layout.stations.every(station => Math.abs(station.center[0]) < 1e-9),
   'trail: a dragged handle bends the cut ribbon off the straight line');

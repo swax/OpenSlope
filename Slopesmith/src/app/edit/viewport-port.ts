@@ -1,7 +1,10 @@
-import type { PathHandles, QuadMeshDoc, V3 } from '../../core/doc/types';
+import type { QuadMeshDoc, V3 } from '../../core/doc/types';
 import type { MeshVertexClipboard } from '../../core/mesh/clipboard';
 import type { MeshControlPointId } from '../../core/mesh/control-point-types';
 import type { Store } from '../state/store';
+import type { TrailShape, TrailTransform } from '../viewport/tools/create-trail';
+
+export type { TrailShape, TrailTransform };
 
 /** Rendering/input surface used by the edit workflow. */
 export interface EditViewportPort {
@@ -37,13 +40,9 @@ export interface EditViewportPort {
   setCreateEdgeStart(start: V3 | null): void;
   setCreateEdgePath(points: readonly V3[]): void;
   readonly createTubePoints: readonly V3[];
-  /** Show a trail's centre-spline knots (none hides them), `knot` carrying the move gizmo (docs/023). */
-  setTrailKnots(knots: readonly V3[], knot: number | null, handles?: readonly (PathHandles | null | undefined)[],
-    pivot?: V3 | null,
-    shape?: {
-      main: number; branches: readonly (readonly V3[])[]; draw?: { end: 'start' | 'end' } | { branch: number };
-      snaps?: readonly V3[];
-    }): void;
+  /** Show a trail's points (none hides them), `knot` carrying the move gizmo — or, with a `pivot`, the selected
+   *  paths carrying it — and the paths through them (docs/023). */
+  setTrailKnots(knots: readonly V3[], knot: number | null, pivot?: V3 | null, shape?: TrailShape): void;
   setCreateTrailSurfaceLift(value: number): void;
   projectedVerticesInsidePatches(quads: readonly number[]): number[];
   setPasteTool(clip: MeshVertexClipboard | null): void;
