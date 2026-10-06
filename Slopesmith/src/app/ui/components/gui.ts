@@ -196,6 +196,187 @@ export function flipbookPreview(g: GUI, opts: {
   return row;
 }
 
+/** One half of a matched pair: its art, and what hovering it says. */
+export interface TextureHalf { src: string | null; value: string }
+
+/** One matched pair as the art: its two halves, the left lane's and the right lane's, and how they are worn. */
+export interface TilePairArt {
+  halves: readonly [TextureHalf, TextureHalf];
+  /** How each half shows, looking along the trail (`orientCss`). */
+  orient?: { rot: number; mirror: boolean };
+}
+
+/** A pair's two halves side by side as plain pictures, touching, the way a trail wears them across its width. */
+function pairThumb(art: TilePairArt | null, size: number): HTMLElement {
+  const thumb = document.createElement('span');
+  thumb.className = `sp-pair-thumb${art ? '' : ' sp-pair-thumb-none'}`;
+  if (!art) { thumb.textContent = '∅'; thumb.style.width = `${size * 2 + 1}px`; thumb.style.height = `${size}px`; return thumb; }
+  for (const half of art.halves) {
+    const cell = document.createElement('span');
+    cell.className = 'sp-pair-half';
+    cell.style.width = cell.style.height = `${size}px`;
+    if (half.src) cell.style.backgroundImage = `url(${half.src})`;
+    if (half.src && art.orient) cell.style.transform = orientCss(art.orient.rot, art.orient.mirror);
+    thumb.append(cell);
+  }
+  return thumb;
+}
+
+/** One choice in a pair dropdown. */
+export interface TilePairOption extends TilePairArt {
+  id: string;
+  /** The heading it lists under — its map. */
+  group: string;
+  /** Its name there: `Trail 1`. */
+  name: string;
+  /** Hovering it: its id and tiles. */
+  title: string;
+}
+
+/** The one pair menu open: closing it is the next open's first act, so two never stand at once. */
+let closeOpenPairMenu: (() => void) | null = null;
+
+/**
+ * A pair CHOSEN BY ITS ART (a trail's tiles, docs/023 · Textures): a lil-gui row whose value is the worn pair's two
+ * halves and its name, opening a list of every pair — each as its art, under its map's name — with "none" first and,
+ * given `add`, a way to make a new one last. A pair is recognised by its picture, the way a tile is (`texturePreview`).
+ */
+export function tilePairDropdown(g: GUI, opts: {
+  label: string;
+  hint: string;
+  value: string | null;
+  options: readonly TilePairOption[];
+  none: { label: string; title: string };
+  add?: { label: string; title: string; onAdd: () => void };
+  onChange: (id: string | null) => void;
+}) {
+  const row = document.createElement('div');
+  row.className = 'lil-controller sp-gui-custom sp-tex-row sp-pair-row';
+  const name = document.createElement('div');
+  name.className = 'lil-name';
+  name.textContent = opts.label;
+  tooltip(name, opts.hint);
+  const current = opts.options.find(option => option.id === opts.value) ?? null;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'sp-pair-dd';
+  const text = document.createElement('span');
+  text.className = 'sp-pair-dd-text';
+  text.textContent = current ? current.id : opts.value ? `${opts.value} (missing)` : opts.none.label;
+  const caret = document.createElement('span');
+  caret.className = 'sp-pair-dd-caret';
+  caret.textContent = '▾';
+  button.append(pairThumb(current, 18), text, caret);
+  button.setAttribute('aria-haspopup', 'listbox');
+  tooltip(button, current ? current.title : opts.none.title);
+  button.onclick = () => openPairMenu(button, opts);
+  row.append(name, button);
+  g.$children.appendChild(row);
+  return row;
+}
+
+function openPairMenu(anchor: HTMLElement, opts: Parameters<typeof tilePairDropdown>[1]) {
+  closeOpenPairMenu?.();
+  const menu = document.createElement('div');
+  menu.className = 'sp-pair-menu';
+  menu.setAttribute('role', 'listbox');
+  const close = () => {
+    menu.remove();
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('keydown', keys, true);
+    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('resize', close);
+    if (closeOpenPairMenu === close) closeOpenPairMenu = null;
+  };
+  const outside = (e: Event) => { if (!menu.contains(e.target as Node) && !anchor.contains(e.target as Node)) close(); };
+  const keys = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  const item = (art: TilePairOption | null, label: string, title: string, selected: boolean, act: () => void) => {
+    const entry = document.createElement('button');
+    entry.type = 'button';
+    entry.className = `sp-pair-item${selected ? ' sel' : ''}`;
+    entry.setAttribute('role', 'option');
+    entry.setAttribute('aria-selected', String(selected));
+    const words = document.createElement('span');
+    words.textContent = label;
+    entry.append(pairThumb(art, 30), words);
+    tooltip(entry, title);
+    entry.onclick = () => { close(); act(); };
+    menu.append(entry);
+    return entry;
+  };
+  item(null, opts.none.label, opts.none.title, !opts.value, () => opts.onChange(null));
+  let group = '';
+  let chosen: HTMLElement | null = null;
+  for (const option of opts.options) {
+    if (option.group !== group) {
+      group = option.group;
+      const heading = document.createElement('div');
+      heading.className = 'sp-pair-group';
+      heading.textContent = group;
+      menu.append(heading);
+    }
+    const entry = item(option, option.name, option.title, option.id === opts.value, () => opts.onChange(option.id));
+    if (option.id === opts.value) chosen = entry;
+  }
+  if (opts.add) {
+    const add = opts.add;
+    const entry = item(null, add.label, add.title, false, add.onAdd);
+    entry.classList.add('sp-pair-new');
+    entry.querySelector('.sp-pair-thumb')!.textContent = '+';
+  }
+  document.body.append(menu);
+  // Under the button, or over it where the window ends first; as tall as the room there allows.
+  const rect = anchor.getBoundingClientRect();
+  const below = window.innerHeight - rect.bottom - 8, above = rect.top - 8;
+  const down = below >= Math.min(menu.scrollHeight, 240) || below >= above;
+  menu.style.maxHeight = `${Math.max(120, down ? below : above)}px`;
+  menu.style.minWidth = `${Math.max(rect.width, 180)}px`;
+  menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  if (down) menu.style.top = `${rect.bottom + 2}px`; else menu.style.bottom = `${window.innerHeight - rect.top + 2}px`;
+  (chosen as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('keydown', keys, true);
+  window.addEventListener('scroll', close, true);
+  window.addEventListener('resize', close);
+  closeOpenPairMenu = close;
+}
+
+/** One pair's two halves to edit: each half a swatch that chooses its tile, badged with its lane. */
+export function tilePairEditor(g: GUI, opts: {
+  label: string;
+  hint: string;
+  art: TilePairArt;
+  onHalf: (side: 0 | 1) => void;
+}) {
+  const row = document.createElement('div');
+  row.className = 'lil-controller sp-gui-custom sp-tex-row sp-flip-row';
+  const name = document.createElement('div');
+  name.className = 'lil-name';
+  name.textContent = opts.label;
+  tooltip(name, opts.hint);
+  const strip = document.createElement('div');
+  strip.className = 'sp-flip-strip';
+  for (const side of [0, 1] as const) {
+    const cell = document.createElement('div');
+    cell.className = 'sp-flip-cell';
+    const lane = side ? 'right' : 'left';
+    cell.append(texSwatch({
+      label: `${lane} lane`, src: opts.art.halves[side].src, value: opts.art.halves[side].value,
+      hint: `The ${lane} lane’s half, going along the path. Click to choose its tile from the Texture Library.`,
+      onOpen: () => opts.onHalf(side),
+      ...(opts.art.orient ? { orient: opts.art.orient } : {}),
+    }));
+    const badge = document.createElement('span');
+    badge.className = 'sp-flip-badge';
+    badge.textContent = lane;
+    cell.append(badge);
+    strip.append(cell);
+  }
+  row.append(name, strip);
+  g.$children.appendChild(row);
+  return row;
+}
+
 /** Attach a hover tooltip to a lil-gui controller (plain-language help for the domain jargon).
  *  Keep `text` to one line — what the control does; `more` adds an info badge at the row's end
  *  carrying the longer detail (defaults, costs, when it applies) for the reader who wants it. */

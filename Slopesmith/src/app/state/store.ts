@@ -28,6 +28,7 @@ import {
   DEFAULT_XR_LAYER_MODE, DEFAULT_XR_RENDER_SCALE, type XrEyeBufferMeasurement, type XrLayerMode,
 } from '../ride/xr/config';
 import { AMOUNT_MAX, AMOUNT_PORT } from '../../core/particles/snowfall';
+import { DEFAULT_TRAIL_TILES } from '../../core/mesh/trail-textures';
 
 /**
  * The editor's shared mutable state — the single source of truth the whole app reads and writes: the active
@@ -193,7 +194,10 @@ export type Store = {
   trailBankGain: number;             // curvature-to-bank response distance, metres
   trailMaxBankDegrees: number;       // absolute auto-bank clamp
   trailSurfaceLift: number;          // vertical lift for knots clicked on an existing surface, metres
-  trailMesaTextures: boolean;        // apply the measured Mesa matched-half/tight-turn texture preset
+  trailTilePair: string | null;      // the tile pair a new trail path wears (`MESA/Trail 1`); null leaves it plain
+  trailLeftTurnPair: string | null;  // the pair it wears through tight left turns; null wears the trail pair there too
+  trailRightTurnPair: string | null; // … and through tight right turns
+  trailTurnRadius: number;           // spans tighter than this radius, metres, wear the turn pair
   trailPoint: { trail: string; point: number } | null; // trail point carrying the move gizmo (its paths are the
                                      // one being drawn, or the ones whose patches are exactly cellSel)
   // The selected path's Bézier handle carrying the gizmo (docs/014) — on a rail, a prop line or a trail; at most
@@ -448,7 +452,10 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     trailBankGain: 15,
     trailMaxBankDegrees: 20,
     trailSurfaceLift: 0.25,
-    trailMesaTextures: true,
+    trailTilePair: DEFAULT_TRAIL_TILES.trailTiles,
+    trailLeftTurnPair: DEFAULT_TRAIL_TILES.leftTurnTiles,
+    trailRightTurnPair: DEFAULT_TRAIL_TILES.rightTurnTiles,
+    trailTurnRadius: DEFAULT_TRAIL_TILES.turnRadiusM,
     trailPoint: null,
     pathHandle: null,
     weldTool: null,

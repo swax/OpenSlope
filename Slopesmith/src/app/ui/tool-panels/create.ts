@@ -2,15 +2,22 @@ import { editMesh } from '../../edit/mesh-target';
 import { edgeIndices } from '../../state/mesh-names';
 import { meshFromDoc } from '../../../core/mesh/topology';
 import { measureEdges } from '../../../core/mesh/measure';
-import { detail, errorBanner, note, texturePreview, tip } from '../components/gui';
+import {
+  detail, errorBanner, note, texturePreview, tilePairDropdown, tilePairEditor, tip, type TilePairArt, type TilePairOption,
+} from '../components/gui';
+import { toast } from '../components/toast';
 import { buildTrailIntegrationGuide } from './trail-guide';
 import { AUTHORED_MODEL_LEVEL } from '../../../core/doc/models';
 import { orientText } from '../../../core/paint/orientation';
 import { describeProp } from '../../../core/props/kind';
 import { textureRefUrl } from '../../net/asset-paths';
 import { fmtM, pathHandleActions, type ToolsContext } from './widgets';
-import type { TrailKnotSettings, TrailSettings } from '../../../core/doc/types';
+import type { TrailKnotSettings, TrailSettings, TrailTilePair } from '../../../core/doc/types';
 import { TRAIL_SETTINGS_DEFAULTS } from '../../../core/mesh/trail-object';
+import {
+  isBuiltInTrailTilePair, TRAIL_TILE_SLOT_KINDS, trailSettingsTiles, trailTileViewOrient, trailTilePairId,
+} from '../../../core/mesh/trail-textures';
+import { parseTexRef } from '../../../core/paint/textures';
 
 /**
  * The Edit-mode creation tools: Create Edge (mesh-native drawing and surface cuts), Create Patch, the armed
@@ -19,13 +26,14 @@ import { TRAIL_SETTINGS_DEFAULTS } from '../../../core/mesh/trail-object';
  * lil-gui; the coordinator calls reset() at the top of every toolbox rebuild so a stale row is never touched.
  */
 export function createCreateTools(ctx: ToolsContext) {
-  const { store, viewport, editSection, edit, cageActive, rebuildTools, updateCmdSheet, modelEdit } = ctx;
+  const { store, viewport, editSection, edit, cageActive, rebuildTools, updateCmdSheet, modelEdit, library } = ctx;
   const {
     armCreateEdge, armCreatePatch, finishCreatePatch, finishCreateEdge,
     armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube, armLoopCut,
     armCreateTrail, undoCreateTrailPoint, finishCreateTrail,
     trailStatus, trailError, resumeTrail, setTrailSetting,
-    deleteSelectedTrailKnot, disconnectSelectedPoint, deleteSelectedTrail, dissolveSelectedTrail, selectOverlappingVertices, deselectEdit,
+    deleteSelectedTrailKnot, disconnectSelectedPoint, splitSelectedPoint, deleteSelectedTrail, dissolveSelectedTrail,
+    selectOverlappingVertices, deselectEdit, trailTilePairs, addTrailTilePair, editTrailTilePair, deleteTrailTilePair,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings, resumeEnds,
     armPathFrom, selectedPointRole, drawingFrom, focusSettings, selectWholeNetwork, trailDrawAnchor,
   } = edit;
@@ -348,6 +356,123 @@ export function createCreateTools(ctx: ToolsContext) {
     if (!Object.keys(own()).length) reset.disable();
   }
 
+  const TILE_TURNS = { '0°': 0, '90°': 1, '180°': 2, '270°': 3 };
+  const quarter = (turns: number) => ((Math.trunc(turns) % 4) + 4) % 4;
+  /** The path's three pair slots: the setting, its row, the kind of pair made for it, and where it is worn. */
+  const TILE_SLOTS = [
+    { key: 'trailTiles', label: 'trail tiles', kind: 'trail', words: 'trail', along: 'along its spans' },
+    { key: 'leftTurnTiles', label: 'left turn tiles', kind: 'left-turn', words: 'left turn', along: 'through its tight left turns' },
+    { key: 'rightTurnTiles', label: 'right turn tiles', kind: 'right-turn', words: 'right turn', along: 'through its tight right turns' },
+  ] as const;
+  type TileSlot = typeof TILE_SLOTS[number];
+
+  /** A pair as the art: its halves, left lane then right, the way a rider going along the path sees them. */
+  const pairArt = (pair: TrailTilePair): TilePairArt => ({
+    halves: [{ src: textureRefUrl(pair.left), value: pair.left }, { src: textureRefUrl(pair.right), value: pair.right }],
+    orient: trailTileViewOrient(pair.quarterTurns),
+  });
+  const pairTitle = (pair: TrailTilePair) =>
+    `${trailTilePairId(pair)} · ${parseTexRef(pair.left).name} | ${parseTexRef(pair.right).name}`
+    + `${pair.quarterTurns ? ` · turned ${quarter(pair.quarterTurns) * 90}°` : ''}${isBuiltInTrailTilePair(trailTilePairId(pair)) ? '' : ' · this mountain’s own'}`;
+  const pairOption = (pair: TrailTilePair): TilePairOption =>
+    ({ ...pairArt(pair), id: trailTilePairId(pair), group: pair.level, name: pair.name, title: pairTitle(pair) });
+
+  /** Wear pair `id` (or none) in one slot of the selected paths, or of the next path. */
+  function wearPair(slot: TileSlot, id: string | null) {
+    setTrailSetting(slot.key, id);
+    refreshCreateTrailSummary();
+    rebuildTools();
+  }
+
+  /** Make a pair of the mountain's own for one slot: its left lane's tile, then its right lane's from the same map,
+   *  each chosen in the Texture Library — and wear it there. */
+  function newTilePair(slot: TileSlot, from: TrailTilePair | null) {
+    const askRight = (left: string) => {
+      const { level } = parseTexRef(left);
+      library.openPick({
+        title: `New ${slot.words} pair from ${level} — choose the right lane’s tile`,
+        current: from?.level === level ? from.right : left,
+        onPick: right => {
+          if (!right) return;
+          if (parseTexRef(right).level !== level) {
+            toast(`A pair’s two tiles come from one map: choose a ${level} tile for the right lane.`, 'err');
+            askRight(left);
+            return;
+          }
+          const id = addTrailTilePair(slot.kind, left, right);
+          if (id) wearPair(slot, id);
+        },
+      });
+    };
+    library.openPick({
+      title: `New ${slot.words} pair — choose the left lane’s tile, going along the path; the pair is that tile’s map’s`,
+      current: from?.left ?? null,
+      onPick: left => { if (left) askRight(left); },
+    });
+  }
+
+  /**
+   * The selected paths' tiles (docs/023 · Textures): the pair each slot wears — along the spans, through tight left
+   * turns, through tight right turns — chosen from a dropdown of every pair as its art, and the mountain's own pairs
+   * worn, to edit. Every change re-cuts the selected paths, as their other settings do, and becomes the next path's.
+   */
+  function buildTrailTextures(paths: number) {
+    const g = editSection('trail-textures', 'Textures');
+    const worn = trailSettingsTiles(focusSettings() ?? TRAIL_SETTINGS_DEFAULTS);
+    const pairs = trailTilePairs();
+    const byId = new Map(pairs.map(pair => [trailTilePairId(pair), pair] as const));
+    if (paths > 1) note(g, `A pair chosen here is worn by all ${paths} selected paths.`);
+    const own: TrailTilePair[] = [];
+    for (const slot of TILE_SLOTS) {
+      const id = worn[slot.key];
+      const chosen = id ? byId.get(id) ?? null : null;
+      if (chosen && !isBuiltInTrailTilePair(id!) && !own.includes(chosen)) own.push(chosen);
+      const options = pairs.filter(pair => TRAIL_TILE_SLOT_KINDS[slot.key].includes(pair.kind) || pair === chosen).map(pairOption);
+      tilePairDropdown(g, {
+        label: slot.label,
+        hint: `The matched pair ${paths > 1 ? 'these paths wear' : 'this path wears'} ${slot.along}: a left-lane and a `
+          + 'right-lane half of one tile, shown as a rider going along the path sees them. Left and right are as the '
+          + 'path runs, from its first point to its last.',
+        value: id,
+        options,
+        none: slot.kind === 'trail'
+          ? { label: 'none — plain', title: 'No tiles: the spans stay plain.' }
+          : { label: 'none — trail tiles', title: 'No turn tiles: the trail tiles are worn through these turns too.' },
+        add: { label: `new ${slot.words} pair…`, title: 'Make a pair of your own: two tiles from one map, chosen in the Texture Library.',
+          onAdd: () => newTilePair(slot, chosen) },
+        onChange: pick => wearPair(slot, pick),
+      });
+    }
+    if (worn.leftTurnTiles || worn.rightTurnTiles) {
+      tip(g.add(trailSettingsTarget(), 'turnRadiusM', 10, 500, 5).name('turns under (m)').onChange(() => refreshCreateTrailSummary()),
+        'A span turning tighter than this radius wears the turn tiles for its way of turning. Mesa’s is 80 m.');
+    }
+
+    // The mountain's own pairs being worn: their halves and turn, to change for every path wearing them.
+    for (const pair of own) {
+      const id = trailTilePairId(pair);
+      const changed = (change: Parameters<typeof editTrailTilePair>[1]) => {
+        if (editTrailTilePair(id, change)) { refreshCreateTrailSummary(); rebuildTools(); }
+      };
+      tilePairEditor(g, {
+        label: id, hint: `${id} is this mountain’s own: a change re-cuts every path wearing it.`,
+        art: pairArt(pair),
+        onHalf: side => library.openPick({
+          title: `${id} — choose the ${side ? 'right' : 'left'} lane’s tile, from ${pair.level}`,
+          current: side ? pair.right : pair.left,
+          onPick: ref => { if (ref) changed(side ? { right: ref } : { left: ref }); },
+        }),
+      });
+      tip(g.add({ swap: () => changed({ left: pair.right, right: pair.left }) }, 'swap').name(`⇄ swap ${pair.name}’s halves`),
+        'Put the left lane’s tile on the right and the right lane’s on the left.');
+      tip(g.add({ turns: quarter(pair.quarterTurns) }, 'turns', TILE_TURNS).name(`${pair.name} tile turn`)
+        .onChange((value: number) => changed({ quarterTurns: value })),
+      'Turn both halves on the patches, beyond a trail tile’s own quarter turn (its v along the path).');
+      tip(g.add({ del: () => { deleteTrailTilePair(id); refreshCreateTrailSummary(); rebuildTools(); } }, 'del').name(`✕ delete ${id}`),
+        'Delete this pair of your own. Every path wearing it goes plain there.');
+    }
+  }
+
   /** The picked point in words: where it stands in the network. */
   function pointRoleText(role: NonNullable<ReturnType<typeof selectedPointRole>>): string {
     const at = `point ${role.point + 1}`;
@@ -391,37 +516,8 @@ export function createCreateTools(ctx: ToolsContext) {
           + 'Shift locks the next segment to world X, Y, or Z'
         : 'drag the gizmo to move the selected paths (E turns, R scales) · click a point to reshape · drop a point on any '
           + 'other point to join them there · Ctrl-click, a box, Ctrl+A or a double-click selects more paths');
-    if (role && status && !status.draft) buildTrailKnotTools(role.point, role.paths);
-    refreshCreateTrailSummary();
 
-    const settings = trailSettingsTarget();
-    const dimensions = editSection('trail-shape', 'Trail Shape');
-    if (many) note(dimensions, `Showing one path’s settings; a change here applies to all ${status!.paths} selected paths.`);
-    const refresh = () => refreshCreateTrailSummary();
-    // Every station has left, centre, and right rails, producing exactly two patches across.
-    tip(dimensions.add(settings, 'widthM', 2, 100, 0.5).name('target width (m)').onChange(refresh),
-      'Rim-to-rim plan width; the measured Mesa default is 13 m.');
-    tip(dimensions.add(settings, 'patchLengthM', 2, 100, 0.5).name('target length (m)').onChange(refresh),
-      'Maximum ordinary patch length along the spline. Tight turns are automatically subdivided more finely. '
-      + 'Held while other patches are joined to the trail.');
-    tip(dimensions.add(settings, 'dishPercent', 0, 30, 0.5).name('centre dish (%)').onChange(refresh),
-      'How far the centre seam sits below the banked rim chord, as a percentage of full width. Mesa measures about 10.5%.');
-    tip(dimensions.add(settings, 'centerBias', 0.25, 0.75, 0.01).name('centre seam').onChange(refresh),
-      'Position of the centre seam across the width. 0.5 makes equal left and right patches.');
-    tip(dimensions.add(settings, 'maxTurnDegrees', 5, 120, 1).name('max turn / patch').onChange(refresh),
-      'Adaptive curvature threshold. Lower values create more, shorter patches through turns.');
-
-    const banking = editSection('trail-banking', 'Banking');
-    tip(banking.add(settings, 'bankGainM', 0, 100, 0.5).name('banking amount').onChange(refresh),
-      'Strength of automatic curvature banking. Zero keeps the rim chord level; the measured default is 15 m.');
-    tip(banking.add(settings, 'maxBankDegrees', 0, 60, 1).name('max bank (deg)').onChange(refresh),
-      'Absolute bank clamp. Banking ramps between stations to avoid abrupt cross-slope changes.');
-    if (drawing) tip(banking.add(store, 'trailSurfaceLift', 0, 5, 0.05).name('surface lift (m)').onChange((value: number) => {
-      viewport.setCreateTrailSurfaceLift(value);
-    }), 'Vertical offset applied when a NEW spline point is clicked on an existing patch or vertex. Free-space points are unchanged.');
-    tip(banking.add(settings, 'mesaTextures').name('Mesa trail textures').onChange(refresh),
-      'Apply matched left/right Mesa trail tiles, switching to the tight-turn stripe set where curvature calls for it.');
-
+    // The actions sit right under the paths, ahead of the long run of settings.
     const actions = editSection('tool-actions', 'Actions');
     if (drawing) {
       tip(actions.add({ finish: finishCreateTrail }, 'finish').name('✔ finish path (Enter)'),
@@ -450,6 +546,12 @@ export function createCreateTools(ctx: ToolsContext) {
           + 'so they no longer join — drag the point to pull its side away.',
           'A path running through is cut here, keeping its shape. A side no longer joined to the rest becomes a trail of its '
           + 'own. Dropping a point back onto another joins them again.');
+      // A point a path runs on through can split there: the pieces still meet, but each can be set on its own.
+      if (role && role.through > 0 && status && !status.draft)
+        tip(actions.add({ split: splitSelectedPoint }, 'split').name('⫽ split path here'),
+          'Cut the path in two here, still joined, so each piece can wear its own tiles and settings.',
+          'The pieces meet in a two-arm joint at this point. At a fork or a crossing every path running on through it is '
+          + 'split. Unlike disconnecting, nothing comes apart.');
       if (status && status.networkPaths > status.paths)
         tip(actions.add({ network: selectWholeNetwork }, 'network').name('select the whole network (Ctrl+A)'),
           'Select every path joined to the selected ones, to move or set them together.');
@@ -471,6 +573,36 @@ export function createCreateTools(ctx: ToolsContext) {
         + 'keep the vertices they share.');
       tip(actions.add({ deselect: deselectEdit }, 'deselect').name('deselect (Esc)'), 'Clear the selection.');
     }
+    if (role && status && !status.draft) buildTrailKnotTools(role.point, role.paths);
+    refreshCreateTrailSummary();
+
+    const settings = trailSettingsTarget();
+    const dimensions = editSection('trail-shape', 'Trail Shape');
+    if (many) note(dimensions, `Showing one path’s settings; a change here applies to all ${status!.paths} selected paths.`);
+    const refresh = () => refreshCreateTrailSummary();
+    // Every station has left, centre, and right rails, producing exactly two patches across.
+    tip(dimensions.add(settings, 'widthM', 2, 100, 0.5).name('target width (m)').onChange(refresh),
+      'Rim-to-rim plan width; the measured Mesa default is 13 m.');
+    tip(dimensions.add(settings, 'patchLengthM', 2, 100, 0.5).name('target length (m)').onChange(refresh),
+      'Maximum ordinary patch length along the spline. Tight turns are automatically subdivided more finely. '
+      + 'Held while other patches are joined to the trail.');
+    tip(dimensions.add(settings, 'dishPercent', 0, 30, 0.5).name('centre dish (%)').onChange(refresh),
+      'How far the centre seam sits below the banked rim chord, as a percentage of full width. Mesa measures about 10.5%.');
+    tip(dimensions.add(settings, 'centerBias', 0.25, 0.75, 0.01).name('centre seam').onChange(refresh),
+      'Position of the centre seam across the width. 0.5 makes equal left and right patches.');
+    tip(dimensions.add(settings, 'maxTurnDegrees', 5, 120, 1).name('max turn / patch').onChange(refresh),
+      'Adaptive curvature threshold. Lower values create more, shorter patches through turns.');
+
+    const banking = editSection('trail-banking', 'Banking');
+    tip(banking.add(settings, 'bankGainM', 0, 100, 0.5).name('banking amount').onChange(refresh),
+      'Strength of automatic curvature banking. Zero keeps the rim chord level; the measured default is 15 m.');
+    tip(banking.add(settings, 'maxBankDegrees', 0, 60, 1).name('max bank (deg)').onChange(refresh),
+      'Absolute bank clamp. Banking ramps between stations to avoid abrupt cross-slope changes.');
+    if (drawing) tip(banking.add(store, 'trailSurfaceLift', 0, 5, 0.05).name('surface lift (m)').onChange((value: number) => {
+      viewport.setCreateTrailSurfaceLift(value);
+    }), 'Vertical offset applied when a NEW spline point is clicked on an existing patch or vertex. Free-space points are unchanged.');
+    buildTrailTextures(many ? status!.paths : 1);
+
     buildTrailIntegrationGuide(editSection);
   }
 

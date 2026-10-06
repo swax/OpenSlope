@@ -185,6 +185,9 @@ export interface MountainMeta {
    *  ordinary terrain in the mesh; this is the spline and section they are cut from, and the stable ids of the
    *  vertices and patches it owns. Absent in docs saved before owned trails. */
   trails?: AuthoredTrail[];
+  /** The mountain's own trail tile PAIRS (docs/023 · Textures), beside the shipped maps' built-in ones: what its
+   *  trail paths may wear, by id. Absent while it has none. */
+  trailTilePairs?: TrailTilePair[];
 }
 
 /** The section and density a trail's ribbon is cut with — the Create Trail panel's settings (docs/023). */
@@ -203,8 +206,39 @@ export interface TrailSettings {
   bankGainM: number;
   /** Absolute bank clamp, degrees. */
   maxBankDegrees: number;
-  /** Wear the matched Mesa trail tiles. */
-  mesaTextures: boolean;
+  /** The tile pair its spans wear, by id — `MESA/Trail 1` (`TrailTilePair`) — or null to leave them plain. A path
+   *  saved before tile pairs has none, and carries `mesaTextures` instead (`trailSettingsTiles` reads either). */
+  trailTiles: string | null;
+  /** The pair worn through left turns tighter than `turnRadiusM` — `GARI/Turn 2` — or null to wear `trailTiles`
+   *  there too. Left as a rider going along the path sees it, from its first point to its last. */
+  leftTurnTiles: string | null;
+  /** The same through right turns. */
+  rightTurnTiles: string | null;
+  /** Spans turning tighter than this radius, metres, wear the turn pairs. */
+  turnRadiusM: number;
+}
+
+/**
+ * A matched PAIR of trail tiles (docs/023 · Textures): one tile drawn across the trail's width and cut in two, a half
+ * for each lane of a span — the lane to a rider's left going along the path, and the one to their right. A pair belongs
+ * to the map both its
+ * tiles come from and is named within it, so its id reads `MESA/Trail 1`, `GARI/Turn 2`. The shipped maps' pairs are
+ * built in (`core/mesh/trail-textures.ts`); a mountain's own are in its `trailTilePairs`.
+ */
+export interface TrailTilePair {
+  /** The map both halves come from, as their tile refs name it: `MESA`, `GARI`, `Custom`. */
+  level: string;
+  /** Its name within the map: `Trail 1`, `Turn 2`. */
+  name: string;
+  /** Worn along ordinary spans, through left turns, through right turns, or through turns either way: which slots
+   *  the panel offers it in. */
+  kind: 'trail' | 'left-turn' | 'right-turn' | 'turn';
+  /** The tiles of the lanes to a rider's left and right going along the path, as refs: `MESA/0045.png`. */
+  left: string;
+  right: string;
+  /** Quarter turns the halves are worn at beyond a trail tile's own (`TRAIL_TILE_ORIENT`: the tile's v running
+   *  along the path). */
+  quarterTurns: number;
 }
 
 /**

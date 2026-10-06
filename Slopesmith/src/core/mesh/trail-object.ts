@@ -1,5 +1,5 @@
 import type {
-  AuthoredTrail, PathHandles, QuadMeshDoc, TrailCutShape, TrailKnotSettings, TrailPath, TrailSettings, V3,
+  AuthoredTrail, PathHandles, QuadMeshDoc, TrailCutShape, TrailKnotSettings, TrailPath, TrailSettings, TrailTilePair, V3,
 } from '../doc/types';
 import { nameIndex } from '../doc/ids';
 import { pathHandleOffsets, railBezierSegments } from '../rails/rails';
@@ -7,9 +7,10 @@ import { setQuadsLocked } from './locks';
 import { assignMap, finishMeshRewrite, looseVertexIds } from './ops/contract';
 import { liveQuadEdges, undirectedEdgeKey } from './primitives';
 import {
-  applyTrailNetwork, applyTrailSpline, layoutTrailSpline, MESA_TRAIL_DEFAULTS, MESA_TRAIL_TEXTURES,
+  applyTrailNetwork, applyTrailSpline, layoutTrailSpline, MESA_TRAIL_DEFAULTS,
   type TrailKnotProfile, type TrailLayout, type TrailLayoutOptions, type TrailRunSpec, type TrailStation,
 } from './trail';
+import { DEFAULT_TRAIL_TILES, trailSettingsTiles, trailTilePairsWith, trailTilePairTiles, trailTiling } from './trail-textures';
 
 /**
  * Owned trails (docs/023 "Track: a rail that owns terrain"): a network of centre splines that keeps the patches it
@@ -42,7 +43,7 @@ export const TRAIL_SETTINGS_DEFAULTS: Readonly<TrailSettings> = {
   maxTurnDegrees: MESA_TRAIL_DEFAULTS.maxTurnDegrees,
   bankGainM: MESA_TRAIL_DEFAULTS.bankGainM,
   maxBankDegrees: MESA_TRAIL_DEFAULTS.maxBankDegrees,
-  mesaTextures: true,
+  ...DEFAULT_TRAIL_TILES,
 };
 
 export type TrailKnotSettingsList = readonly (TrailKnotSettings | null | undefined)[] | undefined;
@@ -89,8 +90,8 @@ function trimKnotSettings(list: (TrailKnotSettings | null)[]): (TrailKnotSetting
 }
 
 /** The generator options some settings stand for, with knots' own values when there are any. */
-export function trailLayoutOptions(settings: TrailSettings, knotSettings?: TrailKnotSettingsList, knots = 0):
-TrailLayoutOptions {
+export function trailLayoutOptions(settings: TrailSettings, knotSettings?: TrailKnotSettingsList, knots = 0,
+  pairs?: readonly TrailTilePair[]): TrailLayoutOptions {
   const knotProfile = trailKnotProfile(settings, knotSettings, knots);
   return {
     ...(knotProfile ? { knotProfile } : {}),
@@ -104,23 +105,19 @@ TrailLayoutOptions {
     maxBankDegrees: settings.maxBankDegrees,
     maxBankStepDegrees: MESA_TRAIL_DEFAULTS.maxBankStepDegrees,
     surface: MESA_TRAIL_DEFAULTS.surface,
-    textures: settings.mesaTextures ? MESA_TRAIL_TEXTURES : undefined,
+    textures: trailTiling(settings, pairs),
   };
 }
 
-/** The generator options one path is cut with: its settings, and the own values of the points it runs through. */
-export function pathLayoutOptions(trail: Pick<AuthoredTrail, 'pointSettings'>, path: TrailPath): TrailLayoutOptions {
-  return trailLayoutOptions(path.settings, path.points.map(point => trail.pointSettings?.[point] ?? null), path.points.length);
+/** The generator options one path is cut with: its settings, the own values of the points it runs through, and the
+ *  tile pairs it names, from the built-in ones and the mountain's own `pairs`. */
+export function pathLayoutOptions(trail: Pick<AuthoredTrail, 'pointSettings'>, path: TrailPath, pairs?: readonly TrailTilePair[]):
+TrailLayoutOptions {
+  return trailLayoutOptions(path.settings, path.points.map(point => trail.pointSettings?.[point] ?? null), path.points.length, pairs);
 }
 
 /** The shortest run a junction may leave between itself and the next junction or the path's end. */
 const MIN_RUN_M = 2;
-
-/** Every tile the Mesa preset can lay — the ones a trail may take back off its own patches. */
-const MESA_TILES = new Set([
-  ...MESA_TRAIL_TEXTURES.standard.flat(),
-  ...(MESA_TRAIL_TEXTURES.tight ?? []).flat(),
-]);
 
 // ---- the network (docs/023 · Networks) ----------------------------------------------------------------------
 
@@ -302,8 +299,10 @@ function mirrorOwnPoints(trail: AuthoredTrail, path: number): AuthoredTrail {
   return { ...trail, pointSettings: settings };
 }
 
-const sameSettings = (a: TrailSettings, b: TrailSettings) =>
-  (Object.keys(TRAIL_SETTINGS_DEFAULTS) as (keyof TrailSettings)[]).every(key => a[key] === b[key]);
+const sameSettings = (a: TrailSettings, b: TrailSettings) => {
+  const x = { ...a, ...trailSettingsTiles(a) }, y = { ...b, ...trailSettingsTiles(b) };
+  return (Object.keys(TRAIL_SETTINGS_DEFAULTS) as (keyof TrailSettings)[]).every(key => x[key] === y[key]);
+};
 
 /**
  * Where exactly two path ends meet at `point` and nothing else does — two paths laid end to end — and the two are
@@ -671,7 +670,8 @@ export function trailRunList(trail: Network): TrailRun[] {
  * The network's runs as the generator takes them: each a stretch of its path's spline, cut with that path's options,
  * its ends on the junctions they meet (numbered by point). `names` says each run in words, for a refusal.
  */
-function trailRuns(trail: AuthoredTrail, held: readonly number[] | null): { specs: TrailRunSpec[]; names: string[]; runPaths: number[] } {
+function trailRuns(trail: AuthoredTrail, held: readonly number[] | null, pairs: readonly TrailTilePair[] | undefined):
+{ specs: TrailRunSpec[]; names: string[]; runPaths: number[] } {
   const junctions = junctionPoints(trail);
   const runs = trailRunList(trail);
   const cutting = trail.paths.filter(pathCuts).length;
@@ -680,7 +680,7 @@ function trailRuns(trail: AuthoredTrail, held: readonly number[] | null): { spec
   for (const run of runs) {
     const path = trail.paths[run.path];
     if (!splines.has(run.path)) splines.set(run.path, railBezierSegments(pathKnots(trail, path), path.handles));
-    const { knotProfile, ...options } = pathLayoutOptions(trail, path);
+    const { knotProfile, ...options } = pathLayoutOptions(trail, path, pairs);
     const profile = sliceProfile(knotProfile, run.first, run.last);
     const from = path.points[run.first], to = path.points[run.last];
     specs.push({
@@ -737,13 +737,13 @@ function planCut(doc: QuadMeshDoc, trail: AuthoredTrail): PlannedCut {
     return { ok: false, error: 'This trail has lost some of its patches, so it can no longer re-cut them. Dissolve it to edit them as mesh.' };
   const connected = owned ? trailIsConnected(doc, owned) : false;
   const scratch = scratchDoc(doc);
-  const shape = trailRuns(trail, null);
+  const shape = trailRuns(trail, null, doc.trailTilePairs);
   const junctions = junctionPoints(trail);
 
   // A joined trail keeps its layout, so it keeps its runs and junctions.
   if (connected && (shape.specs.length !== owned!.runSpans.length || junctions.size !== owned!.junctionArms.length
     || shape.runPaths.some((path, i) => path !== owned!.runPaths[i]))) return { ok: false, error: JOINED_SHAPE };
-  const runs = connected ? trailRuns(trail, owned!.runSpans) : shape;
+  const runs = connected ? trailRuns(trail, owned!.runSpans, doc.trailTilePairs) : shape;
 
   if (runs.specs.length === 1 && !junctions.size) {
     const ribbon = applyTrailSpline(scratch, runs.specs[0].spline, runs.specs[0].options);
@@ -863,12 +863,13 @@ export function cutTrail(doc: QuadMeshDoc, trail: AuthoredTrail): TrailCut {
   const quadPaint = { ...(doc.quadPaint ?? {}) };
   const quadTex = { ...(doc.quadTex ?? {}) }, quadOrient = { ...(doc.quadOrient ?? {}) };
   const quadLocked = { ...(doc.quadLocked ?? {}) };
+  const laid = trailTilePairTiles(trailTilePairsWith(doc.trailTilePairs));
   lanes.forEach((quad, j) => {
     if (j >= oldQuads.length) quadPaint[quad] = surface;
     const tile = local.quadTex?.[j];
     if (tile) { quadTex[quad] = tile; quadOrient[quad] = { ...(local.quadOrient?.[j] ?? { rot: 0, mirror: false }) }; }
-    // Mesa tiles off: take back only what the preset laid, so a tile painted by hand stays.
-    else if (quadTex[quad] && MESA_TILES.has(quadTex[quad])) { delete quadTex[quad]; delete quadOrient[quad]; }
+    // No tile here now: take back only what a tile pair lays, so a tile painted by hand stays.
+    else if (quadTex[quad] && laid.has(quadTex[quad])) { delete quadTex[quad]; delete quadOrient[quad]; }
     delete quadLocked[quad];
   });
 
