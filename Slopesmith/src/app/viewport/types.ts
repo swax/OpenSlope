@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import type { V3 } from '../../core/doc/types';
+import type { PathHandles, V3 } from '../../core/doc/types';
 import type { TexRef } from '../../core/paint/textures';
 import type { SlidePlan } from '../../core/mesh/slide';
 import type { MeshControlPointId, MeshControlPointTarget } from '../../core/mesh/control-points';
@@ -241,6 +241,27 @@ export interface RefPropPickDetails {
   externalSounds: ExternalSoundEmitter[];
 }
 
+/** Which authored path a Bézier handle belongs to (docs/014): a rail or motion path, a prop line, or a trail. */
+export type PathOwner = { family: 'rail' | 'line' | 'trail'; id: string };
+export type PathHandleSide = 'in' | 'out';
+
+/** The path the handle layer shows: its nodes, their handle overrides, and the size its own node bulbs are drawn at. */
+export interface ShownPath {
+  owner: PathOwner;
+  nodes: readonly V3[];
+  handles?: readonly (PathHandles | null | undefined)[];
+  /** The node whose two handles show — the path's selected point. Null shows none. */
+  node: number | null;
+  /** Radius of the path's own node bulbs; the handle bulbs are drawn a little smaller. */
+  bulbRadius: number;
+}
+
+/** What a mesh gizmo drag is about to move (the shared gizmo's kind, with what that kind needs resolved). */
+export type EditTransformTarget =
+  | { kind: 'corner' | 'corners' | 'controlpoints' | 'editmixed' }
+  | { kind: 'handle'; dir: string }
+  | { kind: 'cagehandle'; handle: { kind: 'edge'; from: number; to: number } | { kind: 'twist'; quad: number } | null };
+
 export interface ViewportCallbacks {
   /** A desktop Test ride changed between board/on-foot or first/third person; redraw its key-mapping sheet. */
   onRideControlContextChange?(): void;
@@ -325,6 +346,9 @@ export interface ViewportCallbacks {
   onRotateControlPoints?(targets: MeshControlPointTarget[]): void;
   /** The centroid scale gizmo placed a mixed authored control-point group at exact absolute targets. */
   onScaleControlPoints?(targets: MeshControlPointTarget[]): void;
+  /** A mesh gizmo drag is starting on this target. False refuses it — everything it would move is locked — and
+   *  the gizmo holds still for the rest of the drag; the host says why. */
+  onEditTransformBegin?(target: EditTransformTarget): boolean;
   /** A mesh gizmo drag ended; the host runs one authoritative full rebuild after live patch-local previews. */
   onEditTransformEnd?(): void;
   /** A box-select gesture finished: the flat indices of every corner inside the rectangle. Shift-drag adds,
@@ -541,8 +565,23 @@ export interface ViewportCallbacks {
   onSelectCoincidentVertices?(diagnostic: CoincidentVertices | null): void;
   /** Edit mode, Create Tube: its transient axis endpoints changed, so the host can refresh the generated shell. */
   onCreateTubeAxisChange?(): void;
-  /** Edit mode, Create Trail: the transient centre-spline knot sequence changed. */
-  onCreateTrailPointsChange?(): void;
+  /** Edit mode, trail drawing (docs/023): a click on no knot asks for one at this lifted surface point. */
+  onAppendTrailKnot?(pos: V3): void;
+  /** Edit mode: a knot bulb of the shown trail was clicked. */
+  onSelectTrailKnot?(knot: number | null): void;
+  /** Edit mode: the selected trail knot's gizmo moved it to this data-space point. */
+  onMoveTrailKnot?(knot: number, pos: V3): void;
+  /** Edit mode: a trail knot drag, or a whole-trail drag, began (true) or ended (false). */
+  onTrailKnotDrag?(dragging: boolean): void;
+  /** Edit mode: the whole selected trail's gizmo moved, turned or scaled it — every knot and every dragged Bézier
+   *  handle (offsets, index-parallel with the knots) as they now stand, data space. */
+  onTransformTrail?(knots: V3[], handles: (PathHandles | null)[]): void;
+  /** A Bézier handle of the selected path was clicked (docs/014). */
+  onSelectPathHandle?(owner: PathOwner, node: number, side: PathHandleSide): void;
+  /** The selected handle's gizmo moved it to this data-space point; `independent` (Alt) breaks it from its twin. */
+  onMovePathHandle?(owner: PathOwner, node: number, side: PathHandleSide, pos: V3, independent: boolean): void;
+  /** A path handle drag began (true) or ended (false). */
+  onPathHandleDrag?(owner: PathOwner, dragging: boolean): void;
   /** The loaded reference was selected by clicking its body in 3D (so the panel can show it). */
   onSelectReference?(): void;
   /** The loaded reference was dragged to a new place (its move-handle drag ended) — persist the offset. */

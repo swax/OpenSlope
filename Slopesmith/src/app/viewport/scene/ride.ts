@@ -415,7 +415,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
         // Only Slopesmith's generated pipe is centred on its spline. Bare curves are laid directly on the
         // intended contact line, just like extracted retail splines.
         seat: railHasTube(r) ? RAIL_TUBE_RADIUS : 0,
-        segments: railBezierSegments(r.nodes).map(seg =>
+        segments: railBezierSegments(r.nodes, r.handles).map(seg =>
           seg.map(p => new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(m)) as
             [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]),
       }))

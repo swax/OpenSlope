@@ -76,7 +76,7 @@ export function createPropLinesLayer(stage: Stage) {
   /** One line's markers: the curve through its nodes and a pick bulb per node (the selected one white + larger). */
   function buildLineObject(line: PropLine, selNode: number | null): THREE.Group {
     const g = new THREE.Group();
-    const sampled = sampleRail(line.nodes, 24);
+    const sampled = sampleRail(line.nodes, 24, line.handles);
     if (sampled.length >= 2) {
       const guide = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(sampled.map(p => new THREE.Vector3(p[0], p[1] + GUIDE_LIFT, p[2]))),

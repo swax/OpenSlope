@@ -1,4 +1,5 @@
 import type { PlacedProp, PropBehaviour, QuadMeshDoc } from '../../../core/doc/types';
+import type { PathHandleOps } from '../../paths/handles';
 import type { ResolvedPropDefaults, StampBehaviour } from '../../../core/props/defaults';
 import type {
   BrushDir,
@@ -39,11 +40,16 @@ export type ToolsPanelDeps = {
     | 'startBridge' | 'addBridgeRail' | 'reverseBridgeRail' | 'removeBridgeRail' | 'moveBridgeRail'
     | 'completeBridge' | 'cancelBridge' | 'bridgeCandidate' | 'armCreateEdge' | 'armCreatePatch' | 'finishCreatePatch' | 'finishCreateEdge'
     | 'armCreateTube' | 'previewCreateTube' | 'finishCreateTube' | 'cancelCreateTube' | 'armLoopCut'
-    | 'armCreateTrail' | 'previewCreateTrail' | 'undoCreateTrailPoint' | 'finishCreateTrail' | 'cancelCreateTrail'
+    | 'armCreateTrail' | 'undoCreateTrailPoint' | 'finishCreateTrail' | 'cancelCreateTrail'
+    | 'selectedTrail' | 'trailStatus' | 'trailError' | 'syncTrailView' | 'resumeTrail' | 'setTrailSetting'
+    | 'deleteSelectedTrailKnot' | 'deleteSelectedTrail' | 'dissolveSelectedTrail'
+    | 'selectedTrailKnot' | 'setTrailKnotSetting' | 'resetTrailKnotSettings' | 'resumeEnds' | 'trailDrawEnd'
     | 'beginEdgeExtrusion' | 'flipEdgeExtrusionSide' | 'commitEdgeExtrusion' | 'cancelEdgeExtrusion'
     | 'beginPointWeld' | 'cancelPointWeld' | 'commitPointWeld' | 'commitPointWeldTogether'
     | 'beginEdgeWeld' | 'cancelEdgeWeld' | 'commitEdgeWeld'
     | 'weldSelectedEdgeCrossing' | 'weldSelectedCoincidentVertices'>;
+  /** The selected path's Bézier handle resets (docs/014), for every panel that edits a path. */
+  pathHandles: Pick<PathHandleOps, 'resetState' | 'resetNode' | 'resetPath' | 'sync'>;
   // shared widgets (created by the host, mounted into / driven from this panel)
   palette: Palette;
   propPreview: PropPreview;

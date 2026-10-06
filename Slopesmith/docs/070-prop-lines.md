@@ -74,7 +74,8 @@ member poses out. `test/prop-line.test.ts` pins every rule below as numbers.
 
 Selecting a line — a click on a member, or on one of its node bulbs — outlines every member, draws the path in
 teal, and puts a bulb on each node. The bulbs draw on top and win the click on top, since a node sits at a
-joint inside the very fence it lays out. Dragging a node's gizmo re-lays the line live.
+joint inside the very fence it lays out. Dragging a node's gizmo re-lays the line live, and so does dragging
+one of the path's Bézier handles, which bend the curve between its nodes (docs/014 · Bézier handles).
 
 The **Line** section of the Tools panel:
 

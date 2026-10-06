@@ -7,7 +7,7 @@ import { textureRefUrl } from '../../net/asset-paths';
 import { surfaceFor } from '../../ride/physics-math';
 import { note, texturePreview, tip } from '../components/gui';
 import { toast } from '../components/toast';
-import { placementCancelButton, type ToolsContext } from './widgets';
+import { pathHandleActions, placementCancelButton, type ToolsContext } from './widgets';
 
 /**
  * The Tricks toolbox (Props mode's rail / gem sub-tools): a selected gem's tier or the gem placement defaults,
@@ -143,6 +143,7 @@ function buildRailTools(ctx: ToolsContext) {
   } else {
     gui.add({ more: () => resumeRail(ctx) }, 'more').name('✚ add more points');
     if (store.selectedNode !== null) gui.add({ delN: () => deleteSelectedRailNode() }, 'delN').name('✕ delete this point');
+    if (rail.nodes.length >= 2) pathHandleActions(ctx, gui);
   }
   gui.add({ del: () => deleteSelectedRail() }, 'del').name(motionPath ? '✕ delete path' : '✕ delete rail');
   placementCancelButton(ctx);

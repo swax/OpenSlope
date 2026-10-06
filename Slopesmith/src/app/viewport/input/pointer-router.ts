@@ -23,6 +23,7 @@ import type { SurgeryLayer } from '../tools/surgery';
 import type { PatchToolLayer } from '../tools/create-patch';
 import type { TubeToolLayer } from '../tools/create-tube';
 import type { TrailToolLayer } from '../tools/create-trail';
+import type { PathHandlesLayer } from '../scene/path-handles';
 import type { WeldToolLayer } from '../tools/weld';
 import type { ClipboardPlacementLayer } from '../tools/clipboard-placement';
 import type { CourseDrawLayer } from '../tools/course-draw';
@@ -56,6 +57,7 @@ export interface RouterLayers {
   patchTool: PatchToolLayer;
   tubeTool: TubeToolLayer;
   trailTool: TrailToolLayer;
+  pathHandles: PathHandlesLayer;
   weldTool: WeldToolLayer;
   clipboardPlacement: ClipboardPlacementLayer;
   courseDraw: CourseDrawLayer;
@@ -695,6 +697,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // click on top: a node sits at a joint between two members, inside the very fence it lays out (docs/070).
     const linePick = layers.scenePicking.pick({ lines: true });
     if (linePick?.target === 'lineNode') { selectLineNode(linePick.lineId, linePick.node); return; }
+    // The selected path's Bézier handles draw on top too, and are only there while it is selected (docs/014).
+    if (layers.pathHandles.pickHandle()) return;
     const pick = layers.scenePicking.pick({
       props: 'standard', lights: true, rails: true, gems: true, screens: true,
       surfaces: true, surfaceEpsilon: 1e-3,
@@ -763,6 +767,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** Effects mode click: select an attached effect when the nearest visible scene object is its host. Other
    * scene objects keep the standard unavailable-target toast; terrain/empty space clears the effect selection. */
   function pickAttachedEffect(additive = false) {
+    if (layers.pathHandles.pickHandle()) return; // a motion path's handles, while one of its points is selected
     const pick = layers.scenePicking.pick({
       props: 'effects', lights: true, rails: true, gems: true, knots: true,
       particleVolumes: true,
@@ -1110,8 +1115,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.surgery.onCommit()) return;
     // Create Tube: collect its two axis endpoints; the panel controls derive a live quad shell from them.
     if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
-    // Create Trail: each click extends the centre spline; Enter commits the generated two-patch ribbon.
-    if (access.mode() === 'edit' && layers.trailTool.active) { layers.trailTool.onCommit(e.shiftKey); return; }
+    // Trail drawing (docs/023): a click on a knot picks it up to move; anywhere else extends the centre spline.
+    if (access.mode() === 'edit' && layers.trailTool.active) {
+      if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(e.shiftKey);
+      return;
+    }
     // Create patch: collect four terrain / free-space / existing-vertex corners, then append and disarm.
     if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
     // target-weld gesture (docs/023 S4): a left click picks the FROM vertex, the next the INTO survivor, then
@@ -1146,8 +1154,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(shift, ctrl); return; }
     // Create Tube touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(shift, ctrl); return; }
-    // Create Trail touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'edit' && layers.trailTool.active) { layers.trailTool.onCommit(shift); return; }
+    // Trail drawing touch tap (mouse is handled in pointerDown).
+    if (access.mode() === 'edit' && layers.trailTool.active) {
+      if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(shift);
+      return;
+    }
     // target-weld gesture (docs/023 S4): a touch tap reaches here (mouse is handled in pointerDown); pick FROM / INTO.
     if (access.mode() === 'edit' && layers.weldTool.active && layers.weldTool.onCommit()) return;
     // props mode: place the armed prop at its ghost, or (select mode) grab what's under the cursor / clear.
@@ -1183,6 +1194,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
 
     if (access.mode() === 'edit') {
+      // A selected trail's knot and handle bulbs draw on top of the ribbon they cut, so they win the click on top
+      // (docs/023); a knot before its own handles, which start on top of it.
+      if (layers.trailTool.pickKnot() || layers.pathHandles.pickHandle()) return;
       const coincident = layers.createEdge.pickCoincidentVertices();
       if (coincident) {
         if (!filteredEditPick('vertex', 'authored')) {

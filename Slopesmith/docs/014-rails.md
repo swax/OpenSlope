@@ -145,12 +145,35 @@ to the compact `Splines.json` index written into the node's native `SplineIndex`
 
 Two forms of the one curve, both derived from the nodes so what you see is what ships:
 
-- **`railBezierSegments(nodes)`** — the curve as a chain of **cubic Béziers**, one per span between
+- **`railBezierSegments(nodes, handles)`** — the curve as a chain of **cubic Béziers**, one per span between
   consecutive nodes, four control points each. Uses the standard uniform CR→Bézier tangents (neighbour
   difference / 6) with the endpoints clamped (`P[-1]=P[0]`, `P[n]=P[n-1]`) — the same clamping `sampleSpine`
-  does, so a rail matches the run spine. This is the form `Splines.json` stores.
-- **`sampleRail(nodes, perSeg)`** — the curve sampled to a polyline for the viewport preview, both ends
+  does, so a rail matches the run spine — except where a handle was dragged (below). This is the form
+  `Splines.json` stores.
+- **`sampleRail(nodes, perSeg, handles)`** — the curve sampled to a polyline for the viewport preview, both ends
   anchored on the node chain.
+
+### Bézier handles
+
+Each span's two inner control points are its nodes' **handles**: the one leaving a node (`out`) and the one
+arriving at it (`in`). Left alone they are the automatic Catmull-Rom tangents; dragged, they are stored on the
+path as `handles: PathHandles[]`, index-parallel with `nodes`, each side an offset from its node so it travels
+with the node. An absent entry or side keeps the automatic tangent, the convention a mesh edge handle uses.
+
+Rails, motion paths, prop lines (docs/070) and trails (docs/023) are all this one curve, so all four take
+handles, and everything that evaluates the curve reads them: the export, the rail tube and its ride, the motion
+path movers, the prop-line and sheet layouts, a trail's cut, and edge extrusion along a path.
+
+Selecting a point on a path shows that point's two handles (`viewport/scene/path-handles.ts`), as the Edit cage
+shows a selected corner's tangents: a pink bulb at the end of each, with a line back to the point — solid once
+dragged, faint while still automatic. That holds for a rail or motion path (Props or Effects mode), a prop line,
+and a trail in Edit mode, drawing or selected. A click on a bulb puts the translate gizmo on that handle. Dragging it swings the node's other handle into line, keeping that handle's length, so the curve stays
+smooth through the node; holding **Alt** moves one side alone, which is how a path takes a corner. The panel's
+**↺ reset this point's handles** and **↺ reset all handles** put the curve back on the automatic tangents.
+Deleting a node takes its handles with it. The coordinator (`app/paths/handles.ts`) hands each drag to the
+family it reshapes: a rail redraws, a prop line lays its members out again, and a trail re-cuts its ribbon.
+
+A rail's `nodes` and `handles` are one linked register group (docs/039), so the two always land together.
 
 `RAIL_STYLE_METAL` (13) / `RAIL_STYLE_WOOD` (12) and `railStyle(rail)` (default metal) name the grind styles;
 `RAIL_STYLE_OFF` (1) is retail's non-grind style for a rail an effect switches in, and `railStartsOff(rail)`

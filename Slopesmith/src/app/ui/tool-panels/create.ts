@@ -2,13 +2,15 @@ import { editMesh } from '../../edit/mesh-target';
 import { edgeIndices } from '../../state/mesh-names';
 import { meshFromDoc } from '../../../core/mesh/topology';
 import { measureEdges } from '../../../core/mesh/measure';
-import { detail, note, texturePreview, tip } from '../components/gui';
+import { detail, errorBanner, note, texturePreview, tip } from '../components/gui';
 import { buildTrailIntegrationGuide } from './trail-guide';
 import { AUTHORED_MODEL_LEVEL } from '../../../core/doc/models';
 import { orientText } from '../../../core/paint/orientation';
 import { describeProp } from '../../../core/props/kind';
 import { textureRefUrl } from '../../net/asset-paths';
-import { fmtM, type ToolsContext } from './widgets';
+import { fmtM, pathHandleActions, type ToolsContext } from './widgets';
+import type { TrailKnotSettings, TrailSettings } from '../../../core/doc/types';
+import { TRAIL_SETTINGS_DEFAULTS } from '../../../core/mesh/trail-object';
 
 /**
  * The Edit-mode creation tools: Create Edge (mesh-native drawing and surface cuts), Create Patch, the armed
@@ -21,7 +23,10 @@ export function createCreateTools(ctx: ToolsContext) {
   const {
     armCreateEdge, armCreatePatch, finishCreatePatch, finishCreateEdge,
     armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube, armLoopCut,
-    armCreateTrail, previewCreateTrail, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
+    armCreateTrail, undoCreateTrailPoint, finishCreateTrail,
+    selectedTrail, trailStatus, trailError, resumeTrail, setTrailSetting,
+    deleteSelectedTrailKnot, deleteSelectedTrail, dissolveSelectedTrail, selectOverlappingVertices, deselectEdit,
+    selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings, resumeEnds, trailDrawEnd,
   } = edit;
 
   let createEdgeTotalRow: ReturnType<typeof detail> | null = null;
@@ -35,7 +40,9 @@ export function createCreateTools(ctx: ToolsContext) {
   let createTrailPointsRow: ReturnType<typeof detail> | null = null;
   let createTrailNextRow: ReturnType<typeof detail> | null = null;
   let createTrailSpansRow: ReturnType<typeof detail> | null = null;
-  let createTrailPatchesRow: ReturnType<typeof detail> | null = null;
+  let createTrailErrorBanner: HTMLElement | null = null;
+  let createTrailKnotBankRow: ReturnType<typeof detail> | null = null;
+  let createTrailKnotSection: ReturnType<typeof editSection> | null = null;
   let createEdgeCommittedLength = 0;
 
   /** Drop the cached row controllers before the toolbox is cleared; the builders recreate the ones their
@@ -52,7 +59,9 @@ export function createCreateTools(ctx: ToolsContext) {
     createTrailPointsRow = null;
     createTrailNextRow = null;
     createTrailSpansRow = null;
-    createTrailPatchesRow = null;
+    createTrailErrorBanner = null;
+    createTrailKnotBankRow = null;
+    createTrailKnotSection = null;
     createEdgeCommittedLength = 0;
   }
 
@@ -259,60 +268,167 @@ export function createCreateTools(ctx: ToolsContext) {
       'Discard the endpoints and preview without changing the mountain.');
   }
 
-  function buildCreateTrailTools() {
-    const placement = editSection('trail-placement', 'Centre Spline');
-    createTrailPointsRow = detail(placement, `${viewport.createTrailPoints.length}`, 'knots');
-    createTrailNextRow = detail(placement, '—', 'next');
-    refreshCreateTrailSummary();
-    note(placement, 'click to add knots · Shift locks the next segment to world X, Y, or Z · surface clicks are lifted above the patch beneath them');
+  /** The selected trail's settings as a lil-gui target: reading shows the trail's own value (or the next
+   *  trail's, before one exists), writing re-cuts it (docs/023). */
+  function trailSettingsTarget(): TrailSettings {
+    const target = {} as TrailSettings;
+    for (const key of Object.keys(TRAIL_SETTINGS_DEFAULTS) as (keyof TrailSettings)[]) {
+      Object.defineProperty(target, key, {
+        enumerable: true,
+        get: () => selectedTrail()?.settings[key] ?? TRAIL_SETTINGS_DEFAULTS[key],
+        set: (value: never) => setTrailSetting(key, value),
+      });
+    }
+    return target;
+  }
 
+  /** A knot's own value marks its row; one following the trail is unmarked. */
+  const OWN_MARK = ' ●';
+  const KNOT_ROWS: { key: 'widthM' | 'centerBias' | 'dishPercent'; name: string; min: number; max: number; step: number; tip: string }[] = [
+    { key: 'widthM', name: 'width (m)', min: 2, max: 100, step: 0.5, tip: 'Rim-to-rim plan width at this point. The trail eases to it from the neighbouring points.' },
+    { key: 'centerBias', name: 'centre seam', min: 0.25, max: 0.75, step: 0.01, tip: 'Where the centre seam sits across the width at this point.' },
+    { key: 'dishPercent', name: 'centre dish (%)', min: 0, max: 30, step: 0.5, tip: 'How far the centre seam sits below the rims at this point, as a percentage of width.' },
+  ];
+  const signedDegrees = (value: number) => `${value > 0.05 ? '+' : value < -0.05 ? '−' : ''}${Math.abs(value).toFixed(1)}°`;
+
+  /**
+   * The selected knot's own section (docs/023 · Per-knot section). Each row shows the value cut at this point;
+   * moving it makes the value the point's own (marked ●), and the trail eases into and out of it over the
+   * neighbouring stretches. The bank is either the automatic one, scaled by a strength, or a fixed angle.
+   */
+  function buildTrailKnotTools(trail: NonNullable<ReturnType<typeof selectedTrail>>, knotIndex: number) {
+    const g = createTrailKnotSection = editSection('trail-knot', `Point ${knotIndex + 1}`);
+    const own = () => selectedTrailKnot()?.own ?? {};
+    const mark = (name: string, key: keyof TrailKnotSettings) => own()[key] !== undefined ? name + OWN_MARK : name;
+    const target = {} as Record<string, number>;
+    for (const row of KNOT_ROWS) {
+      Object.defineProperty(target, row.key, {
+        enumerable: true,
+        get: () => own()[row.key] ?? selectedTrail()?.settings[row.key] ?? trail.settings[row.key],
+        set: (value: number) => setTrailKnotSetting(row.key, value),
+      });
+      const control = g.add(target, row.key, row.min, row.max, row.step).name(mark(row.name, row.key));
+      control.onChange(() => { control.name(mark(row.name, row.key)); refreshCreateTrailSummary(); });
+      tip(control, row.tip, '● marks a value this point sets for itself; the others follow the trail’s settings below.');
+    }
+
+    const fixed = own().bankDegrees !== undefined;
+    const mode = { bank: fixed ? 'fixed' : 'auto' };
+    tip(g.add(mode, 'bank', { 'automatic': 'auto', 'fixed angle': 'fixed' }).name('bank').onChange((value: string) => {
+      // A fixed bank starts at the bank the point has now, so choosing it changes nothing until it is moved.
+      const now = selectedTrailKnot()?.cut?.bankDegrees ?? 0;
+      setTrailKnotSetting('bankDegrees', value === 'fixed' ? Math.round(now * 2) / 2 : undefined);
+      rebuildTools();
+    }), 'Automatic banks with the curve, as the trail’s Banking settings say. A fixed angle holds this point at it.',
+    'Between two fixed points the bank turns evenly from one angle to the other — two at 0° keep the stretch between them '
+      + 'level through any curve. Between a fixed point and an automatic one it fades from the angle to the automatic bank.');
+    if (fixed) {
+      const bank = { degrees: own().bankDegrees ?? 0 };
+      tip(g.add(bank, 'degrees', -60, 60, 0.5).name('bank angle (deg)').onChange((value: number) => {
+        setTrailKnotSetting('bankDegrees', value);
+        refreshCreateTrailSummary();
+      }), 'The bank at this point. The sign is the automatic bank’s: match the sign it had here to lean the same way.');
+    } else {
+      const strength = { scale: own().bankStrength ?? 1 };
+      const control = g.add(strength, 'scale', 0, 3, 0.05).name(mark('bank strength (×)', 'bankStrength'));
+      control.onChange((value: number) => {
+        setTrailKnotSetting('bankStrength', Math.abs(value - 1) < 1e-9 ? undefined : value);
+        control.name(mark('bank strength (×)', 'bankStrength'));
+        refreshCreateTrailSummary();
+      });
+      tip(control, 'Scales the automatic bank at this point: 0 keeps the rims level here, 2 banks twice as hard.',
+        'Eases back to the usual bank at the neighbouring points.');
+    }
+    createTrailKnotBankRow = detail(g, '—', 'bank here');
+    const reset = tip(g.add({ reset: resetTrailKnotSettings }, 'reset').name('↺ follow the trail here'),
+      'Clear everything this point sets for itself, so it takes the trail’s settings again.');
+    if (!Object.keys(own()).length) reset.disable();
+  }
+
+  /**
+   * The trail panel (docs/023), while one is being drawn and whenever one is selected: its knots, the section
+   * and banking it is cut with — every change re-cuts it live — and what can be done with it. One panel for both,
+   * because a trail being drawn is already the trail: it is in the document from its second knot.
+   */
+  function buildTrailTools() {
+    const drawing = store.surgeryTool === 'trail';
+    const status = trailStatus();
+    const knot = store.trailKnot;
+    const spline = editSection('trail-placement', drawing ? 'Create Trail' : 'Trail');
+    createTrailPointsRow = detail(spline, `${status?.knots ?? 0}`, 'knots');
+    if (drawing) createTrailNextRow = detail(spline, '—', 'next');
+    createTrailSpansRow = detail(spline, '—', 'spans · patches');
+    if (knot !== null && status) detail(spline, `${knot + 1} of ${status.knots}`, 'selected knot');
+    createTrailErrorBanner = errorBanner(spline, '');
+    if (status?.broken) errorBanner(spline, 'Something cut into this trail’s patches, so it can no longer re-cut them. '
+      + 'Dissolve it to keep the patches as mesh, or delete it.');
+    if (status?.connected) note(spline, 'Joined to other patches: moving it stretches them, and its patch count is held.');
+    note(spline, drawing
+      ? 'click to add knots · click a knot to pick it up, then drag its arrows · Shift locks the next segment to world X, Y, or Z'
+      : 'drag the gizmo to move the whole trail (E turns it, R scales it) · click a knot to reshape it');
+    const trail = selectedTrail();
+    if (trail && knot !== null && status && !status.draft) buildTrailKnotTools(trail, knot);
+    refreshCreateTrailSummary();
+
+    const settings = trailSettingsTarget();
     const dimensions = editSection('trail-shape', 'Trail Shape');
-    const refresh = () => {
-      const result = previewCreateTrail();
-      createTrailSpansRow?.setValue(result?.ok ? `${result.spans.length}` : '—');
-      createTrailPatchesRow?.setValue(result?.ok ? `${result.quads.length}` : '—');
-      refreshCreateTrailSummary();
-      return result;
-    };
+    const refresh = () => refreshCreateTrailSummary();
     // Every station has left, centre, and right rails, producing exactly two patches across.
-    tip(dimensions.add(store, 'trailWidth', 2, 100, 0.5).name('target width (m)').onChange(refresh),
+    tip(dimensions.add(settings, 'widthM', 2, 100, 0.5).name('target width (m)').onChange(refresh),
       'Rim-to-rim plan width; the measured Mesa default is 13 m.');
-    tip(dimensions.add(store, 'trailPatchLength', 2, 100, 0.5).name('target length (m)').onChange(refresh),
-      'Maximum ordinary patch length along the spline. Tight turns are automatically subdivided more finely.');
-    tip(dimensions.add(store, 'trailDishPercent', 0, 30, 0.5).name('centre dish (%)').onChange(refresh),
+    tip(dimensions.add(settings, 'patchLengthM', 2, 100, 0.5).name('target length (m)').onChange(refresh),
+      'Maximum ordinary patch length along the spline. Tight turns are automatically subdivided more finely. '
+      + 'Held while other patches are joined to the trail.');
+    tip(dimensions.add(settings, 'dishPercent', 0, 30, 0.5).name('centre dish (%)').onChange(refresh),
       'How far the centre seam sits below the banked rim chord, as a percentage of full width. Mesa measures about 10.5%.');
-    tip(dimensions.add(store, 'trailCenterBias', 0.25, 0.75, 0.01).name('centre seam').onChange(refresh),
+    tip(dimensions.add(settings, 'centerBias', 0.25, 0.75, 0.01).name('centre seam').onChange(refresh),
       'Position of the centre seam across the width. 0.5 makes equal left and right patches.');
-    tip(dimensions.add(store, 'trailMaxTurnDegrees', 5, 120, 1).name('max turn / patch').onChange(refresh),
+    tip(dimensions.add(settings, 'maxTurnDegrees', 5, 120, 1).name('max turn / patch').onChange(refresh),
       'Adaptive curvature threshold. Lower values create more, shorter patches through turns.');
 
     const banking = editSection('trail-banking', 'Banking');
-    tip(banking.add(store, 'trailBankGain', 0, 100, 0.5).name('banking amount').onChange(refresh),
+    tip(banking.add(settings, 'bankGainM', 0, 100, 0.5).name('banking amount').onChange(refresh),
       'Strength of automatic curvature banking. Zero keeps the rim chord level; the measured default is 15 m.');
-    tip(banking.add(store, 'trailMaxBankDegrees', 0, 60, 1).name('max bank (deg)').onChange(refresh),
+    tip(banking.add(settings, 'maxBankDegrees', 0, 60, 1).name('max bank (deg)').onChange(refresh),
       'Absolute bank clamp. Banking ramps between stations to avoid abrupt cross-slope changes.');
-    tip(banking.add(store, 'trailSurfaceLift', 0, 5, 0.05).name('surface lift (m)').onChange((value: number) => {
+    if (drawing) tip(banking.add(store, 'trailSurfaceLift', 0, 5, 0.05).name('surface lift (m)').onChange((value: number) => {
       viewport.setCreateTrailSurfaceLift(value);
     }), 'Vertical offset applied when a NEW spline knot is clicked on an existing patch or vertex. Free-space knots are unchanged.');
-    tip(banking.add(store, 'trailMesaTextures').name('Mesa trail textures').onChange(refresh),
+    tip(banking.add(settings, 'mesaTextures').name('Mesa trail textures').onChange(refresh),
       'Apply matched left/right Mesa trail tiles, switching to the tight-turn stripe set where curvature calls for it.');
-    createTrailSpansRow = detail(banking, '—', 'lengthwise spans');
-    createTrailPatchesRow = detail(banking, '—', 'quad patches');
 
-    const preview = refresh();
-    const ready = preview?.ok === true;
     const actions = editSection('tool-actions', 'Actions');
-    const commit = tip(actions.add({ create: finishCreateTrail }, 'create').name('✔ create trail (Enter)'),
-      preview && !preview.ok ? preview.error : ready
-        ? 'Commit the teal preview and select all generated trail patches.'
-        : 'Place at least two centre-spline knots before creating the trail.');
-    if (!ready) commit.disable();
-    const undo = tip(actions.add({ undo: undoCreateTrailPoint }, 'undo').name('undo last knot (Backspace)'),
-      'Remove the last centre-spline knot without leaving Create Trail.');
-    if (!viewport.createTrailPoints.length) undo.disable();
-    tip(actions.add({ cancel: cancelCreateTrail }, 'cancel').name('cancel trail (Esc)'),
-      'Discard the spline and preview without changing the mountain.');
-    // Committing the ribbon is only the first of six steps; the rest run in other tools (see trail-guide).
+    if (drawing) {
+      tip(actions.add({ finish: finishCreateTrail }, 'finish').name('✔ finish trail (Enter)'),
+        status && !status.draft ? 'Stop adding knots. The trail stays selected; click any of its patches later to edit it again.'
+          : 'Stop drawing. A trail needs two knots, so this one is discarded.');
+      const undo = tip(actions.add({ undo: undoCreateTrailPoint }, 'undo').name('undo last knot (Backspace)'),
+        'Remove the newest knot without leaving Create Trail.');
+      if (!status?.knots) undo.disable();
+    } else {
+      // From an end: either with no knot picked, the picked one's with an end knot picked. A middle knot has
+      // none — a branch will start there.
+      const ends = resumeEnds();
+      if (ends.includes('start')) tip(actions.add({ start: () => resumeTrail('start') }, 'start').name('✚ add points before the start'),
+        'Lay more knots onto the start of this trail, ahead of its first knot.');
+      if (ends.includes('end')) tip(actions.add({ end: () => resumeTrail('end') }, 'end').name('✚ add points after the end'),
+        'Lay more knots onto the end of this trail, after its last knot.');
+    }
+    if (knot !== null) tip(actions.add({ del: deleteSelectedTrailKnot }, 'del').name('✕ delete this knot (Del)'),
+      'Remove the selected knot and re-cut the trail. A trail left with one knot is removed.');
+    if (status && !status.draft) pathHandleActions(ctx, actions);
+    if (!drawing && status) {
+      tip(actions.add({ overlap: selectOverlappingVertices }, 'overlap').name('select overlapping vertices'),
+        'Swap the selection for every other authored vertex under the trail in this view.',
+        'The current viewport is the mask: selection passes through depth and excludes the trail’s own corners. '
+        + 'Press Delete afterward to remove the mountain patches beneath it (see the guide below).');
+      tip(actions.add({ dissolve: dissolveSelectedTrail }, 'dissolve').name('⇥ dissolve into patches'),
+        'Keep the patches exactly where they are as ordinary mesh, and forget the spline.',
+        'They stay locked; unlock them under Visibility to edit them by hand. The trail can no longer re-cut them.');
+      tip(actions.add({ remove: deleteSelectedTrail }, 'remove').name('✕ delete trail'),
+        'Remove the trail and every patch it owns. Patches joined to it keep the vertices they share.');
+      tip(actions.add({ deselect: deselectEdit }, 'deselect').name('deselect (Esc)'), 'Clear the selection.');
+    }
     buildTrailIntegrationGuide(editSection);
   }
 
@@ -348,18 +464,34 @@ export function createCreateTools(ctx: ToolsContext) {
     createTubeLengthRow.setValue(length === null ? '—' : fmtM(length));
   }
 
+  /** The trail panel's live rows: knots, the next segment while drawing, the cut's size, and why it refused. */
   function refreshCreateTrailSummary() {
-    if (!createTrailPointsRow || !createTrailNextRow || store.surgeryTool !== 'trail') return;
-    const points = viewport.createTrailPoints, start = points.at(-1), hover = viewport.createTrailPreviewPoint;
+    if (!createTrailPointsRow) return;
+    const status = trailStatus();
+    createTrailPointsRow.setValue(`${status?.knots ?? 0}`);
+    createTrailSpansRow?.setValue(status && !status.draft ? `${status.spans} · ${status.patches}` : '—');
+    if (createTrailErrorBanner) {
+      const reason = trailError();
+      createTrailErrorBanner.textContent = reason ?? '';
+      createTrailErrorBanner.style.display = reason ? '' : 'none';
+    }
+    if (createTrailKnotBankRow) {
+      const cut = selectedTrailKnot()?.cut;
+      createTrailKnotBankRow.setValue(cut ? signedDegrees(cut.bankDegrees) : '—');
+    }
+    // A point following the trail shows the trail's value, which a trail setting just changed.
+    for (const control of createTrailKnotSection?.controllers ?? []) control.updateDisplay();
+    if (!createTrailNextRow) return;
+    const knots = selectedTrail()?.knots;
+    const start = trailDrawEnd() === 'start' ? knots?.[0] : knots?.at(-1), hover = viewport.createTrailPreviewPoint;
     const next = start && hover
       ? Math.hypot(hover[0] - start[0], hover[1] - start[1], hover[2] - start[2])
       : null;
-    createTrailPointsRow.setValue(`${points.length}`);
     createTrailNextRow.setValue(next === null ? '—' : fmtM(next));
   }
 
   return {
-    reset, buildCreateEdgeTools, buildCreateTubeTools, buildCreateTrailTools,
+    reset, buildCreateEdgeTools, buildCreateTubeTools, buildTrailTools,
     refreshCreateEdgeSummary, refreshCreatePatchSummary, refreshCreateTubeSummary, refreshCreateTrailSummary,
   };
 }

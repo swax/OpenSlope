@@ -216,8 +216,16 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (e.key === 'Enter' && store.surgeryTool === 'tube') { e.preventDefault(); finishCreateTube(); return; }
     if (e.key === 'Enter' && store.surgeryTool === 'trail') { e.preventDefault(); finishCreateTrail(); return; }
     if (e.key === 'Enter' && store.surgeryTool === 'patch') { e.preventDefault(); edit.finishCreatePatch(true); return; }
+    // A trail (docs/023): Delete takes the selected knot, else — while drawing — the newest one, else the trail.
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.surgeryTool === 'trail') {
-      e.preventDefault(); undoCreateTrailPoint(); return;
+      e.preventDefault();
+      if (store.trailKnot !== null) edit.deleteSelectedTrailKnot(); else undoCreateTrailPoint();
+      return;
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && store.currentMode === 'edit' && !mod && edit.selectedTrail()) {
+      e.preventDefault();
+      if (store.trailKnot !== null) edit.deleteSelectedTrailKnot(); else edit.deleteSelectedTrail();
+      return;
     }
     // A course being redrawn (Scene ▸ Course ▸ reset course): Enter commits it, Backspace takes a point back and
     // Esc puts it down — ahead of Info's own Esc, which would otherwise leave the Course card.

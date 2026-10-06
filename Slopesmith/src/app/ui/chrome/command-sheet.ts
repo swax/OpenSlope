@@ -168,7 +168,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         : store.currentMode === 'edit' && store.surgeryTool === 'tube'
           ? helpPanel('Edit Mode — create tube', [['LMB', 'place axis endpoint'], ['Ctrl+LMB', 'second end on the surface'], ['⇧LMB', 'lock world axis'], ['Enter', 'create + select patches'], ['Esc', 'cancel']])
         : store.currentMode === 'edit' && store.surgeryTool === 'trail'
-          ? helpPanel('Edit Mode — create trail', [['LMB', 'add spline knot'], ['⇧LMB', 'lock world axis'], ['Backspace', 'undo last knot'], ['Enter', 'create + select patches'], ['Esc', 'cancel']])
+          ? helpPanel('Edit Mode — create trail', [['LMB', 'add spline knot'], ['LMB knot', 'pick it up to move'], ['⇧LMB', 'lock world axis'], ['Backspace', 'remove selected / last knot'], ['Enter / Esc', 'finish']])
         : store.currentMode === 'edit' && cageActive()
           ? (store.surgeryTool === 'patch'
             ? helpPanel('Edit Mode — create patch', [['LMB', 'place next corner'], ['Ctrl+LMB', 'corner on the surface'], ['repeat corner', 'close three corners as triangle'], ['⇧LMB', 'lock world axis'], ['Enter', 'finish + select created'], ['Esc', 'finish · keep unselected']])

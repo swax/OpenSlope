@@ -46,7 +46,7 @@ import {
   authoredEffectBindings, authoredPropHasEffectCircumstance, effectAttachments, rollerNodeMass,
 } from '../../../core/effects/authoring';
 import { collisionSoundSource } from '../../../core/effects/collision-sound';
-import { placementCancelButton, type ToolsContext } from './widgets';
+import { pathHandleActions, placementCancelButton, type ToolsContext } from './widgets';
 import { addAuthoredLightDetails, addReferenceLightDetails } from '../components/light-details';
 import { addPropMaterials } from '../components/prop-materials';
 import { NATIVE_COLLISION_MODE } from '../../../core/collision/native';
@@ -1988,6 +1988,7 @@ export function createPropTools(ctx: ToolsContext) {
         tip(gui.add({ del: () => propLines.deleteSelectedNode() }, 'del').name('✕ delete this point'),
           `Remove the selected point. A ${noun} left with one point is removed.`);
       }
+      if (line.nodes.length >= 2) pathHandleActions(ctx, gui);
     }
     if (line.nodes.length >= 2) {
       if (!sheet) {

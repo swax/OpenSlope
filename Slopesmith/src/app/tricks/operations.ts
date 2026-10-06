@@ -1,4 +1,5 @@
-import { nextRailId, RAIL_STYLE_METAL } from '../../core/rails/rails';
+import { nextRailId, RAIL_STYLE_METAL, withoutPathNode } from '../../core/rails/rails';
+import { assignHandles } from '../paths/handles';
 import type { NativeArt } from '../../core/export/provider';
 import type { LevelProps } from '../../core/reference/props';
 import type { Store } from '../state/store';
@@ -191,6 +192,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
     if (store.selectedRail === null || store.selectedNode === null || !store.mdoc.rails?.[store.selectedRail]) return;
     const rail = store.mdoc.rails[store.selectedRail];
     rail.nodes.splice(store.selectedNode, 1);
+    assignHandles(rail, withoutPathNode(rail.handles, store.selectedNode)); // later nodes keep their own
     store.selectedNode = null;
     if (rail.nodes.length < 2) { store.mdoc.rails.splice(store.selectedRail, 1); leaveTrickTools(); }
     scheduleRebuild();

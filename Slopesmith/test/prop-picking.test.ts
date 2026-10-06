@@ -232,6 +232,7 @@ const layers: any = {
   screens: { clearSelection() {} },
   paint: { paintArm: null, cellAtPointer: () => 0, paintSelectAtPointer() {} },
   edgeExtrusion: { active: false },
+  pathHandles: { pickHandle: () => false },
 };
 let activeMode = 'props';
 let paintPreview: any = null;

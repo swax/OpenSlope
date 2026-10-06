@@ -69,9 +69,9 @@ function jointEdges(joints: readonly V3[], heights: readonly number[], sheet: Pr
  * a path under two nodes. Neighbouring pieces share their joint edge's two corners exactly, which is the whole
  * point — the seams the shipped fences never show.
  */
-export function sheetPieces(line: Pick<PropLine, 'nodes' | 'spacing'> & { sheet: PropSheet }, ground: LineGround):
+export function sheetPieces(line: Pick<PropLine, 'nodes' | 'handles' | 'spacing'> & { sheet: PropSheet }, ground: LineGround):
   SheetPiece[] {
-  const fitted = lineJoints(line.nodes, sheetSpan(line), 'plan');
+  const fitted = lineJoints(line.nodes, sheetSpan(line), 'plan', line.handles);
   if (!fitted) return [];
   const { joints } = fitted;
   const heights = joints.map(joint => ground(joint[0], joint[2], joint[1]) ?? joint[1]);

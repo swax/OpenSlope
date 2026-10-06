@@ -101,18 +101,69 @@ meters is a finishing or explicit junction/hairpin operation, not a reason to ma
 irregular. The benchmark also found and fixed two prototype errors: bank sign now raises the outside rim, and
 turn concentrated at a join between two cubics now contributes to both banking and adaptive density.
 
-## Current Create Trail tool
+## Create Trail: an owned trail
 
-Edit mode's empty-selection **Create Terrain** group now includes **Create Trail**. It lays transient centre
-knots with the same Catmull-Rom-to-Bézier curve as Add Rail and Add Motion Path, previews the generated chart,
-and commits it as ordinary selected mesh patches. Its panel exposes target width and length, centre dish and
-bias, adaptive turn density, auto-bank gain/clamp, surface lift, and the Mesa matched-half/tight-turn texture
-preset. A knot clicked on an authored patch or vertex is raised by the surface-lift setting (0.25 m by default),
-while a free-space knot is not moved. Enter commits, Backspace removes the last knot, and Escape cancels.
+Edit mode's empty-selection **Create Terrain** group includes **Create Trail**. It lays centre knots with the same
+Catmull-Rom-to-Bézier curve as Add Rail and Add Motion Path, and the trail it builds keeps its spline: an
+`AuthoredTrail` in the document's `trails` list (`core/doc/types.ts`) holds the knots, the section settings, and
+the stable ids of the vertices and patches it cut. It is the first, two-patch-wide cut of the Track object below.
 
-This is deliberately the useful one-shot tool from the generator study, not yet the first-class owned Track
-object described below: after commit its two-patch ribbon is normal editable terrain and does not retain the
-construction spline.
+**Drawing.** Each click on no knot adds one at the surface point under the cursor, raised by the surface-lift
+setting (0.25 m by default) when it lands on an authored patch or vertex; a free-space knot is not moved. From the
+second knot the trail is in the document, patches and all, and it re-cuts with every knot, so what you see while
+drawing is the real ribbon. A click on an existing knot picks it up instead: the translate gizmo goes on it, and a
+drag re-cuts the trail live — before the last knot is laid as well as after. A picked knot also shows its two
+pink Bézier handles, which drag the same way (docs/014 · Bézier handles) and bend the trail through that knot. Backspace removes the selected knot,
+or else the newest; Enter or Escape finishes, leaving the trail selected. A trail that never reached two knots was
+never in the document and is dropped.
+
+**Selecting.** A click on any of a trail's patches selects the whole trail: its patches become the patch selection,
+its knot bulbs and guide show, and the Tools panel is the trail's own (Ctrl+click adds or drops the whole trail).
+With no knot picked, the gizmo sits at the knots' centroid and carries the trail as a unit (gizmo kind `'trail'`,
+`viewport/tools/create-trail.ts`): Move translates every knot, Rotate (E) turns them about the centroid, Scale (R)
+stretches them, and every dragged Bézier handle turns and stretches with its knot. The trail re-cuts from the
+moved knots each frame — so its patches stay locked and only the trail moves them, and patches joined to it
+stretch to follow. It is World-framed: the mesh's Surface slide does not apply to a trail.
+The selected trail is not stored anywhere; it is whichever trail's patches are exactly the patch selection, so any
+other selection is already "not the trail". The panel exposes the knots, the section (target width and length,
+centre dish and seam, turn density), banking, the Mesa matched-half/tight-turn texture preset, **✚ add points
+before the start** and **after the end** (both with no knot picked, the picked end's with an end knot picked, and
+neither with a middle knot picked), **✕ delete this knot**, **select overlapping vertices**, **⇥ dissolve into patches** and **✕ delete
+trail**. Every setting re-cuts the trail as it changes, and also becomes the next trail's starting value.
+
+**Per-knot section.** A selected knot adds a **Point N** group to the panel: its width, centre seam and centre dish,
+and its bank. Each row shows the value the trail is cut with at that knot; moving it makes the value the knot's own
+(the row is marked ●), stored in the trail's `knotSettings`, index-parallel with `knots` like its handles, and only
+for the values a knot sets — everything else follows the trail's settings. Between two knots every value eases from
+one knot's to the next by distance along the trail (`TrailKnotProfile`), so a knot set to 25 m swells a 13 m trail
+there and it narrows back over the neighbouring stretches. The bank is either **automatic** — the curvature law,
+scaled by the knot's **bank strength** (0 levels it, 2 leans twice as hard) — or a **fixed angle**, which starts at
+the bank the knot has when chosen. Between two fixed knots the bank turns evenly from one angle to the other, so
+two knots at 0° hold the stretch between them level through any curve; between a fixed knot and an automatic one it
+fades from the angle into the automatic bank, which is where the automatic knot's side of the stretch reads it;
+two automatic knots are the automatic bank exactly. **↺ follow the trail here** clears the knot's values. Deleting
+a knot takes its values with it. Patch length, turn density and the textures stay trail-wide: they decide how many
+patches fall between two knots, which belongs to a stretch, not a point.
+
+**The cut** (`core/mesh/trail-object.ts` `cutTrail`) lays the spline out with the generator above and writes the
+result over what the trail already owns: the same vertices and patches for every station the old and new ribbons
+share, new ones appended for stations a longer ribbon adds, and the patches past a shorter one's end retired
+through the shared compactor. Every handle on the ribbon's edges is cleared and derived again — the exact centre
+seam, then the lock's materialised Bessel handles — so a re-cut in place is the same surface as cutting the moved
+spline fresh. A knot drag cuts once per frame, each time from the document as it stood when the drag began, so
+the frames do not pile up each other's minted and retired ids.
+
+**Ownership.** Every owned patch is locked from the moment it is cut: sculpt brushes and Edit transforms leave it
+alone, and only the trail moves it. Patches joined to the ribbon — a Weld Loops seam, a retopologised mountain —
+share its rim vertices, so a re-cut moves those vertices and the joined patches stretch to follow. While anything
+shares its vertices the trail keeps its patch count: the layout shares exactly the spans it already has out across
+the knot segments (`spanCount`, by the same length and turn demand the adaptive count reads), and refuses a spline
+with more segments than spans. A trail whose ribbon something has cut into — a split, a delete — no longer
+resolves; its panel says so and offers only dissolve and delete. **Dissolve** forgets the spline and leaves the
+patches as ordinary (still locked) mesh, the escape hatch for hand work on them.
+
+A trail is its own register family (`o/trail/<id>`, docs/039), written whole: its spline and the patch ids it names
+come from one writer, alongside the mesh change that cut them.
 
 A patch selection also exposes **Select overlapping vertices**. It projects the selected patches' tessellated
 curved surfaces through the current camera, excludes their own corners, and replaces the patch selection with

@@ -1,4 +1,4 @@
-import type { Rail, V3 } from '../doc/types';
+import type { PathHandles, Rail, V3 } from '../doc/types';
 import type { LevelProps } from '../reference/props';
 import { resolveTerrainTexRef } from '../paint/textures';
 
@@ -174,24 +174,88 @@ export function nativeSplineFields(rail: Rail): { u0: number; u1: number; style:
   return { u0: 1, u1: 1, style: railStartsOff(rail) ? RAIL_STYLE_OFF : railStyle(rail) };
 }
 
+/** A path's handle overrides, index-parallel with its nodes; anything missing is automatic (`PathHandles`). */
+export type PathHandleList = readonly (PathHandles | null | undefined)[] | undefined;
+
+const addV = (a: readonly number[], b: readonly number[]): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+
+/** The automatic (uniform Catmull-Rom) handle leaving node `i`: neighbour difference / 6, with the endpoints
+ *  clamped (P[-1]=P[0], P[n]=P[n-1]) — the same clamping sampleSpine does, so a path matches the run spine.
+ *  The arriving handle is its negation. */
+function autoOut(nodes: readonly V3[], i: number): V3 {
+  const n = nodes.length, at = (k: number) => nodes[Math.max(0, Math.min(n - 1, k))];
+  const a = at(i - 1), b = at(i + 1);
+  return [(b[0] - a[0]) / 6, (b[1] - a[1]) / 6, (b[2] - a[2]) / 6];
+}
+
 /**
- * The rail's Catmull-Rom curve as a chain of cubic-Bézier segments: one per span between consecutive nodes,
- * each `[b0, b1, b2, b3]` in the nodes' own space. Uses the standard uniform CR→Bézier tangents (neighbour
- * difference / 6) with the endpoints clamped (P[-1]=P[0], P[n]=P[n-1]) — the same clamping sampleSpine does,
- * so the rail curve matches the run spine's. Fewer than two nodes yields no segments.
+ * Every node's two handles as they stand — the override where one was dragged, the automatic tangent where
+ * not — as offsets from the node. The first node has no arriving handle and the last none leaving (null).
  */
-export function railBezierSegments(nodes: V3[]): [V3, V3, V3, V3][] {
-  const n = nodes.length;
-  if (n < 2) return [];
-  const at = (i: number) => nodes[Math.max(0, Math.min(n - 1, i))];
+export function pathHandleOffsets(nodes: readonly V3[], handles?: PathHandleList): { in: V3 | null; out: V3 | null }[] {
+  return nodes.map((_, i) => {
+    const auto = autoOut(nodes, i), own = handles?.[i];
+    return {
+      in: i > 0 ? own?.in ?? [-auto[0], -auto[1], -auto[2]] : null,
+      out: i < nodes.length - 1 ? own?.out ?? auto : null,
+    };
+  });
+}
+
+/**
+ * A path's curve as a chain of cubic-Bézier segments: one per span between consecutive nodes, each `[b0, b1, b2,
+ * b3]` in the nodes' own space. The inner points are the nodes' handles (`pathHandleOffsets`): automatic uniform
+ * Catmull-Rom tangents unless a handle was dragged. Fewer than two nodes yields no segments.
+ */
+export function railBezierSegments(nodes: readonly V3[], handles?: PathHandleList): [V3, V3, V3, V3][] {
+  if (nodes.length < 2) return [];
+  const offsets = pathHandleOffsets(nodes, handles);
   const segs: [V3, V3, V3, V3][] = [];
-  for (let i = 0; i < n - 1; i++) {
-    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-    const b1: V3 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p1[2] + (p2[2] - p0[2]) / 6];
-    const b2: V3 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[2] - (p3[2] - p1[2]) / 6];
-    segs.push([p1, b1, b2, p2]);
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const p1 = nodes[i], p2 = nodes[i + 1];
+    segs.push([p1, addV(p1, offsets[i].out!), addV(p2, offsets[i + 1].in!), p2]);
   }
   return segs;
+}
+
+/**
+ * Drag one handle of node `node` to `offset` (from the node). The opposite handle swings to stay in line with it,
+ * keeping its own length, so the curve stays smooth through the node; `independent` (Alt) moves only the one,
+ * which is how a path takes a corner. Returns the new list, trimmed of trailing nodes with no override.
+ */
+export function setPathHandle(nodes: readonly V3[], handles: PathHandleList, node: number, side: 'in' | 'out',
+  offset: V3, independent = false): (PathHandles | null)[] {
+  const out: (PathHandles | null)[] = nodes.map((_, i) => handles?.[i] ? { ...handles[i] } : null);
+  if (!nodes[node]) return trimHandles(out);
+  const entry: PathHandles = { ...(out[node] ?? {}), [side]: [offset[0], offset[1], offset[2]] };
+  const other = side === 'in' ? 'out' : 'in';
+  const opposite = pathHandleOffsets(nodes, handles)[node][other];
+  const length = Math.hypot(offset[0], offset[1], offset[2]);
+  if (!independent && opposite && length > 1e-9) {
+    const keep = Math.hypot(opposite[0], opposite[1], opposite[2]) / length;
+    entry[other] = [-offset[0] * keep, -offset[1] * keep, -offset[2] * keep];
+  }
+  out[node] = entry;
+  return trimHandles(out);
+}
+
+/** Put node `node` back on the automatic curve. */
+export function resetPathHandles(handles: PathHandleList, node: number): (PathHandles | null)[] {
+  return trimHandles((handles ?? []).map((own, i) => i === node ? null : own ?? null));
+}
+
+/** The handle list once node `node` is deleted, so every later node keeps its own. */
+export function withoutPathNode(handles: PathHandleList, node: number): (PathHandles | null)[] {
+  return trimHandles((handles ?? []).filter((_, i) => i !== node).map(own => own ?? null));
+}
+
+/** Whether node `node` has a dragged handle. */
+export const pathNodeHasHandles = (handles: PathHandleList, node: number): boolean => !!handles?.[node];
+
+function trimHandles(list: (PathHandles | null)[]): (PathHandles | null)[] {
+  let end = list.length;
+  while (end > 0 && !list[end - 1]) end--;
+  return list.slice(0, end);
 }
 
 const bezierPoint = (b: [V3, V3, V3, V3], t: number): V3 => {
@@ -208,8 +272,8 @@ const bezierPoint = (b: [V3, V3, V3, V3], t: number): V3 => {
  * The rail curve sampled to a polyline for the preview: `perSeg` points along each Bézier segment plus the
  * final endpoint, so it reads as a continuous curve. A single-node (or empty) rail returns its bare nodes.
  */
-export function sampleRail(nodes: V3[], perSeg = 12): V3[] {
-  const segs = railBezierSegments(nodes);
+export function sampleRail(nodes: readonly V3[], perSeg = 12, handles?: PathHandleList): V3[] {
+  const segs = railBezierSegments(nodes, handles);
   if (!segs.length) return nodes.slice();
   const out: V3[] = [];
   for (const s of segs) for (let k = 0; k < perSeg; k++) out.push(bezierPoint(s, k / perSeg));

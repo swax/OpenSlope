@@ -1,7 +1,8 @@
 import type { PlacedProp, Rail, V3 } from '../../core/doc/types';
+import { assignHandles, type PathHandleOps } from '../paths/handles';
 import {
   isBareRail, isMotionPath, nextMotionPathId, nextRailId, railHasTube, railMaterialLabel, railStartsOff,
-  railStyle, sampleRail,
+  railStyle, sampleRail, withoutPathNode,
   RAIL_STYLE_METAL,
 } from '../../core/rails/rails';
 import type { ParticleVolume } from '../../core/particles/volumes';
@@ -188,6 +189,8 @@ export interface EffectsEditorDeps {
   goToPropTools: () => void;
   /** Hand a grind rail to the Tricks tools in Props view, still selected. The host owns the mode switch. */
   goToRail: (index: number) => void;
+  /** The selected path's Bézier handle resets (docs/014): a motion path's handles show while a point is picked. */
+  pathHandles: Pick<PathHandleOps, 'resetState' | 'resetNode' | 'resetPath'>;
 }
 
 interface EffectsPanelView {
@@ -722,6 +725,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const selected = selectedDrawableSpline(), node = store.selectedNode;
     if (!selected || node === null || !selected.rail.nodes[node]) return;
     selected.rail.nodes.splice(node, 1); store.selectedNode = null;
+    assignHandles(selected.rail, withoutPathNode(selected.rail.handles, node)); // later nodes keep their own
     if (selected.rail.nodes.length < 2 && !store.railDrawing) {
       store.mdoc.rails!.splice(selected.index, 1); store.selectedRail = null;
       toast(`${splineNoun(selected.rail)} needs at least two points — removed`, 'warn');
@@ -1035,7 +1039,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const selected = selectedMotionPath();
     if (!selected) return null;
     const { path } = selected;
-    const sampled = sampleRail(path.nodes, 24);
+    const sampled = sampleRail(path.nodes, 24, path.handles);
     let length = 0;
     for (let i = 1; i < sampled.length; i++) length += Math.hypot(
       sampled[i][0] - sampled[i - 1][0], sampled[i][1] - sampled[i - 1][1], sampled[i][2] - sampled[i - 1][2]);
@@ -1068,6 +1072,12 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (store.selectedNode !== null)
       actions.appendChild(button('Delete point', 'Delete the selected curve point.',
         removeSelectedDrawnSplineNode, true));
+    // A picked point shows the curve's Bézier handles (docs/014); these put dragged ones back.
+    const handles = !store.railDrawing && store.selectedNode !== null ? deps.pathHandles.resetState() : null;
+    if (handles?.node) actions.appendChild(button('Reset point handles', 'Put this point back on the automatic smooth curve.',
+      () => { deps.pathHandles.resetNode(); render(); }));
+    if (handles?.path) actions.appendChild(button('Reset all handles', 'Put every point back on the automatic smooth curve.',
+      () => { deps.pathHandles.resetPath(); render(); }));
     actions.appendChild(button(path ? 'Delete path' : 'Delete spline',
       'Delete this curve and clear effect references to it.', removeSelectedDrawnSpline, true));
     return actions;
@@ -1124,7 +1134,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const uses = doc ? splineEffectUses(doc, authoredSplineId(rail)) : [];
     const style = railStyle(rail);
     const surface = surfaceFor(style);
-    const sampled = sampleRail(rail.nodes, 24);
+    const sampled = sampleRail(rail.nodes, 24, rail.handles);
     let length = 0;
     for (let i = 1; i < sampled.length; i++) length += Math.hypot(
       sampled[i][0] - sampled[i - 1][0], sampled[i][1] - sampled[i - 1][1], sampled[i][2] - sampled[i - 1][2]);

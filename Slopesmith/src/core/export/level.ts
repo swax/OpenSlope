@@ -335,7 +335,7 @@ function sopJson(gateLines: V3[][], centers: V3[], finish: V3, checkpoints: Race
 function buildSplinesJson(rails: Rail[]): object {
   const Splines = rails
     .map((rail, i) => {
-      const segs = railBezierSegments(rail.nodes).map(seg => ({ Points: seg.map(cp => toRaw(cp)) }));
+      const segs = railBezierSegments(rail.nodes, rail.handles).map(seg => ({ Points: seg.map(cp => toRaw(cp)) }));
       const native = nativeSplineFields(rail);
       let name = rail.name || `${rail.kind === 'motion' ? 'MotionPath' : 'Rail'}_${i}`;
       // Style 5 is a retail named exception rather than a globally catchable style: Snowknife admits Alaska's
