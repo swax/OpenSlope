@@ -111,7 +111,8 @@ the stable ids of the vertices and patches it cut. It is the first, two-patch-wi
 **Drawing.** Each click on no knot adds one at the surface point under the cursor, raised by the surface-lift
 setting (0.25 m by default) when it lands on an authored patch or vertex; a free-space knot is not moved. From the
 second knot the trail is in the document, patches and all, and it re-cuts with every knot, so what you see while
-drawing is the real ribbon. A click on an existing knot picks it up instead: the translate gizmo goes on it, and a
+drawing is the real ribbon. Before each click a teal ghost shows what a knot under the cursor would cut — the new
+span and every patch it reshapes (`trailPreview`) — and where a knot there would be refused, the panel says why. A click on an existing knot picks it up instead: the translate gizmo goes on it, and a
 drag re-cuts the trail live — before the last knot is laid as well as after. A picked knot also shows its two
 pink Bézier handles, which drag the same way (docs/014 · Bézier handles) and bend the trail through that knot. Backspace removes the selected knot,
 or else the newest; Enter or Escape finishes, leaving the trail selected. A trail that never reached two knots was
@@ -119,8 +120,9 @@ never in the document and is dropped.
 
 **Selecting.** A click on any of a trail's patches selects the whole trail: its patches become the patch selection,
 its knot bulbs and guide show, and the Tools panel is the trail's own (Ctrl+click adds or drops the whole trail).
-With no knot picked, the gizmo sits at the knots' centroid and carries the trail as a unit (gizmo kind `'trail'`,
-`viewport/tools/create-trail.ts`): Move translates every knot, Rotate (E) turns them about the centroid, Scale (R)
+With no knot picked, the gizmo sits at the centre of its patches and carries the trail as a unit (gizmo kind
+`'trail'`, `viewport/tools/create-trail.ts`): Move translates every knot, branches' too, Rotate (E) turns them about
+that centre, Scale (R)
 stretches them, and every dragged Bézier handle turns and stretches with its knot. The trail re-cuts from the
 moved knots each frame — so its patches stay locked and only the trail moves them, and patches joined to it
 stretch to follow. It is World-framed: the mesh's Surface slide does not apply to a trail.
@@ -145,10 +147,49 @@ two automatic knots are the automatic bank exactly. **↺ follow the trail here*
 a knot takes its values with it. Patch length, turn density and the textures stay trail-wide: they decide how many
 patches fall between two knots, which belongs to a stretch, not a point.
 
-**The cut** (`core/mesh/trail-object.ts` `cutTrail`) lays the spline out with the generator above and writes the
-result over what the trail already owns: the same vertices and patches for every station the old and new ribbons
-share, new ones appended for stations a longer ribbon adds, and the patches past a shorter one's end retired
-through the shared compactor. Every handle on the ribbon's edges is cleared and derived again — the exact centre
+**Branches.** A picked middle knot offers **⑂ add a branch here**: the branch is drawn like the trail, a click per
+knot with the ghost ahead of each, starting from that knot, and Enter finishes. A knot carries one branch. The
+branch is the trail's own (`AuthoredTrail.branches`: the knot it leaves and its own knots, cut with the trail's
+settings): its patches select with the trail, lock with it, and move, turn and scale with it. Cutting a branched
+trail is a small network (`applyTrailNetwork`): the trail split at every branch knot and each branch are runs of
+their own, each pulled back from the junction until neighbouring rims meet before the ribbons end, and every lane
+carries on into the opening: each trail's centre seam runs on to a hub at the branch knot, each pair of facing rims
+runs on to the crotch where they cross (on the rim itself, abeam the knot, where the trail runs straight through),
+and between a seam and a crotch lies one patch per lane, written as the lane's own next patch and wearing its tile.
+That is six quads around a valence-6 hub — the six-pole the shipped levels knit by hand. The
+trail's knots and its branches' are one list in the viewport, so a branch knot picks, drags and deletes like any
+other; its tip offers **✚ add points to the branch**, and its junction knot **✕ remove this knot's branch**.
+Deleting the junction knot takes the branch with it, and knots added ahead of the trail or deleted before the
+junction carry the branch along. A branch has no Bézier handles or Point section of its own yet; at its junction it
+takes the junction knot's values. A junction that cannot be knitted — a branch leaving too close along the trail —
+is refused by name (which branch, which stretch of trail).
+
+**Merging.** An end of a trail can land on another trail's knot. While a trail's end is being drawn, and while a
+picked end knot is dragged, the other trails' knots catch it within 14 px on screen (`TrailShape.snaps`): it sits
+exactly on the knot, marked amber, and the ghost shows the result. Laid or dropped there, the two trails merge into
+the other one (`mergeTrailInto`), which keeps its id, settings and patches to re-cut, and the first is taken out
+with its patches — one history step. On one of the other trail's ENDS they join end to end into one trail through
+the shared knot; the joining trail's knots keep their handles, values and branches, and where its width, seam or
+dish differed they become those knots' own values, so it keeps its look. On a MIDDLE knot it becomes the branch
+there — a three-way junction — taking the other trail's settings, since a branch has none of its own; a knot
+already carrying a branch is not offered, and a trail with branches of its own cannot become one. A new trail's
+first knot laid on another trail's knot simply goes on drawing that trail — on from its end, or as a branch.
+
+A branch's free tip lands the same way, drawn or dragged (`joinBranch`). On a knot of its OWN trail that no branch
+uses, the branch rejoins the trail there (`TrailBranch.to`): a bypass, cut with a junction at each end, the trail
+split at both. On another trail's END, that trail goes on as the rest of the branch and is taken out; it takes the
+branch's trail's settings, and one with branches of its own is refused. Another trail's middle knot is not offered:
+that would be a branch of a branch. A trail knot is an end of one branch at most, leaving or rejoining; deleting the
+knot a branch rejoins leaves the branch free-ended again. Junction reach is found working out from the node, since a
+bypass that bends back runs alongside its trail again further out.
+Reversing a trail for the join (`reverseTrail`) swaps each knot's handles and mirrors its seam and fixed bank,
+which are measured across the direction of travel.
+
+**The cut** (`core/mesh/trail-object.ts` `cutTrail`) lays the trail out on its own first — one ribbon, or with
+branches the network: the main runs in order, then the branches, then each junction's three crotches and hub — and
+writes that over what the trail already owns slot by slot: the same vertices and patches wherever the old cut had
+one, new ones past its end, and what it had past the new end retired through the shared compactor. A branched trail
+keeps the shape of its last cut (`network`: spans per run and junction count), which is how its names divide up. Every handle on the ribbon's edges is cleared and derived again — the exact centre
 seam, then the lock's materialised Bessel handles — so a re-cut in place is the same surface as cutting the moved
 spline fresh. A knot drag cuts once per frame, each time from the document as it stood when the drag began, so
 the frames do not pile up each other's minted and retired ids.
@@ -157,8 +198,8 @@ the frames do not pile up each other's minted and retired ids.
 alone, and only the trail moves it. Patches joined to the ribbon — a Weld Loops seam, a retopologised mountain —
 share its rim vertices, so a re-cut moves those vertices and the joined patches stretch to follow. While anything
 shares its vertices the trail keeps its patch count: the layout shares exactly the spans it already has out across
-the knot segments (`spanCount`, by the same length and turn demand the adaptive count reads), and refuses a spline
-with more segments than spans. A trail whose ribbon something has cut into — a split, a delete — no longer
+the knot segments (`spanCount`, by the same length and turn demand the adaptive count reads, run by run for a
+branched trail), and refuses a spline with more segments than spans — and a branch added or removed. A trail whose ribbon something has cut into — a split, a delete — no longer
 resolves; its panel says so and offers only dissolve and delete. **Dissolve** forgets the spline and leaves the
 patches as ordinary (still locked) mesh, the escape hatch for hand work on them.
 

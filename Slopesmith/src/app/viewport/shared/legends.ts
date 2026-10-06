@@ -10,22 +10,28 @@ import { BACKFACE_TINT_RGB } from '../mesh/backface-tint';
 import { PROP_DARK_TINT_MIX, PROP_CLAY_COLOR, PROP_SOLID_COLOR, PROP_THROUGH_COLOR,
   propContactTint } from '../scene/prop-shade';
 import type { ShadeMode } from '../types';
+import { foldHeader, foldOnClick, refold } from '../../ui/components/fold-panel';
 
 /** One swatch row: [css colour, label, swatch size css]. */
 type LegendRow = [string, string, string];
 
 /** One lower-left colour-key panel: a title over swatch rows. A plain string among the items is a GROUP
  *  CAPTION — a hairline and a quiet heading over the rows that follow, for a key long enough that the rows
- *  need sorting into kinds. Starts hidden; `setShadeMode` reveals it per shade view. */
-function buildLegendPanel(title: string, items: (LegendRow | string)[]): HTMLDivElement {
+ *  need sorting into kinds. The title is a header button that folds the panel to just itself (a long key —
+ *  Surface types — otherwise stands over the mountain it keys); `id` names it in the remembered fold state.
+ *  Starts hidden; `setShadeMode` reveals it per shade view. */
+function buildLegendPanel(id: string, title: string, items: (LegendRow | string)[]): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'll-panel';
   el.dataset.xrEdit = 'legend'; // what the headset's wrist EDIT palette crops out of #lowerleft (docs/068)
   el.style.display = 'none';
-  el.innerHTML = `<div class="ll-title">${title}</div>` + items.map((item, index) => typeof item === 'string'
-    ? `${index ? '<div class="ll-sep"></div>' : ''}<div class="ll-group">${item}</div>`
-    : `<div class="ll-row"><span class="ll-swatch" style="background:${item[0]};${item[2]}"></span>${item[1]}</div>`)
-    .join('');
+  el.innerHTML = foldHeader(title, `key:${id}`)
+    + '<div class="ll-body">' + items.map((item, index) => typeof item === 'string'
+      ? `${index ? '<div class="ll-sep"></div>' : ''}<div class="ll-group">${item}</div>`
+      : `<div class="ll-row"><span class="ll-swatch" style="background:${item[0]};${item[2]}"></span>${item[1]}</div>`)
+      .join('') + '</div>';
+  refold(el);
+  foldOnClick(el);
   return el;
 }
 
@@ -53,7 +59,7 @@ export function createLegends(container: HTMLElement) {
     [hex(CAGE_INTERIOR_COLOR), 'Edge loops (click a vertex in Edit)', 'width:16px;height:5px'],
     [hex(CAGE_POINT_COLOR), 'Loop ends + picked vertex (enlarged dots)', 'width:9px;height:9px;border-radius:50%'],
   );
-  const cageLegend = buildLegendPanel('Cage colours', cageRows);
+  const cageLegend = buildLegendPanel('cage', 'Cage colours', cageRows);
   // SurfaceType ride-feel tints (Surface view): square swatches, one per styled surface — not one per
   // PAINTABLE surface. The view colours reference terrain and rideable props too, and those wear families the
   // terrain palette does not offer (MEGAPLE's metal, its bounce barriers). A colour on screen with no row
@@ -80,7 +86,7 @@ export function createLegends(container: HTMLElement) {
     const rows = styledTypes.filter(keep).map(surfaceRow);
     return rows.length ? [caption, ...rows] : [];
   };
-  const surfaceLegend = buildLegendPanel('Surface types', [
+  const surfaceLegend = buildLegendPanel('surface', 'Surface types', [
     ...surfaceGroup('Terrain + props', type => paintable(type) && propSurfaces.has(type)),
     ...surfaceGroup('Terrain only', type => paintable(type) && !propSurfaces.has(type)),
     ...surfaceGroup('Props only', type => !paintable(type) && propSurfaces.has(type)),
@@ -105,7 +111,7 @@ export function createLegends(container: HTMLElement) {
     // what is on screen. The tint fades in with the face's key light, so shallower shades of it mean dimmer.
     [mixed(PROP_CLAY_COLOR), 'Ships dark — its normal is turned off the sun', 'width:12px;height:12px'],
   ];
-  const propLegend = buildLegendPanel('Prop types', propRows);
+  const propLegend = buildLegendPanel('prop', 'Prop types', propRows);
   host.prepend(propLegend);    // stacks under Surface types, which prepends after it
   host.prepend(surfaceLegend); // order between cage and surface is irrelevant — never both shown
   host.prepend(cageLegend);    // all three land left of #cmdsheet (the controls list)

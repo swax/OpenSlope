@@ -164,7 +164,7 @@ const leg = (a: V3, b: V3): TrailCubic => [
   }
 }
 
-// A three-way junction: three trails meeting at the origin, knitted by one fan of six patches.
+// A three-way junction: three trails meeting at the origin, their six lanes carried on round a six-way hub.
 {
   const hub: V3 = [0, 0, 0];
   const spokes: V3[] = [[0, 0, -300], [260, 0, 150], [-260, 0, 150]];
@@ -193,11 +193,37 @@ const leg = (a: V3, b: V3): TrailCubic => [
     const signs = new Set(result.doc.quads.map(corners => Math.sign(area(corners))));
     check(signs.size === 1, `network: every patch winds the same way (${[...signs].join(', ')})`);
 
-    // The fan's rim vertices are the ribbons' own, so the network is one surface, not three plus a lid.
-    const shared = result.junctions[0].quads
-      .flatMap(quad => result.doc.quads[quad])
-      .filter(v => result.runs.some(run => run.rails.center.includes(v)));
-    check(shared.length === 3, `network: the fan is sewn to each ribbon's seam (${shared.length})`);
+    // Every lane carries on into the junction: each patch is one lane's end edge — its ribbon's seam and one rim
+    // at the end station — taken on to the hub and to a crotch. Each seam runs into the hub between its two lanes.
+    const junction = result.junctions[0];
+    const hub = junction.center;
+    const ends = result.runs.map(run => ({ seam: run.rails.center[0], rims: [run.rails.left[0], run.rails.right[0]] }));
+    const crotches = new Set<number>();
+    const lanes = junction.quads.map(quad => {
+      const corners = result.doc.quads[quad];
+      const end = ends.find(e => corners.includes(e.seam));
+      const rim = end?.rims.find(r => corners.includes(r));
+      const crotch = corners.find(v => v !== hub && v !== end?.seam && v !== rim);
+      if (crotch !== undefined) crotches.add(crotch);
+      return !!end && rim !== undefined && corners.includes(hub) && crotch !== undefined;
+    });
+    check(lanes.every(Boolean) && crotches.size === 3,
+      `network: each of the six patches carries one lane on to the hub and a crotch (${lanes.join()}, ${crotches.size} crotches)`);
+    const hubEdges = new Set(junction.quads.flatMap(quad => {
+      const [a, b, c, d] = result.doc.quads[quad];
+      return [[a, b], [b, d], [d, c], [c, a]].filter(edge => edge.includes(hub)).map(edge => edge[0] === hub ? edge[1] : edge[0]);
+    }));
+    check(hubEdges.size === 6 && ends.every(e => hubEdges.has(e.seam)) && [...crotches].every(c => hubEdges.has(c)),
+      'network: the hub is a six-pole — three seams run into it, and three spokes run out to the crotches');
+    // A crotch is where the facing rims meet: on the line of each of the two rims it joins.
+    const v = (i: number) => [result.doc.vertices[i * 3], result.doc.vertices[i * 3 + 2]];
+    const onRim = (crotch: number, run: typeof result.runs[number], side: 'left' | 'right') => {
+      const [px, pz] = v(crotch), [ax, az] = v(run.rails[side][0]), [bx, bz] = v(run.rails[side][1]);
+      const cross = (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+      return Math.abs(cross) / Math.hypot(bx - ax, bz - az) < 0.05;
+    };
+    check([...crotches].every(c => result.runs.filter(run => onRim(c, run, 'left') || onRim(c, run, 'right')).length === 2),
+      'network: each crotch sits on both rims it joins');
 
     // Each trail stopped short of the hub by the fan's reach, and no further.
     const reach = result.junctions[0].reachM;

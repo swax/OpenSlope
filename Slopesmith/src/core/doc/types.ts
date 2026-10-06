@@ -244,10 +244,31 @@ export interface AuthoredTrail {
   settings: TrailSettings;
   /** Each knot's own section values, index-parallel with `knots`; an absent entry follows `settings`. */
   knotSettings?: (TrailKnotSettings | null)[];
-  /** Owned vertices by stable id, three per station along the trail: left rim, centre seam, right rim. */
+  /** Branches leaving its knots (docs/023 · Branches), at most one per knot, in knot order. */
+  branches?: TrailBranch[];
+  /** Owned vertices by stable id: run by run, three per station (left rim, centre seam, right rim), then four per
+   *  junction (three crotches and the hub). A trail without branches is one run. */
   vertices: string[];
-  /** Owned patches by stable id, two per span: the left lane, then the right. */
+  /** Owned patches by stable id: run by run, two per span (the left lane, then the right), then six per junction. */
   quads: string[];
+  /** The shape of its last cut while it has branches — spans per run (the main runs between junctions in order,
+   *  then each branch) and how many junctions — which is how `vertices` and `quads` divide up. Absent: one run. */
+  network?: { runSpans: number[]; junctions: number };
+}
+
+/**
+ * A branch of a trail (docs/023 · Branches): a run of its own leaving one of the trail's knots, where the trail,
+ * split there, and the branch meet in a six-patch junction around one valence-6 vertex. It is cut with the trail's
+ * settings, and its curve is the rail Catmull-Rom through the junction knot and its own knots.
+ */
+export interface TrailBranch {
+  /** The trail knot it leaves from. */
+  knot: number;
+  /** Its knots, in order away from the junction; the junction knot is the trail's and is not repeated. */
+  knots: V3[];
+  /** The trail knot its far end rejoins, when it comes back to the trail — a second junction there. Absent: its
+   *  last knot is a free end. A trail knot is an end of at most one branch, leaving or rejoining. */
+  to?: number;
 }
 
 /**

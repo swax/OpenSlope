@@ -106,7 +106,6 @@ function stubViewport(): EditViewportPort & { readonly regionMarks: readonly V3[
     setCreateEdgePath: noop,
     get createTubePoints() { return [] as readonly V3[]; },
     setTrailKnots: noop,
-    setTrailDrawEnd: noop,
     setCreateTrailSurfaceLift: noop,
     projectedVerticesInsidePatches: () => [],
     setPasteTool: noop,

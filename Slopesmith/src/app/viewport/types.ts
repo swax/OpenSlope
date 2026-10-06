@@ -576,6 +576,8 @@ export interface ViewportCallbacks {
   /** Edit mode: the whole selected trail's gizmo moved, turned or scaled it — every knot and every dragged Bézier
    *  handle (offsets, index-parallel with the knots) as they now stand, data space. */
   onTransformTrail?(knots: V3[], handles: (PathHandles | null)[]): void;
+  /** Edit mode, drawing a trail: where a click would lay the next knot now, or null — for the ghost of it. */
+  onTrailHover?(pos: V3 | null): void;
   /** A Bézier handle of the selected path was clicked (docs/014). */
   onSelectPathHandle?(owner: PathOwner, node: number, side: PathHandleSide): void;
   /** The selected handle's gizmo moved it to this data-space point; `independent` (Alt) breaks it from its twin. */
