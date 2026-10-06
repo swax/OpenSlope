@@ -1,11 +1,18 @@
-import type { AuthoredTrail, PathHandles, QuadMeshDoc, TrailKnotSettings, TrailPath, TrailSettings, V3 } from '../../core/doc/types';
+import type {
+  AuthoredTrail, PathHandles, QuadMeshDoc, TrailKnotSettings, TrailPath, TrailSettings, TrailTilePair, V3,
+} from '../../core/doc/types';
 import { nameIndex, nextTrailId } from '../../core/doc/ids';
 import {
   compactTrail, connectedPaths, cutTrail, disconnectPoint, extendPath, fusePathsAt, joinTrails, mergeTrailPoints, pathCuts, pathEndsAt, pathKnots,
-  pathsThrough, pointArms, removeTrailPatches, resolveTrail, separateTrail, setTrailKnotValue, trailIsConnected, trailOwningQuad, trailPathQuads,
+  pathsThrough, pointArms, removeTrailPatches, resolveTrail, separateTrail, setTrailKnotValue, splitPathsAt, trailIsConnected, trailOwningQuad,
+  trailPathQuads,
   trailPathStations, trailPreview, trimPath, withNewPoint, withoutTrailPaths, withoutTrailPoint, withPath, type TrailRenumbering,
 } from '../../core/mesh/trail-object';
 import type { TrailStation } from '../../core/mesh/trail';
+import {
+  nextTrailTilePairName, TRAIL_TILE_SLOTS, trailSettingsTiles, trailTilePairId, trailTilePairsWith,
+} from '../../core/mesh/trail-textures';
+import { parseTexRef } from '../../core/paint/textures';
 import type { Store } from '../state/store';
 import { commitEditMesh } from './mesh-target';
 import type { EditViewportPort, TrailShape, TrailTransform } from './viewport-port';
@@ -51,7 +58,7 @@ export type TrailToolDeps = {
 const STORE_KEYS = {
   widthM: 'trailWidth', centerBias: 'trailCenterBias', dishPercent: 'trailDishPercent', patchLengthM: 'trailPatchLength',
   maxTurnDegrees: 'trailMaxTurnDegrees', bankGainM: 'trailBankGain', maxBankDegrees: 'trailMaxBankDegrees',
-  mesaTextures: 'trailMesaTextures',
+  trailTiles: 'trailTilePair', leftTurnTiles: 'trailLeftTurnPair', rightTurnTiles: 'trailRightTurnPair', turnRadiusM: 'trailTurnRadius',
 } as const satisfies Record<keyof TrailSettings, keyof Store>;
 
 export interface TrailStatus {
@@ -517,13 +524,17 @@ export function createTrailTools(deps: TrailToolDeps) {
    * What the picked point is, for the panel's actions: how many arms meet there, which ends of the focus path stand
    * on it, and whether it is a FREE end — one path's end with nothing else, which drawing from grows that path.
    */
-  function selectedPointRole(): { point: number; arms: number; paths: number; ends: ('start' | 'end')[]; free: boolean } | null {
+  function selectedPointRole():
+  { point: number; arms: number; paths: number; through: number; ends: ('start' | 'end')[]; free: boolean } | null {
     const at = focus(), picked = pickedPoint();
     if (!at || !picked || picked.trail !== at.trail.id) return null;
     const arms = pointArms(at.trail)[picked.point] ?? 0;
     const path = at.path === null ? null : at.trail.paths[at.path];
+    // Paths running on through the point, rather than ending at it: what a split there would cut.
+    const through = at.trail.paths.filter(other => pathCuts(other)
+      && other.points.some((point, i) => point === picked.point && i > 0 && i < other.points.length - 1)).length;
     return {
-      point: picked.point, arms, paths: pathsThrough(at.trail, picked.point).length,
+      point: picked.point, arms, paths: pathsThrough(at.trail, picked.point).length, through,
       ends: path ? pathEndsAt(path, picked.point) : [], free: arms === 1,
     };
   }
@@ -981,6 +992,107 @@ export function createTrailTools(deps: TrailToolDeps) {
     toast(`disconnected into ${sides} sides${nexts.length > 1 ? `, ${nexts.length} trails now` : ''} · drag the point to pull its side away`, 'ok');
   }
 
+  /**
+   * Split the paths running through the picked point there (the panel's "split here"): each becomes two pieces that
+   * still meet at the point, so a piece can be set on its own — its tiles above all. Unlike disconnecting, nothing
+   * comes apart: the point stays one, and the pieces meet in a joint there. The selected paths stay selected as their
+   * pieces, and the point stays picked.
+   */
+  function splitSelectedPoint() {
+    const picked = pickedPoint(), trail = picked ? byId(picked.trail) : null;
+    if (!picked || !trail || !inDoc(trail) || drawingTrail()) return;
+    const split = splitPathsAt(trail, picked.point);
+    if (!split) return;
+    const selected = selectionPicks().find(pick => pick.trail.id === trail.id)?.paths ?? [];
+    if (!apply([split.trail], { select: { [trail.id]: selected.flatMap(path => split.pieces[path] ?? [path]) } })) return;
+    syncTrailView();
+    rebuildTools(); updateCmdSheet();
+    const cut = split.pieces.filter(pieces => pieces.length > 1).length;
+    toast(`split ${cut > 1 ? `${cut} paths` : 'the path'} here · click a piece’s patches to set it on its own`, 'ok');
+  }
+
+  // ---- tile pairs (docs/023 · Textures) -----------------------------------------------------------------------
+
+  /** Every pair a path may wear: the built-in ones, then the mountain's own. */
+  const trailTilePairs = (): TrailTilePair[] => trailTilePairsWith(store.modelEditId ? [] : store.mdoc.trailTilePairs);
+
+  /** The document with `own` as the mountain's pairs, the field dropped once there are none. */
+  function withOwnPairs(doc: QuadMeshDoc, own: readonly TrailTilePair[]): QuadMeshDoc {
+    const next = { ...doc };
+    if (own.length) next.trailTilePairs = [...own]; else delete next.trailTilePairs;
+    return next;
+  }
+
+  /** Whether a path wears pair `id`, along its spans or through its turns. */
+  const pathWears = (path: TrailPath, id: string): boolean => {
+    const tiles = trailSettingsTiles(path.settings);
+    return TRAIL_TILE_SLOTS.some(slot => tiles[slot] === id);
+  };
+  const trailsWearing = (id: string): AuthoredTrail[] => docTrails().filter(trail => trail.paths.some(path => pathWears(path, id)));
+
+  /**
+   * A new pair of the mountain's own, from two tiles of one map, named next among that map's — `GARI/Trail 1` — and
+   * its id; null, said, when the tiles are from two maps. Nothing wears it until a path is set to.
+   */
+  function addTrailTilePair(kind: TrailTilePair['kind'], left: string, right: string): string | null {
+    if (store.modelEditId) return null;
+    const level = parseTexRef(left).level;
+    if (!level || parseTexRef(right).level !== level) {
+      toast(`A pair’s two tiles come from one map: choose a second ${level || 'map'} tile.`, 'err');
+      return null;
+    }
+    const own = store.mdoc.trailTilePairs ?? [];
+    const pair: TrailTilePair = { level, name: nextTrailTilePairName(level, kind, own), kind, left, right, quarterTurns: 0 };
+    commitEditMesh(store, withOwnPairs(store.mdoc, [...own, pair]));
+    scheduleRebuild();
+    return trailTilePairId(pair);
+  }
+
+  /** Change one of the mountain's own pairs — a half, or how it is turned — and re-cut every trail wearing it. Both
+   *  halves stay one map's. */
+  function editTrailTilePair(id: string, change: Partial<Pick<TrailTilePair, 'left' | 'right' | 'quarterTurns'>>): boolean {
+    const own = store.mdoc.trailTilePairs ?? [];
+    const at = own.findIndex(pair => trailTilePairId(pair) === id);
+    if (at < 0 || store.modelEditId) return false;
+    const next = { ...own[at], ...change };
+    if (parseTexRef(next.left).level !== next.level || parseTexRef(next.right).level !== next.level) {
+      toast(`A pair’s two tiles come from one map: choose a ${next.level} tile for ${id}.`, 'err');
+      return false;
+    }
+    const base = withOwnPairs(store.mdoc, own.map((pair, i) => i === at ? next : pair));
+    const users = trailsWearing(id);
+    if (users.length) return apply(users, { base });
+    commitEditMesh(store, base);
+    scheduleRebuild();
+    return true;
+  }
+
+  /** Delete one of the mountain's own pairs: every path wearing it goes plain there — along its spans, or through its
+   *  left or right turns — and re-cuts, which takes its tiles back off. */
+  function deleteTrailTilePair(id: string): boolean {
+    const own = store.mdoc.trailTilePairs ?? [];
+    if (store.modelEditId || !own.some(pair => trailTilePairId(pair) === id)) return false;
+    const strip = (settings: TrailSettings): TrailSettings => {
+      const tiles = trailSettingsTiles(settings);
+      for (const slot of TRAIL_TILE_SLOTS) if (tiles[slot] === id) tiles[slot] = null;
+      return { ...settings, ...tiles };
+    };
+    const stripped = (trail: AuthoredTrail): AuthoredTrail =>
+      ({ ...trail, paths: trail.paths.map(path => ({ ...path, settings: strip(path.settings) })) });
+    const users = trailsWearing(id);
+    const paths = users.reduce((n, trail) => n + trail.paths.filter(path => pathWears(path, id)).length, 0);
+    // Cut while the pair is still the mountain's, so the cut knows its tiles as a pair's and takes them back.
+    if (users.length && !apply(users.map(stripped))) return false;
+    commitEditMesh(store, withOwnPairs(store.mdoc, own.filter(pair => trailTilePairId(pair) !== id)));
+    if (draft) draft = stripped(draft);
+    if (store.trailTilePair === id) store.trailTilePair = null;
+    if (store.trailLeftTurnPair === id) store.trailLeftTurnPair = null;
+    if (store.trailRightTurnPair === id) store.trailRightTurnPair = null;
+    scheduleRebuild();
+    toast(`${id} deleted${paths ? ` — ${paths} path${paths === 1 ? '' : 's'} wearing it went plain there` : ''}`, 'ok');
+    return true;
+  }
+
   /** Every selected path, or the one being drawn: what a setting change applies to. */
   function editedPaths(): TrailPick[] {
     const trail = drawingTrail();
@@ -1101,8 +1213,9 @@ export function createTrailTools(deps: TrailToolDeps) {
     },
     appendKnot, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
     selectKnot, knotDrag, moveKnot, transformTrail, focusPath, selectTrailNode, setTrailHandles, deleteSelectedTrailKnot,
-    disconnectSelectedPoint, setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
+    disconnectSelectedPoint, splitSelectedPoint, setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings,
+    trailTilePairs, addTrailTilePair, editTrailTilePair, deleteTrailTilePair,
   };
 }
 

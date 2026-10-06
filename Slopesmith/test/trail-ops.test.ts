@@ -41,7 +41,8 @@ const store = {
   selectedCorner: null, selected: null, createPatchQuads: [], weldTool: null, weldSource: [], weldEdgeSource: [],
   pathHandle: null,
   trailWidth: 13, trailCenterBias: 0.5, trailDishPercent: 10.5, trailPatchLength: 22.5, trailMaxTurnDegrees: 52,
-  trailBankGain: 15, trailMaxBankDegrees: 20, trailMesaTextures: true, trailSurfaceLift: 0.25,
+  trailBankGain: 15, trailMaxBankDegrees: 20, trailTilePair: 'MESA/Trail 1' as string | null,
+  trailLeftTurnPair: 'MESA/Left Turn 1' as string | null, trailRightTurnPair: 'MESA/Right Turn 1' as string | null, trailTurnRadius: 80, trailSurfaceLift: 0.25,
 };
 let shown: { knots: readonly V3[]; knot: number | null; pivot: V3 | null; shape?: TrailShape } = { knots: [], knot: null, pivot: null };
 let surgery: string | null = null;
@@ -188,6 +189,33 @@ check(trail()!.paths[0].settings.widthM === 20 && store.trailWidth === 20, 'sett
   // Width is measured in plan: a bank lifts one rim, which lengthens the 3-D chord but not the plan width.
   const span = Math.hypot(...[0, 2].map(k => store.mdoc.vertices[l * 3 + k] - store.mdoc.vertices[r * 3 + k]) as [number, number]);
   check(Math.abs(span - 20) < 1e-6, 'setting: the new width is cut', `${span}`);
+}
+// Tile pairs are settings like the rest: a path wears a pair by name, of the built-in ones or the mountain's own.
+{
+  const tiles = () => [...new Set(resolveTrail(store.mdoc, trail()!)!.quads.map(quad => store.mdoc.quadTex?.[quad] ?? ''))].sort().join();
+  check(tiles() === 'MESA/0044.png,MESA/0045.png', 'tiles: a new path wears Mesa’s first pair, and only it — no pair after pair', tiles());
+  tools.setTrailSetting('trailTiles', 'MESA/Trail 2');
+  check(tiles() === 'MESA/0046.png,MESA/0047.png' && store.trailTilePair === 'MESA/Trail 2',
+    'tiles: another pair re-cuts it in that pair, and the next path starts with it', tiles());
+  check(tools.addTrailTilePair('trail', 'A/1.png', 'B/2.png') === null && !store.mdoc.trailTilePairs,
+    'own pairs: two tiles of two maps make no pair');
+  const own = tools.addTrailTilePair('trail', 'A/1.png', 'A/2.png');
+  const next = tools.addTrailTilePair('trail', 'A/3.png', 'A/4.png');
+  check(own === 'A/Trail 1' && next === 'A/Trail 2' && store.mdoc.trailTilePairs?.length === 2,
+    'own pairs: named next among their map’s', `${own} ${next}`);
+  tools.setTrailSetting('trailTiles', own);
+  check(tiles() === 'A/1.png,A/2.png', 'own pairs: a path wears one of the mountain’s own', tiles());
+  tools.editTrailTilePair(own!, { right: 'A/5.png' });
+  check(tiles() === 'A/1.png,A/5.png', 'own pairs: changing one re-cuts the paths wearing it', tiles());
+  check(!tools.editTrailTilePair(own!, { right: 'B/5.png' }) && tiles() === 'A/1.png,A/5.png',
+    'own pairs: a half from another map is refused');
+  tools.deleteTrailTilePair(own!);
+  check(tiles() === '' && trail()!.paths[0].settings.trailTiles === null && store.trailTilePair === null
+    && store.mdoc.trailTilePairs?.map(pair => pair.name).join() === 'Trail 2',
+  'own pairs: deleting one leaves the paths wearing it plain, its tiles taken back', tiles());
+  tools.deleteTrailTilePair(next!);
+  check(!store.mdoc.trailTilePairs, 'own pairs: the last one gone, the document holds none');
+  tools.setTrailSetting('trailTiles', 'MESA/Trail 1');
 }
 
 // ---- the selected paths move as a unit ---------------------------------------------------------------------------
@@ -474,6 +502,31 @@ check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-p
   tools.disconnectSelectedPoint();
   check(byId(ring).paths.length === 1 && knotsOf(byId(ring)).join(' ') === '2500,0,250 2350,0,100 2500,0,0 2650,0,100 2500,0,250'
     && !byId(ring).network, 'disconnect: a loop broken at a point opens there, still one path', knotsOf(byId(ring)).join(' '));
+  store.trailPoint = null;
+}
+
+// ---- split: a path cut in two at a point, still joined, so each piece can be set on its own ------------------------
+{
+  const s = draw([6000, 0, 0], [6000, 0, 150], [6000, 0, 300]);
+  selectPaths(byId(s), 0);
+  pick(byId(s), 0);
+  check(tools.selectedPointRole()?.through === 0, 'split: a path’s end has nothing to split');
+  pick(byId(s), 1);
+  check(tools.selectedPointRole()?.through === 1, 'split: a path runs through its middle point');
+  const count = store.mdoc.trails!.length;
+  tools.splitSelectedPoint();
+  const split = byId(s);
+  check(store.mdoc.trails!.length === count && split.points.length === 3 && split.paths.map(path => path.points.join()).join(' ') === '0,1 1,2'
+    && split.network?.junctionArms.join() === '2', 'split: two paths meeting at the point, in a joint — nothing comes apart');
+  check(tools.trailSelection().find(pick => pick.trail.id === s)?.paths.join() === '0,1' && pickedNow()?.point === 1,
+    'split: both pieces stay selected, and the point stays picked');
+  selectPaths(byId(s), 1);
+  tools.setTrailSetting('trailTiles', 'MESA/Trail 2');
+  const lists = trailPathQuads(store.mdoc, byId(s))!;
+  const worn = (path: number) => [...new Set(lists[path].map(id => store.mdoc.quadTex?.[quadAt(id)] ?? ''))].sort().join();
+  check(worn(0) === 'MESA/0044.png,MESA/0045.png' && worn(1) === 'MESA/0046.png,MESA/0047.png',
+    'split: each piece wears its own pair, joint patches too', `${worn(0)} / ${worn(1)}`);
+  tools.setTrailSetting('trailTiles', 'MESA/Trail 1');
   store.trailPoint = null;
 }
 

@@ -115,6 +115,27 @@ body.os-xr-editing .sp-head, body.os-xr-editing .pl-head { flex-wrap: wrap; over
 .lil-gui .sp-flip-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .lil-gui .sp-flip-cell .sp-tex-swatch { width: 24px; height: 24px; }
 .lil-gui .sp-flip-badge { font-size: 9px; line-height: 1; color: #8fa6ba; letter-spacing: .04em; }
+/* A trail's matched pair reads as one tile across the trail: its two halves sit touching, left lane then right, the
+   way the trail wears them. Chosen from a dropdown of pictures: the row's value is the worn pair and its name, and
+   the menu (on <body>, so the panel's overflow cannot clip it) lists every pair as its art under its map. */
+.sp-pair-thumb { display: inline-flex; gap: 1px; flex: 0 0 auto; }
+.sp-pair-half { display: block; border-radius: 2px; background: #0d151d center/cover no-repeat; box-shadow: 0 0 0 1px #0006 inset; }
+.sp-pair-thumb-none { align-items: center; justify-content: center; color: #7f97ac; border: 1px dashed #3d5166;
+  border-radius: 3px; box-sizing: border-box; font-size: 12px; }
+.lil-gui .sp-pair-dd { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 auto; padding: 2px 6px 2px 2px;
+  background: #15202c; border: 1px solid #2c3e50; border-radius: 4px; color: #d7e3f0; font: inherit; cursor: pointer; text-align: left; }
+.lil-gui .sp-pair-dd:hover { border-color: #6ee7a8; }
+.lil-gui .sp-pair-dd-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lil-gui .sp-pair-dd-caret { color: #7f97ac; font-size: 10px; }
+.sp-pair-menu { position: fixed; z-index: 40; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  background: #0c141df5; border: 1px solid #2c3e50; border-radius: 6px; box-shadow: 0 8px 24px #0009;
+  color: #d7e3f0; font: 12px/1.3 system-ui, sans-serif; }
+.sp-pair-group { padding: 6px 6px 2px; color: #7f97ac; font-size: 10px; font-weight: 700; letter-spacing: .06em; }
+.sp-pair-item { display: flex; align-items: center; gap: 8px; padding: 3px 6px 3px 3px; background: none; border: 1px solid transparent;
+  border-radius: 4px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sp-pair-item:hover { background: #ffffff10; border-color: #6ee7a8; }
+.sp-pair-item.sel { border-color: #ffc24d; background: #ffc24d14; }
+.sp-pair-new .sp-pair-thumb-none { color: #9fb3c8; font-size: 16px; }
 /* Related binary actions (Crease / Smooth) share one compact row while remaining ordinary lil-gui
    controllers. Keeping them as direct siblings preserves lil-gui's normal rebuild / destroy lifecycle. */
 .lil-gui .lil-controller.sp-action-pair { display: inline-flex; width: 50%; box-sizing: border-box;

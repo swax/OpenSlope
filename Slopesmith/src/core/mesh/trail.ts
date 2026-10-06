@@ -8,17 +8,30 @@ import { directedEdgeKey } from './primitives';
 /** One exact cubic segment of the construction spline, p0..p3 in Slopesmith editor metres. */
 export type TrailCubic = readonly [V3, V3, V3, V3];
 
-export interface TrailTexturePreset {
-  /** Mirrored left/right half-tiles for ordinary trail spans. */
-  standard: readonly (readonly [string, string])[];
-  /** Mirrored half-tiles used below `tightRadiusM`; absent keeps using `standard`. */
-  tight?: readonly (readonly [string, string])[];
-  tightRadiusM?: number;
-  /** Quarter turns the tight halves are worn at beyond the standard ones' (`TRAIL_TILE_ORIENT`). */
-  tightQuarterTurns?: number;
-  /** Hold one pair for this many consecutive spans, avoiding a flickering tile change every patch. */
-  runLength?: number;
-  seed?: number;
+/**
+ * One matched pair as a ribbon wears it: the tiles of the lanes to a rider's left and right going along the spline,
+ * and the quarter turns both are worn at beyond a trail tile's own (`TRAIL_TILE_ORIENT`). A half that is '' leaves its
+ * lane plain.
+ *
+ * Data space is the game's left-handed frame, so a rider's left is the side the generator calls `right` (its
+ * `[-tz, 0, tx]`): the `left` half goes on each span's second patch, the `right` half on its first.
+ */
+export interface TrailTileHalves {
+  left: string;
+  right: string;
+  quarterTurns?: number;
+}
+
+/** The tiles a ribbon wears: one pair along its spans, and others through left and right turns tighter than
+ *  `turnRadiusM`. */
+export interface TrailTiling {
+  /** Worn along every span but the tight ones; absent leaves them plain. */
+  trail?: TrailTileHalves | null;
+  /** Worn through left (right) turns tighter than `turnRadiusM` — a rider's left going along the spline, where the
+   *  signed curvature is positive (negative); absent wears `trail` there too. */
+  leftTurn?: TrailTileHalves | null;
+  rightTurn?: TrailTileHalves | null;
+  turnRadiusM?: number;
 }
 
 /** Optional section values at the input spline knots (`spline.length + 1` entries). Generated stations
@@ -57,7 +70,7 @@ export interface TrailOptions {
   /** Forward/backward slew limit so bank ramps instead of jumping at a station. */
   maxBankStepDegrees?: number;
   surface?: number;
-  textures?: TrailTexturePreset;
+  textures?: TrailTiling;
   knotProfile?: TrailKnotProfile;
 }
 
@@ -73,24 +86,6 @@ export const MESA_TRAIL_DEFAULTS = {
   maxBankStepDegrees: 20,
   surface: 1,
 } as const;
-
-/** Mesa's two patches form one visual tile: every tuple is [left half, right half]. */
-export const MESA_TRAIL_TEXTURES: TrailTexturePreset = {
-  standard: [
-    ['MESA/0044.png', 'MESA/0045.png'],
-    ['MESA/0046.png', 'MESA/0047.png'],
-    ['MESA/0059.png', 'MESA/0061.png'],
-    ['MESA/0002.png', 'MESA/0042.png'],
-  ],
-  tight: [
-    ['MESA/0066.png', 'MESA/0064.png'], // blue outside stripes
-    ['MESA/0063.png', 'MESA/0062.png'], // red outside stripes
-  ],
-  tightRadiusM: 80,
-  tightQuarterTurns: 2, // the stripe halves are drawn the other way round from the standard ones
-  runLength: 6,
-  seed: 0,
-};
 
 export interface TrailStation {
   center: V3;
@@ -216,15 +211,22 @@ function sliceCubic(cp: TrailCubic, t0: number, t1: number): [V3, V3, V3, V3] {
   return splitCubic(left[0], left[1], left[2], left[3], t0 / t1).right;
 }
 
-function textureForSpan(preset: TrailTexturePreset | undefined, index: number, radius: number):
+/**
+ * The tiles a span turning at `signedCurvature` wears, and how: through a turn tighter than the tiling's radius, the
+ * pair for that way of turning — positive curvature turns to a rider's left — and the trail pair elsewhere, or where
+ * that turn has none. `tiles` follows the span's patches, the generator's left rail's lane first: the rider's right.
+ */
+function textureForSpan(tiling: TrailTiling | undefined, signedCurvature: number):
 { tiles: readonly [string, string]; orient: { rot: number; mirror: boolean } } | undefined {
-  if (!preset?.standard.length) return undefined;
-  const tight = !!preset.tight?.length && radius <= (preset.tightRadiusM ?? 80);
-  const bank = tight ? preset.tight! : preset.standard;
-  const run = Math.max(1, Math.trunc(preset.runLength ?? 6));
-  const choice = Math.floor((index + Math.trunc(preset.seed ?? 0)) / run) % bank.length;
-  const turns = tight ? Math.trunc(preset.tightQuarterTurns ?? 0) : 0;
-  return { tiles: bank[choice], orient: { rot: (((TRAIL_TILE_ORIENT.rot + turns) % 4) + 4) % 4, mirror: TRAIL_TILE_ORIENT.mirror } };
+  const tight = Math.abs(signedCurvature) >= 1 / (tiling?.turnRadiusM ?? 80);
+  const turn = tight ? (signedCurvature > 0 ? tiling?.leftTurn : tiling?.rightTurn) : null;
+  const pair = turn ?? tiling?.trail;
+  if (!pair) return undefined;
+  const turns = Math.trunc(pair.quarterTurns ?? 0);
+  return {
+    tiles: [pair.right, pair.left],
+    orient: { rot: (((TRAIL_TILE_ORIENT.rot + turns) % 4) + 4) % 4, mirror: TRAIL_TILE_ORIENT.mirror },
+  };
 }
 
 export interface TrailLayoutOptions extends TrailOptions {
@@ -369,7 +371,7 @@ export function layoutTrailSpline(spline: readonly TrailCubic[], options: TrailL
   for (let i = 0; i < spans.length; i++) {
     const curvature = Math.max(Math.abs(spans[i].signedCurvature), Math.abs(stationCurvature[i]), Math.abs(stationCurvature[i + 1]));
     spans[i].radiusM = curvature > 1e-7 ? 1 / curvature : Infinity;
-    const tile = textureForSpan(opts.textures, i, spans[i].radiusM);
+    const tile = textureForSpan(opts.textures, spans[i].signedCurvature);
     if (tile) { spans[i].textures = tile.tiles; spans[i].textureOrient = tile.orient; }
   }
   // Every station reads the knot profile at its place between two knots: its source cubic, and how far along it
@@ -487,15 +489,16 @@ export function applyTrailSpline(doc: QuadMeshDoc, spline: readonly TrailCubic[]
   const quadPaint = { ...(doc.quadPaint ?? {}) };
   for (const quad of createdQuads) quadPaint[quad] = surface;
   out.quadPaint = quadPaint;
-  if (spans.some(span => span.textures)) {
+  if (spans.some(span => span.textures?.some(Boolean))) {
     const quadTex = { ...(doc.quadTex ?? {}) }, quadOrient = { ...(doc.quadOrient ?? {}) };
     for (let i = 0; i < spans.length; i++) {
       const textures = spans[i].textures;
       if (!textures) continue;
-      quadTex[createdQuads[i * 2]] = textures[0];
-      quadTex[createdQuads[i * 2 + 1]] = textures[1];
-      quadOrient[createdQuads[i * 2]] = { ...(spans[i].textureOrient ?? TRAIL_TILE_ORIENT) };
-      quadOrient[createdQuads[i * 2 + 1]] = { ...(spans[i].textureOrient ?? TRAIL_TILE_ORIENT) };
+      for (const lane of [0, 1]) {
+        if (!textures[lane]) continue; // a plain half
+        quadTex[createdQuads[i * 2 + lane]] = textures[lane];
+        quadOrient[createdQuads[i * 2 + lane]] = { ...(spans[i].textureOrient ?? TRAIL_TILE_ORIENT) };
+      }
     }
     out.quadTex = quadTex; out.quadOrient = quadOrient;
   }
@@ -854,7 +857,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const quads = out.quads.map(quad => quad.slice());
   const junctions: TrailJunction[] = [];
   /** Every junction patch and the lane it carries on — its run, which lane, and which end of the run. */
-  const laneOf: { quad: number; run: number; lane: 0 | 1; atHead: boolean }[] = [];
+  const laneOf: { quad: number; run: number; lane: 0 | 1 }[] = [];
   const point = (v: number): V3 => [vertices[v * 3], vertices[v * 3 + 1], vertices[v * 3 + 2]];
 
   for (const [node, list] of arms) {
@@ -940,7 +943,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
             + `[reach ${R.toFixed(0)} m, halves ${list.map(arm => arm.half.toFixed(0)).join('/')}]` };
         }
         fan.push(quads.length);
-        laneOf.push({ quad: quads.length, run: end.arm.run, lane, atHead: end.arm.atHead });
+        laneOf.push({ quad: quads.length, run: end.arm.run, lane });
         quads.push(corners);
       }
     }
@@ -957,16 +960,16 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const added = { vertices: vertices.length / 3 - out.vertices.length / 3, quads: quads.length - out.quads.length };
   const network: QuadMeshDoc = { ...out, vertices, quads, ...appendMeshIds(out, added.vertices, added.quads) };
 
-  // A junction patch is its lane carried on, so it wears the lane's tile at the ribbon's end — its ordinary one: a
-  // junction is not a turn, so the tight-turn stripes stop where the ribbon does even when its last span is tight.
+  // A junction patch is its lane carried on, so it wears its path's trail tile — a junction is not a turn, so the
+  // turn tiles stop where the ribbon does even when its last span is tight.
   const quadPaint = { ...(network.quadPaint ?? {}) };
   const quadTex = { ...(network.quadTex ?? {}) };
   const quadOrient = { ...(network.quadOrient ?? {}) };
-  for (const { quad, run, lane, atHead } of laneOf) {
+  for (const { quad, run, lane } of laneOf) {
     const dress = { ...MESA_TRAIL_DEFAULTS, ...optionsFor(runs[run]) };
     quadPaint[quad] = dress.surface;
-    const tile = textureForSpan(dress.textures, atHead ? 0 : ribbons[run].spans.length - 1, Infinity);
-    if (tile) { quadTex[quad] = tile.tiles[lane]; quadOrient[quad] = { ...tile.orient }; }
+    const tile = textureForSpan(dress.textures, 0);
+    if (tile?.tiles[lane]) { quadTex[quad] = tile.tiles[lane]; quadOrient[quad] = { ...tile.orient }; }
   }
   network.quadPaint = quadPaint;
   if (Object.keys(quadTex).length) { network.quadTex = quadTex; network.quadOrient = quadOrient; }

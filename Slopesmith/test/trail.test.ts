@@ -4,8 +4,9 @@
 import { cubicPoint, patchNormal } from '../src/core/math/bezier';
 import { len, sub } from '../src/core/math/vec';
 import {
-  MESA_TRAIL_TEXTURES, applyTrailNetwork, applyTrailSpline, trimTrailSpline, type TrailCubic,
+  applyTrailNetwork, applyTrailSpline, trimTrailSpline, type TrailCubic,
 } from '../src/core/mesh/trail';
+import { findTrailTilePair } from '../src/core/mesh/trail-textures';
 import { meshFromDoc, quadControlPoints } from '../src/core/mesh/topology';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { quadIndices, quadNames } from '../src/app/state/mesh-names';
@@ -20,6 +21,12 @@ const emptyDoc = (): QuadMeshDoc => ({
   vertices: [], vertexIds: [], quads: [], quadIds: [], nextId: 0,
 });
 
+/** Mesa's first pairs, as a path wears them by default. */
+const MESA_TILES = {
+  trail: findTrailTilePair('MESA/Trail 1', []), leftTurn: findTrailTilePair('MESA/Left Turn 1', []),
+  rightTurn: findTrailTilePair('MESA/Right Turn 2', []), turnRadiusM: 80,
+};
+
 const straight: TrailCubic = [
   [0, 0, 0], [0, 0, 100 / 3], [0, 0, 200 / 3], [0, 0, 100],
 ];
@@ -27,7 +34,7 @@ const straight: TrailCubic = [
 // A 100m line uses the Mesa 22.5m cap: five exact spans, three rails, and two patches per span.
 {
   const source = emptyDoc(), before = JSON.stringify(source);
-  const result = applyTrailSpline(source, [straight], { textures: MESA_TRAIL_TEXTURES });
+  const result = applyTrailSpline(source, [straight], { textures: MESA_TILES });
   check(result.ok, 'straight: generator accepts a finite cubic');
   if (result.ok) {
     const selected = quadNames(result.doc, result.quads);
@@ -80,7 +87,7 @@ const straight: TrailCubic = [
   const quarter: TrailCubic = [
     [radius, 0, 0], [radius, 0, k * radius], [k * radius, 0, radius], [0, 0, radius],
   ];
-  const result = applyTrailSpline(emptyDoc(), [quarter], { textures: MESA_TRAIL_TEXTURES });
+  const result = applyTrailSpline(emptyDoc(), [quarter], { textures: MESA_TILES });
   check(result.ok, 'turn: generator accepts a quarter-circle cubic');
   if (result.ok) {
     check(result.spans.length === 4, `turn: 90 degrees is cut into four ~22.5-degree spans (${result.spans.length})`);
@@ -88,12 +95,22 @@ const straight: TrailCubic = [
       'turn: the cut respects length and recovers the approximately 50m radius');
     check(result.stations.every(station => station.bankDegrees < -15 && station.bankDegrees > -19),
       'turn: positive bank gain raises the outside rim at the expected ~16.7 degrees');
-    check(result.spans.every(span => span.textures?.[0] === 'MESA/0066.png'
+    // Heading +Z and bending toward -X is a turn to a rider's left: data space is the game's left-handed frame.
+    check(result.spans.every(span => span.signedCurvature > 0 && span.textures?.[0] === 'MESA/0066.png'
       && span.textures?.[1] === 'MESA/0064.png'),
-    'turn: an R=50m run receives the blue tight-turn tile halves');
+    'turn: an R=50m left turn wears the left-turn pair, its right half on the span’s first patch');
     check(result.spans.every(span => span.textureOrient?.rot === 3 && !span.textureOrient.mirror),
       'turn: the tight halves are worn half a turn round from the standard ones');
   }
+  // The same turn the other way: heading +Z and bending toward +X, to a rider's right.
+  const mirrored = applyTrailSpline(emptyDoc(), [quarter.map(([x, y, z]) => [-x, y, z] as V3) as unknown as TrailCubic], { textures: MESA_TILES });
+  check(mirrored.ok && mirrored.spans.every(span => span.signedCurvature < 0 && span.textures?.[0] === 'MESA/0062.png'
+    && span.textures?.[1] === 'MESA/0063.png' && span.textureOrient?.rot === 1),
+  'turn: a right turn wears the right-turn pair — Mesa’s stripes turned round');
+  const leftOnly = applyTrailSpline(emptyDoc(), [quarter.map(([x, y, z]) => [-x, y, z] as V3) as unknown as TrailCubic],
+    { textures: { ...MESA_TILES, rightTurn: null } });
+  check(leftOnly.ok && leftOnly.spans.every(span => span.textures?.[0] === 'MESA/0044.png'),
+    'turn: a turn with no pair of its own wears the trail pair');
 }
 
 // Bad spline topology is diagnosed before any document mutation.

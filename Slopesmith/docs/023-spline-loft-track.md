@@ -171,7 +171,7 @@ points each frame — so its patches stay locked and only the trail moves them, 
 follow. It is World-framed: the mesh's Surface slide does not apply to a trail.
 
 **The panel** exposes the points, the selected paths' section (target width and length, centre dish and seam, turn
-density), banking, the Mesa matched-half/tight-turn texture preset, **✚ add points before the start** and **after
+density), banking, its tiles (below), **✚ add points before the start** and **after
 the end** (the one selected path's: both with no point picked, the picked end's with an end picked), **⑂ start a new
 path here** (any picked point but a free end), **✂ disconnect here** (any point two arms or more meet at,
 `disconnectPoint`: every path running through it is cut there, keeping its shape — the handles either side of the cut
@@ -179,12 +179,64 @@ fixed where the curve ran — and every arm ends at a point of its own at the sa
 two sides mid-path, three at a fork, four at a crossing. A loop broken this way opens into one path. Sides no longer
 joined become trails of their own (`separateTrail`): the network holding the first path keeps the trail and re-cuts
 in place, the others are cut fresh. The selected paths stay selected as their pieces, and the clicked path's side
-keeps the point picked, so a drag pulls it away; dropped back on a point, it joins again), **✕ delete this point**, **select the whole network**, **select
+keeps the point picked, so a drag pulls it away; dropped back on a point, it joins again), **⫽ split path here** (a
+point a path runs on through, `splitPathsAt`: every path running through it is cut there into pieces that still meet
+at the point, in a two-arm joint, keeping their shape — nothing comes apart, and each piece can then be set on its
+own, its tiles above all; the pieces stay selected and the point picked), **✕ delete this point**, **select the whole network**, **select
 overlapping vertices**, **⇥ dissolve network into patches** and **✕ delete path**. Every setting re-cuts as it
 changes, applies to every selected path — the panel shows the clicked path's values — and becomes the next new
 path's starting value. Deleting a point takes it out of every path through it, each then running straight past it,
 and a path left with one point goes. Deleting a path takes its patches and the points only it used; the paths it met
 re-cut without it.
+
+**Textures.** A trail's tiles come in matched PAIRS (`TrailTilePair`): one tile drawn across the trail's width and
+cut in two, a half for each lane of a span — the lane to a rider's left going along the path, and the one to their
+right. A pair belongs to the map both its tiles come from and is named within it, so its id reads `MESA/Trail 1` or
+`GARI/Turn 2`. A path wears three, by id, among its settings: its **trail tiles** along every span, its **left turn
+tiles** through left turns tighter than **turns under** (80 m by default), and its **right turn tiles** through right
+ones — a turn slot left empty wears the trail tiles there too. Left and right are as the path runs, from its first point
+to its last: data space is the game's left-handed frame, so a rider's left is the side the generator calls `right`
+(`[-tz, 0, tx]`), a span turning left has positive signed curvature, and a pair's left half goes on each span's second
+patch. One pair per slot and nothing cycled: a path that should change its tiles part of the way along is split there
+(below) and each piece set on its own. Each pair carries the quarter turn its halves are worn at beyond a trail tile's
+own (the tile's v along the path, above). Each pair is of a KIND — `trail`, `left-turn`, `right-turn`, or `turn` for
+either way — which says which slots list it.
+
+The shipped maps' pairs are built in (`core/mesh/trail-textures.ts`, `TRAIL_TILE_PAIRS`): Mesa's four trail pairs —
+variants of one groomed look, `0045|0044`, `0047|0046`, `0061|0059` (almost only Mesa's section D) and `0042|0002` as
+[left|right] — and its blue and red striped turn pairs. Mesa marks a turn's WAY with them: the same striped tile turned
+round, its stripes down the centre seam either way — blue `0064|0066` with its top downhill on 12 left turns and 1
+right, `0066|0064` with its top uphill on 24 right turns and no left; red `0062|0063` on left turns only and `0063|0062`
+on right ones. So they are `MESA/Left Turn 1` and `2` and `MESA/Right Turn 1` and `2`, and a new path wears
+`MESA/Trail 1`, `MESA/Left Turn 1` and `MESA/Right Turn 1`. (A path still naming the single `MESA/Turn 1` or `2` of
+before wears the split pair for each side; those names are never given out again.)
+
+**Finding a map's pairs.** `tools/mountain-study/trail-pairs.ts` finds them from a map's patches alone, with no
+centreline picked: wherever two textured patches meet with the right art edge of one tile on the left art edge of the
+other, art up the same way, the picture runs across the seam — a matched pair. It keeps a seam only when neither half is
+matched again across its far side, since a trail is two patches across and a rock wall or tiled field is matched on
+every side, and drops tiles laid mostly on rock, walls or out of bounds. Going downhill along each seam it reads which
+tile is on a rider's left, which way the art's top faces, and how tightly and which way the seam turns (the inner rim is
+the shorter). Two tiles laid through turns under 80 m at least 60% of the time are turn pairs — the way they are laid
+most through left turns a left-turn pair, through right turns a right-turn pair — and others are a trail pair laid
+their commonest way. It prints every candidate as a `TrailTilePair` line to paste in, named by how often the map lays
+it, and writes `temp/trail-pairs.html`: each candidate as the art, as a rider going downhill sees it, to choose by eye —
+a ground transition can match too. It recovers Mesa's pairs exactly, and finds directional turn pairs on ALASKA, ALOHA
+(a marker on the outside half only), ELYSIUM and MERQUER; MEGAPLE and UNTRACK lay almost no two-patch matched ribbons.
+
+A mountain's own pairs live in its document's
+`trailTilePairs` (one global register, docs/039) and are named on the same pattern, next among their map's: the first a
+mountain makes from GARI's tiles is `GARI/Trail 1`. Each slot is a dropdown of pictures: its value is the worn pair's
+two halves and its id, and it opens a list of every pair of its kind as its art, under its map's name, with none first
+and **new pair…** last. A pair is drawn as a rider going along the path sees it, the path running up the screen: its
+left half on the left, each half turned as the terrain wears it (`trailTileViewOrient`: a half's quarter turns plus
+two, as `orientCss` draws a D4). **new pair…** makes one of the mountain's own — its left lane's tile and then its
+right lane's, chosen in the Texture Library, both from one map — and wears it. A pair of the mountain's own that a
+selected path wears shows below, its halves to choose again, **⇄ swap** its halves, its turn and **✕ delete**: every
+change re-cuts every path wearing it, and deleting it leaves those paths plain there. A pair that cannot be found lays
+nothing. A re-cut that lays no tile on a patch takes back only what a pair lays there — the built-in ones' tiles and
+the mountain's own — so a tile painted by hand stays. Paths saved before tile pairs carried only `mesaTextures`, and
+load wearing Mesa's first pairs, or plain; ones saved with a single turn pair wear it through both turns.
 
 **Per-point section.** A picked point adds a **Point N** group to the panel: its width, centre seam and centre dish,
 and its bank. Each row shows the value it is cut with there; moving it makes the value the point's own (the row is
