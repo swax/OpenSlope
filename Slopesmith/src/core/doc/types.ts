@@ -181,6 +181,73 @@ export interface MountainMeta {
    *  lamps (docs/070). The members are ordinary `props` entries tagged with the line's id; this is the path
    *  and the settings they are laid out from. Absent in docs saved before prop lines. */
   propLines?: PropLine[];
+  /** TRAILS — a centre spline that owns the two-patch ribbon generated along it (docs/023). The patches are
+   *  ordinary terrain in the mesh; this is the spline and section they are cut from, and the stable ids of the
+   *  vertices and patches it owns. Absent in docs saved before owned trails. */
+  trails?: AuthoredTrail[];
+}
+
+/** The section and density a trail's ribbon is cut with — the Create Trail panel's settings (docs/023). */
+export interface TrailSettings {
+  /** Rim-to-rim plan width, metres. */
+  widthM: number;
+  /** Centre seam across the width, in (0,1); 0.5 makes two equal lanes. */
+  centerBias: number;
+  /** Centre seam below the banked rim chord, as a percentage of width. */
+  dishPercent: number;
+  /** Longest ordinary patch along the spline, metres; tight turns cut shorter ones. */
+  patchLengthM: number;
+  /** Most tangent turn one patch may carry, degrees. */
+  maxTurnDegrees: number;
+  /** Curvature-to-bank response distance, metres; 0 keeps the rims level. */
+  bankGainM: number;
+  /** Absolute bank clamp, degrees. */
+  maxBankDegrees: number;
+  /** Wear the matched Mesa trail tiles. */
+  mesaTextures: boolean;
+}
+
+/**
+ * What one knot of a trail says for itself (docs/023 · Per-knot section). Every field is optional and only the
+ * ones set are the knot's own; the rest follow the trail's `TrailSettings`. Between two knots each value eases
+ * from one knot's to the next, by distance along the trail, so a knot set wider swells the trail there and it
+ * narrows back over the neighbouring stretches.
+ */
+export interface TrailKnotSettings {
+  widthM?: number;
+  centerBias?: number;
+  dishPercent?: number;
+  /** A fixed bank here, degrees, signed as the automatic bank is. Absent: the automatic bank. Between a fixed
+   *  knot and an automatic one the bank fades from the angle to the automatic bank. */
+  bankDegrees?: number;
+  /** Multiplier on the automatic bank here (0 levels it, 2 doubles it). Ignored while `bankDegrees` is set. */
+  bankStrength?: number;
+}
+
+/**
+ * An owned TRAIL (docs/023): a centre spline laid knot by knot like a rail, and the ribbon of patches it cut.
+ *
+ * The patches are real mesh, so the bake, the ride and every mesh tool see plain quads; the trail only remembers
+ * which ones are its own, by stable id, and is their generator: moving a knot or changing a setting re-cuts them
+ * from the spline. They are locked, so hand edits cannot smear them. Patches welded onto the rims share those
+ * vertices, so a re-cut stretches them; while any are, the ribbon keeps its patch count.
+ */
+export interface AuthoredTrail {
+  /** Stable authoring identity (`trail:NNNN`). */
+  id: string;
+  /** Optional label for the outliner / tooltip. */
+  name?: string;
+  /** Centre-spline knots in editor/data space (m, Y-up); the curve is the rail Catmull-Rom through them. */
+  knots: V3[];
+  /** Bézier handles dragged off the automatic curve, index-parallel with `knots` (`PathHandles`). */
+  handles?: (PathHandles | null)[];
+  settings: TrailSettings;
+  /** Each knot's own section values, index-parallel with `knots`; an absent entry follows `settings`. */
+  knotSettings?: (TrailKnotSettings | null)[];
+  /** Owned vertices by stable id, three per station along the trail: left rim, centre seam, right rim. */
+  vertices: string[];
+  /** Owned patches by stable id, two per span: the left lane, then the right. */
+  quads: string[];
 }
 
 /**
@@ -364,6 +431,20 @@ export interface AuthoredLight {
 }
 
 /**
+ * One node's Bézier handles on an authored path — a rail, a motion path, a prop line, a trail (docs/014).
+ *
+ * Every such path is the uniform Catmull-Rom curve through its nodes, which fixes each node's tangent from its
+ * neighbours. A handle overrides that: `out` is the first inner control point of the span leaving the node and
+ * `in` the last of the span arriving, both as offsets from the node, so they travel with it when it moves. An
+ * absent side keeps the automatic tangent, the same convention as a mesh edge handle (absent ⇒ Bessel). Paths
+ * store these index-parallel with their nodes, and a missing or null entry is a node with no override at all.
+ */
+export interface PathHandles {
+  in?: V3;
+  out?: V3;
+}
+
+/**
  * An authored course spline (docs/014/026): either a grind rail or an invisible motion path. Both are chains
  * of node points floated above the terrain and splined into a smooth curve (the same Catmull-Rom the run spine
  * uses). Nodes are stored in
@@ -380,6 +461,8 @@ export interface Rail {
   id?: string;
   /** Node points in editor/data space (m, Y-up), floated `height` above the ground they were laid on. */
   nodes: V3[];
+  /** Bézier handles dragged off the automatic curve, index-parallel with `nodes` (`PathHandles`). */
+  handles?: (PathHandles | null)[];
   /** Standoff (m) the rail was laid at above the terrain — the placement offset + the Tools height baseline. */
   height: number;
   /** Grind-only SSX SplineStyle: 13 = metal (default), 12 = wood, 5 = ice. Motion paths export style -1. */
@@ -480,6 +563,8 @@ export interface PropLine {
   /** Path points in editor/data space (m, Y-up), on the ground they were laid on. The path is the
    *  Catmull-Rom curve through them, the same curve a rail uses (`core/rails/rails.ts`). */
   nodes: V3[];
+  /** Bézier handles dragged off the automatic curve, index-parallel with `nodes` (`PathHandles`). */
+  handles?: (PathHandles | null)[];
   /** What every member copies. */
   template: PropLineTemplate;
   /** Metres between member centres, measured straight rather than along the curve. Absent = the model's own

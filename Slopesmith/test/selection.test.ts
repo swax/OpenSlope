@@ -26,6 +26,8 @@ import {
 } from '../src/core/mesh/selection';
 import { copyMeshVertices } from '../src/core/mesh/clipboard';
 import { liveQuadEdges } from '../src/core/mesh/primitives';
+import { setQuadsLocked } from '../src/core/mesh/locks';
+import { TRAIL_SETTINGS_DEFAULTS } from '../src/core/mesh/trail-object';
 import {
   controlPointIndex, controlPointName, edgeIndex, quadIndex, quadName, quadNaming, vertexIndex, vertexName, vertexNames,
   vertexNaming,
@@ -62,7 +64,9 @@ function deleteCornerCell(doc: QuadMeshDoc): QuadMeshDoc {
 // refresh on the next frame; neither draws anything here, so the smallest possible stand-ins suffice.
 const frames: (() => void)[] = [];
 const globals = globalThis as unknown as Record<string, unknown>;
-globals.document = { getElementById: () => ({ textContent: '', className: '' }) };
+// One shared element, so a check can read the toast a refusal raised.
+const toastEl = { textContent: '', className: '' };
+globals.document = { getElementById: () => toastEl };
 globals.window = { setTimeout: () => 0 };
 globals.requestAnimationFrame = (fn: () => void) => { frames.push(fn); return frames.length; };
 const flushFrames = () => { const queued = frames.splice(0); for (const fn of queued) fn(); };
@@ -101,8 +105,8 @@ function stubViewport(): EditViewportPort & { readonly regionMarks: readonly V3[
     setCreateEdgeStart: noop,
     setCreateEdgePath: noop,
     get createTubePoints() { return [] as readonly V3[]; },
-    get createTrailPoints() { return [] as readonly V3[]; },
-    removeLastCreateTrailPoint: noop,
+    setTrailKnots: noop,
+    setTrailDrawEnd: noop,
     setCreateTrailSurfaceLift: noop,
     projectedVerticesInsidePatches: () => [],
     setPasteTool: noop,
@@ -832,6 +836,33 @@ for (const reverse of [false, true]) {
   cb.onSelectControlPoints?.([live(6, 6).id], 'range');
   check(store.controlSel.length === 49, 'session: with the cage showing, corner to corner is the whole 7×7 block of the net',
     `${store.controlSel.length}`);
+}
+
+// ---- moving something locked: refused with a reason, or warned about when only part of it is ------------------
+{
+  const { store, session } = editor();
+  const cb = session.viewportCallbacks;
+  setQuadsLocked(store.mdoc, [0], true); // quad 0's corners: 0, 1, COLS and COLS + 1
+  cb.onSelectCorner(0);
+  check(cb.onEditTransformBegin?.({ kind: 'corner' }) === false && toastEl.className.includes('err')
+    && toastEl.textContent.includes('locked'), 'lock: a drag on a locked point is refused, saying it is locked', toastEl.textContent);
+  cb.onSelectEditCell?.(0, 'replace');
+  check(cb.onEditTransformBegin?.({ kind: 'corners' }) === false, 'lock: a wholly locked patch refuses the drag');
+  cb.onSelectEditCell?.(1, 'replace'); // shares two corners with the locked one
+  check(cb.onEditTransformBegin?.({ kind: 'corners' }) === true && toastEl.className.includes('warn')
+    && toastEl.textContent.startsWith('2 of 4'), 'lock: a partly locked patch moves, warning what stays put', toastEl.textContent);
+  cb.onSelectEditCell?.(2, 'replace');
+  toastEl.textContent = '';
+  check(cb.onEditTransformBegin?.({ kind: 'corners' }) === true && toastEl.textContent === '',
+    'lock: an unlocked patch moves without a word');
+
+  // The same patch owned by a trail says so, and points at what does move it.
+  const ids = store.mdoc.quads[0].map(vertex => store.mdoc.vertexIds[vertex]);
+  store.mdoc.trails = [{ id: 'trail:0000', knots: [], settings: { ...TRAIL_SETTINGS_DEFAULTS }, vertices: ids,
+    quads: [store.mdoc.quadIds[0]] }];
+  cb.onSelectCorner(0);
+  check(cb.onEditTransformBegin?.({ kind: 'corner' }) === false && toastEl.textContent.includes('part of a trail')
+    && toastEl.textContent.includes('knots'), 'lock: a trail point is refused, pointing at the trail\'s knots', toastEl.textContent);
 }
 
 console.log(failures ? '\nSELECTION: FAIL' : '\nSELECTION: PASS');

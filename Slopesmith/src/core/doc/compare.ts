@@ -97,7 +97,7 @@ export interface ChangeSummary {
 }
 
 const OBJECT_FAMILIES: readonly ObjectFamily[] =
-  ['prop', 'light', 'rail', 'gem', 'model', 'volume', 'label', 'effect', 'effect-node'];
+  ['prop', 'light', 'rail', 'gem', 'model', 'volume', 'trail', 'label', 'effect', 'effect-node'];
 
 /** Which family an `o/<family>/<id>` key names, or null when it names none. */
 function objectFamily(key: RegisterKey): ObjectFamily | null {
@@ -184,7 +184,7 @@ const plural = (count: number, one: string, many = `${one}s`): string =>
 /** What each object family is called when it is being counted. */
 const FAMILY_NOUN: Record<ObjectFamily, string> = {
   prop: 'prop', light: 'light', rail: 'rail', gem: 'gem', model: 'model',
-  volume: 'particle volume', screen: 'video screen', 'prop-line': 'prop line', label: 'label', effect: 'effect',
+  volume: 'particle volume', screen: 'video screen', 'prop-line': 'prop line', trail: 'trail', label: 'label', effect: 'effect',
   'effect-node': 'effect node',
 };
 

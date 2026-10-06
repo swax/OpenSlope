@@ -15,8 +15,6 @@ import type { EditViewportPort } from './viewport-port';
 import { toast } from '../ui/components/toast';
 import type { CreateEdgeEndpoint } from '../viewport/types';
 import { quadPerimeterEdges } from '../../core/mesh/primitives';
-import { applyTrailSpline, MESA_TRAIL_TEXTURES } from '../../core/mesh/trail';
-import { railBezierSegments } from '../../core/rails/rails';
 
 export type TopologyToolDeps = {
   store: Store;
@@ -273,72 +271,6 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     rebuildTools(); updateCmdSheet();
   }
 
-  function armCreateTrail() {
-    if (store.modelEditId) { toast('Create Trail builds mountain terrain, not a prop model.', 'err'); return; }
-    if (!store.cageOn) { store.cageOn = true; applyCage(); persistUi(); }
-    exitRegion();
-    store.selectedCorner = null; store.selected = null;
-    store.surgeryTool = 'trail'; store.createPatchQuads = [];
-    store.weldTool = null; store.weldSource = []; store.weldEdgeSource = [];
-    view().setWeldTool(false);
-    view().setCreateTrailSurfaceLift(store.trailSurfaceLift);
-    view().setSurgeryTool('trail');
-    scheduleRebuild(); rebuildTools(); updateCmdSheet();
-    toast('click centre-spline knots · hold Shift to axis-lock · tune the trail, then press Enter', 'info');
-  }
-
-  function previewCreateTrail() {
-    const points = [...view().createTrailPoints];
-    if (points.length < 2) { view().setLoftPreview(null); return null; }
-    const result = applyTrailSpline(mdoc(), railBezierSegments(points), {
-      widthM: store.trailWidth,
-      centerBias: store.trailCenterBias,
-      dishFraction: store.trailDishPercent / 100,
-      maxPatchLengthM: store.trailPatchLength,
-      minPatchLengthM: Math.min(9.5, store.trailPatchLength * 0.45),
-      maxTurnDegrees: store.trailMaxTurnDegrees,
-      bankGainM: store.trailBankGain,
-      maxBankDegrees: store.trailMaxBankDegrees,
-      maxBankStepDegrees: 20,
-      surface: 1,
-      textures: store.trailMesaTextures ? MESA_TRAIL_TEXTURES : undefined,
-    });
-    if (!result.ok) { view().setLoftPreview(null); return result; }
-    view().setLoftPreview(result.quads.map(quad => result.doc.quads[quad]), result.doc);
-    return result;
-  }
-
-  function undoCreateTrailPoint() {
-    if (store.surgeryTool !== 'trail') return;
-    view().removeLastCreateTrailPoint();
-  }
-
-  function finishCreateTrail() {
-    if (store.surgeryTool !== 'trail') return;
-    const result = previewCreateTrail();
-    if (!result) { toast('Place at least two centre-spline knots before creating the trail.', 'err'); return; }
-    if (!result.ok) { toast(result.error, 'err'); return; }
-    const knots = view().createTrailPoints.length;
-    // Capture stable names from the exact generated document before installing it. This makes the committed
-    // ribbon—not the spline knots or any prior terrain selection—the one replacement selection after create.
-    const created = quadNames(result.doc, result.quads);
-    commitEditMesh(store, result.doc);
-    store.surgeryTool = null;
-    view().setSurgeryTool(null); view().setLoftPreview(null);
-    clearEdgeSelection(); dropCornerSelection(); clearCellSelection();
-    store.cellSel = created; store.anchorCell = created[0] ?? null;
-    resetGizmoMode(); scheduleRebuild();
-    refreshCreatedCellSelection();
-    toast(`trail created and selected · ${knots} spline knots · ${result.spans.length} spans · ${created.length} patches`, 'ok');
-  }
-
-  function cancelCreateTrail() {
-    if (store.surgeryTool !== 'trail') return;
-    store.surgeryTool = null;
-    view().setSurgeryTool(null); view().setLoftPreview(null);
-    rebuildTools(); updateCmdSheet();
-  }
-
   function finishCreatePatch(selectCreated: boolean) {
     if (store.surgeryTool !== 'patch') return;
     const created = [...store.createPatchQuads];
@@ -492,7 +424,6 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   return {
     bridgeCandidate, startBridge, addBridgeRail, reverseBridgeRail, removeBridgeRail, moveBridgeRail, cancelBridge, completeBridge,
     createPatchesFromEdges, armCreateEdge, armCreatePatch, armLoopCut, armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
-    armCreateTrail, previewCreateTrail, undoCreateTrailPoint, finishCreateTrail, cancelCreateTrail,
     finishCreatePatch, addCreateEdgePoint, finishCreateEdge, clearCreateEdge,
   };
 }

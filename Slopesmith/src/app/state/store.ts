@@ -183,6 +183,8 @@ export type Store = {
   tubeHeight: number;                // Create Tube elliptical height diameter, metres
   tubeSectionLength: number;         // target quad length along the tube axis, metres
   tubeRingEdges: number;             // number of patch edges around each cross-section ring
+  // A new trail's settings (docs/023). A trail keeps its own copy; editing one also updates these, so the next
+  // trail starts the way the last was tuned.
   trailWidth: number;                // Create Trail rim-to-rim width, metres
   trailCenterBias: number;           // centre seam across the width: 0.5 = equal left/right lanes
   trailDishPercent: number;          // centre seam depth as a percentage of trail width
@@ -192,6 +194,11 @@ export type Store = {
   trailMaxBankDegrees: number;       // absolute auto-bank clamp
   trailSurfaceLift: number;          // vertical lift for knots clicked on an existing surface, metres
   trailMesaTextures: boolean;        // apply the measured Mesa matched-half/tight-turn texture preset
+  trailKnot: number | null;          // knot of the shown trail carrying the move gizmo (the trail itself is
+                                     // the one being drawn, or the one whose patches are exactly cellSel)
+  // The selected path's Bézier handle carrying the gizmo (docs/014) — on a rail, a prop line or a trail; at most
+  // one path is selected in any mode, so one slot serves them all. Its node is also that family's selected node.
+  pathHandle: { family: 'rail' | 'line' | 'trail'; id: string; node: number; side: 'in' | 'out' } | null;
   // Target-weld gesture (Edit): point weld captures a selected source set, then either merges that set to
   // itself or uses normal selection for an equal-size target set; edge weld gathers a separate target set.
   weldTool: 'weld' | 'edge-weld' | null;
@@ -442,6 +449,8 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     trailMaxBankDegrees: 20,
     trailSurfaceLift: 0.25,
     trailMesaTextures: true,
+    trailKnot: null,
+    pathHandle: null,
     weldTool: null,
     weldSource: [],
     weldEdgeSource: [],

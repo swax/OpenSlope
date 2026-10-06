@@ -91,6 +91,8 @@ const straight: TrailCubic = [
     check(result.spans.every(span => span.textures?.[0] === 'MESA/0066.png'
       && span.textures?.[1] === 'MESA/0064.png'),
     'turn: an R=50m run receives the blue tight-turn tile halves');
+    check(result.spans.every(span => span.textureOrient?.rot === 3 && !span.textureOrient.mirror),
+      'turn: the tight halves are worn half a turn round from the standard ones');
   }
 }
 

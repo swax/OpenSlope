@@ -324,6 +324,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     multiList.hide(); // only buildPropTools' multi branch shows the selection list
     bridgeList.hide();
     viewport.setLoftPreview(null); // clear any loft ghost; the Edit edge branch re-arms it when the dry-run holds
+    edit.syncTrailView(false); // a selection change can show or hide a trail's knots (docs/023)…
+    deps.pathHandles.sync(); // …and the selected point's Bézier handles (docs/014)
     refreshShowFilters(); // keep the top-bar Props / Tricks filters in sync
     syncAddTrickBtns(); // and the Prop Tools' Add rail / gem / light pressed highlight
     propLibToggle.style.display = propLaunchersVisible() ? 'block' : 'none';
@@ -339,8 +341,9 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if (freePoint && store.gizmoMode === 'scale') { store.gizmoMode = 'move'; viewport.setGizmoMode('move'); }
     transformPill.refresh();
     framePillLabel.textContent = store.gizmoMode === 'rotate' ? 'Rotate in' : store.gizmoMode === 'scale' ? 'Scale in' : 'Move in';
+    // A selected trail transforms in World only: its own gizmo, not the mesh's Surface slide (docs/023).
     const frameVisible = store.currentMode === 'edit' && cageActive() && hasMeshTransformSelection()
-      && !mixedEditSelection() && !viewport.edgeExtrusionStaged;
+      && !mixedEditSelection() && !viewport.edgeExtrusionStaged && !edit.selectedTrail();
     framePillRow.style.display = frameVisible ? 'flex' : 'none';
     framePill.refresh();
     transformSection.style.display = canRotate || frameVisible ? '' : 'none';
@@ -387,13 +390,15 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if (store.bridgeRails !== null) { buildBridgeTools(ctx); return; }
     if (store.createEdgeTool) { createTools.buildCreateEdgeTools(); return; }
     if (store.surgeryTool === 'tube') { createTools.buildCreateTubeTools(); return; }
-    if (store.surgeryTool === 'trail') { createTools.buildCreateTrailTools(); return; }
+    if (store.surgeryTool === 'trail') { createTools.buildTrailTools(); return; }
     if (store.surgeryTool === 'patch' || store.surgeryTool === 'loopcut') { createTools.buildCreateEdgeTools(); return; }
     if (store.weldTool === 'weld') { buildPointWeldTools(ctx); return; }
     if (store.weldTool === 'edge-weld') { buildEdgeWeldTools(ctx); return; }
     if (retopologyTools.isOpen()) { retopologyTools.build(); return; }
 
     const mdoc = editMesh(store);
+    // A trail's patches select as one, and the trail's own panel replaces the patch tools that would cut it.
+    if (store.currentMode === 'edit' && edit.selectedTrail()) { createTools.buildTrailTools(); return; }
     if (store.currentMode === 'edit' && mixedEditSelection()) { buildMixedEditSelectionTools(); return; }
     if ((store.selectedEdgeCrossing || store.selectedCoincidentVertices || cageActive()) && meshSelect.buildMeshSelectionTools(mdoc)) return;
 

@@ -42,7 +42,7 @@ const norm = (a: V3): V3 => { const l = len(a) || 1; return [a[0] / l, a[1] / l,
  */
 export function sweepRail(rail: Rail, radius = RAIL_TUBE_RADIUS, sides = RAIL_TUBE_SIDES,
                           ringSpacing = RAIL_RING_SPACING): RailTubeGeom | null {
-  const dense = sampleRail(rail.nodes, 24);
+  const dense = sampleRail(rail.nodes, 24, rail.handles);
   if (dense.length < 2) return null;
   const pts: V3[] = [dense[0]];
   let acc = 0;

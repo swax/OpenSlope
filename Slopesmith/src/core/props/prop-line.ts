@@ -1,6 +1,6 @@
 import type { PlacedProp, PropLine, V3 } from '../doc/types';
 import type { LocalBox } from '../lighting/sign-lights';
-import { sampleRail } from '../rails/rails';
+import { sampleRail, type PathHandleList } from '../rails/rails';
 import { rotateByPlacement, rotateY, tiltFields, type PropRotation } from './pose';
 
 /**
@@ -212,10 +212,10 @@ function seated(target: V3, f: LineFootprint, scale: number, rotation: PropRotat
  * last joint on the last node. Null for a line under two nodes, or one whose points all coincide. Sheets lay
  * their spans between the same joints (docs/071).
  */
-export function lineJoints(nodes: readonly V3[], nominal: number, metric: Metric = 'plan'):
+export function lineJoints(nodes: readonly V3[], nominal: number, metric: Metric = 'plan', handles?: PathHandleList):
   { joints: V3[]; step: number } | null {
   if (nodes.length < 2) return null;
-  const points = sampleRail([...nodes], 24);
+  const points = sampleRail(nodes, 24, handles);
   const total = measure(sub(points[points.length - 1], points[0]), metric);
   if (total < 1e-3 && points.every(p => measure(sub(p, points[0]), metric) < 1e-3)) return null;
   return fittedJoints(points, Math.max(LINE_MIN_SPACING, nominal), metric);
@@ -229,7 +229,7 @@ export function layoutPropLine(line: PropLine, f: LineFootprint, ground: LineGro
   const span = line.place !== 'joint';
   const rake = span && line.rake === true;
   const nominal = lineNominalSpacing(line, f);
-  const fitted = lineJoints(line.nodes, nominal, rake ? 'space' : 'plan');
+  const fitted = lineJoints(line.nodes, nominal, rake ? 'space' : 'plan', line.handles);
   if (!fitted) return [];
   const { joints, step } = fitted;
   const groundAt = (p: V3) => ground(p[0], p[2], p[1]) ?? p[1];

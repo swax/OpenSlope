@@ -69,6 +69,7 @@ export function describeRegisters(keys: readonly string[]): string {
   const family = (...named: ObjectFamily[]) => has(key => named.includes(objectFamilyOf(key) as ObjectFamily));
   if (family('prop')) return 'Edit props';
   if (family('rail')) return 'Edit rails';
+  if (family('trail')) return 'Edit trails';
   if (family('gem')) return 'Edit gems';
   if (family('light')) return 'Edit lights';
   if (family('effect', 'effect-node')) return 'Edit effects';

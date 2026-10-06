@@ -261,7 +261,7 @@ const routerLayers = {
   selection: { clearRefLoops() {}, referenceMeshSelectionActive: () => false, cageHandleMeshes: [] },
   cage: { cage: true, subCage: false, visibleNubs: () => [] }, transforms: { mode: 'move' },
   clipboardPlacement: { active: false }, surgery: { tool: null, onCommit: () => false },
-  tubeTool: { active: false }, trailTool: { active: false }, patchTool: { active: false }, weldTool: { active: false },
+  tubeTool: { active: false }, trailTool: { active: false, pickKnot: () => false }, pathHandles: { pickHandle: () => false }, patchTool: { active: false }, weldTool: { active: false },
   createEdge: { armed: false, pickCoincidentVertices: () => null, pickEdgeCrossing: () => null },
   gems: { gemLine: null },
 } as unknown as Parameters<typeof createPointerRouter>[2];

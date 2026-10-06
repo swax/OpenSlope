@@ -1,7 +1,7 @@
 import type { CoursePath, CourseKnot, MountainMeta, PaintMap, TexPaintMap, QuadMeshDoc, V3 } from './types';
 import { normalizeEnvironmentBed } from '../audio/environment';
 import { normalizeAnnouncer } from '../audio/announcer';
-import { ensureGemIds, ensureLightIds, ensureScreenIds, seedMeshIds } from './ids';
+import { ensureGemIds, ensureLightIds, ensureScreenIds, ensureTrailIds, seedMeshIds } from './ids';
 import { keyMountainByIndex, storedById } from './serialize';
 import { frameAt, sampleSpine, spineAt, totalLength, type SpineSample } from '../math/spine';
 import { add, dot, lerp, mul, norm, sub } from '../math/vec';
@@ -1291,6 +1291,7 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
     ensureGemIds(doc.gems);
     ensureScreenIds(doc.screens);
     ensurePropLineIds(doc.propLines);
+    ensureTrailIds(doc.trails);
     normalizeLabels(doc);
     // A dropped `edgeHandles` key raises nothing: the edge falls back to its Bessel default and the terrain
     // quietly changes shape (docs/039). Loading a stored mountain re-keys every one of them from an id to an

@@ -594,6 +594,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     onSelectRailNode(rail: number | null, node: number | null) {
       store.selectedRail = rail;
       store.selectedNode = node;
+      store.pathHandle = null; // a node takes the gizmo back from a Bézier handle (docs/014)
       if (rail !== null) {
         store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.railDrawing = false;
         clearScreenState();
@@ -612,6 +613,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     onSelectLineNode(line: string | null, node: number | null) {
       store.selectedLine = line;
       store.selectedLineNode = node;
+      store.pathHandle = null; // a node takes the gizmo back from a Bézier handle (docs/014)
       if (line !== null) {
         store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.selectedRefProp = null;
         store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;

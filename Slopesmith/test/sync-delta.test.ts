@@ -18,6 +18,7 @@ import { applyVertexWeld } from '../src/core/mesh/ops/weld';
 import { applyEdgeRip } from '../src/core/mesh/ops/edge-rip';
 import { appendStandalonePatch } from '../src/core/mesh/ops/append';
 import { meshAdjacency, meshFromDoc } from '../src/core/mesh/topology';
+import { cutTrail, TRAIL_SETTINGS_DEFAULTS } from '../src/core/mesh/trail-object';
 import { check } from './check';
 
 /**
@@ -241,4 +242,21 @@ if (deleted.ok) {
     const result = applyTopologyDelta(lab, bad);
     check(!result.ok, `malformed input is refused rather than thrown on: ${label}`);
   }
+}
+
+// ---- an owned trail (docs/023): cutting it, and re-cutting it longer, travel as a delta plus its register --------
+{
+  const trail = { id: 'trail:0000', knots: [[400, 0, 0], [400, 0, 100]] as [number, number, number][],
+    settings: { ...TRAIL_SETTINGS_DEFAULTS }, vertices: [] as string[], quads: [] as string[] };
+  const cut = cutTrail(lab, trail);
+  if (cut.ok) {
+    cut.doc.trails = [cut.trail];
+    roundTrip('trail cut', lab, cut.doc);
+    const longer = cutTrail(cut.doc, { ...cut.trail, knots: [...cut.trail.knots, [450, 0, 180]],
+      handles: [null, { out: [0, 0, 20] }] });
+    if (longer.ok) {
+      longer.doc.trails = [longer.trail];
+      roundTrip('trail re-cut', cut.doc, longer.doc);
+    } else check(false, 'trail re-cut: the longer trail cuts', longer.error);
+  } else check(false, 'trail cut: the trail cuts', cut.error);
 }

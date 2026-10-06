@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { defaultMountain, migrateMountain } from '../src/core/doc/mountain';
 import { applyRegisters } from '../src/core/doc/registers';
+import { CORE_VERSION } from '../src/core/session/protocol';
 import { forgetAccounts } from '../src/server/accounts/store';
 import { startApiService, type ApiService } from '../src/server/main';
 import { checkpointNow, createProject } from '../src/server/projects';
@@ -80,9 +81,9 @@ try {
     assert.deepEqual(olderReplica.props, roomFor(projectId)!.doc.props);
   }
 
-  const writer = await open('3');
-  const current = await open('3');
-  const older = await open('2');
+  const writer = await open(CORE_VERSION);
+  const current = await open(CORE_VERSION);
+  const older = await open(String(Number(CORE_VERSION) - 1));
   const joined = await message(older, 'joined');
   assert.equal(joined.writable, false);
   assert.equal((await message(current, 'joined')).writable, true);

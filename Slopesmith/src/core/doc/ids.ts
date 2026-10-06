@@ -1,4 +1,4 @@
-import type { AuthoredLight, Gem, QuadMeshDoc, Screen } from './types';
+import type { AuthoredLight, AuthoredTrail, Gem, QuadMeshDoc, Screen } from './types';
 
 /**
  * Stable vertex and quad identity (docs/039). An id is `installId:counter`, minted once when the element is
@@ -133,6 +133,7 @@ function nextObjectId(objects: readonly Identified[], family: string): string {
 export const nextLightId = (lights: readonly AuthoredLight[]): string => nextObjectId(lights, 'light');
 export const nextGemId = (gems: readonly Gem[]): string => nextObjectId(gems, 'gem');
 export const nextScreenId = (screens: readonly Screen[]): string => nextObjectId(screens, 'screen');
+export const nextTrailId = (trails: readonly AuthoredTrail[]): string => nextObjectId(trails, 'trail');
 
 /** Name in place what a document carries unnamed — one saved before these families had ids, or one whose list
  *  holds the same id twice, which is two objects answering to one register. */
@@ -151,3 +152,4 @@ function ensureObjectIds(objects: Identified[] | undefined, family: string): voi
 export const ensureLightIds = (lights: AuthoredLight[] | undefined): void => ensureObjectIds(lights, 'light');
 export const ensureGemIds = (gems: Gem[] | undefined): void => ensureObjectIds(gems, 'gem');
 export const ensureScreenIds = (screens: Screen[] | undefined): void => ensureObjectIds(screens, 'screen');
+export const ensureTrailIds = (trails: AuthoredTrail[] | undefined): void => ensureObjectIds(trails, 'trail');

@@ -185,7 +185,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
       if (!source) return null;
       const selected = deps.selectedEdges(), edges = edgeIndices(source, selected);
       const rail = pathId ? source.rails?.find(rail => rail.id === pathId) : null;
-      const points = rail ? sampleRail(rail.nodes) : [];
+      const points = rail ? sampleRail(rail.nodes, 12, rail.handles) : [];
       if (reversePath) points.reverse();
       const result = pathId
         ? rail ? pathEdgeExtrusionPlacement(source, staged.plan, points)

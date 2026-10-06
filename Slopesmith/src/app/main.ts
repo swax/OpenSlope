@@ -62,6 +62,7 @@ import { createReference } from './reference/session';
 import { createSkybox } from './sky/session';
 import { createEditSession } from './edit/session';
 import { createViewportCallbacks } from './viewport-callbacks';
+import { createPathHandleOps } from './paths/handles';
 import { installShortcuts } from './shortcuts';
 import { MODE_SHORTCUTS } from './mode-shortcuts';
 import { createEffectsEditor, type EffectsEditor } from './effects/editor';
@@ -786,8 +787,12 @@ function renderMountainObjects() {
 
 function renderMountainDetails() {
   viewport.setFreeLights(store.mdoc.lights ?? [], store.selectedLight, selectedSetLights(store));
-  viewport.setRails(store.mdoc.rails ?? [], store.selectedRail, store.selectedNode);
-  viewport.setPropLines(propLines.displayLines(), store.selectedLine, store.selectedLineNode); // docs/070
+  // A node whose Bézier handle holds the gizmo leaves it there, so its own layer is told no node is selected.
+  viewport.setRails(store.mdoc.rails ?? [], store.selectedRail, pathHandles.holds('rail') ? null : store.selectedNode);
+  viewport.setPropLines(propLines.displayLines(), store.selectedLine, // docs/070
+    pathHandles.holds('line') ? null : store.selectedLineNode);
+  edit.syncTrailView(true); // a trail's knots follow its document: an undo, a re-cut, a remote edit (docs/023)
+  pathHandles.sync(); // last, so a selected handle wins the gizmo (docs/014)
   viewport.setGems(store.mdoc.gems ?? [], store.selectedGem);
   // Screens resolve against the placements they are attached to, so they rebuild whenever either does.
   viewport.setScreens(store.mdoc.screens ?? [], store.mdoc.props, store.selectedScreen);
@@ -968,6 +973,8 @@ function restoreDoc(json: string) {
   store.selectedEdgeCrossing = null;
   store.selectedCoincidentVertices = null;
   if (store.surgeryTool) { store.surgeryTool = null; viewport.setSurgeryTool(null); } // its ghost previews the OLD net
+  store.trailKnot = null;          // the trail it was on may not be in the restored document
+  store.pathHandle = null;         // …and the path a handle was selected on
   if (store.weldTool) { store.weldTool = null; store.weldSource = []; store.weldEdgeSource = []; viewport.setWeldTool(false); } // its source ids belong to the OLD net
   cancelCourseReset();             // a course being redrawn was clicked onto the OLD terrain
   exitRegion();                    // region + cell + edge selections (refreshEditCells / refreshEditEdges drop the cage handles)
@@ -1157,8 +1164,21 @@ const propLines = createPropLineOps({
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
 });
+// Bézier handles on every authored path (docs/014): rails, motion paths, prop lines and trails share one handle
+// layer and one coordinator (paths/handles.ts), which hands each drag to the family it reshapes.
+const pathHandles = createPathHandleOps({
+  store, viewport, scheduleRebuild,
+  selectedTrail: edit.selectedTrail,
+  setTrailHandles: edit.setTrailHandles,
+  trailDrag: edit.knotDrag,
+  setLineHandles: propLines.setHandles,
+  rebuildTools: () => rebuildTools(),
+});
+viewportCallbacks.onSelectPathHandle = pathHandles.select;
+viewportCallbacks.onMovePathHandle = pathHandles.move;
+viewportCallbacks.onPathHandleDrag = pathHandles.drag;
 const effects = createEffectsEditor({
-  store, viewport, scheduleRebuild, goToProp, goToRail,
+  store, viewport, scheduleRebuild, goToProp, goToRail, pathHandles,
   goToSpecialProp: id => specialProps.select(id),
   goToPropTools,
   loadPropLevel: propOps.ensurePropLevel,
@@ -1630,7 +1650,7 @@ const usersMode = createUsersMode({
 });
 void voice.probe();
 const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
-  store, viewport, edit, palette, propPreview, propLib, library, propLibToggle, brush, gemTool,
+  store, viewport, edit, pathHandles, palette, propPreview, propLib, library, propLibToggle, brush, gemTool,
   showScene: setSceneVisible,
   usersActive: () => usersMode.active(),
   refreshShowFilters: () => viewShow.refresh(),

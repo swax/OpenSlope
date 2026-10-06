@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { MeshBVH } from 'three-mesh-bvh';
-import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type PropLine, type V3 } from '../../core/doc/types';
+import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type PropLine, type PathHandles, type V3 } from '../../core/doc/types';
 import { meshAdjacency, meshCageEdges, meshFromDoc, quadControlPoints, docEdgeHandles, INTERIOR_CP, type MeshAdjacency, type EdgeHandle } from '../../core/mesh/topology';
 import { meshEdgeSegments } from '../../core/mesh/selection';
 import { findTJunctions } from '../../core/mesh/t-junctions';
@@ -59,7 +59,7 @@ import { runDiagnosticPhase, runDiagnosticPhaseAsync } from '../net/diagnostics'
 import type { SharedCameraView } from '../../core/session/screen-share';
 import { nearestSkyWorld, type SkyPreviewTarget } from '../sky/preview';
 
-import { type GizmoFrame, type GizmoMode, type MeshSelectionState, type Mode, type RotationSnapStep, type ShadeMode, type SnapStep, type ViewState, type PickResult, type ViewportCallbacks } from './types';
+import { type GizmoFrame, type GizmoMode, type MeshSelectionState, type Mode, type RotationSnapStep, type ShadeMode, type SnapStep, type ViewState, type PickResult, type ViewportCallbacks, type EditTransformTarget } from './types';
 export type { GizmoFrame, GizmoMode, MeshSelectionState, Mode, RotationSnapStep, ShadeMode, SnapStep, ViewState, PickResult, ViewportCallbacks, MeshControlPointId };
 import { TOUCH_NONE, REF_LOAD_OFFSET_X, CAGE_EDGE_SEG, CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, LOOP_RENDER_ORDER, LIVE_EDIT_FILL_COLOR, LIVE_EDIT_FILL_OPACITY, CTRL_CAGE_COLOR, SURFACE_POLY_OFFSET } from './constants';
 import { Stage, type GizmoKind } from './stage';
@@ -119,6 +119,7 @@ import { createBridgePreviewLayer, type BridgePreviewLayer } from './tools/bridg
 import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch';
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
 import { createTrailToolLayer, type TrailToolLayer } from './tools/create-trail';
+import { createPathHandlesLayer, type PathHandleSide, type PathHandlesLayer, type ShownPath } from './scene/path-handles';
 import { createCourseDrawLayer, type CourseDrawHandlers, type CourseDrawLayer } from './tools/course-draw';
 import { fadeObject } from './shared/fade';
 import { createPointerRouter, type PointerRouter } from './input/pointer-router';
@@ -218,6 +219,7 @@ export class Viewport {
   readonly tubeTool: TubeToolLayer;
   private createTubePreviewListener: (() => void) | null = null;
   readonly trailTool: TrailToolLayer;
+  readonly pathHandles: PathHandlesLayer;
   private createTrailPreviewListener: (() => void) | null = null;
   readonly courseDraw: CourseDrawLayer; // Info's reset course: the run redrawn by clicking the terrain
   private courseDragY: number | null = null; // the ground a dragged course knot / flag last stood on
@@ -550,8 +552,25 @@ export class Viewport {
         else this.gizmoReadout.end();
         return;
       }
+      if (this.gizmoKind === 'trail') { // the whole trail: the knot layer transforms it, not the mesh transforms
+        this.trailTool.wholeDragging(dragging);
+        if (dragging) this.gizmoReadout.begin(this.transforms.mode); else this.gizmoReadout.end();
+        this.cb.onTrailKnotDrag?.(dragging);
+        return;
+      }
+      if (this.gizmoKind === 'trailknot') this.cb.onTrailKnotDrag?.(dragging);
+      if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner) this.cb.onPathHandleDrag?.(this.pathHandles.owner, dragging);
       const meshTransform = this.gizmoKind === 'corner' || this.gizmoKind === 'corners' || this.gizmoKind === 'editmixed'
         || this.gizmoKind === 'controlpoints' || this.gizmoKind === 'handle' || this.gizmoKind === 'cagehandle';
+      // A drag on something locked is refused before any transform begins: the gizmo is held where it was for the
+      // whole drag (onGizmoChange) and the host says why, so the refusal reads as one, not as a dead handle.
+      if (!dragging && this.heldGizmo) { this.holdGizmo(); this.heldGizmo = null; return; }
+      if (dragging && meshTransform && this.cb.onEditTransformBegin?.(this.editTransformTarget()) === false) {
+        const obj = this.gizmo.object;
+        this.heldGizmo = obj
+          ? { obj, position: obj.position.clone(), quaternion: obj.quaternion.clone(), scale: obj.scale.clone() } : null;
+        return;
+      }
       if (dragging) {
         const mode = this.transforms.rotationActive() ? 'rotate' : this.transforms.scaleActive() ? 'scale' : 'move';
         this.gizmoReadout.begin(mode);
@@ -628,10 +647,14 @@ export class Viewport {
       const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
       return pos ? { vertex, pos } : null;
     });
-    this.trailTool.setListener(pointsChanged => {
-      if (pointsChanged) this.cb.onCreateTrailPointsChange?.();
-      this.createTrailPreviewListener?.();
+    this.trailTool.setListener(() => this.createTrailPreviewListener?.());
+    this.trailTool.setHost({
+      append: pos => this.cb.onAppendTrailKnot?.(pos),
+      select: knot => this.cb.onSelectTrailKnot?.(knot),
+      transform: (knots, handles) => this.cb.onTransformTrail?.(knots, handles),
     });
+    this.pathHandles = createPathHandlesLayer(this.stage); // the selected path's Bézier handles (docs/014)
+    this.pathHandles.setHost({ select: (owner, node, side) => this.cb.onSelectPathHandle?.(owner, node, side) });
     this.courseDraw = createCourseDrawLayer(this.stage, () => this.terrain);
     this.bridgePreview = createBridgePreviewLayer(this.stage, {
       preview: () => this.preview,
@@ -951,7 +974,7 @@ export class Viewport {
         const rail = complete[originalIndex];
         return rail ? {
           originalIndex, style: nativeSplineFields(rail).style,
-          segments: railBezierSegments(rail.nodes).map(segment => segment.map(point => [...point])),
+          segments: railBezierSegments(rail.nodes, rail.handles).map(segment => segment.map(point => [...point])),
           space: 'editor' as const,
         } : null;
       },
@@ -1082,7 +1105,7 @@ export class Viewport {
       selection: this.selection, picking: this.picking, scenePicking: this.scenePicking,
       cage: this.cageLayer, transforms: this.transforms,
       cameraCtl: this.cameraCtl, rideCtl: this.rideCtl, surgery: this.surgery, patchTool: this.patchTool,
-      tubeTool: this.tubeTool, trailTool: this.trailTool, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
+      tubeTool: this.tubeTool, trailTool: this.trailTool, pathHandles: this.pathHandles, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
       courseDraw: this.courseDraw, edgeExtrusion: this.edgeExtrusion, createEdge: this.createEdge, bridgePreview: this.bridgePreview,
       gems: this.gems, screens: this.screens, props: this.props, lights: this.lights, rails: this.rails,
       propLines: this.propLines,
@@ -1840,6 +1863,7 @@ export class Viewport {
     }
     if (m !== 'effects') { this.effectHandle.visible = false; if (this.gizmoKind === 'effect') this.detachGizmo(); }
     if (m !== 'edit' && (this.surgery.tool || this.patchTool.active || this.tubeTool.active || this.trailTool.active)) this.setSurgeryTool(null); // surgery is Edit-only
+    if (m !== 'edit') this.trailTool.setKnots([], null); // trail knots are Edit's handles
     if (m !== 'edit' && this.clipboardPlacement.active) this.setPasteTool(null); // clipboard placement is Edit-only too
     if (m !== 'edit' && this.weldTool.active) this.setWeldTool(false); // the target-weld gesture is Edit-only too
     if (m !== 'info') this.clearRefSelection(); // the whole-reference move handle is Info's
@@ -2554,11 +2578,35 @@ export class Viewport {
     return new MeshBVH(twin);
   }
 
+  /** The pose a refused (locked) gizmo drag is held at, until the drag ends. */
+  private heldGizmo: { obj: THREE.Object3D; position: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 } | null = null;
+
+  private holdGizmo() {
+    const held = this.heldGizmo;
+    if (!held) return;
+    held.obj.position.copy(held.position);
+    held.obj.quaternion.copy(held.quaternion);
+    held.obj.scale.copy(held.scale);
+  }
+
+  /** What the mesh gizmo is seated on, resolved far enough for the host to tell whether it is locked. */
+  private editTransformTarget(): EditTransformTarget {
+    if (this.gizmoKind === 'handle') return { kind: 'handle', dir: this.gizmoDir };
+    if (this.gizmoKind === 'cagehandle') {
+      const handle = this.selection.selectedCageHandle;
+      return { kind: 'cagehandle', handle: !handle ? null
+        : handle.kind === 'edge' ? { kind: 'edge', from: handle.from, to: handle.to } : { kind: 'twist', quad: handle.quad } };
+    }
+    return { kind: this.gizmoKind as 'corner' | 'corners' | 'controlpoints' | 'editmixed' };
+  }
+
   /** A gizmo drag moved its target: forward the new world position through the matching callback. */
   private onGizmoChange() {
     const obj = this.gizmo.object;
     if (!obj) return;
+    if (this.heldGizmo) { this.holdGizmo(); return; }
     if (this.gizmoKind === 'edgeextrusion') { this.edgeExtrusion.onGizmoChange(); this.gizmoReadout.update(); return; }
+    if (this.gizmoKind === 'trail') { this.trailTool.wholeChanged(); this.gizmoReadout.update(); return; }
     if (this.transforms.rotationActive()) { this.transforms.rotateSelection(); this.gizmoReadout.update(); return; }
     if (this.transforms.scaleActive()) { this.transforms.scaleSelection(); this.gizmoReadout.update(); return; }
     if (this.transforms.slideRecut(obj)) { this.gizmoReadout.update(); return; } // Slide, arrow or tangent pad: an exact de Casteljau re-cut owns the frame
@@ -2616,6 +2664,11 @@ export class Viewport {
     else if (this.gizmoKind === 'light' && this.lights.selectedLight !== null) this.cb.onMoveLight?.(this.lights.selectedLight, p);
     else if (this.gizmoKind === 'railnode' && this.rails.selectedRail !== null && this.rails.selectedNode !== null) this.cb.onMoveRailNode?.(this.rails.selectedRail, this.rails.selectedNode, p);
     else if (this.gizmoKind === 'linenode' && this.propLines.selectedLine !== null && this.propLines.selectedNode !== null) this.cb.onMoveLineNode?.(this.propLines.selectedLine, this.propLines.selectedNode, p);
+    else if (this.gizmoKind === 'trailknot' && this.trailTool.selectedKnot !== null) this.cb.onMoveTrailKnot?.(this.trailTool.selectedKnot, p);
+    else if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner && this.pathHandles.selected) {
+      const { node, side } = this.pathHandles.selected;
+      this.cb.onMovePathHandle?.(this.pathHandles.owner, node, side, p, this.independentDrag);
+    }
     else if (this.gizmoKind === 'gem' && this.gems.selectedGem !== null) this.cb.onMoveGem?.(this.gems.selectedGem, p);
     else if (this.gizmoKind === 'screen' && this.screens.selectedScreen !== null) this.cb.onMoveScreen?.(this.screens.selectedScreen, p);
     else if (this.gizmoKind === 'effect') this.cb.onMoveEffect?.(p);
@@ -2722,10 +2775,21 @@ export class Viewport {
   get createTubePreviewPoint(): V3 | null { return this.tubeTool.hover; }
   setCreateTubePreviewListener(listener: (() => void) | null) { this.createTubePreviewListener = listener; listener?.(); }
 
-  get createTrailPoints(): readonly V3[] { return this.trailTool.points; }
   get createTrailPreviewPoint(): V3 | null { return this.trailTool.hover; }
-  removeLastCreateTrailPoint() { this.trailTool.removeLast(); }
+  /** Show the selected path's Bézier handles (null hides them), `handle` carrying the gizmo (docs/014). */
+  setPathHandles(path: ShownPath | null, handle: { node: number; side: PathHandleSide } | null) {
+    this.pathHandles.setPath(path, handle);
+  }
+
+  /** Show a trail's centre-spline knots in Edit mode (none hides them), `knot` carrying the gizmo — or, with a
+   *  `pivot`, the whole trail carrying it there (docs/023). */
+  setTrailKnots(knots: readonly V3[], knot: number | null, handles?: readonly (PathHandles | null | undefined)[],
+    pivot: V3 | null = null) {
+    this.trailTool.setKnots(knots, knot, handles, pivot);
+  }
   setCreateTrailSurfaceLift(value: number) { this.trailTool.setSurfaceLift(value); }
+  /** Create Trail draws onto the trail's start or its end (docs/023). */
+  setTrailDrawEnd(end: 'start' | 'end') { this.trailTool.setDrawEnd(end); }
   setCreateTrailPreviewListener(listener: (() => void) | null) { this.createTrailPreviewListener = listener; listener?.(); }
 
   /** Info ▸ Course ▸ reset course: arm clicking a new run onto the terrain. The knot gizmo goes — every click

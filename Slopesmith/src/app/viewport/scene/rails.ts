@@ -282,7 +282,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     // The Effects palette follows the mode, not the exception: a rail selected in Props view keeps the amber
     // node bulbs it has always had there.
     const effectsPalette = !motionPath && effectRailsVisible;
-    const sampled = motionPath || guide ? sampleRail(rail.nodes, 24) : [];
+    const sampled = motionPath || guide ? sampleRail(rail.nodes, 24, rail.handles) : [];
     if (sampled.length >= 2) {
       let line: THREE.Object3D;
       if (motionPath) {

@@ -211,6 +211,7 @@ export function createTransformLayer(
    *  lone free point, whose own frame (its path direction and roll) is what it turns. */
   function rotationActive(): boolean {
     if (gizmoMode !== 'rotate') return false;
+    if (stage.gizmoKind === 'trail') return true; // the trail turns itself (viewport/tools/create-trail.ts)
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
     if (stage.gizmoKind === 'corner') return selectedFreePoint() !== null;
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
@@ -226,6 +227,7 @@ export function createTransformLayer(
   /** Scale has the same extent requirement as rotation; a lone point has no size to transform. */
   function scaleActive(): boolean {
     if (gizmoMode !== 'scale') return false;
+    if (stage.gizmoKind === 'trail') return true;
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
     if (stage.gizmoKind === 'controlpoints') return sel.controlPointSel().length > 1;

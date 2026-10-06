@@ -53,7 +53,7 @@ const layers = {
   picking: { vertexSourceAtPointer: () => 'authored' },
   selection: { finishEditMarquee: (mode: string) => editModes.push(mode) },
   cage: { cage: true }, courseDraw: { active: false }, clipboardPlacement: { active: false },
-  surgery: { tool: null, onCommit: () => false }, tubeTool: { active: false }, trailTool: { active: false },
+  surgery: { tool: null, onCommit: () => false }, tubeTool: { active: false }, trailTool: { active: false, pickKnot: () => false }, pathHandles: { pickHandle: () => false },
   patchTool: { active: false }, weldTool: { active: false }, createEdge: { armed: false },
 };
 const knots = [-5, 0, 5].map((x, index) => {

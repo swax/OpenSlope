@@ -2,7 +2,7 @@ import type GUI from 'lil-gui';
 import type { MultiSelectList } from '../../props/multi-select-list';
 import type { BridgeRailList } from '../components/bridge-rail-list';
 import type { ToolsPanelDeps } from './tools-panel-deps';
-import { tip } from '../components/gui';
+import { note, tip } from '../components/gui';
 
 /**
  * The shared vocabulary of the per-mode Tools builders (ui/tool-panels/*): the metric formatters every read-out
@@ -39,6 +39,21 @@ export function placementCancelButton(ctx: ToolsContext) {
     store.railDrawing
       ? 'Put the rail tool down; a rail with fewer than two points is discarded.'
       : 'Put the tool down; nothing already placed is removed.');
+}
+
+/**
+ * A path's Bézier handles (docs/014), the same rows on every panel that edits one — rail, motion path, prop line,
+ * trail: how to bend the curve, then the resets once something has been bent. The node reset acts on the point
+ * whose handle (or bulb) is selected; the path reset on every point.
+ */
+export function pathHandleActions(ctx: ToolsContext, g: GUI) {
+  const { pathHandles } = ctx;
+  const state = pathHandles.resetState();
+  note(g, 'drag a pink handle of the selected point to bend the curve · hold Alt to move one side alone');
+  if (state.node) tip(g.add({ reset: pathHandles.resetNode }, 'reset').name('↺ reset this point’s handles'),
+    'Put this point back on the automatic smooth curve.');
+  if (state.path) tip(g.add({ resetAll: pathHandles.resetPath }, 'resetAll').name('↺ reset all handles'),
+    'Put every point back on the automatic smooth curve.');
 }
 
 /** Metric read-outs (Edit toolbox): a length in metres to one decimal, an area in m² (whole numbers once it's

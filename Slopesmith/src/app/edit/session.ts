@@ -39,9 +39,10 @@ import {
   type NamedEdge, type QuadName, type VertexName,
 } from '../state/mesh-names';
 import { commitEditMesh, editMesh } from './mesh-target';
-import type { EditMarqueeSelection, RigidCornerUpdate, ViewportCallbacks } from '../viewport/types';
+import type { EditMarqueeSelection, EditTransformTarget, RigidCornerUpdate, ViewportCallbacks } from '../viewport/types';
 import { toast } from '../ui/components/toast';
 import { createTopologyTools } from './topology';
+import { createTrailTools } from './trails';
 import { createMeshClipboardSession } from './clipboard';
 import type { EditViewportPort } from './viewport-port';
 
@@ -52,8 +53,9 @@ type EditCallbackName =
   | 'onMoveCorners' | 'onMoveControlPoints' | 'onMoveMixedEditSelection' | 'onRotateMixedEditSelection'
   | 'onRotateControlPoints' | 'onRotateCorners'
   | 'onScaleControlPoints' | 'onScaleCorners' | 'onSlideCorners'
-  | 'onSlideBegin' | 'onSlideRecut' | 'onSlideMergePending' | 'onSlideEnd' | 'onEditTransformEnd'
-  | 'onCreateEdgePoint' | 'onCreateTubeAxisChange' | 'onCreateTrailPointsChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
+  | 'onSlideBegin' | 'onSlideRecut' | 'onSlideMergePending' | 'onSlideEnd' | 'onEditTransformBegin' | 'onEditTransformEnd'
+  | 'onCreateEdgePoint' | 'onCreateTubeAxisChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
+  | 'onAppendTrailKnot' | 'onSelectTrailKnot' | 'onMoveTrailKnot' | 'onTrailKnotDrag' | 'onTransformTrail'
   | 'onSelectEditCell' | 'onSelectCellLoop' | 'onSelectEdge' | 'onSelectEdgeLoop'
   | 'onExtrudeEdges' | 'onCommitExtrudeEdges' | 'onExtrudeStageChange' | 'onExtrudeEdgeSelection' | 'onExtrudeEdgesInvalid' | 'onRefSelectionChange'
   | 'onMoveCorner' | 'onMoveHandle' | 'onMoveCageHandle' | 'onMoveTwist';
@@ -91,7 +93,6 @@ export function createEditSession(deps: EditSessionDeps) {
   let slideBase: QuadMeshDoc | null = null;
   let slideWeld: [number, number][] = [];
   let tubePointCount = -1;
-  let trailPointCount = -1;
   let selectedDirNb: Record<HandleDir, number> | null = null;
 
   type EditSelectionKind = 'point' | 'edge' | 'patch' | 'prop';
@@ -376,14 +377,21 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   /** Every topology corner implied by the selected point / edge / patch families, resolved once and
-   * de-duplicated. Locked vertices remain highlighted but do not contribute to the movable centroid. */
-  function mixedEditMoveVertices(): number[] {
-    const doc = mdoc(), locked = lockedVertexSet(doc), vertices = new Set<number>();
+   * de-duplicated, locked or not. */
+  function mixedEditSelectionVertices(): number[] {
+    const doc = mdoc(), vertices = new Set<number>();
     for (const point of controlPointIndices(doc, store.controlSel)) if (point.kind === 'vertex') vertices.add(point.vertex);
     for (const vertex of selectedVertexIndices()) vertices.add(vertex);
     for (const [a, b] of edgeSelIndices()) { vertices.add(a); vertices.add(b); }
     for (const quad of cellSelIndices()) for (const vertex of quadVerts(doc, quad)) vertices.add(vertex);
-    return [...vertices].filter(vertex => !locked.has(vertex)).sort((a, b) => a - b);
+    return [...vertices].sort((a, b) => a - b);
+  }
+
+  /** The movable part of `mixedEditSelectionVertices`: locked vertices remain highlighted but do not contribute
+   * to the movable centroid. */
+  function mixedEditMoveVertices(): number[] {
+    const locked = lockedVertexSet(mdoc());
+    return mixedEditSelectionVertices().filter(vertex => !locked.has(vertex));
   }
 
   function mixedEditFloatingPoints(): MeshControlPointId[] {
@@ -681,11 +689,80 @@ export function createEditSession(deps: EditSessionDeps) {
    *  the geometry it acts on. */
   function editMoveSet(): number[] {
     const locked = lockedVertexSet(mdoc());
-    if (store.regionSel.length) return selectedVertexIndices().filter(vertex => !locked.has(vertex));
+    return editSelectionVertices().filter(vertex => !locked.has(vertex));
+  }
+
+  /** Every corner the region / edge / patch selection names, locked or not — what `editMoveSet` filters. */
+  function editSelectionVertices(): number[] {
+    if (store.regionSel.length) return selectedVertexIndices();
     const verts = new Set<number>();
     if (store.edgeSel.length) for (const [a, b] of edgeSelIndices()) { verts.add(a); verts.add(b); }
     else for (const q of cellSelIndices()) for (const v of quadVerts(mdoc(), q)) verts.add(v);
-    return [...verts].filter(vertex => !locked.has(vertex)).sort((a, b) => a - b);
+    return [...verts].sort((a, b) => a - b);
+  }
+
+  /** Why the locked part of a move stays put: it belongs to a trail, it was locked by hand, or some of each. */
+  function lockedMoveReason(trailed: boolean, plain: boolean, many: boolean): string {
+    const is = many ? 'they are' : 'it is';
+    if (trailed && plain) return `${is} locked and part of a trail. Drag the trail’s knots to reshape it, or unlock the other patches under Visibility`;
+    if (trailed) return `${is} part of a trail. Click the trail to move it whole, or drag its knots to reshape it`;
+    return `${many ? 'their' : 'its'} patches are locked. Unlock them under Visibility to move ${many ? 'them' : 'it'}`;
+  }
+
+  /**
+   * A mesh gizmo drag is starting. Moves already pass locked geometry by, silently; this is where the user hears
+   * about it. A drag whose every point is locked is refused — the viewport holds the gizmo still — and one that
+   * is only partly locked goes ahead with a warning naming what stays put. A trail's patches count as locked
+   * because they are (docs/023), but they are told apart: what moves a trail is its knots.
+   */
+  function beginEditTransform(target: EditTransformTarget): boolean {
+    const doc = mdoc();
+    const lockedVertices = lockedVertexSet(doc), lockedEdges = lockedEdgeSet(doc);
+    const trailVertices = trails.trailVertexIndices();
+    const items: { locked: boolean; trail: boolean }[] = [];
+    const vertex = (v: number) => items.push({ locked: lockedVertices.has(v), trail: trailVertices.has(v) });
+    const edge = (a: number, b: number) => items.push({
+      locked: edgeIsLocked(doc, a, b, lockedEdges), trail: trailVertices.has(a) && trailVertices.has(b),
+    });
+    const twist = (quad: number) => items.push({ locked: quadIsLocked(doc, quad), trail: !!trails.trailAtQuad(quad) });
+    const point = (id: MeshControlPointId<number>) => {
+      if (id.kind === 'vertex') vertex(id.vertex);
+      else if (id.kind === 'edge') edge(id.from, id.to);
+      else twist(id.quad);
+    };
+    switch (target.kind) {
+      case 'corner': {
+        const at = store.selectedCorner === null ? null : vAt(store.selectedCorner);
+        if (at !== null) vertex(at);
+        break;
+      }
+      case 'corners': for (const v of editSelectionVertices()) vertex(v); break;
+      case 'controlpoints': for (const id of controlPointIndices(doc, store.controlSel)) point(id); break;
+      case 'editmixed':
+        for (const v of mixedEditSelectionVertices()) vertex(v);
+        for (const id of controlPointIndices(doc, store.controlSel)) if (id.kind !== 'vertex') point(id);
+        break;
+      case 'handle': {
+        const at = store.selectedCorner === null ? null : vAt(store.selectedCorner);
+        const neighbour = selectedDirNb?.[target.dir as HandleDir];
+        if (at !== null && neighbour !== undefined && neighbour >= 0) edge(at, neighbour);
+        break;
+      }
+      case 'cagehandle':
+        if (target.handle?.kind === 'edge') edge(target.handle.from, target.handle.to);
+        else if (target.handle) twist(target.handle.quad);
+        break;
+    }
+    const locked = items.filter(item => item.locked);
+    if (!locked.length) return true;
+    const trailed = locked.some(item => item.trail), plain = locked.some(item => !item.trail);
+    if (locked.length === items.length) {
+      const many = items.length > 1;
+      toast(`Can’t move ${many ? 'these' : 'this'}: ${lockedMoveReason(trailed, plain, many)}.`, 'err', 5000);
+      return false;
+    }
+    toast(`${locked.length} of ${items.length} points stay put: ${lockedMoveReason(trailed, plain, locked.length > 1)}.`, 'warn', 5000);
+    return true;
   }
 
   function selectedPatchLockState(): { total: number; locked: number } {
@@ -710,8 +787,13 @@ export function createEditSession(deps: EditSessionDeps) {
 
   function seatEditMoveGizmo() {
     if (view().edgeExtrusionStaged && view().edgeExtrusionMode === 'path') { view().detachSelectionGizmo(); return; }
+    // A selected trail carries its own gizmo — on a picked knot, or on the whole trail — and its patches, which
+    // only the trail moves, never take it (docs/023).
+    if (trails.selectedTrail()) { view().setCornerGroup([]); return; }
     const verts = editMoveSet();
-    view().setCornerGroup(verts.map(v => getVertex(mdoc(), v)), verts, false);
+    // An all-locked selection still gets the gizmo, so grabbing it can say why nothing moves (beginEditTransform).
+    const shown = verts.length ? verts : editSelectionVertices();
+    view().setCornerGroup(shown.map(v => getVertex(mdoc(), v)), shown, false);
   }
 
   function crossFamilyModifier(family: 'corner' | 'edge' | 'cell'): boolean {
@@ -853,7 +935,8 @@ export function createEditSession(deps: EditSessionDeps) {
         : store.selectedCorner !== null ? [{ kind: 'vertex', vertex: store.selectedCorner } as MeshControlPointId] : [];
     const incomingPoints = selection.points.filter(point => controlPointIndex(doc, point) !== null);
     const incomingEdges = namedEdges(doc, selection.edges);
-    const incomingPatches = quadNames(doc, selection.patches);
+    // A trail goes in or out whole too, however many of its patches the box caught (docs/023).
+    const incomingPatches = trails.withWholeTrails(quadNames(doc, selection.patches));
     const currentProps = store.multiSel.length ? store.multiSel
       : store.selectedProp !== null ? [store.selectedProp] : [];
     // Shift and Ctrl boxes add to or take from the set, keeping its lights; a plain box starts over.
@@ -1055,12 +1138,34 @@ export function createEditSession(deps: EditSessionDeps) {
     store.anchorControl = anchor ?? target;
   }
 
+  /** A trail's patches select as one (docs/023): the whole ribbon, which is what shows its knots and panel. */
+  function selectTrailAt(quad: number): boolean {
+    const trail = trails.trailAtQuad(quad);
+    if (!trail) return false;
+    dropPlacementSelection();
+    resetGizmoMode();
+    dropCornerSel();
+    clearEdgeSel();
+    store.cellLoopSeed = null;
+    store.cellSel = [...trail.quads];
+    store.anchorCell = quadName(mdoc(), quad);
+    store.trailKnot = null;
+    store.pathHandle = null;
+    view().refreshEditCells();
+    seatEditMoveGizmo();
+    refreshEditSelectionUi();
+    return true;
+  }
+
   function selectEditCell(quad: number, mode: 'replace' | 'toggle' | 'range') {
+    if (mode === 'replace' && selectTrailAt(quad)) return;
     if (mode !== 'toggle') dropPlacementSelection();
     const doc = mdoc();
     const name = quadName(doc, quad);
     if (name === null) return;
     const naming = quadNaming(doc);
+    const trail = mode === 'toggle' ? trails.trailAtQuad(quad) : null;
+    const wasSelected = store.cellSel.includes(name);
     // Plain/Ctrl clicks are flat set operations and must stay O(selection), not O(the whole mountain).
     // Only Shift-range needs the derived surface topology used to trace a rectangular patch block.
     const result = mode === 'range'
@@ -1069,10 +1174,15 @@ export function createEditSession(deps: EditSessionDeps) {
     if (name !== store.cellLoopSeed) store.cellLoopSeed = null;
     resetGizmoMode();
     const hidden = hiddenMesh();
-    const cells = result.cells.filter(cell => {
+    let cells = result.cells.filter(cell => {
       const at = quadIndex(doc, cell);
       return at !== null && !quadIsHidden(at, hidden);
     });
+    // Ctrl on a trail patch adds or drops the whole trail, never one patch of it.
+    if (trail) {
+      const owned = new Set(trail.quads);
+      cells = wasSelected ? cells.filter(cell => !owned.has(cell)) : [...new Set([...cells, ...trail.quads])];
+    }
     if (mode === 'toggle') {
       store.cellSel = cells;
       store.anchorCell = result.anchor;
@@ -1091,6 +1201,7 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function selectCellLoop(quad: number, additive: boolean) {
+    if (!additive && selectTrailAt(quad)) return;
     dropPlacementSelection();
     const doc = mdoc();
     const name = quadName(doc, quad);
@@ -1207,6 +1318,19 @@ export function createEditSession(deps: EditSessionDeps) {
     clearEdgeSelection: clearEdgeSel,
     clearCellSelection: clearCellSel,
     dropCornerSelection: dropCornerSel,
+    exitRegion,
+    seatMoveGizmo: seatEditMoveGizmo,
+    resetGizmoMode,
+  });
+
+  const trails = createTrailTools({
+    store,
+    viewport: getViewport,
+    applyCage,
+    persistUi,
+    scheduleRebuild,
+    rebuildTools,
+    updateCmdSheet,
     exitRegion,
     seatMoveGizmo: seatEditMoveGizmo,
     resetGizmoMode,
@@ -1820,6 +1944,7 @@ export function createEditSession(deps: EditSessionDeps) {
         : 'slide is clamped at its neighbour — release to merge them');
     },
     onSlideEnd(mergePending) { commitSlide(mergePending); },
+    onEditTransformBegin(target) { return beginEditTransform(target); },
     onEditTransformEnd() { scheduleRebuild(); },
     onCreateEdgePoint(endpoint) { topology.addCreateEdgePoint(endpoint); },
     onCreateTubeAxisChange() {
@@ -1830,15 +1955,11 @@ export function createEditSession(deps: EditSessionDeps) {
         rebuildTools(); updateCmdSheet();
       } else topology.previewCreateTube();
     },
-    onCreateTrailPointsChange() {
-      if (store.surgeryTool !== 'trail') return;
-      topology.previewCreateTrail();
-      const count = view().createTrailPoints.length;
-      if (count !== trailPointCount) {
-        trailPointCount = count;
-        rebuildTools(); updateCmdSheet();
-      }
-    },
+    onAppendTrailKnot(pos) { trails.appendKnot(pos); },
+    onSelectTrailKnot(knot) { trails.selectKnot(knot); },
+    onMoveTrailKnot(knot, pos) { trails.moveKnot(knot, pos); },
+    onTrailKnotDrag(dragging) { trails.knotDrag(dragging); },
+    onTransformTrail(knots, handles) { trails.transformTrail(knots, handles); },
     onLoopCut(quad, edge, t) {
       const { mesh, adj } = meshContext(mdoc());
       const result = applyLoopCut(mdoc(), planLoopCut(mesh, adj, quad, edge), t);
@@ -1982,6 +2103,7 @@ export function createEditSession(deps: EditSessionDeps) {
     ripEdges, insertCellEdge, resetCellShape, creaseVertices, smoothVertices,
     beginPointWeld, cancelPointWeld, commitPointWeld, commitPointWeldTogether, beginEdgeWeld, cancelEdgeWeld, commitEdgeWeld,
     ...topology,
+    ...trails,
     ...clipboard,
     deleteSelectedMesh, dissolveSelectedMesh, canDissolveSelectedMesh, meshDeleteTargetCount, canDeleteMeshSelection,
     flipSelectedMesh, canFlipSelectedMesh,

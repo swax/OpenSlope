@@ -1,4 +1,6 @@
-import type { AuthoredModel, PlacedProp, PropLine, PropLineTemplate, PropSheet, V3 } from '../../core/doc/types';
+import type { AuthoredModel, PathHandles, PlacedProp, PropLine, PropLineTemplate, PropSheet, V3 } from '../../core/doc/types';
+import { withoutPathNode } from '../../core/rails/rails';
+import { assignHandles } from '../paths/handles';
 import { applyBehaviour, baselineBehaviour } from '../../core/props/defaults';
 import {
   footprintOfRawBox, groupFootprint, layoutPropLine, lineMemberId, lineMembers, lineNominalSpacing, membersOfLine,
@@ -296,11 +298,21 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     scheduleRebuild();
   }
 
+  /** A Bézier handle of the line was dragged or reset (app/paths/handles.ts): bend the path and lay it out again. */
+  function setHandles(id: string, handles: (PathHandles | null)[]) {
+    const line = lineById(id);
+    if (!line) return;
+    assignHandles(line, handles);
+    relayout(line);
+    scheduleRebuild();
+  }
+
   /** Remove the selected node; a line left under two nodes has nothing to lay out and goes entirely. */
   function deleteSelectedNode() {
     const line = selected();
     if (!line || store.selectedLineNode === null) return;
     line.nodes.splice(store.selectedLineNode, 1);
+    assignHandles(line, withoutPathNode(line.handles, store.selectedLineNode)); // later nodes keep their own
     store.selectedLineNode = null;
     if (line.nodes.length < 2) { removeLine(line); leaveLine(); }
     else relayout(line);
@@ -399,7 +411,7 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
   return {
     lineById, selected, displayLines, footprintOf, nominalSpacing, relayout, changed,
     startLine, pickSheet, startBlankSheet, appendNode, finishLine, resumeLine,
-    moveNode, deleteSelectedNode, deleteSelectedLine, breakLine, swapProp, leaveLine,
+    moveNode, setHandles, deleteSelectedNode, deleteSelectedLine, breakLine, swapProp, leaveLine,
   };
 }
 
