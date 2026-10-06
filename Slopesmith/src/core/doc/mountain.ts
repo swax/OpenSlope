@@ -2,6 +2,7 @@ import type { CoursePath, CourseKnot, MountainMeta, PaintMap, TexPaintMap, QuadM
 import { normalizeEnvironmentBed } from '../audio/environment';
 import { normalizeAnnouncer } from '../audio/announcer';
 import { ensureGemIds, ensureLightIds, ensureScreenIds, ensureTrailIds, seedMeshIds } from './ids';
+import { normalizeTrails } from './trails';
 import { keyMountainByIndex, storedById } from './serialize';
 import { frameAt, sampleSpine, spineAt, totalLength, type SpineSample } from '../math/spine';
 import { add, dot, lerp, mul, norm, sub } from '../math/vec';
@@ -1291,6 +1292,7 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
     ensureGemIds(doc.gems);
     ensureScreenIds(doc.screens);
     ensurePropLineIds(doc.propLines);
+    if (doc.trails) doc.trails = normalizeTrails(doc.trails);
     ensureTrailIds(doc.trails);
     normalizeLabels(doc);
     // A dropped `edgeHandles` key raises nothing: the edge falls back to its Bessel default and the terrain

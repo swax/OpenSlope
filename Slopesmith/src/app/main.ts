@@ -973,7 +973,7 @@ function restoreDoc(json: string) {
   store.selectedEdgeCrossing = null;
   store.selectedCoincidentVertices = null;
   if (store.surgeryTool) { store.surgeryTool = null; viewport.setSurgeryTool(null); } // its ghost previews the OLD net
-  store.trailKnot = null;          // the trail it was on may not be in the restored document
+  store.trailPoint = null;         // the trail it was on may not be in the restored document
   store.pathHandle = null;         // …and the path a handle was selected on
   if (store.weldTool) { store.weldTool = null; store.weldSource = []; store.weldEdgeSource = []; viewport.setWeldTool(false); } // its source ids belong to the OLD net
   cancelCourseReset();             // a course being redrawn was clicked onto the OLD terrain
@@ -1168,7 +1168,8 @@ const propLines = createPropLineOps({
 // layer and one coordinator (paths/handles.ts), which hands each drag to the family it reshapes.
 const pathHandles = createPathHandleOps({
   store, viewport, scheduleRebuild,
-  selectedTrail: edit.selectedTrail,
+  trailPath: edit.focusPath,
+  selectTrailNode: edit.selectTrailNode,
   setTrailHandles: edit.setTrailHandles,
   trailDrag: edit.knotDrag,
   setLineHandles: propLines.setHandles,

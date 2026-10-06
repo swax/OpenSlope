@@ -1,14 +1,14 @@
 // tier: fast
 
 /**
- * The whole-trail gizmo (docs/023): a trail selected with no knot picked carries the gizmo at its ribbon's centre,
- * and Move / Rotate / Scale on it report every knot and dragged Bézier handle under that transform, from the
- * drag's start. Drives `createTrailToolLayer` over a stage faked down to what it touches, so the scene-root
+ * The whole-selection gizmo (docs/023): trail paths selected with no point picked carry the gizmo at their patches'
+ * centre, and Move / Rotate / Scale on it report the transform from the drag's start, which the host takes every
+ * point and dragged Bézier handle through. Drives `createTrailToolLayer` over a stage faked down to what it touches, so the scene-root
  * anchor's mirrored Z is checked against the data it reports. Run: `npx tsx test/trail-gizmo.test.ts`
  */
 import * as THREE from 'three';
 import type { PathHandles, V3 } from '../src/core/doc/types';
-import { createTrailToolLayer } from '../src/app/viewport/tools/create-trail';
+import { createTrailToolLayer, type TrailTransform } from '../src/app/viewport/tools/create-trail';
 import type { Stage } from '../src/app/viewport/stage';
 import { check, failures } from './check';
 
@@ -20,34 +20,40 @@ const stage = {
   detachGizmo() { this.gizmoKind = null; this.gizmo.object = null; },
 };
 const layer = createTrailToolLayer(stage as unknown as Stage, () => new THREE.Mesh(), () => null);
-let reported: { knots: V3[]; handles: (PathHandles | null)[] } | null = null;
-layer.setHost({ append() {}, select() {}, transform: (knots, handles) => { reported = { knots, handles }; } });
+let transform: TrailTransform | null = null;
+layer.setHost({ append() {}, select() {}, transform: xf => { transform = xf; } });
 
 const near = (a: readonly number[], b: readonly number[], eps = 1e-9) => a.every((v, i) => Math.abs(v - b[i]) < eps);
 const knots: V3[] = [[0, 0, 0], [0, 0, 100], [50, 10, 150]];
 const handles: (PathHandles | null)[] = [null, { out: [10, 0, 20] }];
 const pivot: V3 = [10, 2, 60];
 
-layer.setKnots(knots, null, handles, pivot);
+const shape = { paths: [{ nodes: [0, 1, 2], handles }] };
+layer.setKnots(knots, null, pivot, shape);
 const anchor = stage.gizmo.object!;
 check(stage.gizmoKind === 'trail' && near(anchor.position.toArray(), [10, 2, -60]),
   'seat: the whole-trail gizmo sits at the pivot, in the mirrored scene root');
-layer.setKnots(knots, 1, handles, pivot);
+layer.setKnots(knots, 1, pivot, shape);
 check(stage.gizmoKind === 'trailknot', 'seat: a picked knot takes the gizmo');
-layer.setKnots(knots, null, handles, null);
+layer.setKnots(knots, null, null, shape);
 check(stage.gizmoKind === null, 'seat: no pivot, no whole-trail gizmo');
-layer.setKnots(knots, null, handles, pivot);
+layer.setKnots(knots, null, pivot, shape);
 
-/** One drag: freeze, pose the anchor as TransformControls would, report, release. */
-function drag(pose: (obj: THREE.Object3D) => void) {
-  reported = null;
+/** One drag: freeze, pose the anchor as TransformControls would, report, release — and the knots and handles
+ *  taken through the reported transform, as the host takes them. */
+function drag(pose: (obj: THREE.Object3D) => void): { knots: V3[]; handles: (PathHandles | null)[] } {
+  transform = null;
   stage.gizmo.dragging = true;
   layer.wholeDragging(true);
   pose(anchor);
   layer.wholeChanged();
+  const xf = transform as TrailTransform | null;
   layer.wholeDragging(false);
   stage.gizmo.dragging = false;
-  return reported!;
+  return {
+    knots: knots.map(k => xf!.point(k)),
+    handles: handles.map(own => own ? { ...(own.out ? { out: xf!.vector(own.out) } : {}) } : null),
+  };
 }
 
 // Move: a scene-space drag of (+5, +1, +8) is data (+5, +1, −8) for every knot; handles are offsets and stay.

@@ -208,10 +208,10 @@ export interface TrailSettings {
 }
 
 /**
- * What one knot of a trail says for itself (docs/023 · Per-knot section). Every field is optional and only the
- * ones set are the knot's own; the rest follow the trail's `TrailSettings`. Between two knots each value eases
- * from one knot's to the next, by distance along the trail, so a knot set wider swells the trail there and it
- * narrows back over the neighbouring stretches.
+ * What one point of a trail says for itself (docs/023 · Per-point section). Every field is optional and only the
+ * ones set are the point's own; the rest follow the settings of each path through it. Between two points each value
+ * eases from one point's to the next, by distance along the path, so a point set wider swells the trail there and it
+ * narrows back over the neighbouring stretches. A point several paths share sets it for all of them.
  */
 export interface TrailKnotSettings {
   widthM?: number;
@@ -225,50 +225,60 @@ export interface TrailKnotSettings {
 }
 
 /**
- * An owned TRAIL (docs/023): a centre spline laid knot by knot like a rail, and the ribbon of patches it cut.
+ * An owned TRAIL (docs/023): a NETWORK of paths — centre splines laid knot by knot like a rail — and the patches
+ * they cut, with a junction wherever paths meet.
  *
- * The patches are real mesh, so the bake, the ride and every mesh tool see plain quads; the trail only remembers
- * which ones are its own, by stable id, and is their generator: moving a knot or changing a setting re-cuts them
- * from the spline. They are locked, so hand edits cannot smear them. Patches welded onto the rims share those
- * vertices, so a re-cut stretches them; while any are, the ribbon keeps its patch count.
+ * Every path is alike: there is no main trail and no branch. The knots are the network's POINTS, and a path is an
+ * ordered run of them, so a point two paths share is where they meet — a fork, a merge, a crossing, or a path's end
+ * coming back onto itself to close a loop. The patches are real mesh, so the bake, the ride and every mesh tool see
+ * plain quads; the trail only remembers which ones are its own, by stable id, and is their generator: moving a
+ * point or changing a setting re-cuts them from the paths. They are locked, so hand edits cannot smear them.
+ * Patches welded onto the rims share those vertices, so a re-cut stretches them; while any are, the network keeps
+ * its layout.
  */
 export interface AuthoredTrail {
   /** Stable authoring identity (`trail:NNNN`). */
   id: string;
   /** Optional label for the outliner / tooltip. */
   name?: string;
-  /** Centre-spline knots in editor/data space (m, Y-up); the curve is the rail Catmull-Rom through them. */
-  knots: V3[];
-  /** Bézier handles dragged off the automatic curve, index-parallel with `knots` (`PathHandles`). */
-  handles?: (PathHandles | null)[];
-  settings: TrailSettings;
-  /** Each knot's own section values, index-parallel with `knots`; an absent entry follows `settings`. */
-  knotSettings?: (TrailKnotSettings | null)[];
-  /** Branches leaving its knots (docs/023 · Branches), at most one per knot, in knot order. */
-  branches?: TrailBranch[];
-  /** Owned vertices by stable id: run by run, three per station (left rim, centre seam, right rim), then four per
-   *  junction (three crotches and the hub). A trail without branches is one run. */
+  /** Every knot of every path, in editor/data space (m, Y-up); a point the paths share is one entry here. */
+  points: V3[];
+  /** Each point's own section values, index-parallel with `points` — shared by every path through the point. An
+   *  absent entry follows each path's own `settings`. */
+  pointSettings?: (TrailKnotSettings | null)[];
+  /** The paths, all alike, each its own centre spline with its own settings and handles. */
+  paths: TrailPath[];
+  /** Owned vertices by stable id: run by run, three per station (left rim, centre seam, right rim), then for each
+   *  junction a crotch per arm and the hub. */
   vertices: string[];
-  /** Owned patches by stable id: run by run, two per span (the left lane, then the right), then six per junction. */
+  /** Owned patches by stable id: run by run, two per span (the left lane, then the right), then two per arm of
+   *  each junction. */
   quads: string[];
-  /** The shape of its last cut while it has branches — spans per run (the main runs between junctions in order,
-   *  then each branch) and how many junctions — which is how `vertices` and `quads` divide up. Absent: one run. */
-  network?: { runSpans: number[]; junctions: number };
+  /** The shape of its last cut, which is how `vertices` and `quads` divide up. Absent: one run, of the first path. */
+  network?: TrailCutShape;
+}
+
+/** How an owned trail's names divide into runs and junctions (docs/023 · Networks), in the order it owns them. */
+export interface TrailCutShape {
+  /** Spans in each run: every path cut at the junctions it passes through, path by path. */
+  runSpans: number[];
+  /** The path each run is cut from. */
+  runPaths: number[];
+  /** How many arms meet at each junction — three at a fork, four at a crossing, two where a loop closes. */
+  junctionArms: number[];
 }
 
 /**
- * A branch of a trail (docs/023 · Branches): a run of its own leaving one of the trail's knots, where the trail,
- * split there, and the branch meet in a six-patch junction around one valence-6 vertex. It is cut with the trail's
- * settings, and its curve is the rail Catmull-Rom through the junction knot and its own knots.
+ * One path of a trail network (docs/023 · Networks): a centre spline through some of the network's points — the
+ * rail Catmull-Rom through them, bent by any dragged handles — cut with its own settings.
  */
-export interface TrailBranch {
-  /** The trail knot it leaves from. */
-  knot: number;
-  /** Its knots, in order away from the junction; the junction knot is the trail's and is not repeated. */
-  knots: V3[];
-  /** The trail knot its far end rejoins, when it comes back to the trail — a second junction there. Absent: its
-   *  last knot is a free end. A trail knot is an end of at most one branch, leaving or rejoining. */
-  to?: number;
+export interface TrailPath {
+  /** Its knots, as places in the network's `points`, in order along it. Two in a row are never the same point;
+   *  ending on its own first point closes it into a loop. */
+  points: number[];
+  /** Bézier handles dragged off the automatic curve, index-parallel with `points` (`PathHandles`). */
+  handles?: (PathHandles | null)[];
+  settings: TrailSettings;
 }
 
 /**

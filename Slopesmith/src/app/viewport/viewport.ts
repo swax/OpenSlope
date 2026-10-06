@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { MeshBVH } from 'three-mesh-bvh';
-import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type PropLine, type PathHandles, type V3 } from '../../core/doc/types';
+import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type PropLine, type V3 } from '../../core/doc/types';
 import { meshAdjacency, meshCageEdges, meshFromDoc, quadControlPoints, docEdgeHandles, INTERIOR_CP, type MeshAdjacency, type EdgeHandle } from '../../core/mesh/topology';
 import { meshEdgeSegments } from '../../core/mesh/selection';
 import { findTJunctions } from '../../core/mesh/t-junctions';
@@ -654,7 +654,7 @@ export class Viewport {
     this.trailTool.setHost({
       append: pos => this.cb.onAppendTrailKnot?.(pos),
       select: knot => this.cb.onSelectTrailKnot?.(knot),
-      transform: (knots, handles) => this.cb.onTransformTrail?.(knots, handles),
+      transform: xf => this.cb.onTransformTrail?.(xf),
       hover: pos => this.cb.onTrailHover?.(pos),
     });
     this.pathHandles = createPathHandlesLayer(this.stage); // the selected path's Bézier handles (docs/014)
@@ -2786,12 +2786,11 @@ export class Viewport {
     this.pathHandles.setPath(path, handle);
   }
 
-  /** Show a trail's centre-spline knots in Edit mode (none hides them), `knot` carrying the gizmo — or, with a
-   *  `pivot`, the whole trail carrying it there; `shape` splits them into the trail's own and its branches', and
-   *  says where drawing goes on (docs/023). */
-  setTrailKnots(knots: readonly V3[], knot: number | null, handles?: readonly (PathHandles | null | undefined)[],
-    pivot: V3 | null = null, shape?: TrailShape) {
-    this.trailTool.setKnots(knots, knot, handles, pivot, shape);
+  /** Show a trail's points in Edit mode (none hides them), `knot` carrying the gizmo — or, with a `pivot`, the
+   *  selected paths carrying it there; `shape` says which paths run through them and where drawing goes on
+   *  (docs/023). */
+  setTrailKnots(knots: readonly V3[], knot: number | null, pivot: V3 | null = null, shape?: TrailShape) {
+    this.trailTool.setKnots(knots, knot, pivot, shape);
   }
   setCreateTrailSurfaceLift(value: number) { this.trailTool.setSurfaceLift(value); }
   setCreateTrailPreviewListener(listener: (() => void) | null) { this.createTrailPreviewListener = listener; listener?.(); }

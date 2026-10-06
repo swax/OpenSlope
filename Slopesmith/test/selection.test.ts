@@ -857,8 +857,8 @@ for (const reverse of [false, true]) {
 
   // The same patch owned by a trail says so, and points at what does move it.
   const ids = store.mdoc.quads[0].map(vertex => store.mdoc.vertexIds[vertex]);
-  store.mdoc.trails = [{ id: 'trail:0000', knots: [], settings: { ...TRAIL_SETTINGS_DEFAULTS }, vertices: ids,
-    quads: [store.mdoc.quadIds[0]] }];
+  store.mdoc.trails = [{ id: 'trail:0000', points: [], paths: [{ points: [], settings: { ...TRAIL_SETTINGS_DEFAULTS } }],
+    vertices: ids, quads: [store.mdoc.quadIds[0]] }];
   cb.onSelectCorner(0);
   check(cb.onEditTransformBegin?.({ kind: 'corner' }) === false && toastEl.textContent.includes('part of a trail')
     && toastEl.textContent.includes('knots'), 'lock: a trail point is refused, pointing at the trail\'s knots', toastEl.textContent);

@@ -1,16 +1,18 @@
 // tier: fast
 
-import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
+import type { AuthoredTrail, QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { nameIndex } from '../src/core/doc/ids';
 import { quadIsLocked } from '../src/core/mesh/locks';
-import { cutTrail, resolveTrail } from '../src/core/mesh/trail-object';
+import { cutTrail, resolveTrail, trailPathQuads } from '../src/core/mesh/trail-object';
+import type { TrailShape, TrailTransform } from '../src/app/viewport/tools/create-trail';
 import { check, failures } from './check';
 
 /**
- * Owned trails' app half (docs/023): drawing a trail knot by knot, picking a knot up mid-draw, a knot drag cut
- * from its base document, the trail selected by its patches, and the edits after — add points, delete a knot,
- * settings, dissolve, delete. The cut itself is pinned by trail-object.test.ts; this drives `createTrailTools` over
- * a real document with the viewport faked down to what the tool calls on it.
+ * Owned trails' app half (docs/023): drawing a path point by point, picking a point up mid-draw, a point drag cut
+ * from its base document, paths selected by their patches, and the edits after — add points, a new path from any
+ * point, joining by landing on a point, settings per path and per point, dissolve, delete. The cut itself is pinned
+ * by trail-object.test.ts; this drives `createTrailTools` over a real document with the viewport faked down to what
+ * the tool calls on it.
  */
 
 // The tools share the browser toast helper; give it the one DOM node it captures before importing them.
@@ -34,22 +36,19 @@ const doc: QuadMeshDoc = {
 const store = {
   mdoc: doc, modelEditId: null, modelEditDoc: null, currentMode: 'edit',
   cellSel: [] as string[], anchorCell: null as string | null,
-  surgeryTool: null as string | null, trailKnot: null as number | null, cageOn: true,
+  surgeryTool: null as string | null, trailPoint: null as { trail: string; point: number } | null, cageOn: true,
   selectedCorner: null, selected: null, createPatchQuads: [], weldTool: null, weldSource: [], weldEdgeSource: [],
+  pathHandle: null,
   trailWidth: 13, trailCenterBias: 0.5, trailDishPercent: 10.5, trailPatchLength: 22.5, trailMaxTurnDegrees: 52,
   trailBankGain: 15, trailMaxBankDegrees: 20, trailMesaTextures: true, trailSurfaceLift: 0.25,
 };
-type Shape = {
-  main: number; branches: readonly (readonly V3[])[]; draw?: { end: 'start' | 'end' } | { branch: number }; snaps?: readonly V3[];
-};
-let shown: { knots: readonly V3[]; knot: number | null; pivot: V3 | null; shape?: Shape } = { knots: [], knot: null, pivot: null };
+let shown: { knots: readonly V3[]; knot: number | null; pivot: V3 | null; shape?: TrailShape } = { knots: [], knot: null, pivot: null };
 let surgery: string | null = null;
-/** Where the viewport was told drawing goes on: an end, or a branch by its junction knot's position. */
-const shownEnd = () => { const draw = shown.shape?.draw; return draw && 'end' in draw ? draw.end : 'branch'; };
 let ghost: readonly (readonly number[])[] | null = null;
 const ghostNow = () => ghost; // read through a call: the fake sets it behind TypeScript's narrowing
+const pickedNow = () => store.trailPoint; // the tools set it behind TypeScript's narrowing too
 const viewport = {
-  setTrailKnots(knots: readonly V3[], knot: number | null, _handles?: unknown, pivot: V3 | null = null, shape?: Shape) {
+  setTrailKnots(knots: readonly V3[], knot: number | null, pivot: V3 | null = null, shape?: TrailShape) {
     shown = { knots: knots.map(k => [...k] as V3), knot, pivot, shape };
   },
   setLoftPreview(quads: readonly (readonly number[])[] | null) { ghost = quads; },
@@ -62,24 +61,48 @@ const tools = createTrailTools({
 } as unknown as Parameters<typeof createTrailTools>[0]);
 
 const trail = () => store.mdoc.trails?.[0];
+const byId = (id: string) => store.mdoc.trails!.find(other => other.id === id)!;
 const quadAt = (id: string) => nameIndex(store.mdoc.quadIds).get(id)!;
+/** A path's knots as `x,y,z` strings. */
+const knotsOf = (of: AuthoredTrail, path = 0) => of.paths[path].points.map(point => of.points[point].join());
+/** Select paths of a trail by their patches, as a click (or Ctrl-clicks) would. */
+const selectPaths = (of: AuthoredTrail, ...paths: number[]) => {
+  const lists = trailPathQuads(store.mdoc, of)!;
+  store.cellSel = paths.flatMap(path => lists[path]);
+  store.anchorCell = store.cellSel[0] ?? null;
+  store.trailPoint = null;
+  tools.syncTrailView();
+};
+/** Pick a point of a trail, and its place in the viewport's list. */
+const pick = (of: AuthoredTrail, point: number) => {
+  store.trailPoint = { trail: of.id, point };
+  tools.syncTrailView();
+  return shown.knots.findIndex(knot => knot.join() === of.points[point].join());
+};
+const shift = (d: V3): TrailTransform => ({ point: p => [p[0] + d[0], p[1] + d[1], p[2] + d[2]], vector: v => [v[0], v[1], v[2]] });
+const draw = (...knots: V3[]) => {
+  tools.armCreateTrail();
+  for (const knot of knots) tools.appendKnot(knot);
+  tools.finishCreateTrail();
+  return store.mdoc.trails!.at(-1)!.id;
+};
 
-// ---- drawing: a draft until its second knot, then the real ribbon ------------------------------------------------
+// ---- drawing: a draft until its second point, then the real ribbon ----------------------------------------------
 tools.armCreateTrail();
-check(store.surgeryTool === 'trail' && surgery === 'trail' && tools.selectedTrail()?.knots.length === 0,
+check(store.surgeryTool === 'trail' && surgery === 'trail' && tools.selectedTrail()?.points.length === 0,
   'arm: the tool draws a fresh trail');
 tools.appendKnot([0, 0, 0]);
-check(!store.mdoc.trails?.length && shown.knots.length === 1, 'draw: one knot is shown but kept out of the document');
+check(!store.mdoc.trails?.length && shown.knots.length === 1, 'draw: one point is shown but kept out of the document');
 tools.appendKnot([0, 0, 100]);
-check(store.mdoc.trails?.length === 1 && trail()!.quads.length === 10,
-  'draw: the second knot puts the trail and its ten patches in the document');
+check(store.mdoc.trails?.length === 1 && trail()!.quads.length === 10 && trail()!.paths.length === 1,
+  'draw: the second point puts the trail, its path and its ten patches in the document');
 check(store.cellSel.join() === trail()!.quads.join() && trail()!.quads.every(id => quadIsLocked(store.mdoc, quadAt(id))),
   'draw: its locked patches are the selection while it is drawn');
 
-// ---- a knot picked up mid-draw: each frame is one cut of the drag's base document ------------------------------
+// ---- a point picked up mid-draw: each frame is one cut of the drag's base document ------------------------------
 {
   tools.selectKnot(0);
-  check(shown.knot === 0, 'pick: the clicked knot carries the gizmo');
+  check(shown.knot === 0 && store.trailPoint?.point === 0, 'pick: the clicked point carries the gizmo');
   const base = store.mdoc, before = trail()!;
   tools.knotDrag(true);
   tools.moveKnot(0, [30, 0, -60]); // long enough to add spans …
@@ -87,75 +110,75 @@ check(store.cellSel.join() === trail()!.quads.join() && trail()!.quads.every(id 
   tools.moveKnot(0, [10, 0, 0]);   // … then back, and shorter again
   runFrames();
   tools.knotDrag(false);
-  const once = cutTrail(base, { ...before, knots: [[10, 0, 0], [0, 0, 100]] });
+  const once = cutTrail(base, { ...before, points: [[10, 0, 0], [0, 0, 100]] });
   check(once.ok && store.mdoc.nextId === once.doc.nextId
     && (store.mdoc.tombstones ?? []).join() === (once.doc.tombstones ?? []).join(),
   'drag: the result is one cut of the base, not a pile of every frame\'s ids');
-  check(trail()!.knots[0].join() === '10,0,0' && shown.knots[0].join() === '10,0,0', 'drag: the knot lands where it was dropped');
+  check(trail()!.points[0].join() === '10,0,0' && shown.knots[0].join() === '10,0,0', 'drag: the point lands where it was dropped');
 }
 
 // ---- finishing, and finding it again by its patches ----------------------------------------------------------------
 tools.appendKnot([0, 0, 200]);
-store.trailKnot = null;
+store.trailPoint = null;
 tools.finishCreateTrail();
 check(store.surgeryTool === null && surgery === null && tools.selectedTrail()?.id === trail()!.id,
-  'finish: drawing stops and the trail stays selected');
+  'finish: drawing stops and the path stays selected');
 store.cellSel = [];
 check(tools.selectedTrail() === null, 'select: any other selection is not the trail');
 tools.syncTrailView();
-check(shown.knots.length === 0, 'select: its knots hide with it');
+check(shown.knots.length === 0, 'select: its points hide with it');
 const somePatch = quadAt(trail()!.quads[3]);
-check(tools.trailAtQuad(somePatch)?.id === trail()!.id, 'select: a patch names the trail that owns it');
-check(tools.withWholeTrails([trail()!.quads[3]]).length === trail()!.quads.length, 'select: a box takes the whole trail');
+check(tools.trailAtQuad(somePatch)?.id === trail()!.id && tools.pathCellsAt(somePatch)?.join() === trail()!.quads.join(),
+  'select: a patch names the trail that owns it, and its path');
+check(tools.withWholePaths([trail()!.quads[3]]).length === trail()!.quads.length, 'select: a box takes the whole path');
 store.cellSel = [...trail()!.quads];
-check(tools.selectedTrail()?.id === trail()!.id && tools.trailStatus()?.knots === 3, 'select: its own patches are the trail');
+check(tools.selectedTrail()?.id === trail()!.id && tools.trailStatus()?.points === 3, 'select: its own patches are the path');
 
-// ---- editing a finished trail ----------------------------------------------------------------------------------------
-check(tools.resumeEnds().join() === 'start,end', 'add points: with no knot picked, either end can grow');
+// ---- editing a finished path ---------------------------------------------------------------------------------------
+check(tools.resumeEnds().join() === 'start,end', 'add points: with no point picked, either end can grow');
 tools.resumeTrail('end');
-check(store.surgeryTool === 'trail' && shownEnd() === 'end', 'add points: drawing resumes on the end of the selected trail');
+check(store.surgeryTool === 'trail' && shown.shape?.draw?.end === 'end', 'add points: drawing resumes on the end of the selected path');
 tools.appendKnot([0, 0, 300]);
 tools.finishCreateTrail();
-check(trail()!.knots.length === 4, 'add points: the knot goes on the end');
+check(trail()!.points.length === 4 && knotsOf(trail()!).at(-1) === '0,0,300', 'add points: the point goes on the end');
 
-// ---- add points from the picked end: the first knot draws onto the start, a middle knot offers nothing ----------
+// ---- add points from the picked end: the first point draws onto the start, a middle point offers neither -------
 {
-  store.cellSel = [...trail()!.quads];
-  store.trailKnot = 1;
-  check(tools.resumeEnds().length === 0, 'add points: a middle knot has no end to draw from');
+  selectPaths(trail()!, 0);
+  pick(trail()!, 1);
+  check(tools.resumeEnds().length === 0 && tools.selectedPointRole()?.arms === 2 && !tools.selectedPointRole()?.free,
+    'add points: a middle point has no end to draw from');
   tools.resumeTrail('end');
   check(store.surgeryTool === null, 'add points: … so nothing resumes');
-  store.trailKnot = 3;
-  check(tools.resumeEnds().join() === 'end', 'add points: the last knot draws onto the end only');
-  store.trailKnot = 0;
-  check(tools.resumeEnds().join() === 'start', 'add points: the first knot draws onto the start only');
+  pick(trail()!, 3);
+  check(tools.resumeEnds().join() === 'end' && tools.selectedPointRole()?.free === true, 'add points: the last point, a free end, draws onto the end only');
+  pick(trail()!, 0);
+  check(tools.resumeEnds().join() === 'start', 'add points: the first point draws onto the start only');
   const before = trail()!;
-  const withHandle = { ...before, handles: [{ out: [1, 0, 2] as V3 }], knotSettings: [{ widthM: 20 }] };
+  const withHandle: AuthoredTrail = { ...before, paths: [{ ...before.paths[0], handles: [{ out: [1, 0, 2] }] }], pointSettings: [{ widthM: 20 }] };
   store.mdoc = { ...store.mdoc, trails: [withHandle] };
   tools.resumeTrail('start');
-  check(store.surgeryTool === 'trail' && shownEnd() === 'start' && tools.trailDrawEnd() === 'start',
-    'add points: drawing resumes on the start');
+  check(store.surgeryTool === 'trail' && shown.shape?.draw?.end === 'start', 'add points: drawing resumes on the start');
   tools.appendKnot([0, 0, -100]);
   const grown = trail()!;
-  check(grown.knots.length === 5 && grown.knots[0].join() === '0,0,-100' && grown.knots[1].join() === before.knots[0].join(),
-    'add points: the new knot goes ahead of the first');
-  check(grown.handles?.[0] === null && grown.handles?.[1]?.out?.join() === '1,0,2' && grown.knotSettings?.[1]?.widthM === 20,
-    'add points: every knot keeps its own handles and values as the list shifts');
+  check(knotsOf(grown).length === 5 && knotsOf(grown)[0] === '0,0,-100' && knotsOf(grown)[1] === before.points[0].join(),
+    'add points: the new point goes ahead of the first');
+  check(grown.paths[0].handles?.[0] === null && grown.paths[0].handles?.[1]?.out?.join() === '1,0,2' && grown.pointSettings?.[0]?.widthM === 20,
+    'add points: every point keeps its own handles and values');
   tools.undoCreateTrailPoint();
-  check(trail()!.knots.length === 4 && trail()!.knots[0].join() === before.knots[0].join()
-    && trail()!.handles?.[0]?.out?.join() === '1,0,2' && trail()!.knotSettings?.[0]?.widthM === 20,
-  'add points: Backspace takes the newest knot back off the start');
+  check(knotsOf(trail()!).length === 4 && knotsOf(trail()!)[0] === before.points[0].join() && trail()!.points.length === 4
+    && trail()!.paths[0].handles?.[0]?.out?.join() === '1,0,2' && trail()!.pointSettings?.[0]?.widthM === 20,
+  'add points: Backspace takes the newest point back off the start');
   tools.finishCreateTrail();
-  check(shownEnd() === 'end' && tools.trailDrawEnd() === 'end', 'add points: finishing puts the next drawing back on the end');
-  store.mdoc = { ...store.mdoc, trails: [{ ...trail()!, handles: undefined, knotSettings: undefined }] };
-  store.cellSel = [...trail()!.quads];
-  store.trailKnot = null;
+  store.mdoc = { ...store.mdoc, trails: [{ ...trail()!, paths: [{ ...trail()!.paths[0], handles: undefined }], pointSettings: undefined }] };
+  selectPaths(trail()!, 0);
 }
-store.trailKnot = 1;
+pick(trail()!, 1);
 tools.deleteSelectedTrailKnot();
-check(trail()!.knots.length === 3 && trail()!.knots[1].join() === '0,0,200', 'delete knot: the selected knot goes');
+check(knotsOf(trail()!).length === 3 && knotsOf(trail()!)[1] === '0,0,200', 'delete point: the picked point goes');
+selectPaths(trail()!, 0);
 tools.setTrailSetting('widthM', 20);
-check(trail()!.settings.widthM === 20 && store.trailWidth === 20, 'setting: the trail re-cuts and the next trail starts there');
+check(trail()!.paths[0].settings.widthM === 20 && store.trailWidth === 20, 'setting: the path re-cuts and the next path starts there');
 {
   const owned = resolveTrail(store.mdoc, trail()!)!;
   const [l, , r] = owned.vertices;
@@ -164,239 +187,230 @@ check(trail()!.settings.widthM === 20 && store.trailWidth === 20, 'setting: the 
   check(Math.abs(span - 20) < 1e-6, 'setting: the new width is cut', `${span}`);
 }
 
-// ---- the whole trail moves as a unit ---------------------------------------------------------------------------------
+// ---- the selected paths move as a unit ---------------------------------------------------------------------------
 {
-  store.trailKnot = null;
-  store.cellSel = [...trail()!.quads];
-  tools.syncTrailView();
+  selectPaths(trail()!, 0);
   const ribbon = resolveTrail(store.mdoc, trail()!)!.vertices;
   const centre = [0, 1, 2].map(k => ribbon.reduce((sum, v) => sum + store.mdoc.vertices[v * 3 + k], 0) / ribbon.length);
   check(shown.knot === null && !!shown.pivot && shown.pivot.every((c, k) => Math.abs(c - centre[k]) < 1e-9),
-    'whole trail: with no knot picked the gizmo sits on the trail, at its ribbon’s centre', JSON.stringify(shown.pivot));
+    'whole: with no point picked the gizmo sits on the path, at its patches’ centre', JSON.stringify(shown.pivot));
   const base = store.mdoc, before = trail()!;
   tools.knotDrag(true);
-  tools.transformTrail(before.knots.map(([x, y, z]) => [x + 40, y + 5, z - 10] as V3), []);
+  tools.transformTrail(shift([40, 5, -10]));
   runFrames();
-  tools.transformTrail(before.knots.map(([x, y, z]) => [x + 50, y, z] as V3), []);
+  tools.transformTrail(shift([50, 0, 0]));
   runFrames();
   tools.knotDrag(false);
-  const once = cutTrail(base, { ...before, knots: before.knots.map(([x, y, z]) => [x + 50, y, z] as V3) });
+  const once = cutTrail(base, { ...before, points: before.points.map(([x, y, z]) => [x + 50, y, z] as V3) });
   const moved = trail()!;
-  check(moved.knots.every((k, i) => k[0] === before.knots[i][0] + 50 && k[2] === before.knots[i][2]),
-    'whole trail: every knot moves by the drag');
+  check(moved.points.every((k, i) => k[0] === before.points[i][0] + 50 && k[2] === before.points[i][2]),
+    'whole: every point moves by the drag');
   check(once.ok && moved.vertices.join() === once.trail.vertices.join() && store.mdoc.vertices.join() === once.doc.vertices.join(),
-    'whole trail: what lands is one cut of the drag’s base, its patches carried with it');
+    'whole: what lands is one cut of the drag’s base, its patches carried with it');
   check(moved.quads.every(id => quadIsLocked(store.mdoc, quadAt(id))) && store.cellSel.join() === moved.quads.join(),
-    'whole trail: its patches stay locked and selected');
-  store.trailKnot = 0;
-  tools.syncTrailView();
-  check(shown.knot === 0 && shown.pivot === null, 'whole trail: a picked knot takes the gizmo back');
-  store.trailKnot = null;
+    'whole: its patches stay locked and selected');
+  pick(trail()!, 0);
+  check(shown.knot === 0 && shown.pivot === null, 'whole: a picked point takes the gizmo back');
+  store.trailPoint = null;
 }
 
-// ---- branches: laid off a middle knot with a ghost before each click, then edited with the trail (docs/023) ---------
+// ---- a new path from any point: a fork, laid with a ghost before each click (docs/023 · Networks) -----------------
 {
-  store.trailKnot = null;
-  store.cellSel = [...trail()!.quads];
-  const own = trail()!.knots.length;
-  store.trailKnot = 0;
-  tools.armBranch();
-  check(store.surgeryTool === null, 'branch: an end knot does not branch');
-  store.trailKnot = 1;
-  check(tools.selectedKnotRole()?.kind === 'trail' && tools.resumeEnds().length === 0, 'branch: a middle knot is not an end');
-  tools.armBranch();
-  check(store.surgeryTool === 'trail' && tools.drawingBranch() === 1 && shownEnd() === 'branch'
-    && shown.shape?.branches.at(-1)?.length === 1, 'branch: drawing starts from the knot, its guide from the junction');
-  const knot1 = trail()!.knots[1];
-  tools.previewHover([knot1[0] + 90, knot1[1], knot1[2] + 40]);
+  selectPaths(trail()!, 0);
+  pick(trail()!, 1);
+  tools.armPathFrom();
+  check(store.surgeryTool === 'trail' && tools.drawingFrom() === 1 && shown.shape?.draw?.path === null && shown.knots.length === 1,
+    'fork: drawing a new path starts from the point, its guide from there');
+  const from = trail()!.points[1];
+  tools.previewHover([from[0] + 90, from[1], from[2] + 40]);
   runFrames();
-  check(!!ghostNow()?.length && !trail()!.branches, 'branch: the hover ghosts the branch before anything is laid', `${ghostNow()?.length}`);
-  tools.appendKnot([knot1[0] + 90, knot1[1], knot1[2] + 40]);
-  check(trail()!.branches?.length === 1 && trail()!.branches![0].knot === 1 && trail()!.network?.junctions === 1,
-    'branch: the first click lays the branch and its junction');
-  tools.appendKnot([knot1[0] + 170, knot1[1], knot1[2] + 70]);
-  check(trail()!.branches![0].knots.length === 2 && shown.knots.length === own + 2, 'branch: further clicks extend it');
+  check(!!ghostNow()?.length && trail()!.paths.length === 1, 'fork: the hover ghosts the path and its junction before anything is laid', `${ghostNow()?.length}`);
+  tools.appendKnot([from[0] + 90, from[1], from[2] + 40]);
+  check(trail()!.paths.length === 2 && trail()!.paths[1].points[0] === 1 && trail()!.network?.junctionArms.join() === '3',
+    'fork: the first click lays the new path and its junction');
+  tools.appendKnot([from[0] + 170, from[1], from[2] + 70]);
+  check(trail()!.paths[1].points.length === 3 && shown.knots.length === 3, 'fork: further clicks extend it');
   tools.undoCreateTrailPoint();
-  check(trail()!.branches![0].knots.length === 1, 'branch: Backspace takes its newest knot back');
-  tools.appendKnot([knot1[0] + 170, knot1[1], knot1[2] + 70]);
+  check(trail()!.paths[1].points.length === 2, 'fork: Backspace takes its newest point back');
+  tools.appendKnot([from[0] + 170, from[1], from[2] + 70]);
   tools.finishCreateTrail();
-  check(surgery === null && ghostNow() === null && tools.selectedTrail()?.id === trail()!.id, 'branch: finishing keeps the trail selected');
+  const lists = trailPathQuads(store.mdoc, trail()!)!;
+  check(surgery === null && ghostNow() === null && store.cellSel.join() === lists[1].join(),
+    'fork: finishing keeps the new path selected — the path, not the network');
+  check(tools.trailStatus()?.paths === 1 && tools.trailStatus()?.networkPaths === 2 && tools.trailStatus()?.junctions === 1,
+    'fork: one of two paths selected, one junction');
 
-  // The branch is the trail's: its knots pick, move and delete like the trail's own.
-  store.cellSel = [...trail()!.quads];
-  store.trailKnot = own + 1;
-  const role = tools.selectedKnotRole();
-  check(role?.kind === 'branch' && role.junction === 1 && role.tip && tools.selectedTrailKnot() === null,
-    'branch: a branch knot is told apart from the trail’s, and has no section of its own');
-  const tip = trail()!.branches![0].knots[1];
-  tools.moveKnot(own + 1, [tip[0] + 5, tip[1], tip[2]]);
-  check(trail()!.branches![0].knots[1][0] === tip[0] + 5, 'branch: its knot moves and the trail re-cuts');
-  // Whole-trail moves carry the branch.
-  store.trailKnot = null;
-  const all = [...trail()!.knots, ...trail()!.branches![0].knots];
-  tools.transformTrail(all.map(([x, y, z]) => [x, y, z + 10] as V3), []);
-  check(trail()!.branches![0].knots[0][2] === all[own][2] + 10 && trail()!.knots[0][2] === all[0][2] + 10,
-    'branch: moving the trail whole takes the branch with it');
-  // Growing the start renumbers the junction knot; the branch follows it.
-  tools.resumeTrail('start');
-  tools.appendKnot([trail()!.knots[0][0], 0, trail()!.knots[0][2] - 80]);
-  tools.finishCreateTrail();
-  check(trail()!.branches![0].knot === 2, 'branch: a knot laid ahead of the trail moves the branch’s knot up');
-  // Deleting a knot before the junction moves it down; deleting the junction knot takes the branch.
-  store.cellSel = [...trail()!.quads];
-  store.trailKnot = 0;
-  tools.deleteSelectedTrailKnot();
-  check(trail()!.branches![0].knot === 1, 'branch: deleting a knot before it moves the branch’s knot down');
-  store.cellSel = [...trail()!.quads];
-  store.trailKnot = 1;
-  check(tools.selectedKnotRole()?.kind === 'trail' && (tools.selectedKnotRole() as { branch: boolean }).branch,
-    'branch: its junction knot knows it carries one');
-  tools.removeBranch();
-  check(!trail()!.branches && !trail()!.network && resolveTrail(store.mdoc, trail()!)?.runSpans.length === 1,
-    'branch: removing it cuts one ribbon again');
-  store.trailKnot = null;
-}
+  // A click selects a path; a double-click (or Ctrl+A) the whole network; a box whole paths.
+  const fromPath0 = quadAt(lists[0][0]), fromPath1 = quadAt(lists[1][0]);
+  check(tools.pathCellsAt(fromPath0)?.join() === lists[0].join() && tools.pathCellsAt(fromPath1)?.join() === lists[1].join(),
+    'select: a click on either path’s patch selects that path');
+  check(tools.networkCellsAt(fromPath1)?.length === trail()!.quads.length, 'select: a double-click selects the whole network');
+  check(tools.withWholePaths([lists[1][2]]).sort().join() === [...lists[1]].sort().join(), 'select: a box takes whole paths');
+  selectPaths(trail()!, 1);
+  check(tools.selectWholeNetwork() && store.cellSel.length === trail()!.quads.length && tools.trailStatus()?.paths === 2,
+    'select: Ctrl+A grows a path to its network');
+  check(tools.trailSelection()[0].paths.join() === '0,1', 'select: … both paths');
 
-// ---- a knot's own section (docs/023 · Per-knot section) ------------------------------------------------------------
-{
-  store.trailKnot = 1;
-  check(tools.selectedTrailKnot()?.cut?.widthM === 20 && !Object.keys(tools.selectedTrailKnot()!.own).length,
-    'point: a knot with nothing of its own reads the width the trail cuts it with');
+  // Each path has its own settings: a change applies to the selected paths only.
+  selectPaths(trail()!, 1);
+  tools.setTrailSetting('widthM', 9);
+  check(trail()!.paths[1].settings.widthM === 9 && trail()!.paths[0].settings.widthM === 20,
+    'own settings: the selected path takes the change, the other keeps its own');
+  check(store.cellSel.join() === trailPathQuads(store.mdoc, trail()!)![1].join(), 'own settings: … and stays selected through the re-cut');
+  tools.selectWholeNetwork();
+  tools.setTrailSetting('dishPercent', 6);
+  check(trail()!.paths.every(path => path.settings.dishPercent === 6), 'own settings: with both selected, both take it');
+
+  // A path's points pick and move; the point it shares moves the other path with it.
+  selectPaths(trail()!, 1);
+  check(shown.knots.length === 3 && shown.shape?.paths.length === 1, 'fork: a selected path shows its own points');
+  const tip = trail()!.paths[1].points[2];
+  const at = pick(trail()!, tip);
+  const tipAt = trail()!.points[tip];
+  tools.moveKnot(at, [tipAt[0] + 5, tipAt[1], tipAt[2]]);
+  check(trail()!.points[tip][0] === tipAt[0] + 5, 'fork: its point moves and the trail re-cuts');
+  selectPaths(trail()!, 1);
+  const shared = trail()!.points[1];
+  tools.transformTrail(shift([0, 0, 10]));
+  check(trail()!.points[1][2] === shared[2] + 10 && trail()!.points[0][2] === 0,
+    'whole: moving one path takes the point it shares — and the other path’s knot there — but nothing else of it');
+
+  // The shared point's own section is the junction's: one value for both paths.
+  selectPaths(trail()!, 0);
+  pick(trail()!, 1);
+  check(tools.selectedPointRole()?.arms === 3 && tools.selectedTrailKnot()?.cut?.widthM === 20,
+    'point: a junction point reads the width the focus path cuts it with');
   tools.setTrailKnotSetting('widthM', 30);
+  check(trail()!.pointSettings?.[1]?.widthM === 30 && tools.selectedTrailKnot()?.cut?.widthM === 30, 'point: its own width is cut at it');
   tools.setTrailKnotSetting('bankDegrees', 5);
-  check(trail()!.knotSettings?.[1]?.widthM === 30 && tools.selectedTrailKnot()?.cut?.widthM === 30
-    && tools.selectedTrailKnot()?.cut?.bankDegrees === 5, 'point: its own width and fixed bank are cut at it');
+  check(tools.selectedTrailKnot()?.cut?.bankDegrees === 5, 'point: … and its fixed bank');
   tools.setTrailKnotSetting('bankDegrees', undefined);
-  check(trail()!.knotSettings?.[1]?.bankDegrees === undefined && trail()!.knotSettings?.[1]?.widthM === 30,
+  check(trail()!.pointSettings?.[1]?.bankDegrees === undefined && trail()!.pointSettings?.[1]?.widthM === 30,
     'point: clearing one value leaves the others');
-  store.trailKnot = 0;
-  tools.deleteSelectedTrailKnot();
-  check(trail()!.knots.length === 2 && trail()!.knotSettings?.[0]?.widthM === 30,
-    'delete knot: every later knot keeps its own values');
-  store.trailKnot = 0;
   tools.resetTrailKnotSettings();
-  check(trail()!.knotSettings === undefined && tools.selectedTrailKnot()?.cut?.widthM === 20,
-    'point: following the trail again drops the knot values');
-  store.trailKnot = null;
+  check(trail()!.pointSettings === undefined && tools.selectedTrailKnot()?.cut?.widthM === 20, 'point: following its paths again drops the values');
+
+  // Deleting the junction point takes it out of both paths: the first runs straight past, the second loses its end.
+  const second = trail()!.paths[1].points.length;
+  tools.deleteSelectedTrailKnot();
+  check(trail()!.paths.length === 2 && trail()!.paths[1].points.length === second - 1 && !trail()!.network?.junctionArms.length,
+    'delete point: the junction point goes from both paths, and the junction with it');
+  selectPaths(trail()!, 1);
+  tools.deleteSelectedTrail();
+  check(trail()!.paths.length === 1 && trail()!.points.length === 2, 'delete path: the selected path goes, with the points only it had');
 }
 
+selectPaths(trail()!, 0);
 const patches = trail()!.quads.length;
 tools.dissolveSelectedTrail();
 check(!store.mdoc.trails?.length && store.mdoc.quads.length === patches && store.cellSel.length === patches,
-  'dissolve: the spline goes, the patches stay selected as mesh');
+  'dissolve: the paths go, the patches stay selected as mesh');
 
-tools.armCreateTrail();
-tools.appendKnot([100, 0, 0]);
-tools.appendKnot([100, 0, 80]);
-tools.finishCreateTrail();
+draw([100, 0, 0], [100, 0, 80]);
 tools.deleteSelectedTrail();
-check(!store.mdoc.trails?.length && store.mdoc.quads.length === patches, 'delete: a trail goes with its own patches only');
+check(!store.mdoc.trails?.length && store.mdoc.quads.length === patches, 'delete: a path goes with its own patches only');
 
 tools.armCreateTrail();
 tools.appendKnot([200, 0, 0]);
 tools.finishCreateTrail();
-check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-knot trail is dropped');
+check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-point trail is dropped');
 
-// ---- merging: an end laid or dropped on another trail's knot joins the two (docs/023 · Merging) ---------------------
+// ---- joining: a point laid or dropped on any point becomes it (docs/023 · Networks) --------------------------------
 {
-  const byId = (id: string) => store.mdoc.trails!.find(other => other.id === id)!;
-  tools.armCreateTrail();
-  tools.appendKnot([1000, 0, 0]);
-  tools.appendKnot([1000, 0, 100]);
-  tools.appendKnot([1000, 0, 200]);
-  tools.finishCreateTrail();
-  const a = store.mdoc.trails!.at(-1)!.id;
+  const a = draw([1000, 0, 0], [1000, 0, 100], [1000, 0, 200]);
   const count = store.mdoc.trails!.length;
 
-  // A new trail's end snaps to the other's knots, ghosts the join, and joins end to end on its last knot.
+  // A new trail snaps to the other's points, ghosts the join, and laid on its free end runs on as one path.
   tools.armCreateTrail();
-  check(shown.shape?.snaps?.length === 3, 'merge: a trail being drawn can snap to the other trail\'s knots');
+  check(shown.shape?.snaps?.length === 3, 'join: a trail being drawn can snap to the other trail\'s points');
   tools.appendKnot([1100, 0, 300]);
   tools.previewHover([1000, 0, 200]);
   runFrames();
-  check(!!ghostNow()?.length, 'merge: the ghost shows the two joined');
+  check(!!ghostNow()?.length, 'join: the ghost shows the two joined');
   tools.appendKnot([1000, 0, 200]);
-  check(store.mdoc.trails!.length === count && byId(a).knots.length === 4 && byId(a).knots[3].join() === '1100,0,300'
+  check(store.mdoc.trails!.length === count && byId(a).paths.length === 1 && knotsOf(byId(a)).join(' ') === '1000,0,0 1000,0,100 1000,0,200 1100,0,300'
     && store.surgeryTool === null && tools.selectedTrail()?.id === a,
-  'merge: laid on the other\'s end, the two join end to end and the drawing ends');
+  'join: laid on the other\'s free end, cut alike, the two run on as one path and the drawing ends', knotsOf(byId(a)).join(' '));
 
-  // A new trail's first knot on a middle knot goes on drawing a branch of that trail.
+  // A new trail's first point on a middle point draws a new path from it.
   tools.armCreateTrail();
   tools.appendKnot([1000, 0, 100]);
-  check(store.surgeryTool === 'trail' && tools.drawingBranch() === 1 && tools.selectedTrail()?.id === a,
-    'merge: a first knot on a middle knot draws a branch from it instead');
+  check(store.surgeryTool === 'trail' && tools.drawingFrom() === 1 && tools.selectedTrail()?.id === a,
+    'join: a first point on a middle point draws a new path from it instead');
   tools.appendKnot([1090, 0, 140]);
   tools.finishCreateTrail();
-  check(byId(a).branches?.[0]?.knot === 1 && store.mdoc.trails!.length === count, 'merge: … which is the trail\'s branch');
+  check(byId(a).paths.length === 2 && byId(a).paths[1].points[0] === 1 && store.mdoc.trails!.length === count, 'join: … a fork of that trail');
 
-  // An end knot dragged onto the other's first knot joins the two there.
+  // A new trail's first point on a free end goes on drawing that path.
   tools.armCreateTrail();
-  tools.appendKnot([900, 0, -150]);
-  tools.appendKnot([980, 0, -60]);
+  tools.appendKnot([1100, 0, 300]);
+  check(tools.drawingFrom() === null && tools.trailDrawAnchor()?.join() === '1100,0,300', 'join: a first point on a free end grows that path');
+  tools.appendKnot([1150, 0, 380]);
   tools.finishCreateTrail();
-  const d = store.mdoc.trails!.at(-1)!;
-  store.cellSel = [...d.quads];
-  store.trailKnot = 1;
-  tools.syncTrailView();
-  check(!!shown.shape?.snaps?.some(p => p.join() === '1000,0,0'), 'merge: a picked end knot snaps to the other trail\'s knots');
+  check(knotsOf(byId(a)).at(-1) === '1150,0,380' && byId(a).paths.length === 2, 'join: … by a point on its end');
+
+  // A free end dragged onto the other's first point joins the two there.
+  const d = draw([900, 0, -150], [980, 0, -60]);
+  selectPaths(byId(d), 0);
+  const end = pick(byId(d), 1);
+  check(!!shown.shape?.snaps?.some(p => p.join() === '1000,0,0'), 'join: a picked point snaps to the other trail\'s points');
   tools.knotDrag(true);
-  tools.moveKnot(1, [1000, 0, 0]);
+  tools.moveKnot(end, [1000, 0, 0]);
   runFrames();
   tools.knotDrag(false);
-  check(!store.mdoc.trails!.some(other => other.id === d.id) && byId(a).knots[0].join() === '900,0,-150'
-    && byId(a).branches?.[0]?.knot === 2 && store.mdoc.quads.every(corners => corners.length === 4),
-  'merge: an end dropped on the other\'s end joins them, its patches gone and the branch carried along');
-  store.trailKnot = 1;
-  tools.syncTrailView();
-  check(!shown.shape?.snaps?.length, 'merge: a middle knot has nothing to snap');
-  store.trailKnot = null;
+  check(!store.mdoc.trails!.some(other => other.id === d) && knotsOf(byId(a))[0] === '900,0,-150' && byId(a).paths.length === 2
+    && store.mdoc.quads.every(corners => corners.length === 4),
+  'join: an end dropped on the other\'s end joins them into one path, its old patches gone', knotsOf(byId(a)).join(' '));
+  const picked = pickedNow();
+  check(picked?.trail === a && byId(a).points[picked.point].join() === '1000,0,0', 'join: the point it became stays picked');
+
+  // A middle point snaps too, but not onto itself or the points beside it.
+  selectPaths(byId(a), 0);
+  pick(byId(a), byId(a).paths[0].points[2]);
+  const snaps = shown.shape?.snaps?.map(p => p.join()) ?? [];
+  check(snaps.length > 0 && !snaps.includes('1000,0,0') && !snaps.includes('1000,0,100') && !snaps.includes('1000,0,200'),
+    'join: a picked middle point snaps to any point but its own and its neighbours', snaps.join(' '));
+  store.trailPoint = null;
 }
 
-// ---- a branch tip lands too: drawn onto its own trail it rejoins it; dragged onto another's end it runs on into it --
+// ---- a path back onto its own trail: a bypass, a loop; one dragged across another: a crossing --------------------
 {
-  const byId = (id: string) => store.mdoc.trails!.find(other => other.id === id)!;
-  const draw = (...knots: V3[]) => {
-    tools.armCreateTrail();
-    for (const knot of knots) tools.appendKnot(knot);
-    tools.finishCreateTrail();
-    return store.mdoc.trails!.at(-1)!.id;
-  };
   const t = draw([2000, 0, 0], [2000, 0, 120], [2000, 0, 240], [2000, 0, 360], [2000, 0, 480]);
-  store.cellSel = [...byId(t).quads];
-  store.trailKnot = 1;
-  tools.armBranch();
+  selectPaths(byId(t), 0);
+  pick(byId(t), 1);
+  tools.armPathFrom();
   tools.appendKnot([2070, 0, 180]);
   tools.appendKnot([2080, 0, 240]);
   tools.appendKnot([2070, 0, 300]);
   const snaps = shown.shape?.snaps?.map(p => p.join()) ?? [];
-  check(snaps.includes('2000,0,360') && !snaps.includes('2000,0,120'),
-    'rejoin: drawing a branch, its own trail\'s free knots snap, not the one it leaves');
+  check(snaps.includes('2000,0,360') && snaps.includes('2000,0,120') && !snaps.includes('2070,0,300'),
+    'bypass: drawing, every point snaps but the one it grows from');
   tools.previewHover([2000, 0, 360]);
   runFrames();
-  check(!!ghostNow()?.length, 'rejoin: the ghost shows it rejoining');
+  check(!!ghostNow()?.length, 'bypass: the ghost shows it rejoining');
   tools.appendKnot([2000, 0, 360]);
-  check(byId(t).branches?.[0].to === 3 && byId(t).branches![0].knots.length === 3 && byId(t).network?.junctions === 2
-    && store.surgeryTool === null, 'rejoin: laid on its own trail\'s knot, the branch rejoins it and the drawing ends');
+  check(byId(t).paths[1].points.at(-1) === 3 && byId(t).network?.junctionArms.join() === '3,3' && store.surgeryTool === null,
+    'bypass: laid on a point of its own trail, the path ends there — a junction at each end — and the drawing ends');
 
-  const u = draw([3000, 0, 0], [3000, 0, 120], [3000, 0, 240]);
-  store.cellSel = [...byId(u).quads];
-  store.trailKnot = 1;
-  tools.armBranch();
-  tools.appendKnot([3080, 0, 160]);
-  tools.finishCreateTrail();
-  const o = draw([3200, 0, 200], [3300, 0, 200]);
-  store.cellSel = [...byId(u).quads];
-  store.trailKnot = 3; // the branch's tip, its one knot: the trail's three knots come first
-  tools.syncTrailView();
-  check(tools.selectedKnotRole()?.kind === 'branch' && !!shown.shape?.snaps?.some(p => p.join() === '3200,0,200'),
-    'extend: a picked branch tip snaps to another trail\'s end');
+  const ring = draw([2500, 0, 0], [2650, 0, 100], [2500, 0, 250], [2350, 0, 100]);
+  selectPaths(byId(ring), 0);
+  tools.resumeTrail('end');
+  tools.appendKnot([2500, 0, 0]);
+  check(byId(ring).paths.length === 1 && byId(ring).paths[0].points.join() === '0,1,2,3,0' && byId(ring).network?.junctionArms.join() === '2',
+    'loop: a path laid back onto its own first point closes into a loop');
+
+  const w = draw([4000, 0, 0], [4000, 0, 150], [4000, 0, 300]);
+  const x = draw([3850, 0, 160], [3990, 0, 160], [4150, 0, 160]);
+  selectPaths(byId(x), 0);
+  const middle = pick(byId(x), 1);
   tools.knotDrag(true);
-  tools.moveKnot(3, [3200, 0, 200]);
+  tools.moveKnot(middle, [4000, 0, 150]);
   runFrames();
   tools.knotDrag(false);
-  check(!store.mdoc.trails!.some(other => other.id === o) && byId(u).branches?.[0].knots.map(p => p.join()).join(' ') === '3200,0,200 3300,0,200',
-    'extend: dropped on its end, the other trail goes on as the rest of the branch');
-  store.trailKnot = null;
+  check(!store.mdoc.trails!.some(other => other.id === x) && byId(w).paths.length === 2 && byId(w).network?.junctionArms.join() === '4',
+    'crossing: a middle point dropped on another trail’s middle point crosses the two there — one network, four arms',
+    JSON.stringify(byId(w).network));
+  store.trailPoint = null;
 }
 
 if (failures) process.exitCode = 1;
