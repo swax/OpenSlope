@@ -1,3 +1,4 @@
+import { retopologyEnabled } from '../../state/retopology';
 import { steps } from '../components/gui';
 import type { ToolsContext } from './widgets';
 
@@ -11,8 +12,12 @@ import type { ToolsContext } from './widgets';
  * trail is floating on the terrain, now what", and Retopology, which is its last step. One list, two call sites,
  * so the two panels cannot drift into describing the same workflow differently. Collapsed by default in both:
  * it is wanted once per trail, not on every pass through the panel.
+ *
+ * Shown only while the server offers retopology (SLOPESMITH_RETOPOLOGY=1): the recipe ends in it, and a guide whose
+ * last step names a tool that is not there leads nowhere.
  */
 export function buildTrailIntegrationGuide(editSection: ToolsContext['editSection']) {
+  if (!retopologyEnabled()) return;
   const guide = editSection('trail-integration', 'Guide · Integrate Trail With Terrain', false);
   steps(guide, [
     ['create the trail', 'lay the centre spline over the terrain and press Enter. The new patches rest '

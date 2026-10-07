@@ -11,6 +11,7 @@ import {
 import {
   conformRetopologySeams, type ConformedRetopology, type ConformRetopologyOptions,
 } from '../../../core/mesh/retopology/conform';
+import { loadRetopologyEnabled, retopologyEnabled } from '../../state/retopology';
 import { detail, errorBanner, note, tip, warningBanner } from '../components/gui';
 import { toast } from '../components/toast';
 import { buildTrailIntegrationGuide } from './trail-guide';
@@ -48,6 +49,9 @@ export function createRetopologyTools(ctx: ToolsContext) {
   let conformError = '';
   let conformRunning = false;
 
+  // Hidden until the server says it offers retopology (SLOPESMITH_RETOPOLOGY=1); a yes redraws the panel to show it.
+  void loadRetopologyEnabled().then(on => { if (on) rebuildTools(); });
+
   const lockedCount = () => Object.keys(store.mdoc.quadLocked ?? {})
     .filter(key => store.mdoc.quadLocked?.[Number(key)] === true).length;
 
@@ -74,6 +78,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
   }
 
   function open(scope: RetopologyScope = 'whole-unlocked'): void {
+    if (!retopologyEnabled()) return;
     if (!status) {
       options.scope = scope;
       selectedQuadIds = scope === 'selected-region' ? [...store.cellSel] : [];
@@ -85,6 +90,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
   }
 
   function openConform(): void {
+    if (!retopologyEnabled()) return;
     workflow = 'conform-seam';
     opened = true;
     rebuildTools();
@@ -252,6 +258,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
   }
 
   function buildLauncher(): void {
+    if (!retopologyEnabled()) return;
     const section = editSection('retopology-launcher', 'Retopology', false);
     note(section, 'Rebuild the whole mountain’s unlocked topology around exact locked trails and terrain.');
     const launch = tip(section.add({ open: () => open('whole-unlocked') }, 'open').name('▦ retopologize…'),
