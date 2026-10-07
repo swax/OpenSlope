@@ -252,8 +252,6 @@ export interface TileSetOption extends TileSetArt {
   group: string;
   /** Its name there: `Trail 1`. */
   name: string;
-  /** Hovering it: its id and tiles. */
-  title: string;
 }
 
 /** The one set menu open: closing it is the next open's first act, so two never stand at once. */
@@ -269,8 +267,8 @@ export function tileSetDropdown(g: GUI, opts: {
   hint: string;
   value: string | null;
   options: readonly TileSetOption[];
-  none: { label: string; title: string };
-  add?: { label: string; title: string; onAdd: () => void };
+  none: { label: string };
+  add?: { label: string; onAdd: () => void };
   onChange: (id: string | null) => void;
 }) {
   const row = document.createElement('div');
@@ -278,7 +276,6 @@ export function tileSetDropdown(g: GUI, opts: {
   const name = document.createElement('div');
   name.className = 'lil-name';
   name.textContent = opts.label;
-  tooltip(name, opts.hint);
   const current = opts.options.find(option => option.id === opts.value) ?? null;
   const button = document.createElement('button');
   button.type = 'button';
@@ -291,9 +288,8 @@ export function tileSetDropdown(g: GUI, opts: {
   caret.textContent = '▾';
   button.append(setThumb(current, 18), text, caret);
   button.setAttribute('aria-haspopup', 'listbox');
-  tooltip(button, current ? current.title : opts.none.title);
   button.onclick = () => openSetMenu(button, opts);
-  row.append(name, button);
+  row.append(name, button, infoBadge(opts.hint));
   g.$children.appendChild(row);
   return row;
 }
@@ -316,7 +312,7 @@ function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdow
   const scrolled = (e: Event) => { if (!(e.target instanceof Node && menu.contains(e.target))) close(); };
   const outside = (e: Event) => { if (!menu.contains(e.target as Node) && !anchor.contains(e.target as Node)) close(); };
   const keys = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
-  const item = (art: TileSetOption | null, label: string, title: string, selected: boolean, act: () => void) => {
+  const item = (art: TileSetOption | null, label: string, selected: boolean, act: () => void) => {
     const entry = document.createElement('button');
     entry.type = 'button';
     entry.className = `sp-pair-item${selected ? ' sel' : ''}`;
@@ -325,12 +321,11 @@ function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdow
     const words = document.createElement('span');
     words.textContent = label;
     entry.append(art?.rows ? setGrid(art.rows, 14) : setThumb(art, 30), words);
-    tooltip(entry, title);
     entry.onclick = () => { close(); act(); };
     menu.append(entry);
     return entry;
   };
-  item(null, opts.none.label, opts.none.title, !opts.value, () => opts.onChange(null));
+  item(null, opts.none.label, !opts.value, () => opts.onChange(null));
   let group = '';
   let chosen: HTMLElement | null = null;
   for (const option of opts.options) {
@@ -341,12 +336,12 @@ function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdow
       heading.textContent = group;
       menu.append(heading);
     }
-    const entry = item(option, option.name, option.title, option.id === opts.value, () => opts.onChange(option.id));
+    const entry = item(option, option.name, option.id === opts.value, () => opts.onChange(option.id));
     if (option.id === opts.value) chosen = entry;
   }
   if (opts.add) {
     const add = opts.add;
-    const entry = item(null, add.label, add.title, false, add.onAdd);
+    const entry = item(null, add.label, false, add.onAdd);
     entry.classList.add('sp-pair-new');
     entry.querySelector('.sp-pair-thumb')!.textContent = '+';
   }
@@ -367,12 +362,12 @@ function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdow
   closeOpenSetMenu = close;
 }
 
-/** Attach a hover tooltip to a lil-gui controller (plain-language help for the domain jargon).
- *  Keep `text` to one line — what the control does; `more` adds an info badge at the row's end
- *  carrying the longer detail (defaults, costs, when it applies) for the reader who wants it. */
+/** Hang a lil-gui controller's help (plain-language help for the domain jargon) on an info badge at the row's end.
+ *  Keep `text` to one line — what the control does — and it leads the bubble; `more` follows it with the longer
+ *  detail (defaults, costs, when it applies). The help lives on the badge alone, never the whole row: a row-wide
+ *  bubble sprang up under the pointer on every pass across a panel and covered the rows below it. */
 export function tip<C extends { domElement: HTMLElement }>(c: C, text: string, more?: string): C {
-  tooltip(c.domElement, text);
-  if (more) c.domElement.appendChild(infoBadge(more));
+  c.domElement.appendChild(infoBadge(more ? `${text}\n\n${more}` : text));
   return c;
 }
 
