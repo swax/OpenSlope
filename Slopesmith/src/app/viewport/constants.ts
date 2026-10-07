@@ -85,6 +85,15 @@ export const LOOPCUT_STOP_PX = 11; // rim / pole stop markers at the strip's end
  *  a double-click fills a whole face-loop strip. */
 export const EDIT_CELL_FILL_COLOR = 0xffd21a;
 export const EDIT_CELL_FILL_OPACITY = 0.5;       // selected cell(s), one shade for all
+/** Selected trail patches shade by the ride predicted over them instead (docs/023 · Predicted speed): a smooth ramp
+ *  through these stops, as a fraction of the ride's ordinary speed cap — standing to red, the slow end of a climb
+ *  orange, about the cruise speed flat snow settles at yellow, the cap green — and blue wherever the rider is in the
+ *  air. A touch stronger than the plain selection, so the hues read over painted tiles. */
+export const TRAIL_SPEED_STOPS: readonly (readonly [number, number])[] = [
+  [0, 0xe8331f], [0.25, 0xff8a1a], [0.5, 0xffd21a], [1, 0x3fd24a],
+];
+export const TRAIL_SPEED_AIR_COLOR = 0x3f8cff;
+export const TRAIL_SPEED_FILL_OPACITY = 0.6;
 /** Temporary local-deformation preview while a mesh gizmo is moving. A cool, faint wash distinguishes the
  * dependency neighborhood from the persistent yellow selection; it disappears on pointer-up. */
 export const LIVE_EDIT_FILL_COLOR = 0x55c8ff;

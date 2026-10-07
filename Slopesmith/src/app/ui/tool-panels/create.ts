@@ -29,12 +29,12 @@ import { parseTexRef } from '../../../core/paint/textures';
  * lil-gui; the coordinator calls reset() at the top of every toolbox rebuild so a stale row is never touched.
  */
 export function createCreateTools(ctx: ToolsContext) {
-  const { store, viewport, editSection, edit, cageActive, rebuildTools, updateCmdSheet, modelEdit, library } = ctx;
+  const { store, viewport, editSection, edit, cageActive, rebuildTools, updateCmdSheet, modelEdit, library, persistUi } = ctx;
   const {
     armCreateEdge, armCreatePatch, finishCreatePatch, finishCreateEdge,
     armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube, armLoopCut,
     armCreateTrail, undoCreateTrailPoint, finishCreateTrail,
-    trailStatus, trailError, resumeTrail, setTrailSetting,
+    trailStatus, trailError, trailRide, syncTrailView, resumeTrail, setTrailSetting,
     deleteSelectedTrailKnot, disconnectSelectedPoint, splitSelectedPoint, deleteSelectedTrail, dissolveSelectedTrail,
     selectOverlappingVertices, deselectEdit, trailTileSets, addTrailTileSet, editTrailTileSet, deleteTrailTileSet,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings, resumeEnds,
@@ -53,6 +53,7 @@ export function createCreateTools(ctx: ToolsContext) {
   let createTrailPointsRow: ReturnType<typeof detail> | null = null;
   let createTrailNextRow: ReturnType<typeof detail> | null = null;
   let createTrailSpansRow: ReturnType<typeof detail> | null = null;
+  let createTrailRideRow: ReturnType<typeof detail> | null = null;
   let createTrailErrorBanner: HTMLElement | null = null;
   let createTrailKnotBankRow: ReturnType<typeof detail> | null = null;
   let createTrailKnotSection: ReturnType<typeof editSection> | null = null;
@@ -72,6 +73,7 @@ export function createCreateTools(ctx: ToolsContext) {
     createTrailPointsRow = null;
     createTrailNextRow = null;
     createTrailSpansRow = null;
+    createTrailRideRow = null;
     createTrailErrorBanner = null;
     createTrailKnotBankRow = null;
     createTrailKnotSection = null;
@@ -617,6 +619,15 @@ export function createCreateTools(ctx: ToolsContext) {
       'Delete this set of your own. Every path wearing it goes plain.');
   }
 
+  /** The predicted ride in a line: top speed, the jumps, and any path the rider stalls on. */
+  function rideText(ride: ReturnType<typeof trailRide>): string {
+    if (!ride) return '—';
+    const parts = [`top ${ride.topSpeed.toFixed(1)} m/s`];
+    if (ride.jumps) parts.push(`${ride.jumps} ${ride.jumps === 1 ? 'jump' : 'jumps'} · ${fmtM(ride.airborneM)} airborne`);
+    if (ride.stalled) parts.push(ride.stalled === 1 ? 'stalls' : `stalls on ${ride.stalled} paths`);
+    return parts.join(' · ');
+  }
+
   /** The picked point in words: where it stands in the network. */
   function pointRoleText(role: NonNullable<ReturnType<typeof selectedPointRole>>): string {
     const at = `point ${role.point + 1}`;
@@ -646,6 +657,15 @@ export function createCreateTools(ctx: ToolsContext) {
     if (status?.junctions) detail(spline, `${status.junctions}`, 'junctions');
     if (drawing) createTrailNextRow = detail(spline, '—', 'next');
     createTrailSpansRow = detail(spline, '—', many ? 'spans · patches (selected)' : 'spans · patches');
+    // docs/023 · Predicted speed: the ride the patches shade by, in a line.
+    createTrailRideRow = tip(detail(spline, '—', 'predicted ride'),
+      'A rider set off from rest at the trail’s start, carried by the ride’s own ground model: its top speed on these paths, '
+      + 'and how often and how far it leaves the ground.');
+    tip(spline.add(store, 'trailSpeedColors').name('shade by speed').onChange(() => { persistUi(); syncTrailView(); }),
+      'Shade the selected paths by the speed that rider carries over them: red standing, orange slow, yellow cruising, '
+      + 'green at the speed cap — and blue where it is in the air.',
+      'Each path runs from its first point to its last, from rest where nothing feeds it and from the fastest arrival '
+      + 'where other paths do. It rides the centre line square: no steering, braking, boost or tricks.');
     if (role) detail(spline, pointRoleText(role), 'selected point');
     createTrailErrorBanner = errorBanner(spline, '');
     if (status?.broken) errorBanner(spline, 'Something cut into this trail’s patches, so it can no longer re-cut them. '
@@ -795,6 +815,7 @@ export function createCreateTools(ctx: ToolsContext) {
     const status = trailStatus();
     createTrailPointsRow.setValue(`${status?.points ?? 0}`);
     createTrailSpansRow?.setValue(status && !status.draft ? `${status.spans} · ${status.patches}` : '—');
+    createTrailRideRow?.setValue(rideText(trailRide()));
     if (createTrailErrorBanner) {
       const reason = trailError();
       createTrailErrorBanner.textContent = reason ?? '';

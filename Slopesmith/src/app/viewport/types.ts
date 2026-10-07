@@ -23,6 +23,10 @@ export interface TrailTransform {
   vector(v: readonly number[]): V3;
 }
 
+/** The ride predicted over a point of a selected patch (docs/023 · Predicted speed): the speed there in m/s, and whether
+ *  the rider is in the air over it. Null leaves the point the plain selection yellow. */
+export type CellSpeedTint = (quad: QuadName, point: V3) => { speed: number; airborne: boolean } | null;
+
 /**
  * One frame of a rigid Rotate / Scale over a corner, edge or cell selection: absolute positions for the
  * moved corners, absolute offsets for the directed boundary handles and interior twists that rotate with

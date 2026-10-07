@@ -59,7 +59,7 @@ import { runDiagnosticPhase, runDiagnosticPhaseAsync } from '../net/diagnostics'
 import type { SharedCameraView } from '../../core/session/screen-share';
 import { nearestSkyWorld, type SkyPreviewTarget } from '../sky/preview';
 
-import { type GizmoFrame, type GizmoMode, type MeshSelectionState, type Mode, type RotationSnapStep, type ShadeMode, type SnapStep, type ViewState, type PickResult, type ViewportCallbacks, type EditTransformTarget } from './types';
+import { type CellSpeedTint, type GizmoFrame, type GizmoMode, type MeshSelectionState, type Mode, type RotationSnapStep, type ShadeMode, type SnapStep, type ViewState, type PickResult, type ViewportCallbacks, type EditTransformTarget } from './types';
 export type { GizmoFrame, GizmoMode, MeshSelectionState, Mode, RotationSnapStep, ShadeMode, SnapStep, ViewState, PickResult, ViewportCallbacks, MeshControlPointId };
 import { TOUCH_NONE, REF_LOAD_OFFSET_X, CAGE_EDGE_SEG, CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, LOOP_RENDER_ORDER, LIVE_EDIT_FILL_COLOR, LIVE_EDIT_FILL_OPACITY, CTRL_CAGE_COLOR, SURFACE_POLY_OFFSET } from './constants';
 import { Stage, type GizmoKind } from './stage';
@@ -1045,6 +1045,7 @@ export class Viewport {
     }, {
       clearRefSelection: () => this.clearRefSelection(),
       applyGizmoFrame: () => this.transforms.applyGizmoFrame(),
+      cellSpeedShown: shown => this.legends.setTrailSpeed(shown),
     });
 
     this.liveEditFill.renderOrder = 9; // like the selection layer's cell fills: above the terrain, below the cage wires
@@ -2017,6 +2018,8 @@ export class Viewport {
    *  A single selected cell also overlays its 16-point control-net study, like a clicked reference patch.
    *  The host calls this after changing sel.cellSel; an empty set clears the shading. */
   refreshEditCells() { this.selection.refreshEditCells(); }
+  /** Shade selected trail patches by the ride predicted over them (docs/023 · Predicted speed); null: plain yellow. */
+  setEditCellSpeedTint(tint: CellSpeedTint | null) { this.selection.setCellSpeedTint(tint); }
 
   /** Redraw the selected-edge highlight from the substrate (sel.edgeSel, canonical `[lo,hi]` vertex-id pairs).
    *  The edge analogue of refreshEditCells; an empty set clears it. */

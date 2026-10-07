@@ -667,6 +667,7 @@ const persistence = createPersistence({
     worldEffects: store.worldEffectsVisible,
     lightRig: store.lightRigVisible, propLights: store.propLightsVisible, skybox: store.skyboxVisible,
     tricks: store.tricksVisible, textureLib: store.libraryWanted, trailTileSet: store.trailTileSet,
+    trailSpeedColors: store.trailSpeedColors,
     propLib: store.propLibWanted, playTarget: store.playTarget, playRiderModel: store.playRiderModel,
     playRiderStyle: store.playRiderStyle, playRideGear: store.playRideGear,
     playSnowboardStance: store.playSnowboardStance,

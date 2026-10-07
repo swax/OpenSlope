@@ -198,6 +198,7 @@ export type Store = {
   trailTileSet: string | null;       // the tile set a new trail path wears (`MESA/Trail 1`); null leaves it plain
   trailTurnRadius: number;           // spans tighter than this radius, metres, wear the set's turn rows
   trailCaps: 'none' | 'start' | 'end' | 'both'; // the free ends of a new path that are capped
+  trailSpeedColors: boolean;         // selected trail patches shade by the ride predicted over them (docs/023)
   trailPoint: { trail: string; point: number } | null; // trail point carrying the move gizmo (its paths are the
                                      // one being drawn, or the ones whose patches are exactly cellSel)
   // The selected path's Bézier handle carrying the gizmo (docs/014) — on a rail, a prop line or a trail; at most
@@ -457,6 +458,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     trailTileSet: typeof ui.trailTileSet === 'string' || ui.trailTileSet === null ? ui.trailTileSet : DEFAULT_TRAIL_TILES.trailTiles,
     trailTurnRadius: DEFAULT_TRAIL_TILES.turnRadiusM,
     trailCaps: 'both', // a new path is capped at both of its free ends; the panel's caps setting changes it
+    trailSpeedColors: ui.trailSpeedColors !== false,
     trailPoint: null,
     pathHandle: null,
     weldTool: null,
