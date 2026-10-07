@@ -605,4 +605,63 @@ check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-p
   store.trailPoint = null;
 }
 
+// ---- tiles painted by hand go with their patches as the trail moves, until reset (docs/023 · Hand-painted tiles) -----
+{
+  const HAND = 'Custom/hand.png';
+  const h = draw([7000, 0, 0], [7000, 0, 150]);
+  selectPaths(byId(h), 0);
+  check(tools.trailCustomTileCount() === 0, 'hand: a fresh path has nothing painted by hand');
+  // Paint writes into the document in place, as the Paint brush does.
+  const slot = 3;
+  store.mdoc.quadTex![quadAt(byId(h).quads[slot])] = HAND;
+  store.mdoc.quadOrient![quadAt(byId(h).quads[slot])] = { rot: 2, mirror: false };
+  check(tools.trailCustomTileCount() === 1, 'hand: a tile painted onto the path is counted');
+  const handAt = () => byId(h).quads.flatMap((id, i) => store.mdoc.quadTex?.[quadAt(id)] === HAND ? [i] : []);
+
+  tools.knotDrag(true);
+  tools.transformTrail(shift([30, 0, 10]));
+  runFrames();
+  tools.transformTrail(shift([60, 2, -20]));
+  runFrames();
+  tools.knotDrag(false);
+  check(handAt().join() === `${slot}` && store.mdoc.quadOrient?.[quadAt(byId(h).quads[slot])]?.rot === 2,
+    'hand: the path dragged, the tile goes with its patch, turned as painted');
+
+  // A point dragged far enough to add spans and back: each frame is cut from the drag's start, so the tile is home.
+  const spans = byId(h).quads.length, end = pick(byId(h), 1), home = [...byId(h).points[1]] as V3;
+  tools.knotDrag(true);
+  tools.moveKnot(end, [home[0], home[1], home[2] + 200]);
+  runFrames();
+  check(byId(h).quads.length > spans && handAt().length === 1, 'hand: mid-drag, longer, the tile is on its place along the path');
+  tools.moveKnot(end, home);
+  runFrames();
+  tools.knotDrag(false);
+  store.trailPoint = null;
+  check(handAt().join() === `${slot}`, 'hand: dragged back, the tile is back on its own patch');
+
+  tools.setTrailSetting('trailTiles', 'ALOHA/Preset 1');
+  check(handAt().join() === `${slot}` && tools.trailCustomTileCount() === 1, 'hand: another set worn, the tile painted by hand stays');
+  tools.setTrailSetting('trailTiles', 'MESA/Preset 1');
+
+  // Joined into another trail, the tile goes with its patch into the network.
+  const other = draw([7300, 0, 0], [7300, 0, 150]);
+  selectPaths(byId(h), 0);
+  const joinAt = pick(byId(h), 0);
+  tools.knotDrag(true);
+  tools.moveKnot(joinAt, [7300, 0, 150]);
+  runFrames();
+  tools.knotDrag(false);
+  store.trailPoint = null;
+  const joined = store.mdoc.trails!.find(trail => trail.quads.some(id => store.mdoc.quadTex?.[quadAt(id)] === HAND));
+  check(!store.mdoc.trails!.some(trail => trail.id === h) && joined?.id === other
+    && joined.quads.filter(id => store.mdoc.quadTex?.[quadAt(id)] === HAND).length === 1,
+  'hand: joined into another trail, the tile goes with it', joined?.id ?? 'lost');
+
+  selectPaths(byId(other), 0);
+  check(tools.trailCustomTileCount() === 1, 'hand: … and is still told apart there');
+  tools.resetTrailTextures();
+  check(tools.trailCustomTileCount() === 0 && !Object.values(store.mdoc.quadTex ?? {}).includes(HAND)
+    && byId(other).quads.every(id => !!store.mdoc.quadTex?.[quadAt(id)]), 'hand: reset, every patch wears its set again');
+}
+
 if (failures) process.exitCode = 1;

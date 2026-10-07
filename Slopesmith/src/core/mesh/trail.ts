@@ -691,6 +691,9 @@ export interface TrailJunction {
   vertices: number[];
   /** Its patches, arm by arm: the arm's lanes carried on, and the patches narrowing a wider one to two. */
   quads: number[];
+  /** Which lane each patch carries on, index-parallel with `quads`: of which run, at its head or its tail, and which of
+   *  the `of` lanes that end has, from the run's own left rim. */
+  lanes: { run: number; atHead: boolean; lane: number; of: number }[];
   /** How far back up each trail the fan reaches. */
   reachM: number;
   /** Trails meeting here, in the order they leave. */
@@ -698,7 +701,8 @@ export interface TrailJunction {
 }
 
 export type TrailNetworkResult =
-  | { ok: true; doc: QuadMeshDoc; runs: TrailRibbon[]; junctions: TrailJunction[]; quads: number[] }
+  /** `trims`: where each run's ribbon starts and ends on its spline, its junctions having taken their room. */
+  | { ok: true; doc: QuadMeshDoc; runs: TrailRibbon[]; trims: TrailSplineTrim[]; junctions: TrailJunction[]; quads: number[] }
   | { ok: false; error: string };
 
 export interface TrailNetworkOptions extends TrailOptions {
@@ -756,7 +760,7 @@ function chainParam(spline: readonly TrailCubic[], each: readonly number[], dist
  * back is a shorter chain describing exactly the same curve.
  */
 export function trimTrailSpline(spline: readonly TrailCubic[], profile: TrailKnotProfile | undefined,
-  headM: number, tailM: number): { spline: TrailCubic[]; profile?: TrailKnotProfile } | { error: string } {
+  headM: number, tailM: number): ({ spline: TrailCubic[]; profile?: TrailKnotProfile } & TrailSplineTrim) | { error: string } {
   const { each, total } = chainArcs(spline);
   if (headM + tailM >= total) return { error: `nothing is left of it between its junctions` };
   const head = chainParam(spline, each, headM);
@@ -773,7 +777,8 @@ export function trimTrailSpline(spline: readonly TrailCubic[], profile: TrailKno
       sliceCubic(spline[tail.segment], 0, tail.t),
     ];
 
-  if (!profile) return { spline: out };
+  const trim: TrailSplineTrim = { from: { segment: head.segment, t: head.t }, to: { segment: tail.segment, t: tail.t } };
+  if (!profile) return { spline: out, ...trim };
   // A new end knot reads the profile where it lands, by the arc fraction generation reads it with. A bank only
   // fixed on one side of it has no single value there; the nearer knot's choice carries.
   const carry = <T extends number | null>(values: readonly T[]): T[] => {
@@ -792,7 +797,20 @@ export function trimTrailSpline(spline: readonly TrailCubic[], profile: TrailKno
   for (const key of ['widthM', 'dishFraction', 'centerBias', 'bankStrength'] as const)
     if (profile[key]) carried[key] = carry(profile[key]!);
   if (profile.bankDegrees) carried.bankDegrees = carry(profile.bankDegrees);
-  return { spline: out, profile: carried };
+  return { spline: out, profile: carried, ...trim };
+}
+
+/** Where a trimmed chain starts and ends on the chain it was cut from: a segment of that chain, and a parameter of
+ *  that segment's cubic. */
+export interface TrailSplineTrim { from: { segment: number; t: number }; to: { segment: number; t: number } }
+
+/** A place on a trimmed chain — `t` along its `segment` — as the same place on the chain it was cut from. The trimmed
+ *  ends are de Casteljau restrictions, which reparameterise linearly. */
+export function untrimmedSplinePlace(trim: TrailSplineTrim | undefined, segment: number, t: number): { segment: number; t: number } {
+  if (!trim) return { segment, t };
+  const { from, to } = trim, at = from.segment + segment;
+  const t0 = segment === 0 ? from.t : 0, t1 = at === to.segment ? to.t : 1;
+  return { segment: at, t: t0 + t * (t1 - t0) };
 }
 
 /**
@@ -1016,6 +1034,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   // ---- generate every ribbon, cut back to its junctions -----------------------------------------------------
   let out = doc;
   const ribbons: TrailRibbon[] = [];
+  const trims: TrailSplineTrim[] = [];
   const created: number[] = [];
   for (let i = 0; i < runs.length; i++) {
     const spec = runs[i];
@@ -1031,6 +1050,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
     if (!ribbon.ok) return { ok: false, error: `Run ${i}: ${ribbon.error}` };
     out = ribbon.doc;
     ribbons.push(ribbon);
+    trims.push({ from: trimmed.from, to: trimmed.to });
     created.push(...ribbon.quads);
   }
 
@@ -1039,9 +1059,9 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const vertices = out.vertices.slice();
   const quads = out.quads.map(quad => quad.slice());
   const junctions: TrailJunction[] = [];
-  /** Every junction patch, the run it carries on, and which of the lanes at that end of the run — `of` them, from the
-   *  generator's left rim. */
-  const laneOf: { quad: number; run: number; lane: number; of: number }[] = [];
+  /** Every junction patch, the run it carries on and at which end, and which of the lanes at that end of the run — `of`
+   *  them, from the generator's left rim. */
+  const laneOf: { quad: number; run: number; atHead: boolean; lane: number; of: number }[] = [];
   const point = (v: number): V3 => [vertices[v * 3], vertices[v * 3 + 1], vertices[v * 3 + 2]];
   const between = (a: V3, b: V3, t: number): V3 => [lerpNumber(a[0], b[0], t), lerpNumber(a[1], b[1], t), lerpNumber(a[2], b[2], t)];
   const addVertex = (p: V3): number => vertices.push(p[0], p[1], p[2]) / 3 - 1;
@@ -1050,7 +1070,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
     if (list.length < 2) continue;
     const R = reach.get(node)!;
     const centre = position.get(node)!;
-    const first = vertices.length / 3;
+    const first = vertices.length / 3, firstLane = laneOf.length;
 
     /** Each trail's end cross-section, rim to rim, in the frame of a skier leaving the junction along it: the
      *  ribbon's own rails run the other way when the trail runs INTO the node rather than out of it. */
@@ -1152,13 +1172,14 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
             + `[reach ${R.toFixed(0)} m, halves ${list.map(arm => arm.half.toFixed(0)).join('/')}]` };
         }
         fan.push(quads.length);
-        laneOf.push({ quad: quads.length, run: end.arm.run, lane: end.arm.atHead ? k : lanes - 1 - k, of: lanes });
+        laneOf.push({ quad: quads.length, run: end.arm.run, atHead: end.arm.atHead, lane: end.arm.atHead ? k : lanes - 1 - k, of: lanes });
         quads.push(corners);
       }
     }
     junctions.push({
       node, center: hub, quads: fan, reachM: R, runs: list.map(arm => arm.run),
       vertices: Array.from({ length: vertices.length / 3 - first }, (_, k) => first + k),
+      lanes: laneOf.slice(firstLane).map(({ run, atHead, lane, of }) => ({ run, atHead, lane, of })),
     });
     created.push(...fan);
   }
@@ -1190,5 +1211,5 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   network.quadPaint = quadPaint;
   if (Object.keys(quadTex).length) { network.quadTex = quadTex; network.quadOrient = quadOrient; }
 
-  return { ok: true, doc: network, runs: ribbons, junctions, quads: created };
+  return { ok: true, doc: network, runs: ribbons, trims, junctions, quads: created };
 }

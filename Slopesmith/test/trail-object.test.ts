@@ -10,8 +10,9 @@ import { meshFromDoc } from '../src/core/mesh/topology';
 import { migrateLegacyTrail, normalizeTrails } from '../src/core/doc/trails';
 import {
   connectedPaths, cutTrail, disconnectPoint, fusePathsAt, joinTrails, junctionPoints, mergeTrailPoints, pointArms, removeTrailPatches,
-  resolveTrail, reversePath, separateTrail, setTrailKnotValue, splitPathsAt, trailIsConnected, trailOwningQuad, trailPathQuads, trailPathStations,
-  trailInterior, trailPreview, trailRunList, TRAIL_SETTINGS_DEFAULTS, withoutTrailPaths, withoutTrailPoint,
+  resolveTrail, reversePath, separateTrail, setTrailKnotValue, splitPathsAt, trailCustomTiles, trailIsConnected, trailOwningQuad, trailPathQuads,
+  trailPathStations, trailInterior, trailPreview, trailRunList, TRAIL_SETTINGS_DEFAULTS, withoutTrailPaths, withoutTrailPoint,
+  type TrailCutOptions,
 } from '../src/core/mesh/trail-object';
 import { checkManifold } from '../src/core/mesh/ops';
 import { trimTrailSpline, type TrailCubic } from '../src/core/mesh/trail';
@@ -852,6 +853,132 @@ if (!created.ok) process.exit(1);
   JSON.stringify([wornAfter('GARI/Snow Trail'), wornAfter('MERQUER/Trail 1')]));
   check(doc.trails?.[0].paths[0].settings.lanes === 2 && doc.trails[0].paths[0].settings.caps === 'none',
     'migrate: a path saved before lanes is two lanes wide, and one before caps uncapped');
+}
+
+// ---- tiles painted by hand go with their patches (docs/023 · Hand-painted tiles) -----------------------------------
+{
+  const HAND = 'Custom/hand.png';
+  /** Cut as the editor does: into the document, the trail's record kept in its `trails`. */
+  const cutInto = (doc: QuadMeshDoc, trail: AuthoredTrail, options?: TrailCutOptions) => {
+    const cut = cutTrail(doc, trail, options);
+    if (!cut.ok) throw new Error(cut.error);
+    return { ...cut, doc: { ...cut.doc, trails: [...(doc.trails ?? []).filter(other => other.id !== trail.id), cut.trail] } };
+  };
+  /** Paint (or, with no tile, clear) one of a trail's patches by its slot, as Paint does: the tile, its turn, its feel. */
+  const paint = (doc: QuadMeshDoc, trail: AuthoredTrail, slot: number, tex: string | null,
+    orient?: { rot: number; mirror: boolean }, surface?: number): QuadMeshDoc => {
+    const quad = resolveTrail(doc, trail)!.quads[slot];
+    const quadTex = { ...doc.quadTex }, quadOrient = { ...doc.quadOrient }, quadPaint = { ...doc.quadPaint };
+    if (tex) quadTex[quad] = tex; else delete quadTex[quad];
+    if (orient) quadOrient[quad] = orient; else delete quadOrient[quad];
+    if (surface !== undefined) quadPaint[quad] = surface;
+    return { ...doc, quadTex, quadOrient, quadPaint };
+  };
+  /** The slots of a trail's patches wearing `tex`. */
+  const wearing = (doc: QuadMeshDoc, trail: AuthoredTrail, tex: string) =>
+    resolveTrail(doc, trail)!.quads.flatMap((quad, slot) => doc.quadTex?.[quad] === tex ? [slot] : []);
+  const centre = (doc: QuadMeshDoc, trail: AuthoredTrail, slot: number): V3 => {
+    const corners = doc.quads[resolveTrail(doc, trail)!.quads[slot]];
+    return [0, 1, 2].map(k => corners.reduce((sum, v) => sum + doc.vertices[v * 3 + k], 0) / corners.length) as V3;
+  };
+  const shift = (trail: AuthoredTrail, d: V3): AuthoredTrail =>
+    ({ ...trail, points: trail.points.map(p => [p[0] + d[0], p[1] + d[1], p[2] + d[2]] as V3) });
+
+  const base = cutInto(emptyDoc(), trailOf([[0, 0, 0], [0, 0, 100]]));
+  check(trailCustomTiles(base.doc, base.trail)?.length === 0, 'hand: a fresh cut wears nothing painted by hand');
+  const painted = paint(base.doc, base.trail, 3, HAND, { rot: 1, mirror: true });
+  const found = trailCustomTiles(painted, base.trail)!;
+  check(found.length === 1 && found[0].slot === 3 && found[0].tex === HAND && found[0].orient?.rot === 1 && found[0].orient.mirror
+    && found[0].place.segment === 0 && !found[0].place.junction, 'hand: a tile painted over the set’s is found, and where', JSON.stringify(found));
+  const q4 = resolveTrail(base.doc, base.trail)!.quads[4], laid4 = base.doc.quadOrient![q4];
+  const turned = paint(base.doc, base.trail, 4, base.doc.quadTex![q4], { rot: (laid4.rot + 1) % 4, mirror: laid4.mirror });
+  check(trailCustomTiles(turned, base.trail)?.map(tile => tile.slot).join() === '4', 'hand: the set’s own tile turned by hand is found too');
+  check(trailCustomTiles({ ...painted, trailTileSets: [] }, base.trail)?.length === 1, 'hand: read again in another document, the same');
+
+  // Moved, the trail's layout is unchanged: the tile stays on its patch, turned as it was, and the rest wear the set.
+  const moved = cutInto(painted, shift(base.trail, [40, 3, -25]));
+  const fresh = cutTrail(emptyDoc(), { ...shift(base.trail, [40, 3, -25]), vertices: [], quads: [] });
+  const q3 = resolveTrail(moved.doc, moved.trail)!.quads[3];
+  check(wearing(moved.doc, moved.trail, HAND).join() === '3' && moved.doc.quadOrient?.[q3]?.rot === 1 && moved.doc.quadOrient[q3].mirror,
+    'hand: moved, the tile stays on its patch, turned as painted');
+  check(fresh.ok && resolveTrail(moved.doc, moved.trail)!.quads.every((quad, slot) => slot === 3
+    || moved.doc.quadTex?.[quad] === fresh.doc.quadTex?.[resolveTrail(fresh.doc, fresh.trail)!.quads[slot]]),
+  'hand: … and every other patch wears the set, as a fresh cut does');
+  check(trailCustomTiles(moved.doc, moved.trail)?.length === 1, 'hand: still told apart after the move');
+
+  // Lengthened, the spans are cut afresh: the tile goes to the patch on its lane whose stretch holds its middle.
+  const longer = cutInto(painted, withKnots(base.trail, [[0, 0, 0], [0, 0, 200]]));
+  const mid = found[0].place.junction ? 0 : (found[0].place.t0 + found[0].place.t1) / 2;
+  const span = longer.layout.spans.findIndex(s => s.sourceT0 <= mid && mid <= s.sourceT1);
+  check(longer.trail.quads.length > base.trail.quads.length && wearing(longer.doc, longer.trail, HAND).join() === `${span * 2 + found[0].place.lane}`
+    && span * 2 + found[0].place.lane !== 3, 'hand: lengthened, the tile goes to the patch at its place along the path',
+  `${wearing(longer.doc, longer.trail, HAND)} / span ${span}`);
+  check(!!longer.doc.quadTex?.[resolveTrail(longer.doc, longer.trail)!.quads[3]] && longer.doc.quadTex[resolveTrail(longer.doc, longer.trail)!.quads[3]] !== HAND,
+    'hand: … and the patch it left wears the set again');
+
+  // A point added before the start renumbers the segment: the tile finds it by its two ends.
+  const ahead: AuthoredTrail = { ...base.trail, points: [...base.trail.points, [0, 0, -100]], paths: [{ ...base.trail.paths[0], points: [2, 0, 1] }] };
+  const grown = cutInto(painted, ahead);
+  const after = trailCustomTiles(grown.doc, grown.trail)!;
+  check(after.length === 1 && after[0].tex === HAND && after[0].place.segment === 1 && after[0].place.lane === found[0].place.lane
+    && !after[0].place.junction && after[0].place.t0 <= mid && mid <= after[0].place.t1,
+  'hand: a point added ahead of it, the tile keeps its place on its segment', JSON.stringify(after.map(tile => tile.place)));
+
+  // Run the other way, the tile stays on the same ground, turned half round with the patch.
+  const back = cutInto(painted, { ...base.trail, paths: [reversePath(base.trail.paths[0])] });
+  const [onBack] = wearing(back.doc, back.trail, HAND);
+  const qBack = resolveTrail(back.doc, back.trail)!.quads[onBack];
+  check(dist(centre(back.doc, back.trail, onBack), centre(painted, base.trail, 3)) < 1e-6
+    && back.doc.quadOrient?.[qBack]?.rot === 3 && back.doc.quadOrient[qBack].mirror,
+  'hand: the path run the other way, the tile stays on its ground, turned half round', `${onBack}`);
+
+  // Settings: another set, or none, keeps it; three lanes take it to the same edge.
+  const unset = cutInto(painted, { ...base.trail, paths: [{ ...base.trail.paths[0], settings: { ...base.trail.paths[0].settings, trailTiles: null } }] });
+  check(wearing(unset.doc, unset.trail, HAND).join() === '3'
+    && resolveTrail(unset.doc, unset.trail)!.quads.every((quad, slot) => slot === 3 || !unset.doc.quadTex?.[quad]),
+  'hand: the set taken off, the tile painted by hand stays and the rest go plain');
+  const three = cutInto(painted, { ...base.trail, paths: [{ ...base.trail.paths[0], settings: { ...base.trail.paths[0].settings, lanes: 3 } }] });
+  const wide = trailCustomTiles(three.doc, three.trail)!;
+  check(wide.length === 1 && wide[0].tex === HAND && wide[0].place.lanes === 3 && wide[0].place.lane === 2,
+    'hand: three lanes wide, the tile is on the same edge lane', JSON.stringify(wide.map(tile => tile.place)));
+
+  // A tile taken off by hand stays off; its ride feel goes with a tile painted.
+  const bare = paint(painted, base.trail, 6, null);
+  const bareMoved = cutInto(bare, shift(base.trail, [0, 0, 30]));
+  check(!bareMoved.doc.quadTex?.[resolveTrail(bareMoved.doc, bareMoved.trail)!.quads[6]] && wearing(bareMoved.doc, bareMoved.trail, HAND).join() === '3',
+    'hand: a tile taken off by hand stays off as the trail moves');
+  const icy = paint(base.doc, base.trail, 3, HAND, undefined, 7);
+  const icyLonger = cutInto(icy, withKnots(base.trail, [[0, 0, 0], [0, 0, 200]]));
+  const icyOwned = resolveTrail(icyLonger.doc, icyLonger.trail)!;
+  const [icySlot] = wearing(icyLonger.doc, icyLonger.trail, HAND);
+  check(icyLonger.doc.quadPaint?.[icyOwned.quads[icySlot]] === 7 && icyLonger.doc.quadPaint[icyOwned.quads[3]] === 1,
+    'hand: the ride feel painted with it goes with the tile, and the patch it left takes the trail’s back');
+
+  // Its segment gone, the tile goes; told to drop it, the set's tile is back.
+  const three3 = cutInto(emptyDoc(), trailOf([[0, 0, 0], [0, 0, 100], [0, 0, 200]]));
+  const onEnd = paint(three3.doc, three3.trail, three3.trail.quads.length - 1, HAND);
+  const cutBack = cutInto(onEnd, withoutTrailPoint(three3.trail, 1).trail);
+  check(wearing(cutBack.doc, cutBack.trail, HAND).length === 0, 'hand: its segment gone, the tile goes with it');
+  const reset = cutInto(painted, base.trail, { custom: [] });
+  check(wearing(reset.doc, reset.trail, HAND).length === 0 && trailCustomTiles(reset.doc, reset.trail)?.length === 0,
+    'hand: let go of, the patch wears the set’s tile again');
+  const icyReset = cutInto(icy, base.trail, { custom: [], dropped: trailCustomTiles(icy, base.trail)! });
+  check(wearing(icyReset.doc, icyReset.trail, HAND).length === 0 && icyReset.doc.quadPaint?.[resolveTrail(icyReset.doc, icyReset.trail)!.quads[3]] === 1,
+    'hand: … and the trail’s ride feel');
+
+  // A junction's patch: moved, the network keeps its shape, and the tile its patch; reshaped, its junction lane.
+  const fork = cutInto(emptyDoc(), withPathThrough(trailOf([[0, 0, 0], [0, 0, 120], [0, 0, 240]]), [1, [100, 0, 180], [180, 0, 220]]));
+  const hub = fork.trail.quads.length - 1;
+  const forkPainted = paint(fork.doc, fork.trail, hub, HAND);
+  const [atHub] = trailCustomTiles(forkPainted, fork.trail)!;
+  check(!!atHub?.place.junction, 'hand: a junction’s patch is found as one', JSON.stringify(atHub?.place));
+  const forkMoved = cutInto(forkPainted, shift(fork.trail, [-60, 0, 15]));
+  check(wearing(forkMoved.doc, forkMoved.trail, HAND).join() === `${hub}`, 'hand: the network moved, the junction’s tile stays on its patch');
+  const forkLonger = cutInto(forkPainted, { ...fork.trail, points: fork.trail.points.map((p, i) => i === 2 ? [0, 0, 400] as V3 : p) });
+  const [stillAtHub] = trailCustomTiles(forkLonger.doc, forkLonger.trail)!;
+  check(forkLonger.trail.quads.length !== fork.trail.quads.length && stillAtHub?.place.junction === atHub.place.junction
+    && stillAtHub.place.path === atHub.place.path && stillAtHub.place.lane === atHub.place.lane,
+  'hand: an arm lengthened, the tile stays on the same lane of the same junction', JSON.stringify(stillAtHub?.place));
 }
 
 if (failures) process.exitCode = 1;

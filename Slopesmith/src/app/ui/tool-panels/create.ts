@@ -39,6 +39,7 @@ export function createCreateTools(ctx: ToolsContext) {
     selectOverlappingVertices, deselectEdit, trailTileSets, addTrailTileSet, editTrailTileSet, deleteTrailTileSet,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings, resumeEnds,
     armPathFrom, selectedPointRole, drawingFrom, focusSettings, selectWholeNetwork, trailDrawAnchor,
+    trailCustomTileCount, resetTrailTextures,
   } = edit;
 
   let createEdgeTotalRow: ReturnType<typeof detail> | null = null;
@@ -542,6 +543,15 @@ export function createCreateTools(ctx: ToolsContext) {
         onAdd: () => newTileSet(chosen) },
       onChange: pick => wearSet(pick),
     });
+    // Tiles painted by hand over the set's go with their patches when the paths move, until they are reset.
+    const painted = trailCustomTileCount();
+    if (painted) {
+      detail(g, `${painted} patch${painted === 1 ? '' : 'es'}`, 'painted by hand');
+      tip(g.add({ reset: () => { resetTrailTextures(); refreshCreateTrailSummary(); rebuildTools(); } }, 'reset').name('↺ reset textures'),
+        `Put ${paths > 1 ? 'these paths’' : 'this path’s'} hand-painted patches back to the tiles the set lays.`,
+        'A tile painted, turned or taken off by hand stays on its patch as the path moves, reshapes or changes its set, '
+        + 'and is let go only where its patch is gone — its stretch of the path, or a junction it was part of.');
+    }
     tip(g.add(trailSettingsTarget(), 'caps', CAPS).name('caps').onChange(() => { refreshCreateTrailSummary(); rebuildTools(); }),
       'Close the path’s free ends with a cap: a square span, as long as a lane is wide, wearing the set’s cap row.',
       'An end at a junction or a joint carries on into it instead. The cap row reads as a rider travelling out to that '

@@ -328,12 +328,32 @@ or turn row's middle cleared stays plain, where one left out wears the trail row
 takes it off (its trail row is worn there again). A row the set has none of shows faded, and changing it gives the set
 the row, starting from its trail row; a change between two rows is one edit. **⧉ copy layout** copies the set as it is
 written among the built-in ones (`trailTileSetLiteral`), to paste in as a preset. **✕ delete** deletes it. Every change
-re-cuts every path wearing it, and deleting it leaves those paths plain. A set that cannot be found lays nothing. A re-cut that lays no tile on a patch takes back only what a set lays
-there — the built-in ones' tiles, those of the sets retired, and the mountain's own, the edited set's old tiles among
-them — so a tile painted by hand stays. Paths saved before tile sets carried only `mesaTextures`, and load wearing
+re-cuts every path wearing it, and deleting it leaves those paths plain. A set that cannot be found lays nothing. Tiles
+painted by hand are kept (below); where a re-cut cannot tell them apart, it takes back only what a set lays on a patch it
+lays no tile on — the built-in ones' tiles, those of the sets retired, and the mountain's own, the edited set's old tiles
+among them. Paths saved before tile sets carried only `mesaTextures`, and load wearing
 Mesa's set, or plain; ones saved while turns and caps wore sets of their own load wearing their trail's set alone,
 whose rows those are now; and a document saved while a set was one row of a kind (or a pair, as `trailTilePairs`) has
 each read as a set of that row along its spans, and its paths load two lanes wide.
+
+**Hand-painted tiles.** A trail's patches can be painted like any others, and a re-cut keeps what was painted. Nothing
+records it: a tile is PAINTED BY HAND wherever a patch wears other than its trail's own cut lays there — another tile,
+the set's tile turned or mirrored, or none where the set lays one (`trailCustomTiles`, read against the trail as it is
+in the document and the sets that laid its tiles). Each is found at a PLACE that outlives a re-cut (`TrailPatchPlace`):
+its path and knot segment, then for a ribbon's patch its stretch of that segment's cubic and its lane across the span —
+a wedge where a lane ends — and for a junction's which end of the segment the junction is at and the lane it carries
+on. To find those places through a junction's cut-back, a network reports where each run's ribbon starts and ends on
+its spline (`trims`, `untrimmedSplinePlace`) and which lane of which run each junction patch carries on
+(`TrailJunction.lanes`). A re-cut puts each tile back at its place (`wearCustomTiles`): by path and segment while the
+trail keeps its paths and points — a move, a turn, a reshape, a setting — and by its segment's two points once those
+have changed — a point added, a path split, fused or taken into another trail, or a network broken apart, the tiles of
+the trails taken in or broken from going with it. It goes on the same lane, or the one as far across where the lanes
+changed, and onto the patch whose stretch holds the middle of its own; a segment now run the other way turns it half
+round with the patch. The ride feel painted with it goes too, and the patch it left takes the trail's back. A tile
+whose place is gone — its segment, its junction, its wedge — is let go, and where two land on one patch the nearer
+keeps it. A drag reads them once, from its start, so a frame that crowds the spans loses nothing the drop does not. The
+**Textures** group counts the selected paths' patches painted by hand, and **↺ reset textures** lets them go, so those
+patches wear what their set lays again.
 
 **Per-point section.** A picked point adds a **Point N** group to the panel: its width, centre seam and centre dish,
 and its bank. Each row shows the value it is cut with there; moving it makes the value the point's own (the row is
