@@ -30,8 +30,8 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         # Store the channel's webhook URL as the repository Actions secret above.
-        # A manual run sends one connection-test message. Pushes are summarized
-        # in one line; issue edits and labels are intentionally quiet.
+        # A manual run sends one connection-test message. Pushes list linked
+        # commit hashes and subjects; issue edits and labels are intentionally quiet.
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -51,18 +51,29 @@ jobs:
           let content;
           if (eventName === 'push') {
             if (event.deleted) process.exit(0);
-            const commits = event.commits || [];
-            const head = event.head_commit || commits.at(-1);
-            if (!head) process.exit(0);
+            const commits = event.commits?.length ? event.commits : event.head_commit ? [event.head_commit] : [];
+            if (!commits.length) process.exit(0);
             const branch = clean(event.ref.replace(/^refs\/heads\//, ''), 60);
-            const count = Math.max(event.size || commits.length, 1);
+            const count = Math.max(event.size || 0, commits.length);
             const before = event.before;
             const after = event.after;
             const url = before && !/^0+$/.test(before)
               ? `${base}/compare/${before}...${after}`
               : `${base}/commit/${after}`;
-            const summary = event.forced ? 'force-pushed' : 'pushed';
-            content = `${branch} · ${actor} ${summary} [${count} commit${count === 1 ? '' : 's'}](<${url}>) · ${clean(head.message)}`;
+            const summary = event.forced ? 'force-pushed' : 'committed';
+            const prefix = `${branch} · ${actor} ${summary} `;
+            const entries = [];
+            const more = remaining => remaining > 0 ? `[${remaining} more](<${url}>)` : '';
+            // Reserve room for a compare link when the push exceeds Discord's content limit
+            // or the event includes only part of its commit list. Never cut a link in half.
+            for (const commit of commits) {
+              const id = commit.id || after;
+              const entry = `[${id.slice(0, 7)}](<${base}/commit/${id}>) ${clean(commit.message)}`;
+              const candidate = [...entries, entry, more(count - entries.length - 1)].filter(Boolean).join(', ');
+              if (prefix.length + candidate.length > 2000) break;
+              entries.push(entry);
+            }
+            content = prefix + [...entries, more(count - entries.length)].filter(Boolean).join(', ');
           } else if (eventName === 'issues') {
             if (!['opened', 'closed', 'reopened'].includes(event.action)) process.exit(0);
             content = `[#${event.issue.number}](<${base}/issues/${event.issue.number}>) ${event.action} by ${actor} · ${clean(event.issue.title)}`;

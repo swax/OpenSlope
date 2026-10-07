@@ -27,6 +27,9 @@ import { buildMountainPreview } from '../src/core/mesh/tessellation';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { findTJunctions } from '../src/core/mesh/t-junctions';
 import { findCoincidentVertices } from '../src/core/mesh/coincident-vertices';
+import { CREASE_DEGREES, seamCreaseDegrees } from '../src/core/mesh/creases';
+import { fairPoleSeams } from '../src/core/mesh/pole-fairing';
+import { setQuadsLocked } from '../src/core/mesh/locks';
 import { watertight, hasNaN, grid, GRID_COLS, freshGrid, cellRows, cellCols, V0, Q0 } from './meshops.fixture';
 import { check, failures } from './check';
 
@@ -502,6 +505,44 @@ import { check, failures } from './check';
     'pole smooth: every outgoing handle in a valence-5 fan lies in one common tangent plane');
   check(smoothed.some((handle, i) => len(sub(handle, creased[i])) > 1e-6),
     'pole smooth: a non-planar extraordinary fan visibly differs from its one-sided crease handles');
+
+  // Pole fairing: the shared tangent plane holds AT the pole, but zero-twist interiors still kink along each seam.
+  const poleSeams = (doc: QuadMeshDoc) => {
+    const mesh = buildQuadMesh(doc.vertices, doc.quads), adj = meshAdjacency(mesh), eh = meshEdgeHandles(mesh, doc.edgeHandles);
+    const controls = (q: number) => quadControlPoints(mesh, eh, q, doc.quadTwist?.[q]);
+    return (adj.neighbors[0] ?? []).map(nb => {
+      const qs = adj.edgeQuads.get(`0,${nb}`)!;
+      return seamCreaseDegrees(mesh, controls, 0, nb, [qs[0], qs[1]]);
+    });
+  };
+  const boundaryCps = (doc: QuadMeshDoc) => {
+    const mesh = buildQuadMesh(doc.vertices, doc.quads), eh = meshEdgeHandles(mesh, doc.edgeHandles);
+    return doc.quads.map((_, q) => quadControlPoints(mesh, eh, q, doc.quadTwist?.[q])
+      .filter((_, i) => !(INTERIOR_CP as readonly number[]).includes(i)));
+  };
+  const unfaired = structuredClone(poleDoc), beforeSeams = poleSeams(unfaired), beforeBoundary = boundaryCps(unfaired);
+  const faired = structuredClone(poleDoc), fairResult = fairPoleSeams(faired, [0]);
+  const afterSeams = poleSeams(faired);
+  check(fairResult.length === 1 && Math.max(...afterSeams) < Math.max(...beforeSeams) / 2 && Math.max(...afterSeams) < CREASE_DEGREES,
+    'pole fairing: the fan\'s widest seam angle at least halves and falls under the crease threshold',
+    `${beforeSeams.map(a => a.toFixed(1)).join('/')} → ${afterSeams.map(a => a.toFixed(1)).join('/')}`);
+  check(JSON.stringify(faired.vertices) === JSON.stringify(unfaired.vertices)
+    && JSON.stringify(faired.edgeHandles ?? null) === JSON.stringify(unfaired.edgeHandles ?? null)
+    && boundaryCps(faired).every((cps, q) => cps.every((p, i) => len(sub(p, beforeBoundary[q][i])) < 1e-12)),
+  'pole fairing: corners, handles and every boundary curve stay exactly put — only patch interiors move');
+  check(Object.entries(faired.quadTwist ?? {}).length === valence
+    && Object.entries(faired.quadTwist ?? {}).every(([q, tuple]) => tuple.every((offset, slot) =>
+      (faired.quads[+q][slot] === 0) === len(offset) > 1e-9)),
+  'pole fairing: each fan patch gets an offset at its pole corner and nowhere else');
+  const lockedFan = structuredClone(poleDoc);
+  setQuadsLocked(lockedFan, [0], true);
+  const lockedTwist = JSON.stringify(lockedFan.quadTwist?.[0] ?? null);
+  fairPoleSeams(lockedFan, [0]);
+  check(JSON.stringify(lockedFan.quadTwist?.[0] ?? null) === lockedTwist && !!lockedFan.quadTwist?.[1],
+    'pole fairing: a locked fan patch keeps its interior while the rest of the fan is fitted around it');
+  const plainGrid = freshGrid(), plainId = GRID_COLS + 1;
+  check(!fairPoleSeams(plainGrid, [plainId]).length && !plainGrid.quadTwist,
+    'pole fairing: a regular valence-4 vertex is already smooth and is left alone');
 
   const regular = freshGrid(), regularId = GRID_COLS + 1;
   meshCreaseVertices(regular, [regularId]);

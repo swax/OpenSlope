@@ -41,6 +41,7 @@ import {
 import { commitEditMesh, editMesh } from './mesh-target';
 import type { EditMarqueeSelection, EditTransformTarget, RigidCornerUpdate, ViewportCallbacks } from '../viewport/types';
 import { toast } from '../ui/components/toast';
+import { fairPoleSeams } from '../../core/mesh/pole-fairing';
 import { createTopologyTools } from './topology';
 import { createTrailTools } from './trails';
 import { trailInterior } from '../../core/mesh/trail-object';
@@ -1290,9 +1291,21 @@ export function createEditSession(deps: EditSessionDeps) {
     scheduleRebuild();
   }
 
+  /** Smooth's second half at a pole (core/mesh/pole-fairing.ts): its seams kink inside the patches however the
+   *  corner handles sit, so fit the fan's pole-corner interiors too, and say so — the fit reaches past the
+   *  selection into every patch round the pole. */
+  function fairPoles(vertices: readonly number[]) {
+    const faired = fairPoleSeams(mdoc(), vertices);
+    if (!faired.length) return;
+    const before = Math.max(...faired.map(pole => pole.before)), after = Math.max(...faired.map(pole => pole.after));
+    toast(`${faired.length === 1 ? 'pole' : `${faired.length} poles`} faired · widest seam ${before.toFixed(1)}° → ${after.toFixed(1)}°`, 'ok');
+  }
+
   function resetCellShape(cells: readonly QuadName[]) {
     if (!canEditCurvature()) return;
-    meshResetShape(mdoc(), quadIndices(mdoc(), cells));
+    const quads = quadIndices(mdoc(), cells);
+    meshResetShape(mdoc(), quads);
+    fairPoles([...new Set(quads.flatMap(quad => mdoc().quads[quad] ?? []))]);
     refreshHandles();
     scheduleRebuild();
   }
@@ -1306,7 +1319,9 @@ export function createEditSession(deps: EditSessionDeps) {
 
   function smoothVertices(vertices: readonly VertexName[]) {
     if (!canEditCurvature()) return;
-    meshSmoothVertices(mdoc(), vertexIndices(mdoc(), vertices));
+    const ids = vertexIndices(mdoc(), vertices);
+    meshSmoothVertices(mdoc(), ids);
+    fairPoles(ids);
     refreshHandles();
     scheduleRebuild();
   }

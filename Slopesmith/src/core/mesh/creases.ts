@@ -18,7 +18,7 @@ export type PatchControls = (quad: number) => readonly (readonly number[])[];
 const SEAM_SAMPLES = [0.05, 0.275, 0.5, 0.725, 0.95];
 
 /** Where the curve a→b sits in `quad`'s (u, v) at parameter t from a. Rows run along u: A-B is u=0, C-D u=1. */
-function seamParam(mesh: QuadMesh, quad: number, a: number, b: number, t: number): [number, number] | null {
+export function seamParam(mesh: QuadMesh, quad: number, a: number, b: number, t: number): [number, number] | null {
   const [A, B, C, D] = mesh.quads[quad];
   const sides: [number, number, (s: number) => [number, number]][] = [
     [A, B, s => [0, s]], [C, D, s => [1, s]], [A, C, s => [s, 0]], [B, D, s => [s, 1]],
