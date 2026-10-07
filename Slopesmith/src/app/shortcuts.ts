@@ -9,6 +9,7 @@ import type { TrickTools } from './tricks/operations';
 import type { Viewport } from './viewport/viewport';
 import type { BrushOp } from '../core/doc/mountain';
 import { modeForShortcut } from './mode-shortcuts';
+import { turnBuilderSquare } from './ui/components/tile-set-builder';
 import type { Mode } from './viewport/types';
 import type { EffectsEditor } from './effects/editor';
 
@@ -158,6 +159,13 @@ export function installShortcuts(deps: ShortcutDeps) {
     // ONE tile a tiled prop wears while its Edit session is open — replacing the wheel-over-the-ghost and
     // right-click-the-tile pair that each covered only one of them. The arrows are otherwise unbound in Edit,
     // and a prop with no tile declines, leaving the key to the browser.
+    // In Edit, the trail tile set builder's selected square takes them too (components/tile-set-builder.ts) — and ↑ / ↓
+    // mirror it there, the builder's own key for the flip, otherwise unbound.
+    if (!mod && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && store.currentMode === 'edit'
+      && !store.modelEditId) {
+      const flip = e.shiftKey || e.key === 'ArrowUp' || e.key === 'ArrowDown';
+      if (turnBuilderSquare(e.key === 'ArrowLeft' ? 1 : -1, flip)) { e.preventDefault(); return; }
+    }
     if (!mod && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
       && (store.currentMode === 'paint' || (store.currentMode === 'edit' && store.modelEditId))) {
       const dir = e.key === 'ArrowLeft' ? 1 : -1;

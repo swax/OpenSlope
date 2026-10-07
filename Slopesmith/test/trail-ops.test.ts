@@ -4,6 +4,7 @@ import type { AuthoredTrail, QuadMeshDoc, V3 } from '../src/core/doc/types';
 import { nameIndex } from '../src/core/doc/ids';
 import { quadIsLocked } from '../src/core/mesh/locks';
 import { cutTrail, pathKnots, resolveTrail, trailPathQuads } from '../src/core/mesh/trail-object';
+import { findTrailTileSet, TRAIL_TILE_ROWS } from '../src/core/mesh/trail-textures';
 import { railBezierSegments } from '../src/core/rails/rails';
 import type { TrailShape, TrailTransform } from '../src/app/viewport/tools/create-trail';
 import { check, failures } from './check';
@@ -40,9 +41,8 @@ const store = {
   surgeryTool: null as string | null, trailPoint: null as { trail: string; point: number } | null, cageOn: true,
   selectedCorner: null, selected: null, createPatchQuads: [], weldTool: null, weldSource: [], weldEdgeSource: [],
   pathHandle: null,
-  trailWidth: 13, trailCenterBias: 0.5, trailDishPercent: 10.5, trailPatchLength: 22.5, trailMaxTurnDegrees: 52,
-  trailBankGain: 15, trailMaxBankDegrees: 20, trailTilePair: 'MESA/Trail 1' as string | null,
-  trailLeftTurnPair: 'MESA/Left Turn 1' as string | null, trailRightTurnPair: 'MESA/Right Turn 1' as string | null, trailTurnRadius: 80, trailSurfaceLift: 0.25,
+  trailWidth: 13, trailLanes: 2, trailCaps: 'none' as 'none' | 'start' | 'end' | 'both', trailCenterBias: 0.5, trailDishPercent: 10.5, trailPatchLength: 22.5, trailMaxTurnDegrees: 52,
+  trailBankGain: 15, trailMaxBankDegrees: 20, trailTileSet: 'MESA/Preset 1' as string | null, trailTurnRadius: 80, trailSurfaceLift: 0.25,
 };
 let shown: { knots: readonly V3[]; knot: number | null; pivot: V3 | null; shape?: TrailShape } = { knots: [], knot: null, pivot: null };
 let surgery: string | null = null;
@@ -190,32 +190,107 @@ check(trail()!.paths[0].settings.widthM === 20 && store.trailWidth === 20, 'sett
   const span = Math.hypot(...[0, 2].map(k => store.mdoc.vertices[l * 3 + k] - store.mdoc.vertices[r * 3 + k]) as [number, number]);
   check(Math.abs(span - 20) < 1e-6, 'setting: the new width is cut', `${span}`);
 }
-// Tile pairs are settings like the rest: a path wears a pair by name, of the built-in ones or the mountain's own.
+// Tile sets are settings like the rest: a path wears a set by name, of the built-in ones or the mountain's own.
 {
   const tiles = () => [...new Set(resolveTrail(store.mdoc, trail()!)!.quads.map(quad => store.mdoc.quadTex?.[quad] ?? ''))].sort().join();
-  check(tiles() === 'MESA/0044.png,MESA/0045.png', 'tiles: a new path wears Mesa’s first pair, and only it — no pair after pair', tiles());
-  tools.setTrailSetting('trailTiles', 'MESA/Trail 2');
-  check(tiles() === 'MESA/0046.png,MESA/0047.png' && store.trailTilePair === 'MESA/Trail 2',
-    'tiles: another pair re-cuts it in that pair, and the next path starts with it', tiles());
-  check(tools.addTrailTilePair('trail', 'A/1.png', 'B/2.png') === null && !store.mdoc.trailTilePairs,
-    'own pairs: two tiles of two maps make no pair');
-  const own = tools.addTrailTilePair('trail', 'A/1.png', 'A/2.png');
-  const next = tools.addTrailTilePair('trail', 'A/3.png', 'A/4.png');
-  check(own === 'A/Trail 1' && next === 'A/Trail 2' && store.mdoc.trailTilePairs?.length === 2,
-    'own pairs: named next among their map’s', `${own} ${next}`);
+  check(tiles() === 'MESA/0047.png', 'tiles: a new path wears Mesa’s set’s trail row, and only it', tiles());
+  tools.setTrailSetting('trailTiles', 'ALOHA/Preset 1');
+  check(tiles() === 'ALOHA/0001.png,ALOHA/0015.png' && store.trailTileSet === 'ALOHA/Preset 1',
+    'tiles: another set re-cuts it in that set, and the next path starts with it', tiles());
+  const row = (left: string, right: string, middle?: string) => ({ left, right, ...(middle ? { middle } : {}), quarterTurns: 0 });
+  check(tools.addTrailTileSet({ trail: row('A/1.png', 'B/2.png') }) === null && !store.mdoc.trailTileSets,
+    'own sets: two tiles of two maps make no set');
+  const own = tools.addTrailTileSet({ trail: row('A/1.png', 'A/2.png') });
+  const next = tools.addTrailTileSet({ trail: row('A/3.png', 'A/4.png') });
+  check(own === 'A/Trail 1' && next === 'A/Trail 2' && store.mdoc.trailTileSets?.length === 2,
+    'own sets: named next among their map’s', `${own} ${next}`);
   tools.setTrailSetting('trailTiles', own);
-  check(tiles() === 'A/1.png,A/2.png', 'own pairs: a path wears one of the mountain’s own', tiles());
-  tools.editTrailTilePair(own!, { right: 'A/5.png' });
-  check(tiles() === 'A/1.png,A/5.png', 'own pairs: changing one re-cuts the paths wearing it', tiles());
-  check(!tools.editTrailTilePair(own!, { right: 'B/5.png' }) && tiles() === 'A/1.png,A/5.png',
-    'own pairs: a half from another map is refused');
-  tools.deleteTrailTilePair(own!);
-  check(tiles() === '' && trail()!.paths[0].settings.trailTiles === null && store.trailTilePair === null
-    && store.mdoc.trailTilePairs?.map(pair => pair.name).join() === 'Trail 2',
-  'own pairs: deleting one leaves the paths wearing it plain, its tiles taken back', tiles());
-  tools.deleteTrailTilePair(next!);
-  check(!store.mdoc.trailTilePairs, 'own pairs: the last one gone, the document holds none');
-  tools.setTrailSetting('trailTiles', 'MESA/Trail 1');
+  check(tiles() === 'A/1.png,A/2.png', 'own sets: a path wears one of the mountain’s own', tiles());
+  tools.editTrailTileSet(own!, { trail: { right: 'A/5.png' } });
+  check(tiles() === 'A/1.png,A/5.png', 'own sets: changing one re-cuts the paths wearing it', tiles());
+  check(!tools.editTrailTileSet(own!, { trail: { right: 'B/5.png' } }) && tiles() === 'A/1.png,A/5.png',
+    'own sets: a tile from another map is refused');
+  // A cap or turn row it has none of is its trail row's until given its own; taken off again, the trail row is worn.
+  tools.editTrailTileSet(own!, { cap: { left: 'A/6.png' } });
+  const cap = store.mdoc.trailTileSets?.[0].cap;
+  check(cap?.left === 'A/6.png' && cap.right === 'A/5.png', 'own sets: a row it had none of starts as its trail row', JSON.stringify(cap));
+  tools.setTrailSetting('caps', 'end');
+  check(tiles() === 'A/1.png,A/5.png,A/6.png', 'own sets: its cap row is worn on a capped end', tiles());
+  tools.editTrailTileSet(own!, { cap: null });
+  check(tiles() === 'A/1.png,A/5.png' && !store.mdoc.trailTileSets?.[0].cap, 'own sets: a row taken off, the trail row is worn there', tiles());
+  check(!tools.editTrailTileSet(own!, { trail: null }), 'own sets: the trail row cannot be taken off');
+  // Rows change together, in one edit: the builder's swap between two rows.
+  check(tools.editTrailTileSet(own!, { leftTurn: { left: 'A/7.png' }, rightTurn: { right: 'A/8.png' } })
+    && store.mdoc.trailTileSets?.[0].leftTurn?.left === 'A/7.png' && store.mdoc.trailTileSets[0].rightTurn?.right === 'A/8.png',
+  'own sets: several rows changed at once');
+  check(!tools.editTrailTileSet(own!, { leftTurn: { left: 'A/9.png' }, rightTurn: { right: 'B/9.png' } })
+    && store.mdoc.trailTileSets?.[0].leftTurn?.left === 'A/7.png', 'own sets: one tile of another map refuses the whole change');
+  // A change lays over the row as it was: a mirror or a turn it no longer has is said outright — the builder's mirror
+  // and turn back.
+  tools.editTrailTileSet(own!, { leftTurn: { mirrored: ['left'], turns: { left: 1 } } });
+  tools.editTrailTileSet(own!, { leftTurn: { mirrored: undefined, turns: undefined } });
+  const unturned = store.mdoc.trailTileSets?.[0].leftTurn;
+  check(!!unturned && !('mirrored' in unturned) && !('turns' in unturned), 'own sets: a mirror and a turn taken back off', JSON.stringify(unturned));
+  tools.editTrailTileSet(own!, { leftTurn: null, rightTurn: null });
+  tools.setTrailSetting('caps', 'none');
+  // A built-in set copied whole is the mountain's own, named among its map's.
+  const mesa = findTrailTileSet('MESA/Preset 1', [])!;
+  const copy = tools.addTrailTileSet({ cap: mesa.cap, trail: mesa.trail, rightTurn: mesa.rightTurn, leftTurn: mesa.leftTurn, narrow: mesa.narrow });
+  const copied = store.mdoc.trailTileSets?.find(set => `${set.level}/${set.name}` === copy);
+  check(copy === 'MESA/Trail 6' && JSON.stringify({ ...copied, name: mesa.name }) === JSON.stringify(mesa),
+    'own sets: a built-in set copied whole, under a name of its own', copy ?? '');
+  // Made narrow — two across, for two-lane paths — a set loses its middles, and takes none while it is.
+  const narrowed = () => store.mdoc.trailTileSets?.find(set => `${set.level}/${set.name}` === copy);
+  check(tools.editTrailTileSet(copy!, {}, { narrow: true }) && narrowed()?.narrow === true
+    && TRAIL_TILE_ROWS.every(key => !narrowed()?.[key] || narrowed()![key]!.middle === undefined),
+  'narrow: made narrow, a set’s rows lose their middles');
+  tools.editTrailTileSet(copy!, { trail: { middle: 'MESA/0061.png' } });
+  check(narrowed()?.trail.middle === undefined, 'narrow: a narrow set takes no middle');
+  const twin = tools.addTrailTileSet({ ...narrowed()! });
+  check(store.mdoc.trailTileSets?.find(set => `${set.level}/${set.name}` === twin)?.narrow === true,
+    'narrow: a narrow set copied is narrow');
+  check(tools.editTrailTileSet(copy!, {}, { narrow: false }) && narrowed()?.narrow === undefined, 'narrow: made wide again');
+  tools.deleteTrailTileSet(twin!);
+  tools.deleteTrailTileSet(copy!);
+  tools.deleteTrailTileSet(own!);
+  check(tiles() === '' && trail()!.paths[0].settings.trailTiles === null && store.trailTileSet === null
+    && store.mdoc.trailTileSets?.map(set => set.name).join() === 'Trail 2',
+  'own sets: deleting one leaves the paths wearing it plain, its tiles taken back', tiles());
+  tools.deleteTrailTileSet(next!);
+  check(!store.mdoc.trailTileSets, 'own sets: the last one gone, the document holds none');
+  tools.setTrailSetting('trailTiles', 'MESA/Preset 1');
+}
+// Lanes are a setting too: the path re-cuts that many patches wide, its middle lanes wearing its set's middle tile.
+{
+  const tiles = () => [...new Set(resolveTrail(store.mdoc, trail()!)!.quads.map(quad => store.mdoc.quadTex?.[quad] ?? ''))].sort().join();
+  tools.setTrailSetting('lanes', 3);
+  const owned = resolveTrail(store.mdoc, trail()!)!;
+  check(trail()!.paths[0].settings.lanes === 3 && store.trailLanes === 3 && owned.runLanes.join() === '3'
+    && owned.quads.length === owned.spans * 3, 'lanes: the path re-cuts three patches wide, and the next path starts there');
+  check(tools.trailStatus()?.patches === owned.quads.length && tools.trailStatus()?.spans === owned.spans,
+    'lanes: still selected, the panel counts its spans and patches', JSON.stringify(tools.trailStatus()));
+  // Mesa's set is narrow, drawn two across: the middle lane stays plain. A wide set's middle dresses it.
+  check(tiles() === ',MESA/0047.png', 'lanes: a narrow set leaves a wider path’s middle lane plain', tiles());
+  tools.setTrailSetting('trailTiles', 'SNOW/Preset 1');
+  check(tiles() === 'SNOW/0045.png,SNOW/0047.png,SNOW/0053.png', 'lanes: the middle lane wears the set’s middle tile', tiles());
+  const set = tools.addTrailTileSet({ trail: { left: 'A/1.png', middle: 'A/3.png', right: 'A/2.png', quarterTurns: 0 } });
+  tools.setTrailSetting('trailTiles', set);
+  check(tiles() === 'A/1.png,A/2.png,A/3.png', 'lanes: a set with a middle tile dresses every lane', tiles());
+  check(!tools.editTrailTileSet(set!, { trail: { middle: 'B/3.png' } }), 'lanes: a middle from another map is refused');
+  tools.editTrailTileSet(set!, { trail: { middle: '' } });
+  check(tiles() === ',A/1.png,A/2.png' && !store.mdoc.trailTileSets?.[0].trail.middle,
+    'lanes: taking the middle off leaves the middle lane plain', tiles());
+  tools.deleteTrailTileSet(set!);
+  tools.setTrailSetting('trailTiles', 'MESA/Preset 1');
+  tools.setTrailSetting('lanes', 2);
+  const back = resolveTrail(store.mdoc, trail()!)!;
+  check(back.quads.length === back.spans * 2 && tiles() === 'MESA/0047.png', 'lanes: back to two, in Mesa’s set');
+  // Caps are a setting too: the path's ends close square, in Mesa's cap, and the next path starts capped.
+  tools.setTrailSetting('caps', 'both');
+  check(trail()!.paths[0].settings.caps === 'both' && store.trailCaps === 'both'
+    && tiles() === 'MESA/0041.png,MESA/0043.png,MESA/0047.png', 'caps: the path re-cuts with both ends capped', tiles());
+  tools.setTrailSetting('caps', 'none');
+  check(tiles() === 'MESA/0047.png', 'caps: uncapped, the cap tiles are taken back', tiles());
 }
 
 // ---- the selected paths move as a unit ---------------------------------------------------------------------------
@@ -521,12 +596,12 @@ check(!store.mdoc.trails?.length && store.surgeryTool === null, 'finish: a one-p
   check(tools.trailSelection().find(pick => pick.trail.id === s)?.paths.join() === '0,1' && pickedNow()?.point === 1,
     'split: both pieces stay selected, and the point stays picked');
   selectPaths(byId(s), 1);
-  tools.setTrailSetting('trailTiles', 'MESA/Trail 2');
+  tools.setTrailSetting('trailTiles', 'ALOHA/Preset 1');
   const lists = trailPathQuads(store.mdoc, byId(s))!;
   const worn = (path: number) => [...new Set(lists[path].map(id => store.mdoc.quadTex?.[quadAt(id)] ?? ''))].sort().join();
-  check(worn(0) === 'MESA/0044.png,MESA/0045.png' && worn(1) === 'MESA/0046.png,MESA/0047.png',
-    'split: each piece wears its own pair, joint patches too', `${worn(0)} / ${worn(1)}`);
-  tools.setTrailSetting('trailTiles', 'MESA/Trail 1');
+  check(worn(0) === 'MESA/0047.png' && worn(1) === 'ALOHA/0001.png,ALOHA/0015.png',
+    'split: each piece wears its own set, joint patches too', `${worn(0)} / ${worn(1)}`);
+  tools.setTrailSetting('trailTiles', 'MESA/Preset 1');
   store.trailPoint = null;
 }
 

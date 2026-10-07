@@ -2,8 +2,8 @@ import type { AuthoredTrail, PathHandles, TrailCutShape, TrailKnotSettings, Trai
 import { trailSettingsTiles } from '../mesh/trail-textures';
 
 /**
- * Trails saved before networks (docs/023 · Networks), or before tile pairs (docs/023 · Textures), brought forward
- * on load.
+ * Trails saved before networks (docs/023 · Networks), before tile sets (docs/023 · Textures), or before a path's lanes
+ * could change, brought forward on load.
  *
  * A trail used to be one spline of knots with BRANCHES hung off its knots — a branch leaving one knot, perhaps
  * rejoining another — cut with the trail's settings. Now every path of a network is alike, so the old trail is the
@@ -85,15 +85,18 @@ export function migrateLegacyTrail(old: LegacyTrail): AuthoredTrail {
   return trail;
 }
 
-/** A path saved before tile pairs carries `mesaTextures` alone: it wears the pairs that stands for — Mesa's first, or
- *  none. One saved with a single turn pair wears it through left and right turns alike, and one naming a built-in pair
- *  since split by the way a turn goes names the half for each side. */
-function withTiles(trail: AuthoredTrail): AuthoredTrail {
+/** A path saved before tile sets carries `mesaTextures` alone: it wears the set that stands for — Mesa's, or none. One
+ *  saved while turns and caps wore sets of their own wears its trail's set, whose rows they are now. One saved before
+ *  its lanes could change has two, and one saved before caps none. */
+function withSettings(trail: AuthoredTrail): AuthoredTrail {
   let changed = false;
   const paths = trail.paths.map(path => {
-    const { mesaTextures: _a, textures: _b, turnTiles: _c, ...settings } = path.settings as TrailSettings
-      & { mesaTextures?: boolean; textures?: unknown; turnTiles?: string | null };
-    const next: TrailSettings = { ...settings, ...trailSettingsTiles(path.settings) };
+    const { mesaTextures: _a, textures: _b, turnTiles: _c, leftTurnTiles: _d, rightTurnTiles: _e, capTiles: _f, ...settings } =
+      path.settings as TrailSettings & {
+        mesaTextures?: boolean; textures?: unknown; turnTiles?: string | null; leftTurnTiles?: string | null;
+        rightTurnTiles?: string | null; capTiles?: string | null;
+      };
+    const next: TrailSettings = { ...settings, lanes: settings.lanes ?? 2, caps: settings.caps ?? 'none', ...trailSettingsTiles(path.settings) };
     const same = Object.keys(next).length === Object.keys(path.settings).length
       && (Object.keys(next) as (keyof TrailSettings)[]).every(key => next[key] === path.settings[key]);
     if (same) return path;
@@ -103,8 +106,8 @@ function withTiles(trail: AuthoredTrail): AuthoredTrail {
   return changed ? { ...trail, paths } : trail;
 }
 
-/** Bring every trail of a loaded document up to the network form, and every path to its tile pairs; one already in
- *  it passes through. */
+/** Bring every trail of a loaded document up to the network form, and every path to its tile sets and lanes; one
+ *  already in it passes through. */
 export function normalizeTrails(trails: unknown[] | undefined): AuthoredTrail[] | undefined {
-  return trails?.map(trail => withTiles(isLegacy(trail) ? migrateLegacyTrail(trail) : trail as AuthoredTrail));
+  return trails?.map(trail => withSettings(isLegacy(trail) ? migrateLegacyTrail(trail) : trail as AuthoredTrail));
 }

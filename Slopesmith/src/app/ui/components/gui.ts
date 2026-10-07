@@ -196,34 +196,57 @@ export function flipbookPreview(g: GUI, opts: {
   return row;
 }
 
-/** One half of a matched pair: its art, and what hovering it says. */
-export interface TextureHalf { src: string | null; value: string }
+/** One tile of a matched set: its art, what hovering it says, and whether it is worn mirrored across the trail — or,
+ *  turned of its own, exactly how it shows. */
+export interface SetTile { src: string | null; value: string; mirror?: boolean; orient?: { rot: number; mirror: boolean } }
 
-/** One matched pair as the art: its two halves, the left lane's and the right lane's, and how they are worn. */
-export interface TilePairArt {
-  halves: readonly [TextureHalf, TextureHalf];
-  /** How each half shows, looking along the trail (`orientCss`). */
+/** How a set's tile shows: its own view where it has one, else the row's turn, mirrored where the tile is — the view
+ *  of a tile mirrored across the trail is the same turn, flipped on screen. */
+const tileOrient = (orient: { rot: number; mirror: boolean } | undefined, tile: SetTile) =>
+  tile.orient ?? (orient ? { rot: orient.rot, mirror: orient.mirror !== !!tile.mirror } : tile.mirror ? { rot: 0, mirror: true } : undefined);
+
+/** One row of a matched set as the art: its tiles across the trail, the left lane's first, and how they are worn. */
+export interface TileSetArt {
+  tiles: readonly SetTile[];
+  /** How each tile shows, looking along the trail (`orientCss`). */
   orient?: { rot: number; mirror: boolean };
+  /** Not the set's own row: another worn there for want of it, drawn faded. */
+  borrowed?: boolean;
 }
 
-/** A pair's two halves side by side as plain pictures, touching, the way a trail wears them across its width. */
-function pairThumb(art: TilePairArt | null, size: number): HTMLElement {
+/** A set's tiles side by side as plain pictures, touching, the way a trail wears them across its width. */
+function setThumb(art: TileSetArt | null, size: number): HTMLElement {
   const thumb = document.createElement('span');
   thumb.className = `sp-pair-thumb${art ? '' : ' sp-pair-thumb-none'}`;
   if (!art) { thumb.textContent = '∅'; thumb.style.width = `${size * 2 + 1}px`; thumb.style.height = `${size}px`; return thumb; }
-  for (const half of art.halves) {
+  for (const tile of art.tiles) {
     const cell = document.createElement('span');
     cell.className = 'sp-pair-half';
     cell.style.width = cell.style.height = `${size}px`;
-    if (half.src) cell.style.backgroundImage = `url(${half.src})`;
-    if (half.src && art.orient) cell.style.transform = orientCss(art.orient.rot, art.orient.mirror);
+    if (tile.src) cell.style.backgroundImage = `url(${tile.src})`;
+    const orient = tileOrient(art.orient, tile);
+    if (tile.src && orient) cell.style.transform = orientCss(orient.rot, orient.mirror);
     thumb.append(cell);
   }
   return thumb;
 }
 
-/** One choice in a pair dropdown. */
-export interface TilePairOption extends TilePairArt {
+/** A set's rows stacked as the art, top to bottom, each row's tiles touching. */
+function setGrid(rows: readonly TileSetArt[], size: number): HTMLElement {
+  const grid = document.createElement('span');
+  grid.className = 'sp-set-thumb';
+  for (const row of rows) {
+    const thumb = setThumb(row, size);
+    if (row.borrowed) thumb.classList.add('sp-set-thumb-borrowed');
+    grid.append(thumb);
+  }
+  return grid;
+}
+
+/** One choice in a set dropdown: shown by one of its rows on the dropdown, and by all of them in its list. */
+export interface TileSetOption extends TileSetArt {
+  /** Every row, top to bottom. */
+  rows?: readonly TileSetArt[];
   id: string;
   /** The heading it lists under — its map. */
   group: string;
@@ -233,19 +256,19 @@ export interface TilePairOption extends TilePairArt {
   title: string;
 }
 
-/** The one pair menu open: closing it is the next open's first act, so two never stand at once. */
-let closeOpenPairMenu: (() => void) | null = null;
+/** The one set menu open: closing it is the next open's first act, so two never stand at once. */
+let closeOpenSetMenu: (() => void) | null = null;
 
 /**
- * A pair CHOSEN BY ITS ART (a trail's tiles, docs/023 · Textures): a lil-gui row whose value is the worn pair's two
- * halves and its name, opening a list of every pair — each as its art, under its map's name — with "none" first and,
- * given `add`, a way to make a new one last. A pair is recognised by its picture, the way a tile is (`texturePreview`).
+ * A set CHOSEN BY ITS ART (a trail's tiles, docs/023 · Textures): a lil-gui row whose value is the worn set's tiles
+ * and its name, opening a list of every set — each as its art, under its map's name — with "none" first and, given
+ * `add`, a way to make a new one last. A set is recognised by its picture, the way a tile is (`texturePreview`).
  */
-export function tilePairDropdown(g: GUI, opts: {
+export function tileSetDropdown(g: GUI, opts: {
   label: string;
   hint: string;
   value: string | null;
-  options: readonly TilePairOption[];
+  options: readonly TileSetOption[];
   none: { label: string; title: string };
   add?: { label: string; title: string; onAdd: () => void };
   onChange: (id: string | null) => void;
@@ -266,17 +289,17 @@ export function tilePairDropdown(g: GUI, opts: {
   const caret = document.createElement('span');
   caret.className = 'sp-pair-dd-caret';
   caret.textContent = '▾';
-  button.append(pairThumb(current, 18), text, caret);
+  button.append(setThumb(current, 18), text, caret);
   button.setAttribute('aria-haspopup', 'listbox');
   tooltip(button, current ? current.title : opts.none.title);
-  button.onclick = () => openPairMenu(button, opts);
+  button.onclick = () => openSetMenu(button, opts);
   row.append(name, button);
   g.$children.appendChild(row);
   return row;
 }
 
-function openPairMenu(anchor: HTMLElement, opts: Parameters<typeof tilePairDropdown>[1]) {
-  closeOpenPairMenu?.();
+function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdown>[1]) {
+  closeOpenSetMenu?.();
   const menu = document.createElement('div');
   menu.className = 'sp-pair-menu';
   menu.setAttribute('role', 'listbox');
@@ -284,13 +307,16 @@ function openPairMenu(anchor: HTMLElement, opts: Parameters<typeof tilePairDropd
     menu.remove();
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', keys, true);
-    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('scroll', scrolled, true);
     window.removeEventListener('resize', close);
-    if (closeOpenPairMenu === close) closeOpenPairMenu = null;
+    if (closeOpenSetMenu === close) closeOpenSetMenu = null;
   };
+  // A scroll elsewhere moves the button out from under the menu, which closes it; the menu's own does not — the list
+  // scrolled, or brought round to the chosen set as it opens, a frame after.
+  const scrolled = (e: Event) => { if (!(e.target instanceof Node && menu.contains(e.target))) close(); };
   const outside = (e: Event) => { if (!menu.contains(e.target as Node) && !anchor.contains(e.target as Node)) close(); };
   const keys = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
-  const item = (art: TilePairOption | null, label: string, title: string, selected: boolean, act: () => void) => {
+  const item = (art: TileSetOption | null, label: string, title: string, selected: boolean, act: () => void) => {
     const entry = document.createElement('button');
     entry.type = 'button';
     entry.className = `sp-pair-item${selected ? ' sel' : ''}`;
@@ -298,7 +324,7 @@ function openPairMenu(anchor: HTMLElement, opts: Parameters<typeof tilePairDropd
     entry.setAttribute('aria-selected', String(selected));
     const words = document.createElement('span');
     words.textContent = label;
-    entry.append(pairThumb(art, 30), words);
+    entry.append(art?.rows ? setGrid(art.rows, 14) : setThumb(art, 30), words);
     tooltip(entry, title);
     entry.onclick = () => { close(); act(); };
     menu.append(entry);
@@ -336,45 +362,9 @@ function openPairMenu(anchor: HTMLElement, opts: Parameters<typeof tilePairDropd
   (chosen as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
   document.addEventListener('pointerdown', outside, true);
   document.addEventListener('keydown', keys, true);
-  window.addEventListener('scroll', close, true);
+  window.addEventListener('scroll', scrolled, true);
   window.addEventListener('resize', close);
-  closeOpenPairMenu = close;
-}
-
-/** One pair's two halves to edit: each half a swatch that chooses its tile, badged with its lane. */
-export function tilePairEditor(g: GUI, opts: {
-  label: string;
-  hint: string;
-  art: TilePairArt;
-  onHalf: (side: 0 | 1) => void;
-}) {
-  const row = document.createElement('div');
-  row.className = 'lil-controller sp-gui-custom sp-tex-row sp-flip-row';
-  const name = document.createElement('div');
-  name.className = 'lil-name';
-  name.textContent = opts.label;
-  tooltip(name, opts.hint);
-  const strip = document.createElement('div');
-  strip.className = 'sp-flip-strip';
-  for (const side of [0, 1] as const) {
-    const cell = document.createElement('div');
-    cell.className = 'sp-flip-cell';
-    const lane = side ? 'right' : 'left';
-    cell.append(texSwatch({
-      label: `${lane} lane`, src: opts.art.halves[side].src, value: opts.art.halves[side].value,
-      hint: `The ${lane} lane’s half, going along the path. Click to choose its tile from the Texture Library.`,
-      onOpen: () => opts.onHalf(side),
-      ...(opts.art.orient ? { orient: opts.art.orient } : {}),
-    }));
-    const badge = document.createElement('span');
-    badge.className = 'sp-flip-badge';
-    badge.textContent = lane;
-    cell.append(badge);
-    strip.append(cell);
-  }
-  row.append(name, strip);
-  g.$children.appendChild(row);
-  return row;
+  closeOpenSetMenu = close;
 }
 
 /** Attach a hover tooltip to a lil-gui controller (plain-language help for the domain jargon).

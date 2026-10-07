@@ -4,7 +4,7 @@
 import { blankMountain, migrateMountain } from '../src/core/doc/mountain';
 import { applyRegisters, documentRegisters, objectRegister } from '../src/core/doc/registers';
 import { nameIndex, nextTrailId } from '../src/core/doc/ids';
-import type { AuthoredTrail, QuadMeshDoc, TrailTilePair, V3 } from '../src/core/doc/types';
+import type { AuthoredTrail, QuadMeshDoc, TrailTileSet, V3 } from '../src/core/doc/types';
 import { quadIsLocked } from '../src/core/mesh/locks';
 import { meshFromDoc } from '../src/core/mesh/topology';
 import { migrateLegacyTrail, normalizeTrails } from '../src/core/doc/trails';
@@ -15,7 +15,11 @@ import {
 } from '../src/core/mesh/trail-object';
 import { checkManifold } from '../src/core/mesh/ops';
 import { trimTrailSpline, type TrailCubic } from '../src/core/mesh/trail';
-import { DEFAULT_TRAIL_TILES, findTrailTilePair, nextTrailTilePairName, trailSettingsTiles } from '../src/core/mesh/trail-textures';
+import {
+  DEFAULT_TRAIL_TILES, findTrailTileSet, nextTrailTileSetName, TRAIL_TILE_ROWS, TRAIL_TILE_SETS, trailSettingsTiles, trailTileRowTiles,
+  trailTileRowView, trailTileSetFits, trailTileSetId, trailTileSetLiteral, trailTileSetRow, trailTileSetsWith, trailTiling,
+  withTrailTileRowView,
+} from '../src/core/mesh/trail-textures';
 import { check, failures } from './check';
 
 const emptyDoc = (): QuadMeshDoc => ({
@@ -31,6 +35,22 @@ const trailOf = (knots: V3[], settings: Partial<Settings> = {}): AuthoredTrail =
   id: 'trail:0000', points: knots, paths: [{ points: knots.map((_, i) => i), settings: { ...TRAIL_SETTINGS_DEFAULTS, ...settings } }],
   vertices: [], quads: [],
 });
+
+/** A set of the test mountain's own, laid as Mesa's built-in set once was — its groomed pair and a middle, its blue
+ *  stripes turned round through right turns, its rounded end mirrored — so the turn, cap and fork checks wearing it
+ *  hold whatever the built-in sets are. */
+const MESA_TEST: TrailTileSet = {
+  level: 'MESA', name: 'Test',
+  cap: { left: 'MESA/0041.png', middle: 'MESA/0061.png', right: 'MESA/0043.png', mirrored: ['left', 'right'], quarterTurns: 2 },
+  trail: { left: 'MESA/0046.png', middle: 'MESA/0061.png', right: 'MESA/0047.png', quarterTurns: 2 },
+  rightTurn: { left: 'MESA/0066.png', middle: 'MESA/0061.png', right: 'MESA/0064.png', quarterTurns: 0 },
+  leftTurn: { left: 'MESA/0064.png', middle: 'MESA/0061.png', right: 'MESA/0066.png', quarterTurns: 2 },
+};
+const mesaDoc = (): QuadMeshDoc => ({ ...emptyDoc(), trailTileSets: [MESA_TEST] });
+const MESA_TILES = { trailTiles: 'MESA/Test' } as const;
+/** The trail with every path wearing the test set. */
+const inMesa = (trail: AuthoredTrail): AuthoredTrail =>
+  ({ ...trail, paths: trail.paths.map(path => ({ ...path, settings: { ...path.settings, ...MESA_TILES } })) });
 
 /** A one-path trail with its knots moved: new points, the path through all of them in order. */
 const withKnots = (trail: AuthoredTrail, knots: V3[]): AuthoredTrail =>
@@ -80,7 +100,9 @@ if (!created.ok) process.exit(1);
   check(trailOwningQuad(doc, [trail], owned!.quads[3])?.id === trail.id, 'create: a patch finds the trail that owns it');
   check(dist(at(doc, trail.vertices[1]), [0, 0, 0]) < 1e-9 && dist(at(doc, trail.vertices[16]), [0, 0, 100]) < 1e-9,
     'create: the centre seam runs from the first knot to the last');
-  check(doc.quadTex?.[owned!.quads[0]] === 'MESA/0044.png', 'create: the Mesa tiles are laid');
+  // A span's first patch is a rider's right.
+  check(doc.quadTex?.[owned!.quads[0]] === findTrailTileSet(DEFAULT_TRAIL_TILES.trailTiles, [])!.trail.right,
+    'create: the default set’s tiles are laid');
   // Inside: the centre seam and the four inner station lines, and the centre of each inner station — not the rims,
   // and not the two end stations, whose station lines are the ribbon's open ends.
   const inside = trailInterior({ ...doc, trails: [trail] });
@@ -169,7 +191,7 @@ if (!created.ok) process.exit(1);
   const { doc, trail } = created;
   const owned = resolveTrail(doc, trail)!;
   const painted = { ...doc, quadTex: { ...doc.quadTex, [owned.quads[1]]: 'Custom/hand.png' } };
-  const plain = cutTrail(painted, { ...trail, paths: [{ ...trail.paths[0], settings: { ...trail.paths[0].settings, trailTiles: null, leftTurnTiles: null, rightTurnTiles: null } }] });
+  const plain = cutTrail(painted, { ...trail, paths: [{ ...trail.paths[0], settings: { ...trail.paths[0].settings, trailTiles: null } }] });
   check(plain.ok && plain.doc.quadTex?.[owned.quads[0]] === undefined && plain.doc.quadTex?.[owned.quads[1]] === 'Custom/hand.png',
     'tiles off: the preset tiles come off, a hand-painted one stays');
 
@@ -182,38 +204,39 @@ if (!created.ok) process.exit(1);
   check(!refused.ok, 'broken: a trail that lost patches will not re-cut');
 }
 
-// ---- the Mesa tiles: the tight-turn stripe halves are worn half a turn round from the standard ones -------------
+// ---- the Mesa tiles: a set's turn rows through its tight turns, each worn at its own turn ------------------------
 {
-  const arc = trailOf([0, 30, 60, 90, 120, 150].map(deg => [60 * Math.cos(deg * Math.PI / 180), 0, 60 * Math.sin(deg * Math.PI / 180)] as V3));
-  const cut = cutTrail(emptyDoc(), withKnots(arc, [[0, 0, -120], ...arc.points]));
-  const turn = findTrailTilePair('MESA/Left Turn 1', [])!;
-  const tight = new Set([turn.left, turn.right]);
+  const mesa = MESA_TEST;
+  const arc = trailOf([0, 30, 60, 90, 120, 150].map(deg => [60 * Math.cos(deg * Math.PI / 180), 0, 60 * Math.sin(deg * Math.PI / 180)] as V3), MESA_TILES);
+  const cut = cutTrail(mesaDoc(), withKnots(arc, [[0, 0, -120], ...arc.points]));
+  const tight = new Set([mesa.leftTurn!.left, mesa.leftTurn!.right]);
   const tiles = cut.ok ? resolveTrail(cut.doc, cut.trail)!.quads.map(quad => ({ tile: cut.doc.quadTex?.[quad], orient: cut.doc.quadOrient?.[quad] })) : [];
   check(tiles.some(t => tight.has(t.tile!)) && tiles.some(t => t.tile && !tight.has(t.tile)),
-    'tiles: a straight run into a tight arc wears both sets', tiles.map(t => t.tile).join());
-  // Mesa's stripes are the same tiles both ways, turned round for a right turn: three quarters on a left turn, one on a
-  // right, as the trail halves.
+    'tiles: a straight run into a tight arc wears the trail row and the left-turn row', tiles.map(t => t.tile).join());
+  // Mesa's trail and left-turn rows are worn half a turn beyond a trail tile's own — three quarters — and its right-turn
+  // row, the same stripes turned round, as a trail tile's own: a quarter, where the run bends right into the arc.
   const bends = cut.ok ? cut.layout.spans.map(span => span.signedCurvature) : [];
-  check(tiles.every((t, i) => t.orient?.rot === (tight.has(t.tile!) && bends[i >> 1] > 0 ? 3 : 1) && !t.orient.mirror)
-    && tiles.some(t => t.orient?.rot === 3),
-  'tiles: trail halves and right-turn stripes turn a quarter, left-turn stripes three quarters', tiles.map(t => t.orient?.rot).join());
+  check(tiles.every((t, i) => t.orient?.rot === (tight.has(t.tile!) && bends[i >> 1] < 0 ? 1 : 3) && !t.orient.mirror)
+    && tiles.some(t => tight.has(t.tile!) && t.orient?.rot === 3),
+  'tiles: Mesa’s trail and left-turn rows turn three quarters, its right-turn row one', tiles.map(t => t.orient?.rot).join());
 
-  // An S-bend, its left and right turns set to different pairs, wears each through its own turns.
-  const blue = findTrailTilePair('MESA/Left Turn 1', [])!, red = findTrailTilePair('MESA/Right Turn 2', [])!;
-  const bend = trailOf([[0, 0, 0], [0, 0, 60], [-40, 0, 100], [-40, 0, 160], [0, 0, 200], [0, 0, 260]],
-    { leftTurnTiles: 'MESA/Left Turn 1', rightTurnTiles: 'MESA/Right Turn 2' });
-  const bent = cutTrail(emptyDoc(), bend);
-  const worn = bent.ok ? bent.layout.spans.map(span => ({ k: span.signedCurvature, tile: span.textures?.[0] })) : [];
-  check(worn.some(s => s.tile === blue.right) && worn.some(s => s.tile === red.right)
-    && worn.every(s => s.tile !== blue.right || s.k > 0) && worn.every(s => s.tile !== red.right || s.k < 0),
-  'tiles: an S-bend wears the left-turn pair through its left turns, the right-turn pair through its right', JSON.stringify(worn));
+  // An S-bend wears the left-turn row through its left turns and the right-turn row through its right: Mesa's stripes
+  // turned round, a quarter turn where the left turn's are three.
+  const bend = trailOf([[0, 0, 0], [0, 0, 60], [-40, 0, 100], [-40, 0, 160], [0, 0, 200], [0, 0, 260]], MESA_TILES);
+  const bent = cutTrail(mesaDoc(), bend);
+  const worn = bent.ok ? bent.layout.spans.map(span => ({ k: span.signedCurvature, tile: span.textures?.[0], rot: span.textureOrient?.rot })) : [];
+  // A span's first patch is a rider's right.
+  const [left, right] = [mesa.leftTurn!.right, mesa.rightTurn!.right];
+  check(worn.some(s => s.tile === left) && worn.some(s => s.tile === right)
+    && worn.every(s => s.tile !== left || (s.k > 0 && s.rot === 3)) && worn.every(s => s.tile !== right || (s.k < 0 && s.rot === 1)),
+  'tiles: an S-bend wears the left-turn row through its left turns, the right-turn row through its right', JSON.stringify(worn));
 }
 
-// ---- tile pairs (docs/023 · Textures): one pair along the spans, the mountain's own among them ------------------
+// ---- tile sets (docs/023 · Textures): one set's rows, the mountain's own among them ----------------------------------
 {
-  const own: TrailTilePair[] = [{ level: 'A', name: 'Trail 1', kind: 'trail', left: 'A/1.png', right: 'A/2.png', quarterTurns: 1 }];
-  const pathOf = (trailTiles: string | null) => trailOf([[0, 0, 0], [0, 0, 100]], { trailTiles, leftTurnTiles: null, rightTurnTiles: null });
-  const cut = cutTrail({ ...emptyDoc(), trailTilePairs: own }, pathOf('A/Trail 1'));
+  const own: TrailTileSet[] = [{ level: 'A', name: 'Trail 1', trail: { left: 'A/1.png', right: 'A/2.png', quarterTurns: 1 } }];
+  const pathOf = (trailTiles: string | null) => trailOf([[0, 0, 0], [0, 0, 100]], { trailTiles });
+  const cut = cutTrail({ ...emptyDoc(), trailTileSets: own }, pathOf('A/Trail 1'));
   if (cut.ok) {
     const owned = resolveTrail(cut.doc, cut.trail)!;
     const tiles = owned.quads.map(quad => cut.doc.quadTex?.[quad] ?? '');
@@ -230,25 +253,40 @@ if (!created.ok) process.exit(1);
   const missing = cutTrail(emptyDoc(), pathOf('A/Trail 1'));
   check(missing.ok && resolveTrail(missing.doc, missing.trail)!.quads.every(quad => !missing.doc.quadTex?.[quad]),
     'pairs: a pair the mountain does not have lays nothing');
-  check(nextTrailTilePairName('MESA', 'trail', []) === 'Trail 5' && nextTrailTilePairName('MESA', 'turn', []) === 'Turn 3'
-    && nextTrailTilePairName('MESA', 'left-turn', []) === 'Left Turn 3'
-    && nextTrailTilePairName('A', 'trail', own) === 'Trail 2', 'pairs: a new pair is named next among its map’s');
+  check(nextTrailTileSetName('MESA', []) === 'Trail 6' && nextTrailTileSetName('A', own) === 'Trail 2',
+    'sets: a new set is named next among its map’s, past the names retired');
 
-  // A path saved before tile pairs has only `mesaTextures`: read as it always was, and brought forward on load.
-  const { trailTiles: _t, leftTurnTiles: _l, rightTurnTiles: _u, turnRadiusM: _r, ...older } = TRAIL_SETTINGS_DEFAULTS;
+  // A cap or turn row a set has none of is its trail row; one with no middle wears the trail row's.
+  const rows: TrailTileSet = {
+    level: 'A', name: 'Trail 3', trail: { left: 'A/1.png', middle: 'A/m.png', right: 'A/2.png', mirrored: ['middle'], quarterTurns: 2 },
+    leftTurn: { left: 'A/3.png', right: 'A/4.png', quarterTurns: 0 },
+  };
+  const turn = trailTileSetRow(rows, 'leftTurn'), cap = trailTileSetRow(rows, 'cap');
+  check(!turn.borrowed && turn.row.middle === 'A/m.png' && turn.row.mirrored?.join() === 'middle' && turn.row.left === 'A/3.png'
+    && cap.borrowed && cap.row === rows.trail, 'sets: a row it has none of is its trail row, a middle it has none of the trail row’s');
+  const tiling = trailTiling({ ...TRAIL_SETTINGS_DEFAULTS, trailTiles: 'A/Trail 3' }, [rows]);
+  check(tiling?.leftTurn?.middle === 'A/m.png' && tiling.rightTurn === null && tiling.cap === null && tiling.trail?.left === 'A/1.png',
+    'sets: the generator is given its rows, none where it has none', JSON.stringify(tiling));
+
+  // A path saved before tile sets has only `mesaTextures`: read as it always was, and brought forward on load. One
+  // saved while turns and caps wore sets of their own wears its trail's set, whose rows they are now.
+  const { trailTiles: _t, turnRadiusM: _r, ...older } = TRAIL_SETTINGS_DEFAULTS;
   const saved = (mesaTextures?: boolean) => ({ ...straight, paths: [{ ...straight.paths[0],
     settings: { ...older, ...(mesaTextures === undefined ? {} : { mesaTextures }) } as typeof straight.paths[0]['settings'] }] });
   const read = (mesaTextures?: boolean) => trailSettingsTiles(saved(mesaTextures).paths[0].settings);
-  check(read(false).trailTiles === null && read(false).leftTurnTiles === null && read(true).trailTiles === DEFAULT_TRAIL_TILES.trailTiles
-    && read().rightTurnTiles === DEFAULT_TRAIL_TILES.rightTurnTiles, 'legacy tiles: Mesa’s first pairs on or unsaid, plain off');
-  const oneTurn = trailSettingsTiles({ ...older, trailTiles: 'MESA/Trail 2', turnTiles: 'MESA/Turn 2' } as unknown as Settings);
-  check(oneTurn.trailTiles === 'MESA/Trail 2' && oneTurn.leftTurnTiles === 'MESA/Left Turn 2' && oneTurn.rightTurnTiles === 'MESA/Right Turn 2',
-    'legacy tiles: one turn pair for every turn — a Mesa one since split by the way a turn goes — is worn as that split');
-  const [off, on] = normalizeTrails([saved(false), saved(true)])!;
+  check(read(false).trailTiles === null && read(true).trailTiles === 'MESA/Preset 1'
+    && read().trailTiles === 'MESA/Preset 1', 'legacy tiles: Mesa’s set on or unsaid, plain off');
+  const slots = { ...older, trailTiles: 'MESA/Trail 2', leftTurnTiles: 'MESA/Left Turn 2', rightTurnTiles: null, capTiles: 'MESA/Cap 1',
+    turnRadiusM: 60 } as unknown as Settings;
+  check(trailSettingsTiles(slots).trailTiles === 'MESA/Trail 2' && findTrailTileSet('MESA/Trail 2', []) === findTrailTileSet('MESA/Trail 1', []),
+    'legacy tiles: a built-in set no longer given out is worn as the one it became');
+  const [off, on, sloted] = normalizeTrails([saved(false), saved(true), { ...straight, paths: [{ ...straight.paths[0], settings: slots }] }])!;
   check(off.paths[0].settings.trailTiles === null && !('mesaTextures' in off.paths[0].settings)
-    && on.paths[0].settings.trailTiles === 'MESA/Trail 1' && on.paths[0].settings.leftTurnTiles === 'MESA/Left Turn 1'
-    && on.paths[0].settings.rightTurnTiles === 'MESA/Right Turn 1' && on.paths[0].settings.turnRadiusM === 80,
-  'legacy tiles: loading names the pairs each path wears');
+    && on.paths[0].settings.trailTiles === 'MESA/Preset 1' && on.paths[0].settings.turnRadiusM === 80,
+  'legacy tiles: loading names the set each path wears');
+  check(sloted.paths[0].settings.trailTiles === 'MESA/Trail 2' && sloted.paths[0].settings.turnRadiusM === 60
+    && !['leftTurnTiles', 'rightTurnTiles', 'capTiles'].some(key => key in sloted.paths[0].settings),
+  'legacy tiles: a path saved with turn and cap sets loads wearing its trail’s set alone');
 }
 
 // ---- a fork: a second path off a middle point, and a six-patch junction round a six-way hub (docs/023 · Networks) ---
@@ -322,11 +360,11 @@ if (!created.ok) process.exit(1);
 
   // A path curving hard from the junction wears the tight-turn stripes on its first span, but the junction patches
   // carrying its lanes on wear the ordinary tiles: the stripes stop where the ribbon does.
-  const curling = cutTrail(emptyDoc(), withPathThrough(main, [1, [25, 0, 135], [45, 0, 125], [55, 0, 100], [50, 0, 70]]));
+  const curling = cutTrail(mesaDoc(), withPathThrough(inMesa(main), [1, [25, 0, 135], [45, 0, 125], [55, 0, 100], [50, 0, 70]], MESA_TILES));
   if (curling.ok) {
-    const [trailPair, turnPair] = [findTrailTilePair('MESA/Trail 1', [])!, findTrailTilePair('MESA/Left Turn 1', [])!];
-    const stripes = new Set([turnPair.left, turnPair.right]);
-    const ordinary = new Set([trailPair.left, trailPair.right]);
+    const mesa = MESA_TEST;
+    const stripes = new Set(trailTileRowTiles(mesa.leftTurn!));
+    const ordinary = new Set(trailTileRowTiles(mesa.trail));
     const tiles = resolveTrail(curling.doc, curling.trail)!.quads.map(quad => curling.doc.quadTex?.[quad] ?? '');
     const [a, b] = curling.trail.network!.runSpans;
     check(stripes.has(tiles[(a + b) * 2]) && tiles.slice(-6).every(tile => ordinary.has(tile)),
@@ -350,7 +388,7 @@ if (!created.ok) process.exit(1);
 // ---- every path its own: a narrow path forking off a wide one is cut with its own settings ----------------------
 {
   const wide = trailOf([[0, 0, 0], [0, 0, 120], [0, 0, 240]], { widthM: 20 });
-  const cut = cutTrail(emptyDoc(), withPathThrough(wide, [1, [100, 0, 180], [180, 0, 220]], { widthM: 8, trailTiles: null, leftTurnTiles: null, rightTurnTiles: null }));
+  const cut = cutTrail(emptyDoc(), withPathThrough(wide, [1, [100, 0, 180], [180, 0, 220]], { widthM: 8, trailTiles: null }));
   check(cut.ok, 'own settings: two paths cut differently still cut as one network', cut.ok ? '' : cut.error);
   if (cut.ok) {
     const width = (station: { left: V3; right: V3 }) => Math.hypot(station.left[0] - station.right[0], station.left[2] - station.right[2]);
@@ -430,10 +468,11 @@ if (!created.ok) process.exit(1);
   const kept = mergeTrailPoints(unlike, 3, 2);
   check(kept.trail.paths.length === 2 && junctionPoints(kept.trail).has(2), 'merge: cut differently, they stay two paths and meet in a joint');
   // Tiles count by what they lay, not by which copy of them a path holds.
-  const { trailTiles: _t, leftTurnTiles: _l, rightTurnTiles: _u, turnRadiusM: _r, ...older } = two.paths[1].settings;
-  const legacy = { ...two, paths: [two.paths[0], { ...two.paths[1], settings: { ...older, mesaTextures: true } as unknown as Settings }] };
-  check(mergeTrailPoints(legacy, 3, 2).trail.paths.length === 1, 'merge: a path saved before tile pairs wears what it always did, cut alike');
-  const retiled = { ...two, paths: [two.paths[0], { ...two.paths[1], settings: { ...two.paths[1].settings, trailTiles: 'MESA/Trail 2' } }] };
+  const { trailTiles: _t, turnRadiusM: _r, ...older } = two.paths[1].settings;
+  const mesaFirst = { ...two.paths[0], settings: { ...two.paths[0].settings, trailTiles: 'MESA/Preset 1' } };
+  const legacy = { ...two, paths: [mesaFirst, { ...two.paths[1], settings: { ...older, mesaTextures: true } as unknown as Settings }] };
+  check(mergeTrailPoints(legacy, 3, 2).trail.paths.length === 1, 'merge: a path saved before tile sets wears what it always did, cut alike');
+  const retiled = { ...two, paths: [two.paths[0], { ...two.paths[1], settings: { ...two.paths[1].settings, trailTiles: 'ALOHA/Preset 1' } }] };
   check(mergeTrailPoints(retiled, 3, 2).trail.paths.length === 2, 'merge: paths wearing different tiles stay two');
 
   // A split cuts each path running on through the point; where paths only end, there is nothing to cut.
@@ -619,6 +658,200 @@ if (!created.ok) process.exit(1);
   check(other.trails?.length === 1 && other.trails[0].quads.length === 10, 'registers: assigning a trail lands it whole');
   applyRegisters(other, [[key, undefined]]);
   check(other.trails?.length === 0, 'registers: assigning nothing deletes it');
+}
+
+// ---- lanes: a path some patches wide ------------------------------------------------------------------------------
+{
+  const wide = trailOf([[0, 0, 0], [0, 0, 100]], { lanes: 3, widthM: 20 });
+  const cut = cutTrail(emptyDoc(), wide);
+  check(cut.ok, 'lanes: a three-lane trail cuts', cut.ok ? '' : cut.error);
+  if (cut.ok) {
+    const spans = cut.layout.spans.length;
+    check(cut.trail.quads.length === spans * 3 && cut.trail.vertices.length === (spans + 1) * 4
+      && cut.trail.network?.runLanes?.join() === '3',
+    'lanes: three patches a span, four rails a station, and the cut remembers its lanes', JSON.stringify(cut.trail.network));
+    const owned = resolveTrail(cut.doc, cut.trail);
+    check(!!owned && owned.runLanes.join() === '3' && owned.quads.every(quad => quadIsLocked(cut.doc, quad)),
+      'lanes: the trail finds its three-lane ribbon again');
+    check(trailPathQuads(cut.doc, cut.trail)?.[0].length === cut.trail.quads.length, 'lanes: every patch is the path’s');
+    // Narrowed to two the trail is plain Mesa again, with nothing to remember; widened to four it grows.
+    const two = cutTrail(cut.doc, { ...cut.trail, paths: [{ ...cut.trail.paths[0], settings: { ...cut.trail.paths[0].settings, lanes: 2 } }] });
+    check(two.ok && !two.trail.network && two.trail.quads.length === spans * 2 && two.doc.quads.length === spans * 2
+      && !!resolveTrail(two.doc, two.trail), 'lanes: back to two lanes, the cut is an ordinary ribbon again');
+    const four = two.ok && cutTrail(two.doc, { ...two.trail, paths: [{ ...two.trail.paths[0], settings: { ...two.trail.paths[0].settings, lanes: 4 } }] });
+    check(!!four && four.ok && four.trail.quads.length === spans * 4 && four.doc.quads.length === spans * 4
+      && four.trail.quads.slice(0, spans * 2).every(id => two.ok && two.trail.quads.includes(id)),
+    'lanes: widening to four re-uses the patches it had and adds the rest');
+  }
+
+  // Joined to other patches the trail keeps its layout, lanes and all.
+  const { doc, trail } = created;
+  const owned = resolveTrail(doc, trail)!;
+  const host: QuadMeshDoc = {
+    ...doc,
+    vertices: [...doc.vertices, -20, 0, 0, -20, 0, 20],
+    vertexIds: [...doc.vertexIds, 'host-a', 'host-b'],
+    quads: [...doc.quads, [doc.vertices.length / 3, owned.vertices[0], doc.vertices.length / 3 + 1, owned.vertices[3]]],
+    quadIds: [...doc.quadIds, 'host-quad'],
+  };
+  const widened = cutTrail(host, { ...trail, paths: [{ ...trail.paths[0], settings: { ...trail.paths[0].settings, lanes: 3 } }] });
+  check(!widened.ok && /lanes wide/.test(widened.error), 'lanes: a joined trail cannot change its lanes', widened.ok ? '' : widened.error);
+
+  // A fork of three lanes through and four leaving: one surface, each patch one path's, names kept by a nudge.
+  const main = trailOf([[0, 0, 0], [0, 0, 160], [0, 0, 320]], { lanes: 3, widthM: 18 });
+  const fork = withPathThrough(main, [1, [120, 0, 230], [220, 0, 290]], { lanes: 4, widthM: 24 });
+  const forked = cutTrail(emptyDoc(), fork);
+  check(forked.ok, 'lanes fork: three lanes and four meet', forked.ok ? '' : forked.error);
+  if (forked.ok) {
+    const shape = forked.trail.network!;
+    check(shape.runLanes?.join() === '3,3,4' && JSON.stringify(shape.runEnds) === '[[3,2],[2,3],[2,4]]'
+      && JSON.stringify(shape.junctionSizes) === '[{"vertices":4,"quads":6}]',
+    'lanes fork: the cut remembers each run’s lanes, the two each narrows to at the junction, and its size', JSON.stringify(shape));
+    const own = resolveTrail(forked.doc, forked.trail);
+    check(!!own && own.quads.length === forked.doc.quads.length && own.vertices.length === forked.doc.vertices.length / 3
+      && checkManifold(forked.doc.quads).ok, 'lanes fork: the trail owns one manifold surface, junction included');
+    const lists = trailPathQuads(forked.doc, forked.trail)!;
+    const all = lists.flat();
+    const junction = shape.junctionSizes![0].quads;
+    // Each run a patch a lane a span, at its widest; and two patches an arm in the junction.
+    check(all.length === forked.trail.quads.length && new Set(all).size === all.length
+      && lists[1].length === shape.runSpans[2] * 4 - 1 + 2 && lists[0].length === (shape.runSpans[0] + shape.runSpans[1]) * 3 + 4
+      && junction === 6,
+    'lanes fork: every patch is exactly one path’s, the junction’s by the arm it carries on', lists.map(list => list.length).join());
+    const nudged = cutTrail(forked.doc, { ...forked.trail, points: forked.trail.points.map((p, i): V3 => i === 4 ? [220, 0.5, 300] : p) });
+    check(nudged.ok && nudged.trail.vertices.join() === forked.trail.vertices.join() && nudged.trail.quads.join() === forked.trail.quads.join(),
+      'lanes fork: a re-cut that keeps the shape keeps every name');
+  }
+}
+
+// ---- caps: a path's free ends closed square, its ends at a junction not ----------------------------------------
+{
+  const main = trailOf([[0, 0, 0], [0, 0, 120], [0, 0, 240]], { caps: 'both', ...MESA_TILES });
+  const cut = cutTrail(mesaDoc(), main);
+  check(cut.ok, 'caps: a capped path cuts', cut.ok ? '' : cut.error);
+  if (cut.ok) {
+    const spans = cut.layout.spans;
+    check(spans[0].cap === 'start' && spans.at(-1)!.cap === 'end' && Math.abs(spans[0].lengthM - 6.5) < 0.01
+      && Math.abs(spans.at(-1)!.lengthM - 6.5) < 0.01,
+    'caps: both its ends are capped, a lane long', `${spans[0].lengthM} ${spans.at(-1)!.lengthM}`);
+    const tiles = resolveTrail(cut.doc, cut.trail)!.quads.map(quad => cut.doc.quadTex?.[quad]);
+    const mirrored = resolveTrail(cut.doc, cut.trail)!.quads.map(quad => !!cut.doc.quadOrient?.[quad]?.mirror);
+    check(tiles.slice(-2).join() === 'MESA/0043.png,MESA/0041.png' && tiles.slice(0, 2).join() === 'MESA/0041.png,MESA/0043.png'
+      && [...mirrored.slice(0, 2), ...mirrored.slice(-2)].every(Boolean),
+    'caps: wearing Mesa’s cap row, mirrored as it is, turned round at the first point', tiles.join());
+    const forked = cutTrail(cut.doc, withPathThrough(cut.trail, [1, [100, 0, 180], [180, 0, 220]], { caps: 'both' }));
+    check(forked.ok && forked.layout.spans.filter(span => span.cap).length === 3,
+      'caps: at a fork, the three free ends are capped and the junction’s are not', forked.ok ? '' : forked.error);
+  }
+  const reversed = reversePath({ points: [0, 1], settings: { ...TRAIL_SETTINGS_DEFAULTS, caps: 'start' } });
+  check(reversed.settings.caps === 'end', 'caps: a path turned round keeps its cap on the same end');
+}
+
+// ---- the set builder's tiles: each shown as it is laid, turned and mirrored of its own --------------------------------
+{
+  // Every way a tile can show, on a row at every turn, is the way it is set to.
+  const round = [0, 1, 2, 3].every(quarterTurns => [0, 1, 2, 3].every(rot => [false, true].every(mirror => {
+    const row = withTrailTileRowView({ left: 'A/1.png', middle: 'A/2.png', right: 'A/3.png', quarterTurns }, 'middle', { rot, mirror });
+    const view = trailTileRowView(row, 'middle'), others = trailTileRowView(row, 'left');
+    return view.rot === rot && view.mirror === mirror && others.rot === trailTileRowView({ ...row, turns: undefined, mirrored: undefined }, 'left').rot
+      && !others.mirror;
+  })));
+  check(round, 'builder: a tile set to show some way shows that way, and only it changes');
+  const upright = withTrailTileRowView({ left: 'A/1.png', right: 'A/3.png', quarterTurns: 2 }, 'left', { rot: 0, mirror: false });
+  check(!upright.turns && !upright.mirrored, 'builder: a tile shown as its row lays it carries no turn of its own', JSON.stringify(upright));
+  // A cap or turn row's middle set plain stays plain; left out, it is the trail row's.
+  const set: TrailTileSet = {
+    level: 'A', name: 'Trail 9', trail: { left: 'A/1.png', middle: 'A/2.png', right: 'A/3.png', quarterTurns: 2 },
+    cap: { left: 'A/4.png', middle: '', right: 'A/5.png', quarterTurns: 2 }, leftTurn: { left: 'A/6.png', right: 'A/7.png', quarterTurns: 0 },
+  };
+  check(trailTileSetRow(set, 'cap').row.middle === '' && trailTileSetRow(set, 'leftTurn').row.middle === 'A/2.png'
+    && trailTileRowView(trailTileSetRow(set, 'leftTurn').row, 'middle').rot === trailTileRowView(set.trail, 'middle').rot,
+  'builder: a plain middle stays plain, a borrowed one shows as it does in the trail row');
+  // Its layout, as it is written among the built-in sets.
+  const turned = { ...set, trail: withTrailTileRowView(set.trail, 'left', { rot: 1, mirror: true }) };
+  check(trailTileSetLiteral(turned).includes(`trail: { left: 'A/1.png', middle: 'A/2.png', right: 'A/3.png', mirrored: ['left'], quarterTurns: 2, turns: { left: 1 } },`)
+    && trailTileSetLiteral(turned).includes(`\n  cap: { left: 'A/4.png', middle: '', right: 'A/5.png', quarterTurns: 2 },\n`)
+    && trailTileSetLiteral(turned).startsWith(`{\n  level: 'A', name: 'Trail 9',\n  cap: `),
+  'builder: a set’s layout reads as it is written in the built-in sets', trailTileSetLiteral(turned));
+  // A narrow set — two across — fits a two-lane path only; a wide one any. Its layout says it is narrow.
+  check(trailTileSetFits({ narrow: true }, 2) && !trailTileSetFits({ narrow: true }, 3) && !trailTileSetFits({ narrow: true }, 1)
+    && trailTileSetFits({}, 1) && trailTileSetFits({}, 4), 'narrow: a narrow set fits two lanes, a wide one any');
+  check(trailTileSetLiteral({ level: 'A', name: 'Trail 9', narrow: true, trail: { left: 'A/1.png', right: 'A/3.png', quarterTurns: 2 } })
+    .startsWith(`{\n  level: 'A', name: 'Trail 9', narrow: true,\n`), 'narrow: its layout says it is narrow');
+}
+
+// ---- the presets: whole 4×3 sets, each of one map's tiles ----------------------------------------------------------
+{
+  const ids = TRAIL_TILE_SETS.map(trailTileSetId);
+  check(['ALASKA/Preset 1', 'ALOHA/Preset 1', 'GARI/Preset 1', 'GARI/Preset 2', 'GARI/Preset 3', 'MESA/Preset 1', 'SNOW/Preset 1']
+    .join() === ids.join(), 'presets: the built-in sets, map by map', ids.join());
+  check(TRAIL_TILE_SETS.every(set => TRAIL_TILE_ROWS.every(key => !set[key]
+    || trailTileRowTiles(set[key]!).every(tile => tile.startsWith(`${set.level}/`)) && trailTileRowTiles(set[key]!).length === (set.narrow ? 2 : 3))),
+  'presets: every row of each is three tiles of its own map’s, a narrow set’s two');
+  check(DEFAULT_TRAIL_TILES.trailTiles === 'GARI/Preset 3' && !findTrailTileSet(DEFAULT_TRAIL_TILES.trailTiles, [])!.narrow,
+    'presets: a new path wears Gari’s wide set');
+  // The sets they replaced: a path naming one wears the set after it with the same trail row, or goes plain.
+  check(findTrailTileSet('GARI/Snow Trail', []) === findTrailTileSet('GARI/Preset 3', [])
+    && findTrailTileSet('MESA/Trail 1', []) === findTrailTileSet('MESA/Preset 1', []) && findTrailTileSet('MERQUER/Trail 1', []) === null,
+  'presets: a set replaced is worn as the one after it, or none');
+  // A mountain's own set by a built-in one's name — laid as its own, since built in — stands behind it.
+  const shadow: TrailTileSet = { level: 'GARI', name: 'Preset 3', trail: { left: 'GARI/0001.png', right: 'GARI/0002.png', quarterTurns: 0 } };
+  check(trailTileSetsWith([shadow]).filter(set => trailTileSetId(set) === 'GARI/Preset 3').length === 1
+    && findTrailTileSet('GARI/Preset 3', [shadow]) === TRAIL_TILE_SETS.find(set => trailTileSetId(set) === 'GARI/Preset 3'),
+  'presets: a mountain’s own set by a built-in one’s name stands behind it');
+  // A preset's name before it was one names it still — but a mountain's own set of that name is its own.
+  const kept: TrailTileSet = { level: 'GARI', name: 'Trail 3', trail: { left: 'GARI/0001.png', right: 'GARI/0002.png', quarterTurns: 0 } };
+  check(findTrailTileSet('GARI/Trail 3', []) === findTrailTileSet('GARI/Preset 3', []) && findTrailTileSet('GARI/Trail 3', [kept]) === kept,
+    'presets: a preset’s old name names it, where the mountain has no set of its own by that name');
+  // A three-lane path wears its set right across: Alaska's snow plain, Gari's edge tile on both edges.
+  const lanesOf = (trailTiles: string) => {
+    const cut = cutTrail(emptyDoc(), trailOf([[0, 0, 0], [0, 0, 100]], { lanes: 3, widthM: 18, trailTiles }));
+    return cut.ok ? resolveTrail(cut.doc, cut.trail)!.quads.slice(0, 3)
+      .map(quad => `${cut.doc.quadTex?.[quad]}${cut.doc.quadOrient?.[quad]?.mirror ? ' mirrored' : ''}`).join() : cut.error;
+  };
+  check(lanesOf('ALASKA/Preset 1') === 'ALASKA/0137.png,ALASKA/0137.png,ALASKA/0137.png', 'presets: Alaska’s snow, plain right across');
+  check(lanesOf('GARI/Preset 3') === 'GARI/0012.png,GARI/0020.png,GARI/0012.png',
+    'presets: Gari’s edge tile on both edges, its groomed snow between', lanesOf('GARI/Preset 3'));
+}
+
+// ---- a document saved with tile pairs and two-lane paths loads with tile sets and lanes ---------------------------
+{
+  const raw = JSON.parse(JSON.stringify(migrateMountain(blankMountain()))) as Record<string, unknown>;
+  const { lanes: _lanes, caps: _caps, ...older } = TRAIL_SETTINGS_DEFAULTS;
+  raw.trails = [{ ...created.trail, paths: [{ ...created.trail.paths[0], settings: older }] }];
+  raw.trailTilePairs = [{ level: 'A', name: 'Trail 1', kind: 'trail', left: 'A/1.png', right: 'A/2.png', quarterTurns: 0 }];
+  const doc = migrateMountain(raw);
+  check(doc.trailTileSets?.[0].name === 'Trail 1' && doc.trailTileSets[0].trail.right === 'A/2.png' && !('trailTilePairs' in doc),
+    'migrate: the mountain’s own pairs load as sets of that row');
+  // Sets saved while a set was one row of a kind load as sets of that row; whole sets load as they are.
+  const whole: TrailTileSet = { level: 'A', name: 'Trail 3', trail: { left: 'A/5.png', right: 'A/6.png', quarterTurns: 2 } };
+  const rowSets = migrateMountain({ ...raw, trailTilePairs: undefined, trailTileSets: [
+    { level: 'A', name: 'Left Turn 1', kind: 'left-turn', left: 'A/3.png', middle: 'A/4.png', right: 'A/1.png', mirrored: ['left'], quarterTurns: 2 }, whole,
+  ] });
+  check(JSON.stringify(rowSets.trailTileSets) === JSON.stringify([
+    { level: 'A', name: 'Left Turn 1', trail: { left: 'A/3.png', right: 'A/1.png', middle: 'A/4.png', mirrored: ['left'], quarterTurns: 2 } }, whole,
+  ]), 'migrate: sets of one row load as sets of that row, whole ones as they are', JSON.stringify(rowSets.trailTileSets));
+  // A set of the mountain's own laid exactly as a preset — laid as its own, since built in — gives way to it: it goes,
+  // and its paths wear the preset. One laid otherwise stays, by its name.
+  const preset = TRAIL_TILE_SETS.find(set => trailTileSetId(set) === 'GARI/Preset 3')!;
+  const twinned = migrateMountain({ ...raw, trailTilePairs: undefined,
+    trailTileSets: [{ ...structuredClone(preset), name: 'Trail 3' }, { ...whole, level: 'GARI', name: 'Trail 1' }],
+    trails: [{ ...created.trail, paths: [{ ...created.trail.paths[0], settings: { ...created.trail.paths[0].settings, trailTiles: 'GARI/Trail 3' } }] }] });
+  check(twinned.trailTileSets?.map(set => set.name).join() === 'Trail 1' && twinned.trails?.[0].paths[0].settings.trailTiles === 'GARI/Preset 3',
+    'migrate: a set of its own laid as a preset gives way to the preset, its paths wearing it',
+    JSON.stringify([twinned.trailTileSets?.map(set => set.name), twinned.trails?.[0].paths[0].settings.trailTiles]));
+  // A path naming a preset since renamed names it by its new name — unless the mountain has a set of its own by the old
+  // one; a set with none after it stays named, and goes plain.
+  const wornAfter = (trailTiles: string, own?: TrailTileSet[]) => migrateMountain({ ...raw, trailTilePairs: undefined,
+    ...(own ? { trailTileSets: own } : {}),
+    trails: [{ ...created.trail, paths: [{ ...created.trail.paths[0], settings: { ...created.trail.paths[0].settings, trailTiles } }] }],
+  }).trails?.[0].paths[0].settings.trailTiles;
+  check(wornAfter('GARI/Snow Trail') === 'GARI/Preset 3' && wornAfter('MERQUER/Trail 1') === 'MERQUER/Trail 1'
+    && wornAfter('GARI/Trail 1', [{ ...whole, level: 'GARI', name: 'Trail 1' }]) === 'GARI/Trail 1',
+  'migrate: a path names a renamed preset by its new name, a set of its own by its own',
+  JSON.stringify([wornAfter('GARI/Snow Trail'), wornAfter('MERQUER/Trail 1')]));
+  check(doc.trails?.[0].paths[0].settings.lanes === 2 && doc.trails[0].paths[0].settings.caps === 'none',
+    'migrate: a path saved before lanes is two lanes wide, and one before caps uncapped');
 }
 
 if (failures) process.exitCode = 1;

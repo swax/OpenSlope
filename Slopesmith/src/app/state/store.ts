@@ -187,17 +187,17 @@ export type Store = {
   // A new trail's settings (docs/023). A trail keeps its own copy; editing one also updates these, so the next
   // trail starts the way the last was tuned.
   trailWidth: number;                // Create Trail rim-to-rim width, metres
-  trailCenterBias: number;           // centre seam across the width: 0.5 = equal left/right lanes
-  trailDishPercent: number;          // centre seam depth as a percentage of trail width
+  trailLanes: number;                // patches across a new trail path
+  trailCenterBias: number;           // the spline across the width: 0.5 = equal lanes either side
+  trailDishPercent: number;          // centre line depth as a percentage of trail width
   trailPatchLength: number;          // ordinary target patch length along the centre spline, metres
   trailMaxTurnDegrees: number;       // adaptive turn cap per patch span
   trailBankGain: number;             // curvature-to-bank response distance, metres
   trailMaxBankDegrees: number;       // absolute auto-bank clamp
   trailSurfaceLift: number;          // vertical lift for knots clicked on an existing surface, metres
-  trailTilePair: string | null;      // the tile pair a new trail path wears (`MESA/Trail 1`); null leaves it plain
-  trailLeftTurnPair: string | null;  // the pair it wears through tight left turns; null wears the trail pair there too
-  trailRightTurnPair: string | null; // … and through tight right turns
-  trailTurnRadius: number;           // spans tighter than this radius, metres, wear the turn pair
+  trailTileSet: string | null;       // the tile set a new trail path wears (`MESA/Trail 1`); null leaves it plain
+  trailTurnRadius: number;           // spans tighter than this radius, metres, wear the set's turn rows
+  trailCaps: 'none' | 'start' | 'end' | 'both'; // the free ends of a new path that are capped
   trailPoint: { trail: string; point: number } | null; // trail point carrying the move gizmo (its paths are the
                                      // one being drawn, or the ones whose patches are exactly cellSel)
   // The selected path's Bézier handle carrying the gizmo (docs/014) — on a rail, a prop line or a trail; at most
@@ -445,6 +445,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     tubeSectionLength: 10,
     tubeRingEdges: 4,
     trailWidth: 13,
+    trailLanes: 2,
     trailCenterBias: 0.5,
     trailDishPercent: 10.5,
     trailPatchLength: 22.5,
@@ -452,10 +453,10 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     trailBankGain: 15,
     trailMaxBankDegrees: 20,
     trailSurfaceLift: 0.25,
-    trailTilePair: DEFAULT_TRAIL_TILES.trailTiles,
-    trailLeftTurnPair: DEFAULT_TRAIL_TILES.leftTurnTiles,
-    trailRightTurnPair: DEFAULT_TRAIL_TILES.rightTurnTiles,
+    // The set last chosen for a path, remembered; none chosen yet, the default.
+    trailTileSet: typeof ui.trailTileSet === 'string' || ui.trailTileSet === null ? ui.trailTileSet : DEFAULT_TRAIL_TILES.trailTiles,
     trailTurnRadius: DEFAULT_TRAIL_TILES.turnRadiusM,
+    trailCaps: 'both', // a new path is capped at both of its free ends; the panel's caps setting changes it
     trailPoint: null,
     pathHandle: null,
     weldTool: null,

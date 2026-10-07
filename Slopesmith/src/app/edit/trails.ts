@@ -1,16 +1,17 @@
 import type {
-  AuthoredTrail, PathHandles, QuadMeshDoc, TrailKnotSettings, TrailPath, TrailSettings, TrailTilePair, V3,
+  AuthoredTrail, PathHandles, QuadMeshDoc, TrailKnotSettings, TrailPath, TrailSettings, TrailTileRow, TrailTileSet, V3,
 } from '../../core/doc/types';
 import { nameIndex, nextTrailId } from '../../core/doc/ids';
 import {
   compactTrail, connectedPaths, cutTrail, disconnectPoint, extendPath, fusePathsAt, joinTrails, mergeTrailPoints, pathCuts, pathEndsAt, pathKnots,
-  pathsThrough, pointArms, removeTrailPatches, resolveTrail, separateTrail, setTrailKnotValue, splitPathsAt, trailIsConnected, trailOwningQuad,
-  trailPathQuads,
+  pathsThrough, pointArms, removeTrailPatches, resolveTrail, separateTrail, setTrailKnotValue, splitPathsAt, trailCutShape, trailIsConnected,
+  trailOwningQuad, trailPathQuads,
   trailPathStations, trailPreview, trimPath, withNewPoint, withoutTrailPaths, withoutTrailPoint, withPath, type TrailRenumbering,
 } from '../../core/mesh/trail-object';
 import type { TrailStation } from '../../core/mesh/trail';
 import {
-  nextTrailTilePairName, TRAIL_TILE_SLOTS, trailSettingsTiles, trailTilePairId, trailTilePairsWith,
+  DEFAULT_TRAIL_TILES, findTrailTileSet, nextTrailTileSetName, TRAIL_TILE_ROWS, trailSettingsTiles, trailTileRowTiles, trailTileSetId,
+  trailTileSetsWith, withoutTrailTileMiddle, type TrailTileRowKey,
 } from '../../core/mesh/trail-textures';
 import { parseTexRef } from '../../core/paint/textures';
 import type { Store } from '../state/store';
@@ -56,9 +57,9 @@ export type TrailToolDeps = {
 
 /** A path's settings and the store's new-path defaults they mirror. */
 const STORE_KEYS = {
-  widthM: 'trailWidth', centerBias: 'trailCenterBias', dishPercent: 'trailDishPercent', patchLengthM: 'trailPatchLength',
+  widthM: 'trailWidth', lanes: 'trailLanes', centerBias: 'trailCenterBias', dishPercent: 'trailDishPercent', patchLengthM: 'trailPatchLength',
   maxTurnDegrees: 'trailMaxTurnDegrees', bankGainM: 'trailBankGain', maxBankDegrees: 'trailMaxBankDegrees',
-  trailTiles: 'trailTilePair', leftTurnTiles: 'trailLeftTurnPair', rightTurnTiles: 'trailRightTurnPair', turnRadiusM: 'trailTurnRadius',
+  trailTiles: 'trailTileSet', turnRadiusM: 'trailTurnRadius', caps: 'trailCaps',
 } as const satisfies Record<keyof TrailSettings, keyof Store>;
 
 export interface TrailStatus {
@@ -374,7 +375,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     for (const pick of picks) {
       if (!inDoc(pick.trail)) continue;
       const lists = pathCells(pick.trail);
-      const shape = pick.trail.network ?? { runSpans: [pick.trail.quads.length / 2], runPaths: [0] };
+      const shape = trailCutShape(pick.trail);
       for (const path of pick.paths) {
         patches += lists[path]?.length ?? 0;
         spans += shape.runSpans.reduce((sum, count, run) => sum + (shape.runPaths[run] === path ? count : 0), 0);
@@ -407,6 +408,8 @@ export function createTrailTools(deps: TrailToolDeps) {
     select?: Record<string, number[]>;
     /** Trails taken out first, patches and all — taken into one of the cut ones. */
     remove?: readonly AuthoredTrail[];
+    /** The cut document's last change before it is installed. */
+    settle?: (doc: QuadMeshDoc) => QuadMeshDoc;
   };
 
   /**
@@ -437,6 +440,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     }
     lastError = null;
     if (draft && nexts.some(next => next.id === draft!.id)) draft = null;
+    if (options.settle) doc = options.settle(doc);
     commitEditMesh(store, doc);
     // The selection follows the cut: each cut trail's selected paths by their new patches, everything else as it was.
     const touched = new Set([...cuts.map(trail => trail.id), ...(options.remove ?? []).map(trail => trail.id)]);
@@ -482,8 +486,16 @@ export function createTrailTools(deps: TrailToolDeps) {
 
   // ---- drawing ------------------------------------------------------------------------------------------------
 
+  /** The next new path's settings: the panel's — its tile set the one last chosen, or the default where this mountain
+   *  has no set of that name (one of another mountain's own). */
   function settingsFromStore(): TrailSettings {
-    return Object.fromEntries(Object.entries(STORE_KEYS).map(([key, storeKey]) => [key, store[storeKey]])) as unknown as TrailSettings;
+    const settings = Object.fromEntries(Object.entries(STORE_KEYS).map(([key, storeKey]) => [key, store[storeKey]])) as unknown as TrailSettings;
+    if (settings.trailTiles) {
+      // By the name it goes by now — a set since renamed under its new one.
+      const set = findTrailTileSet(settings.trailTiles, store.modelEditId ? [] : store.mdoc.trailTileSets);
+      settings.trailTiles = set ? trailTileSetId(set) : DEFAULT_TRAIL_TILES.trailTiles;
+    }
+    return settings;
   }
 
   function beginDrawing(next: Drawing) {
@@ -1011,85 +1023,115 @@ export function createTrailTools(deps: TrailToolDeps) {
     toast(`split ${cut > 1 ? `${cut} paths` : 'the path'} here · click a piece’s patches to set it on its own`, 'ok');
   }
 
-  // ---- tile pairs (docs/023 · Textures) -----------------------------------------------------------------------
+  // ---- tile sets (docs/023 · Textures) ------------------------------------------------------------------------
 
-  /** Every pair a path may wear: the built-in ones, then the mountain's own. */
-  const trailTilePairs = (): TrailTilePair[] => trailTilePairsWith(store.modelEditId ? [] : store.mdoc.trailTilePairs);
+  /** Every set a path may wear: the built-in ones, then the mountain's own. */
+  const trailTileSets = (): TrailTileSet[] => trailTileSetsWith(store.modelEditId ? [] : store.mdoc.trailTileSets);
 
-  /** The document with `own` as the mountain's pairs, the field dropped once there are none. */
-  function withOwnPairs(doc: QuadMeshDoc, own: readonly TrailTilePair[]): QuadMeshDoc {
+  /** The document with `own` as the mountain's sets, the field dropped once there are none. */
+  function withOwnSets(doc: QuadMeshDoc, own: readonly TrailTileSet[]): QuadMeshDoc {
     const next = { ...doc };
-    if (own.length) next.trailTilePairs = [...own]; else delete next.trailTilePairs;
+    if (own.length) next.trailTileSets = [...own]; else delete next.trailTileSets;
     return next;
   }
 
-  /** Whether a path wears pair `id`, along its spans or through its turns. */
-  const pathWears = (path: TrailPath, id: string): boolean => {
-    const tiles = trailSettingsTiles(path.settings);
-    return TRAIL_TILE_SLOTS.some(slot => tiles[slot] === id);
-  };
+  /** Whether a path wears set `id`. */
+  const pathWears = (path: TrailPath, id: string): boolean => trailSettingsTiles(path.settings).trailTiles === id;
   const trailsWearing = (id: string): AuthoredTrail[] => docTrails().filter(trail => trail.paths.some(path => pathWears(path, id)));
+  /** Every tile of a set's rows. */
+  const setTiles = (set: Pick<TrailTileSet, TrailTileRowKey>): string[] =>
+    TRAIL_TILE_ROWS.flatMap(key => set[key] ? trailTileRowTiles(set[key]!) : []);
 
   /**
-   * A new pair of the mountain's own, from two tiles of one map, named next among that map's — `GARI/Trail 1` — and
-   * its id; null, said, when the tiles are from two maps. Nothing wears it until a path is set to.
+   * A new set of the mountain's own, of these rows of one map's tiles — a trail row of new tiles, or every row of a set
+   * to copy, narrow as it is — named next among that map's — `GARI/Trail 1` — and its id; null, said, when the tiles
+   * are from more than one map. Nothing wears it until a path is set to.
    */
-  function addTrailTilePair(kind: TrailTilePair['kind'], left: string, right: string): string | null {
+  function addTrailTileSet(rows: Pick<TrailTileSet, TrailTileRowKey | 'narrow'>): string | null {
     if (store.modelEditId) return null;
-    const level = parseTexRef(left).level;
-    if (!level || parseTexRef(right).level !== level) {
-      toast(`A pair’s two tiles come from one map: choose a second ${level || 'map'} tile.`, 'err');
+    const tiles = setTiles(rows), level = parseTexRef(tiles[0] ?? '').level;
+    if (!level || tiles.some(tile => parseTexRef(tile).level !== level)) {
+      toast(`A set’s tiles come from one map: choose ${level || 'one map'}’s tiles.`, 'err');
       return null;
     }
-    const own = store.mdoc.trailTilePairs ?? [];
-    const pair: TrailTilePair = { level, name: nextTrailTilePairName(level, kind, own), kind, left, right, quarterTurns: 0 };
-    commitEditMesh(store, withOwnPairs(store.mdoc, [...own, pair]));
+    const own = store.mdoc.trailTileSets ?? [];
+    // Its rows in a set's order — cap, trail, right turn, left turn — as it is drawn.
+    const set = { level, name: nextTrailTileSetName(level, own), ...(rows.narrow ? { narrow: true } : {}) } as TrailTileSet;
+    for (const key of TRAIL_TILE_ROWS) {
+      const row = rows[key] && structuredClone(rows[key]);
+      if (row) set[key] = set.narrow ? withoutTrailTileMiddle(row) : row;
+    }
+    commitEditMesh(store, withOwnSets(store.mdoc, [...own, set]));
     scheduleRebuild();
-    return trailTilePairId(pair);
+    return trailTileSetId(set);
   }
 
-  /** Change one of the mountain's own pairs — a half, or how it is turned — and re-cut every trail wearing it. Both
-   *  halves stay one map's. */
-  function editTrailTilePair(id: string, change: Partial<Pick<TrailTilePair, 'left' | 'right' | 'quarterTurns'>>): boolean {
-    const own = store.mdoc.trailTilePairs ?? [];
-    const at = own.findIndex(pair => trailTilePairId(pair) === id);
-    if (at < 0 || store.modelEditId) return false;
-    const next = { ...own[at], ...change };
-    if (parseTexRef(next.left).level !== next.level || parseTexRef(next.right).level !== next.level) {
-      toast(`A pair’s two tiles come from one map: choose a ${next.level} tile for ${id}.`, 'err');
+  /**
+   * Change rows of one of the mountain's own sets — a tile, which are mirrored, how they are turned — at once, or make
+   * it narrow or wide, and re-cut every trail wearing it. A cap or turn row it has none of starts as its trail row;
+   * `null` takes one off again, to wear the trail row there. Its tiles stay one map's; a middle changed to '' is taken
+   * off, and an edge tile changed to '' leaves that lane plain. A narrow set's rows have no middle: made narrow, it
+   * loses them.
+   */
+  function editTrailTileSet(id: string, changes: Partial<Record<TrailTileRowKey, Partial<TrailTileRow> | null>>,
+    options: { narrow?: boolean } = {}): boolean {
+    const own = store.mdoc.trailTileSets ?? [];
+    const at = own.findIndex(set => trailTileSetId(set) === id);
+    if (at < 0 || store.modelEditId || changes.trail === null) return false;
+    const next: TrailTileSet = { ...own[at] };
+    for (const key of TRAIL_TILE_ROWS) {
+      const change = changes[key];
+      if (change === undefined) continue;
+      if (change === null) { delete next[key]; continue; }
+      const row: TrailTileRow = { ...(own[at][key] ?? own[at].trail), ...change };
+      for (const which of ['left', 'middle', 'right'] as const) {
+        if (row[which]) continue;
+        if (row.mirrored) row.mirrored = row.mirrored.filter(side => side !== which);
+        if (row.turns) { row.turns = { ...row.turns }; delete row.turns[which]; }
+      }
+      // A trail row with no middle leaves the lanes between plain; a cap or turn row's '' does, where none wears the
+      // trail row's.
+      if (!row.middle && (key === 'trail' || row.middle === undefined)) delete row.middle;
+      if (!row.mirrored?.length) delete row.mirrored;
+      if (!row.turns || !Object.values(row.turns).some(Boolean)) delete row.turns;
+      next[key] = row;
+    }
+    if (options.narrow !== undefined) { if (options.narrow) next.narrow = true; else delete next.narrow; }
+    if (next.narrow) for (const key of TRAIL_TILE_ROWS) if (next[key]) next[key] = withoutTrailTileMiddle(next[key]!);
+    if (setTiles(next).some(tile => parseTexRef(tile).level !== next.level)) {
+      toast(`A set’s tiles come from one map: choose a ${next.level} tile for ${id}.`, 'err');
       return false;
     }
-    const base = withOwnPairs(store.mdoc, own.map((pair, i) => i === at ? next : pair));
+    const sets = own.map((set, i) => i === at ? next : set);
     const users = trailsWearing(id);
-    if (users.length) return apply(users, { base });
-    commitEditMesh(store, base);
+    // Cut knowing the set as it was too, after the new one so its id finds that: a tile it no longer has — a middle
+    // taken off — is a set's, and is taken back, not left on as if painted by hand.
+    if (users.length) return apply(users, { base: withOwnSets(store.mdoc, [...sets, own[at]]), settle: doc => withOwnSets(doc, sets) });
+    commitEditMesh(store, withOwnSets(store.mdoc, sets));
     scheduleRebuild();
     return true;
   }
 
-  /** Delete one of the mountain's own pairs: every path wearing it goes plain there — along its spans, or through its
-   *  left or right turns — and re-cuts, which takes its tiles back off. */
-  function deleteTrailTilePair(id: string): boolean {
-    const own = store.mdoc.trailTilePairs ?? [];
-    if (store.modelEditId || !own.some(pair => trailTilePairId(pair) === id)) return false;
+  /** Delete one of the mountain's own sets: every path wearing it goes plain and re-cuts, which takes its tiles back
+   *  off. */
+  function deleteTrailTileSet(id: string): boolean {
+    const own = store.mdoc.trailTileSets ?? [];
+    if (store.modelEditId || !own.some(set => trailTileSetId(set) === id)) return false;
     const strip = (settings: TrailSettings): TrailSettings => {
       const tiles = trailSettingsTiles(settings);
-      for (const slot of TRAIL_TILE_SLOTS) if (tiles[slot] === id) tiles[slot] = null;
-      return { ...settings, ...tiles };
+      return { ...settings, ...tiles, trailTiles: tiles.trailTiles === id ? null : tiles.trailTiles };
     };
     const stripped = (trail: AuthoredTrail): AuthoredTrail =>
       ({ ...trail, paths: trail.paths.map(path => ({ ...path, settings: strip(path.settings) })) });
     const users = trailsWearing(id);
     const paths = users.reduce((n, trail) => n + trail.paths.filter(path => pathWears(path, id)).length, 0);
-    // Cut while the pair is still the mountain's, so the cut knows its tiles as a pair's and takes them back.
+    // Cut while the set is still the mountain's, so the cut knows its tiles as a set's and takes them back.
     if (users.length && !apply(users.map(stripped))) return false;
-    commitEditMesh(store, withOwnPairs(store.mdoc, own.filter(pair => trailTilePairId(pair) !== id)));
+    commitEditMesh(store, withOwnSets(store.mdoc, own.filter(set => trailTileSetId(set) !== id)));
     if (draft) draft = stripped(draft);
-    if (store.trailTilePair === id) store.trailTilePair = null;
-    if (store.trailLeftTurnPair === id) store.trailLeftTurnPair = null;
-    if (store.trailRightTurnPair === id) store.trailRightTurnPair = null;
+    if (store.trailTileSet === id) store.trailTileSet = null;
     scheduleRebuild();
-    toast(`${id} deleted${paths ? ` — ${paths} path${paths === 1 ? '' : 's'} wearing it went plain there` : ''}`, 'ok');
+    toast(`${id} deleted${paths ? ` — ${paths} path${paths === 1 ? '' : 's'} wearing it went plain` : ''}`, 'ok');
     return true;
   }
 
@@ -1103,6 +1145,7 @@ export function createTrailTools(deps: TrailToolDeps) {
   /** A setting changed in the panel: every selected path takes it — re-cut — and so does the next new path. */
   function setTrailSetting<K extends keyof TrailSettings>(key: K, value: TrailSettings[K]) {
     (store as unknown as Record<string, unknown>)[STORE_KEYS[key]] = value;
+    if (key === 'trailTiles') persistUi(); // the next path wears the set last chosen, after a reload too
     const nexts = editedPaths().map(({ trail, paths }) => ({
       ...trail,
       paths: trail.paths.map((path, i) => paths.includes(i) ? { ...path, settings: { ...path.settings, [key]: value } } : path),
@@ -1215,7 +1258,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     selectKnot, knotDrag, moveKnot, transformTrail, focusPath, selectTrailNode, setTrailHandles, deleteSelectedTrailKnot,
     disconnectSelectedPoint, splitSelectedPoint, setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings,
-    trailTilePairs, addTrailTilePair, editTrailTilePair, deleteTrailTilePair,
+    trailTileSets, addTrailTileSet, editTrailTileSet, deleteTrailTileSet,
   };
 }
 

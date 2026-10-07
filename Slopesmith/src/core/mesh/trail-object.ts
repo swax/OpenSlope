@@ -1,5 +1,5 @@
 import type {
-  AuthoredTrail, PathHandles, QuadMeshDoc, TrailCutShape, TrailKnotSettings, TrailPath, TrailSettings, TrailTilePair, V3,
+  AuthoredTrail, PathHandles, QuadMeshDoc, TrailCutShape, TrailKnotSettings, TrailPath, TrailSettings, TrailTileSet, V3,
 } from '../doc/types';
 import { nameIndex } from '../doc/ids';
 import { pathHandleOffsets, railBezierSegments } from '../rails/rails';
@@ -7,10 +7,11 @@ import { setQuadsLocked } from './locks';
 import { assignMap, finishMeshRewrite, looseVertexIds } from './ops/contract';
 import { liveQuadEdges, undirectedEdgeKey } from './primitives';
 import {
-  applyTrailNetwork, applyTrailSpline, layoutTrailSpline, MESA_TRAIL_DEFAULTS,
-  type TrailKnotProfile, type TrailLayout, type TrailLayoutOptions, type TrailRunSpec, type TrailStation,
+  applyTrailNetwork, applyTrailSpline, layoutTrailSpline, MESA_TRAIL_DEFAULTS, trailSpanPatches, trailStationLanes,
+  type TrailJunction, type TrailKnotProfile, type TrailLayout, type TrailLayoutOptions, type TrailRibbon, type TrailRunSpec,
+  type TrailStation,
 } from './trail';
-import { DEFAULT_TRAIL_TILES, trailSettingsTiles, trailTilePairsWith, trailTilePairTiles, trailTiling } from './trail-textures';
+import { DEFAULT_TRAIL_TILES, trailSettingsTiles, trailTileSetsWith, trailTileSetTiles, trailTiling } from './trail-textures';
 
 /**
  * Owned trails (docs/023 "Track: a rail that owns terrain"): a network of centre splines that keeps the patches it
@@ -22,8 +23,8 @@ import { DEFAULT_TRAIL_TILES, trailSettingsTiles, trailTilePairsWith, trailTileP
  * knitted with one patch per lane around a hub (`applyTrailNetwork`). Forks, merges, crossings, bypasses and loops
  * are all just paths sharing points.
  *
- * The ribbons are ordinary mesh — three rails of vertices, two patches per span — and the trail names them by
- * stable id, so they survive every renumbering a topology op does elsewhere. `cutTrail` is the one generator: it
+ * The ribbons are ordinary mesh — a rail of vertices per lane and one more, a patch per lane per span, narrowing into
+ * the junctions — and the trail names them by stable id, so they survive every renumbering a topology op does elsewhere. `cutTrail` is the one generator: it
  * cuts the whole network standalone (a `piece`) and writes the result over the vertices and patches the trail
  * already owns, slot by slot, appending or retiring only what a bigger or smaller cut needs. A re-cut that keeps
  * the network's shape keeps every name. Everything it owns is locked, which keeps hand edits off it, and every
@@ -37,6 +38,7 @@ import { DEFAULT_TRAIL_TILES, trailSettingsTiles, trailTilePairsWith, trailTileP
 /** A new path's settings: the measured Mesa section the Create Trail tool has always started from. */
 export const TRAIL_SETTINGS_DEFAULTS: Readonly<TrailSettings> = {
   widthM: MESA_TRAIL_DEFAULTS.widthM,
+  lanes: MESA_TRAIL_DEFAULTS.lanes,
   centerBias: MESA_TRAIL_DEFAULTS.centerBias,
   dishPercent: 10.5, // MESA_TRAIL_DEFAULTS.dishFraction as a percentage, written out so it is exact
   patchLengthM: MESA_TRAIL_DEFAULTS.maxPatchLengthM,
@@ -44,6 +46,7 @@ export const TRAIL_SETTINGS_DEFAULTS: Readonly<TrailSettings> = {
   bankGainM: MESA_TRAIL_DEFAULTS.bankGainM,
   maxBankDegrees: MESA_TRAIL_DEFAULTS.maxBankDegrees,
   ...DEFAULT_TRAIL_TILES,
+  caps: 'none',
 };
 
 export type TrailKnotSettingsList = readonly (TrailKnotSettings | null | undefined)[] | undefined;
@@ -91,11 +94,12 @@ function trimKnotSettings(list: (TrailKnotSettings | null)[]): (TrailKnotSetting
 
 /** The generator options some settings stand for, with knots' own values when there are any. */
 export function trailLayoutOptions(settings: TrailSettings, knotSettings?: TrailKnotSettingsList, knots = 0,
-  pairs?: readonly TrailTilePair[]): TrailLayoutOptions {
+  sets?: readonly TrailTileSet[]): TrailLayoutOptions {
   const knotProfile = trailKnotProfile(settings, knotSettings, knots);
   return {
     ...(knotProfile ? { knotProfile } : {}),
     widthM: settings.widthM,
+    lanes: settings.lanes ?? MESA_TRAIL_DEFAULTS.lanes,
     centerBias: settings.centerBias,
     dishFraction: settings.dishPercent / 100,
     maxPatchLengthM: settings.patchLengthM,
@@ -105,15 +109,15 @@ export function trailLayoutOptions(settings: TrailSettings, knotSettings?: Trail
     maxBankDegrees: settings.maxBankDegrees,
     maxBankStepDegrees: MESA_TRAIL_DEFAULTS.maxBankStepDegrees,
     surface: MESA_TRAIL_DEFAULTS.surface,
-    textures: trailTiling(settings, pairs),
+    textures: trailTiling(settings, sets),
   };
 }
 
 /** The generator options one path is cut with: its settings, the own values of the points it runs through, and the
- *  tile pairs it names, from the built-in ones and the mountain's own `pairs`. */
-export function pathLayoutOptions(trail: Pick<AuthoredTrail, 'pointSettings'>, path: TrailPath, pairs?: readonly TrailTilePair[]):
+ *  tile sets it names, from the built-in ones and the mountain's own `sets`. */
+export function pathLayoutOptions(trail: Pick<AuthoredTrail, 'pointSettings'>, path: TrailPath, sets?: readonly TrailTileSet[]):
 TrailLayoutOptions {
-  return trailLayoutOptions(path.settings, path.points.map(point => trail.pointSettings?.[point] ?? null), path.points.length, pairs);
+  return trailLayoutOptions(path.settings, path.points.map(point => trail.pointSettings?.[point] ?? null), path.points.length, sets);
 }
 
 /** The shortest run a junction may leave between itself and the next junction or the path's end. */
@@ -273,14 +277,17 @@ export function withoutTrailPaths(trail: AuthoredTrail, drop: readonly number[])
 }
 
 /**
- * `path` run the other way: its points and handles reversed (each knot's in and out swap) and its centre seam
- * mirrored, since the seam is measured across the direction of travel — the same ground, from the other end.
+ * `path` run the other way: its points and handles reversed (each knot's in and out swap), its centre seam mirrored,
+ * since the seam is measured across the direction of travel, and its caps on the ends they were on — the same ground,
+ * from the other end.
  */
 export function reversePath(path: TrailPath): TrailPath {
   const handles = handlesOf(path).reverse().map(own => own
     ? { ...(own.out ? { in: own.out } : {}), ...(own.in ? { out: own.in } : {}) } as PathHandles : null);
+  const caps = path.settings.caps === 'start' ? 'end' : path.settings.caps === 'end' ? 'start' : path.settings.caps;
   return withHandles({
-    ...path, points: [...path.points].reverse(), settings: { ...path.settings, centerBias: 1 - path.settings.centerBias },
+    ...path, points: [...path.points].reverse(),
+    settings: { ...path.settings, centerBias: 1 - path.settings.centerBias, ...(caps ? { caps } : {}) },
   }, handles);
 }
 
@@ -300,7 +307,8 @@ function mirrorOwnPoints(trail: AuthoredTrail, path: number): AuthoredTrail {
 }
 
 const sameSettings = (a: TrailSettings, b: TrailSettings) => {
-  const x = { ...a, ...trailSettingsTiles(a) }, y = { ...b, ...trailSettingsTiles(b) };
+  const x = { ...a, lanes: a.lanes ?? 2, caps: a.caps ?? 'none', ...trailSettingsTiles(a) };
+  const y = { ...b, lanes: b.lanes ?? 2, caps: b.caps ?? 'none', ...trailSettingsTiles(b) };
   return (Object.keys(TRAIL_SETTINGS_DEFAULTS) as (keyof TrailSettings)[]).every(key => x[key] === y[key]);
 };
 
@@ -482,16 +490,18 @@ export function joinTrails(trail: AuthoredTrail, other: AuthoredTrail): { trail:
 
 /** Where a trail's owned geometry is now, as indices into the current document. */
 export interface OwnedTrail {
-  /** Run by run, three per station (left rim, centre seam, right rim); then a crotch per arm and the hub for each
-   *  junction. */
+  /** Run by run, station by station, one more than the lanes there, from the generator's left rim across; then each
+   *  junction's: a crotch per arm, the hub, and any points of a split line. */
   vertices: number[];
-  /** Run by run, two per span (left lane, right lane); then two per arm of each junction. */
+  /** Run by run, span by span, as each lays them (`trailSpanPatches`); then each junction's. */
   quads: number[];
   /** Spans in every run together. */
   spans: number;
-  /** Spans per run, in cut order, and the path each run is cut from. */
+  /** Spans per run, in cut order, the path each run is cut from, its lanes, and the lanes at each of its stations. */
   runSpans: number[];
   runPaths: number[];
+  runLanes: number[];
+  runStations: number[][];
   /** Arms per junction, in cut order. */
   junctionArms: number[];
 }
@@ -499,22 +509,55 @@ export interface OwnedTrail {
 const sameCorners = (corners: readonly number[] | undefined, want: readonly number[]) =>
   !!corners && corners.length === 4 && corners.every((vertex, i) => vertex === want[i]);
 
-/** How a trail's owned names divide up: its stored shape, or one run of all its patches. */
-const cutShapeOf = (trail: AuthoredTrail): TrailCutShape =>
+/** How a trail's owned names divide up: its stored shape, or one two-lane run of all its patches. */
+export const trailCutShape = (trail: AuthoredTrail): TrailCutShape =>
   trail.network ?? { runSpans: [trail.quads.length / 2], runPaths: [0], junctionArms: [] };
+
+/** Each run's lanes, the lanes at each of its stations, and each junction's vertices and patches, as a cut shape says
+ *  — two lanes a run, end to end, where it says none. */
+function shapeSizes(shape: TrailCutShape):
+{ runLanes: number[]; runStations: number[][]; junctions: { vertices: number; quads: number }[] } | null {
+  const runLanes = shape.runLanes ?? shape.runSpans.map(() => 2);
+  const ends = shape.runEnds ?? runLanes.map(lanes => [lanes, lanes] as [number, number]);
+  if (runLanes.length !== shape.runSpans.length || ends.length !== shape.runSpans.length
+    || [...runLanes, ...ends.flat()].some(lanes => !Number.isInteger(lanes) || lanes < 1)) return null;
+  return {
+    runLanes,
+    runStations: shape.runSpans.map((spans, run) => trailStationLanes(spans, runLanes[run], ends[run])),
+    junctions: shape.junctionSizes ?? shape.junctionArms.map(arms => ({ vertices: arms + 1, quads: arms * 2 })),
+  };
+}
+
+/** The lanes, ends and junction sizes a cut shape records — nothing while every run is two lanes wide. */
+function cutSizes(runLanes: readonly number[], ribbons: readonly TrailRibbon[], junctions: readonly TrailJunction[]):
+Pick<TrailCutShape, 'runLanes' | 'junctionSizes' | 'runEnds'> {
+  if (runLanes.every(lanes => lanes === 2)) return {};
+  const ends = ribbons.map(ribbon => [ribbon.sections[0].length - 1, ribbon.sections.at(-1)!.length - 1] as [number, number]);
+  return {
+    runLanes: [...runLanes],
+    junctionSizes: junctions.map(junction => ({ vertices: junction.vertices.length, quads: junction.quads.length })),
+    ...(ends.some(([head, tail], run) => head !== runLanes[run] || tail !== runLanes[run]) ? { runEnds: ends } : {}),
+  };
+}
 
 /**
  * Find a trail's ribbons in the document. Null once any vertex or patch it owns is gone, or the patches no longer
  * join its vertices the way its runs and junctions do — something cut into it, and there is nothing left to re-cut.
  */
 export function resolveTrail(doc: QuadMeshDoc, trail: AuthoredTrail): OwnedTrail | null {
-  const { runSpans, runPaths, junctionArms } = cutShapeOf(trail);
+  const shape = trailCutShape(trail);
+  const { runSpans, runPaths, junctionArms } = shape;
   if (!runSpans.length || runSpans.some(spans => !Number.isInteger(spans) || spans < 1) || runPaths.length !== runSpans.length
     || junctionArms.some(arms => !Number.isInteger(arms) || arms < 2)) return null;
-  const ribbonVertices = runSpans.reduce((sum, spans) => sum + (spans + 1) * 3, 0);
-  const ribbonQuads = runSpans.reduce((sum, spans) => sum + spans * 2, 0);
-  const junctionVertices = junctionArms.reduce((sum, arms) => sum + arms + 1, 0);
-  const junctionQuads = junctionArms.reduce((sum, arms) => sum + arms * 2, 0);
+  const sizes = shapeSizes(shape);
+  if (!sizes || sizes.junctions.length !== junctionArms.length) return null;
+  const { runLanes, runStations, junctions } = sizes;
+  /** Each span's patches, run by run. */
+  const runPatches = runStations.map(stations => stations.slice(1).map((to, i) => trailSpanPatches(stations[i], to)));
+  const ribbonVertices = runStations.reduce((sum, stations) => sum + stations.reduce((n, lanes) => n + lanes + 1, 0), 0);
+  const ribbonQuads = runPatches.reduce((sum, spans) => sum + spans.reduce((n, patches) => n + patches.length, 0), 0);
+  const junctionVertices = junctions.reduce((sum, junction) => sum + junction.vertices, 0);
+  const junctionQuads = junctions.reduce((sum, junction) => sum + junction.quads, 0);
   if (trail.vertices.length !== ribbonVertices + junctionVertices || trail.quads.length !== ribbonQuads + junctionQuads) return null;
   const vertexAt = nameIndex(doc.vertexIds), quadAt = nameIndex(doc.quadIds);
   const vertices: number[] = [], quads: number[] = [];
@@ -529,13 +572,15 @@ export function resolveTrail(doc: QuadMeshDoc, trail: AuthoredTrail): OwnedTrail
     quads.push(index);
   }
   let v0 = 0, q0 = 0;
-  for (const spans of runSpans) {
-    for (let i = 0; i < spans; i++) {
-      const [l0, c0, r0, l1, c1, r1] = vertices.slice(v0 + i * 3, v0 + i * 3 + 6);
-      if (!sameCorners(doc.quads[quads[q0 + i * 2]], [l0, c0, l1, c1]) || !sameCorners(doc.quads[quads[q0 + i * 2 + 1]], [c0, r0, c1, r1]))
-        return null;
+  for (let run = 0; run < runSpans.length; run++) {
+    const stations = runStations[run];
+    const starts = stations.map((_, i) => v0 + stations.slice(0, i).reduce((n, lanes) => n + lanes + 1, 0));
+    for (let i = 0; i < runSpans[run]; i++) {
+      for (const { corners } of runPatches[run][i]) {
+        if (!sameCorners(doc.quads[quads[q0++]], corners.map(([station, rail]) => vertices[starts[i + station] + rail]))) return null;
+      }
     }
-    v0 += (spans + 1) * 3; q0 += spans * 2;
+    v0 = starts.at(-1)! + stations.at(-1)! + 1;
   }
   // A junction's patches are the trail's own: every corner of them is a vertex the trail owns.
   const mine = new Set(vertices);
@@ -543,7 +588,10 @@ export function resolveTrail(doc: QuadMeshDoc, trail: AuthoredTrail): OwnedTrail
     const corners = doc.quads[quads[j]];
     if (!corners || corners.length !== 4 || !corners.every(vertex => mine.has(vertex))) return null;
   }
-  return { vertices, quads, spans: ribbonQuads / 2, runSpans: [...runSpans], runPaths: [...runPaths], junctionArms: [...junctionArms] };
+  return {
+    vertices, quads, spans: runSpans.reduce((sum, spans) => sum + spans, 0),
+    runSpans: [...runSpans], runPaths: [...runPaths], runLanes: [...runLanes], runStations, junctionArms: [...junctionArms],
+  };
 }
 
 /** Whether anything other than the trail's own patches uses one of its vertices: a patch welded onto a rim, a
@@ -567,9 +615,9 @@ AuthoredTrail | undefined {
 const pathQuadsMemo = new WeakMap<AuthoredTrail, string[][] | null>();
 
 /**
- * Each path's own patches, by stable id: its runs' ribbons, and the two junction patches carrying each of its
- * lanes on into every junction it meets — so every patch of the trail is exactly one path's. Null while the trail
- * cannot be found in `doc`. A trail and its names are re-made by every cut, so the answer is kept per trail.
+ * Each path's own patches, by stable id: its runs' ribbons, and the junction patches carrying its lanes on into every
+ * junction it meets — so every patch of the trail is exactly one path's. Null while the trail cannot be found in
+ * `doc`. A trail and its names are re-made by every cut, so the answer is kept per trail.
  */
 export function trailPathQuads(doc: QuadMeshDoc, trail: AuthoredTrail): string[][] | null {
   if (pathQuadsMemo.has(trail)) return pathQuadsMemo.get(trail)!;
@@ -577,17 +625,21 @@ export function trailPathQuads(doc: QuadMeshDoc, trail: AuthoredTrail): string[]
   let out: string[][] | null = null;
   if (owned) {
     const lists: string[][] = trail.paths.map(() => []);
-    // A junction patch carries one arm's lane on, so it has that run's end seam vertex as a corner.
-    const seamRun = new Map<number, number>();
+    // A junction lays each arm's patches together: its lanes carried on, each with a corner on that run's end, and
+    // then any between them and the hub, which have none.
+    const endRun = new Map<number, number>();
     let v0 = 0, q0 = 0;
-    owned.runSpans.forEach((spans, run) => {
-      for (let j = 0; j < spans * 2; j++) lists[owned.runPaths[run]]?.push(trail.quads[q0 + j]);
-      seamRun.set(owned.vertices[v0 + 1], run);
-      seamRun.set(owned.vertices[v0 + spans * 3 + 1], run);
-      v0 += (spans + 1) * 3; q0 += spans * 2;
+    owned.runStations.forEach((stations, run) => {
+      const patches = stations.slice(1).reduce((n, to, i) => n + Math.max(stations[i], to), 0);
+      for (let j = 0; j < patches; j++) lists[owned.runPaths[run]]?.push(trail.quads[q0 + j]);
+      const last = v0 + stations.slice(0, -1).reduce((n, lanes) => n + lanes + 1, 0);
+      for (let k = 0; k <= stations[0]; k++) endRun.set(owned.vertices[v0 + k], run);
+      for (let k = 0; k <= stations.at(-1)!; k++) endRun.set(owned.vertices[last + k], run);
+      v0 = last + stations.at(-1)! + 1; q0 += patches;
     });
+    let run: number | undefined;
     for (let j = q0; j < owned.quads.length; j++) {
-      const run = doc.quads[owned.quads[j]].map(vertex => seamRun.get(vertex)).find(found => found !== undefined);
+      run = doc.quads[owned.quads[j]].map(vertex => endRun.get(vertex)).find(found => found !== undefined) ?? run;
       if (run !== undefined) lists[owned.runPaths[run]]?.push(trail.quads[j]);
     }
     out = lists;
@@ -670,7 +722,7 @@ export function trailRunList(trail: Network): TrailRun[] {
  * The network's runs as the generator takes them: each a stretch of its path's spline, cut with that path's options,
  * its ends on the junctions they meet (numbered by point). `names` says each run in words, for a refusal.
  */
-function trailRuns(trail: AuthoredTrail, held: readonly number[] | null, pairs: readonly TrailTilePair[] | undefined):
+function trailRuns(trail: AuthoredTrail, held: readonly number[] | null, sets: readonly TrailTileSet[] | undefined):
 { specs: TrailRunSpec[]; names: string[]; runPaths: number[] } {
   const junctions = junctionPoints(trail);
   const runs = trailRunList(trail);
@@ -680,14 +732,18 @@ function trailRuns(trail: AuthoredTrail, held: readonly number[] | null, pairs: 
   for (const run of runs) {
     const path = trail.paths[run.path];
     if (!splines.has(run.path)) splines.set(run.path, railBezierSegments(pathKnots(trail, path), path.handles));
-    const { knotProfile, ...options } = pathLayoutOptions(trail, path, pairs);
+    const { knotProfile, ...options } = pathLayoutOptions(trail, path, sets);
     const profile = sliceProfile(knotProfile, run.first, run.last);
     const from = path.points[run.first], to = path.points[run.last];
+    // A path's caps close its free ends; an end at a junction carries on into it.
+    const caps = path.settings.caps ?? 'none';
+    const start = (caps === 'start' || caps === 'both') && run.first === 0 && !junctions.has(from);
+    const end = (caps === 'end' || caps === 'both') && run.last === path.points.length - 1 && !junctions.has(to);
     specs.push({
       spline: splines.get(run.path)!.slice(run.first, run.last),
       from: junctions.has(from) ? from : undefined,
       to: junctions.has(to) ? to : undefined,
-      options: { ...options, ...(profile ? { knotProfile: profile } : {}) },
+      options: { ...options, ...(profile ? { knotProfile: profile } : {}), ...(start || end ? { caps: { start, end } } : {}) },
     });
     const whole = run.first === 0 && run.last === path.points.length - 1;
     const which = cutting === 1 ? 'the trail' : `path ${run.path + 1}`;
@@ -728,6 +784,7 @@ type PlannedCut =
   | { ok: false; error: string };
 
 const JOINED_SHAPE = 'Other patches are joined to this trail, so its layout is held: it cannot gain or lose a path or a junction.';
+const JOINED_LANES = 'Other patches are joined to this trail, so its layout is held: it cannot change how many lanes wide it is.';
 
 /** Cut a trail on its own, as `cutTrail` would cut it into `doc`, without writing anything. */
 function planCut(doc: QuadMeshDoc, trail: AuthoredTrail): PlannedCut {
@@ -737,19 +794,24 @@ function planCut(doc: QuadMeshDoc, trail: AuthoredTrail): PlannedCut {
     return { ok: false, error: 'This trail has lost some of its patches, so it can no longer re-cut them. Dissolve it to edit them as mesh.' };
   const connected = owned ? trailIsConnected(doc, owned) : false;
   const scratch = scratchDoc(doc);
-  const shape = trailRuns(trail, null, doc.trailTilePairs);
+  const shape = trailRuns(trail, null, doc.trailTileSets);
   const junctions = junctionPoints(trail);
 
   // A joined trail keeps its layout, so it keeps its runs and junctions.
   if (connected && (shape.specs.length !== owned!.runSpans.length || junctions.size !== owned!.junctionArms.length
     || shape.runPaths.some((path, i) => path !== owned!.runPaths[i]))) return { ok: false, error: JOINED_SHAPE };
-  const runs = connected ? trailRuns(trail, owned!.runSpans, doc.trailTilePairs) : shape;
+  if (connected && shape.specs.some((spec, i) => (spec.options?.lanes ?? 2) !== owned!.runLanes[i])) return { ok: false, error: JOINED_LANES };
+  const runs = connected ? trailRuns(trail, owned!.runSpans, doc.trailTileSets) : shape;
 
   if (runs.specs.length === 1 && !junctions.size) {
     const ribbon = applyTrailSpline(scratch, runs.specs[0].spline, runs.specs[0].options);
     if (!ribbon.ok) return ribbon;
     return { ok: true, owned, connected, piece: {
-      doc: ribbon.doc, shape: { runSpans: [ribbon.spans.length], runPaths: runs.runPaths, junctionArms: [] },
+      doc: ribbon.doc,
+      shape: {
+        runSpans: [ribbon.spans.length], runPaths: runs.runPaths, junctionArms: [],
+        ...cutSizes(runs.specs.map(spec => spec.options?.lanes ?? 2), [ribbon], []),
+      },
       layout: { stations: ribbon.stations, spans: ribbon.spans },
     } };
   }
@@ -762,6 +824,7 @@ function planCut(doc: QuadMeshDoc, trail: AuthoredTrail): PlannedCut {
       runSpans: network.runs.map(run => run.spans.length),
       runPaths: runs.runPaths,
       junctionArms: network.junctions.map(junction => junction.runs.length),
+      ...cutSizes(runs.specs.map(spec => spec.options?.lanes ?? 2), network.runs, network.junctions),
     },
     layout: { stations: network.runs.flatMap(run => run.stations), spans: network.runs.flatMap(run => run.spans) },
   } };
@@ -863,12 +926,12 @@ export function cutTrail(doc: QuadMeshDoc, trail: AuthoredTrail): TrailCut {
   const quadPaint = { ...(doc.quadPaint ?? {}) };
   const quadTex = { ...(doc.quadTex ?? {}) }, quadOrient = { ...(doc.quadOrient ?? {}) };
   const quadLocked = { ...(doc.quadLocked ?? {}) };
-  const laid = trailTilePairTiles(trailTilePairsWith(doc.trailTilePairs));
+  const laid = trailTileSetTiles(trailTileSetsWith(doc.trailTileSets));
   lanes.forEach((quad, j) => {
     if (j >= oldQuads.length) quadPaint[quad] = surface;
     const tile = local.quadTex?.[j];
     if (tile) { quadTex[quad] = tile; quadOrient[quad] = { ...(local.quadOrient?.[j] ?? { rot: 0, mirror: false }) }; }
-    // No tile here now: take back only what a tile pair lays, so a tile painted by hand stays.
+    // No tile here now: take back only what a tile set lays, so a tile painted by hand stays.
     else if (quadTex[quad] && laid.has(quadTex[quad])) { delete quadTex[quad]; delete quadOrient[quad]; }
     delete quadLocked[quad];
   });
@@ -911,7 +974,7 @@ export function cutTrail(doc: QuadMeshDoc, trail: AuthoredTrail): TrailCut {
     quads: ownQuads.map(quad => out.quadIds[quad]),
   };
   const { shape } = piece;
-  if (shape.runSpans.length > 1 || shape.junctionArms.length || shape.runPaths[0] !== 0) next.network = shape;
+  if (shape.runSpans.length > 1 || shape.junctionArms.length || shape.runPaths[0] !== 0 || shape.runLanes) next.network = shape;
   else delete next.network;
   return { ok: true, doc: out, trail: next, layout: piece.layout, connected };
 }
