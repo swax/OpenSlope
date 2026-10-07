@@ -3,8 +3,8 @@ import type { LoftPreviewLayer } from './loft-preview';
 import type { PlacementEndpoint } from '../input/placement-constraint';
 import { resolvePlacementEndpoint } from '../input/placement';
 import type { Stage } from '../stage';
+import { DRAW_POINT_GEO, scaleDrawMarkers } from './draw-markers';
 
-const POINT_GEO = new THREE.SphereGeometry(1.1, 10, 8);
 const POINT_COLOR = 0x9a5cff;
 const SNAP_COLOR = 0x62f0b6;
 const LINE_COLOR = 0xd7b3ff;
@@ -26,8 +26,8 @@ export function createPatchToolLayer(
   let listener: (() => void) | null = null;
   const pointMat = new THREE.MeshBasicMaterial({ color: POINT_COLOR });
   const snapMat = new THREE.MeshBasicMaterial({ color: SNAP_COLOR });
-  const dots = Array.from({ length: 4 }, () => new THREE.Mesh(POINT_GEO, pointMat));
-  const hoverDot = new THREE.Mesh(POINT_GEO, pointMat);
+  const dots = Array.from({ length: 4 }, () => new THREE.Mesh(DRAW_POINT_GEO, pointMat));
+  const hoverDot = new THREE.Mesh(DRAW_POINT_GEO, pointMat);
   const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: LINE_COLOR }));
   for (const object of [...dots, hoverDot, line]) {
     object.visible = false;
@@ -128,6 +128,8 @@ export function createPatchToolLayer(
 
   return {
     setActive,
+    /** Per frame: hold the corner and cursor dots at a constant size on screen. */
+    scaleMarkers: () => scaleDrawMarkers(stage, [...dots, hoverDot]),
     setSides(next: 3 | 4) {
       if (sides === next) return;
       sides = next;

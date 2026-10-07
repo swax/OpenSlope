@@ -184,15 +184,18 @@ export function createCreateTools(ctx: ToolsContext) {
       if (store.createEdgeSurfacePath.length > 1) {
         note(g, 'provisional surface cut · continue to another edge or point · Esc discards it');
       } else {
-        note(g, 'the first point sticks to a vertex, edge or the surface · after it, hold Ctrl to stick · Shift locks free edges to a world axis · Enter / Esc finishes',
-          'After the first point a free point stays at the chain depth, so nearby corners, edges and terrain behind '
-          + 'the cursor never pull it away; hold Ctrl to end on a vertex, cut to an edge or drop onto the surface. '
-          + 'A cut already across a patch keeps sticking, since only an edge or point can continue it. Only crossed '
-          + 'patches are bisected; an endpoint inside a shared edge leaves the neighboring patch untouched and '
-          + 'intentionally remains a red T-junction.');
+        note(g, 'points snap to vertices, free edges and patch edges you can cut to · Ctrl sticks to any surface edge or the surface · Shift locks free edges to a world axis · Esc starts a new strand · Enter finishes',
+          'Every point snaps to an existing vertex, or onto a free edge, which is split there so the strands of a '
+          + 'web share their crossing points and its cells can be filled with Create Patches. A patch edge snaps when '
+          + 'the chain can cut to it: across a patch the last point touches, so drawing from one edge of a patch to '
+          + 'another splits it, or along a strip of patches out of a red T-junction, which stitches that split back '
+          + 'into its neighbours. Otherwise a later point stays at the chain depth, so surface edges and terrain '
+          + 'behind the cursor never pull it away; hold Ctrl to cut to any surface edge or drop onto the surface. '
+          + 'Only crossed patches are bisected; an endpoint inside a shared surface edge leaves the neighboring patch '
+          + 'untouched and remains a red T-junction until a cut is drawn out of it.');
       }
       const actions = editSection('tool-actions', 'Actions');
-      actions.add({ done: finishCreateEdge }, 'done').name('✔ finish edge chain (Enter / Esc)');
+      actions.add({ done: finishCreateEdge }, 'done').name('✔ finish edge chain (Enter)');
       return;
     } else if (store.surgeryTool === null) {
       tip(g.add({ add: armCreateEdge }, 'add').name('╱ create edge (L)'),

@@ -528,6 +528,43 @@ import { check, failures } from './check';
   check(nearMiss.ok && findTJunctions(nearMiss.doc).length === 0,
     'create edge diagnostics: a nearby endpoint beyond the geometric tolerance is not highlighted');
 
+  // A FREE edge has no patch beyond it to keep four-sided, so an endpoint on it splits it there instead: the
+  // strands of a wire web share their meeting points, and its cells can then be filled as patches.
+  const spoke = appendFreeEdge(empty, [0, 0, 0], [20, 0, 6]);
+  if (spoke.ok) {
+    const before = meshFromDoc(spoke.doc), p0 = getVertex(spoke.doc, 0), p3 = getVertex(spoke.doc, 1);
+    const parent = (u: number) => cubicPoint(p0, add(p0, before.edgeHandle(0, 1)), add(p3, before.edgeHandle(1, 0)), p3, u);
+    // The contact's pos is the screen pick's; the split must still land exactly on the host curve.
+    const onSpoke = appendFreeEdge(spoke.doc, [8, 0, 10], { pos: add(parent(0.4), [0, 0.3, 0]), edge: [0, 1], t: 0.4 });
+    check(onSpoke.ok && onSpoke.doc.freeEdges?.map(edge => edge.join()).sort().join(' ') === '0,3 1,3 2,3'
+      && !onSpoke.doc.tJunctions?.length,
+    'create edge on a free edge: the host splits at the contact into two halves and no T-junction is recorded');
+    if (onSpoke.ok) {
+      const after = meshFromDoc(onSpoke.doc), v = getVertex(onSpoke.doc, 3);
+      const half = (a: number, b: number, u: number) => {
+        const pa = getVertex(onSpoke.doc, a), pb = getVertex(onSpoke.doc, b);
+        return cubicPoint(pa, add(pa, after.edgeHandle(a, b)), add(pb, after.edgeHandle(b, a)), pb, u);
+      };
+      const exact = len(sub(v, parent(0.4))) < 1e-9 && Array.from({ length: 17 }, (_, i) => i / 16).every(u =>
+        len(sub(half(0, 3, u), parent(0.4 * u))) < 1e-9 && len(sub(half(3, 1, u), parent(0.4 + 0.6 * u))) < 1e-9);
+      check(exact, 'create edge on a free edge: the split point and both halves trace the original curve exactly');
+    }
+    check(!appendFreeEdge(spoke.doc, { pos: parent(0.2), edge: [0, 1], t: 0.2 }, { pos: parent(0.7), edge: [0, 1], t: 0.7 }).ok,
+      'create edge on a free edge: both ends on the same free edge are refused');
+    check(!appendFreeEdge(spoke.doc, 0, { pos: parent(0.5), edge: [0, 1], t: 0.5 }).ok
+      && !appendFreeEdge(spoke.doc, { pos: parent(0.5), edge: [0, 1], t: 0.5 }, 1).ok,
+    'create edge on a free edge: an edge from one of the host\'s own ends, doubling back along it, is refused');
+    const strand = appendFreeEdge(spoke.doc, parent(0.75), [15, 0, 20]);
+    if (strand.ok) {
+      const hosted: QuadMeshDoc = { ...strand.doc, tJunctions: [{ vertex: 2, edge: [0, 1], t: 0.75 }] };
+      const carried = appendFreeEdge(hosted, [5, 0, -10], { pos: parent(0.5), edge: [0, 1], t: 0.5 });
+      const node = carried.ok ? carried.doc.tJunctions ?? [] : [];
+      check(node.length === 1 && node[0].vertex === 2 && ekey(node[0].edge[0], node[0].edge[1]) === ekey(5, 1)
+        && Math.abs(node[0].t - 0.5) < 1e-9,
+      'create edge on a free edge: a T-node already on the split host moves to the half that carries it');
+    }
+  }
+
   const hole = freshGrid();
   hole.quads.splice(Math.floor(hole.quads.length / 2), 1);
   check(findTJunctions(hole).length === 0,

@@ -1243,6 +1243,9 @@ export class Viewport {
       this.cageLayer.scaleHandleNubs(); // keep the tangent nubs screen-constant as the camera moves
       this.selection.scaleEditMarkers(); // ...and the corner marker + cage handle spheres
       this.weldTool.scaleMarker();
+      this.createEdge.scaleMarkers(); // ...and the drawing tools' point dots
+      this.patchTool.scaleMarkers();
+      this.tubeTool.scaleMarkers();
       this.trailTool.scaleMarkers(); // ...and the trail's point bulbs and snap rings
       sceneMs += performance.now() - phaseStarted;
       // Last before submission: seat the headset rig on whatever the rider is standing on this frame — the board

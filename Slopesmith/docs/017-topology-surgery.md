@@ -186,11 +186,20 @@ The drawing tools (create edge / patch / tube) put a chain's **first** point on 
 the cursor — a click has no other depth to go on — and every later point on the screen-facing plane through the
 previous one, so terrain behind the cursor never pulls a free-standing wall or overhang off to it. **Ctrl** drops
 a later point onto the surface; **Shift** locks it to a world axis (`resolvePlacementEndpoint`,
-`placementTakesSurface`). Create patch and tube still snap a later point to a vertex under the cursor without
-Ctrl. Create edge does not: in a busy map some corner or edge is nearly always under the cursor, so a later edge
-point sticks to a vertex, an edge or the surface only while Ctrl is held (the ghost re-seats on the key itself).
-The exception is a surface cut that has already crossed a patch, which keeps sticking because only an edge or a
-point can continue it (`createEdgePlacement`). Create trail is drawn over the ground, so each of its knots takes
+`placementTakesSurface`). Create patch, tube and edge all snap a later point to a vertex under the cursor without
+Ctrl. Create edge also snaps it onto a free (construction) edge, which is split there at the exact curve point
+(`appendFreeEdge`), so the strands of a wire web share their meeting points and **Create Patches** can fill its
+three- and four-sided cells. A surface edge also takes a later point without Ctrl where the chain can cut to it
+(`createEdgeCuts`): across a patch its last point touches — so a stroke from one edge of a patch to another splits
+that patch, leaving T-junctions where it ends inside shared edges — or, out of a T-junction vertex, along the
+routed strip of patches the stroke crosses, which resolves the T as described above. Drawing a split through
+the middle of a grid and then out of each T to the rim therefore leaves the grid all conforming quads. Any other
+surface edge, or the surface, takes a later edge point only while Ctrl is held — in a busy map one is nearly
+always under the cursor (the ghost re-seats on the key itself) — and a free edge ending on a surface edge stays a
+T-junction rather than splitting it. A surface cut that has already crossed a patch keeps sticking because only
+an edge or a point can continue it (`createEdgePlacement`). Esc ends
+the strand being drawn and keeps the tool armed; a second Esc, or Enter, leaves it with every edge drawn
+selected (a selected edge that a later strand split is carried as its halves). Create trail is drawn over the ground, so each of its knots takes
 the surface; paste has no chain and does too.
 
 ## Verification

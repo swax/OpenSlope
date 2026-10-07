@@ -490,31 +490,44 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** Last modifiers the Create Edge ghost was resolved with, so a Ctrl / Shift press re-seats it in place. */
   let createEdgeMods = { axisLocked: false, stick: false };
 
-  /** Resolve the next edge endpoint: an existing corner wins, then any authored edge curve, then terrain,
-   *  then a screen-facing free-space plane through the chain's previous endpoint (or the camera target). Past
-   *  the first point existing geometry only takes it under Ctrl: in a busy map the nearest corner or edge is
-   *  almost always under the cursor, and the chain's own depth carries on. A provisional surface cut keeps
-   *  sticking — it can only continue across an edge or end on a point. */
+  /** Resolve the next edge endpoint: an existing corner wins, then an authored edge curve, then terrain, then a
+   *  screen-facing free-space plane through the chain's previous endpoint (or the camera target). Corners and
+   *  free construction edges always take the point — they are what a wire web is drawn between — and so does a
+   *  patch edge the chain can cut to (the host's `createEdgeCuts`: across a patch the start touches, or out of a
+   *  T-junction). Past the first point any other surface edge, or the terrain, takes it only under Ctrl: in a
+   *  busy map one is almost always under the cursor, and the chain's own depth carries on. A provisional surface
+   *  cut keeps sticking — it can only continue across an edge or end on a point. */
   function createEdgePlacement(axisLocked = createEdgeMods.axisLocked, stick = createEdgeMods.stick): CreateEdgeEndpoint | null {
     const start = layers.createEdge.start;
     const sticks = placementTakesSurface(start, { onSurface: stick || layers.createEdge.cutting });
-    const cid = sticks ? layers.picking.pickCorner() : null;
+    const cid = layers.picking.pickCorner();
     const cp = cid !== null ? layers.picking.cornerPos(cid) : null;
     let endpoint: CreateEdgeEndpoint | null = cp ? { pos: cp, vertex: cid } : null;
-    const authoredEdge = sticks && !endpoint ? layers.picking.pickAnyEdgeAt() : null;
-    if (authoredEdge && access.net()) {
-      const closest = layers.picking.curveScreenClosest(authoredEdge[0], authoredEdge[1]);
-      endpoint = { pos: closest.pos, vertex: null, edge: authoredEdge, t: Math.min(0.999, Math.max(0.001, closest.t)) };
+    // An edge out of the chain's own last point cannot take the next one: the new edge would double back on it.
+    const atStart = (v: number) => {
+      const p = start ? layers.picking.cornerPos(v) : null;
+      return !!p && Math.hypot(p[0] - start![0], p[1] - start![1], p[2] - start![2]) < 1e-4;
+    };
+    const fromStart = (a: number, b: number) => atStart(a) || atStart(b);
+    const contact = (edge: [number, number]): CreateEdgeEndpoint => {
+      const closest = layers.picking.curveScreenClosest(edge[0], edge[1]);
+      return { pos: closest.pos, vertex: null, edge, t: Math.min(0.999, Math.max(0.001, closest.t)) };
+    };
+    if (!endpoint && access.net()) {
+      const edge = sticks ? layers.picking.pickAnyEdgeAt(false, fromStart) : layers.picking.pickFreeEdgeAt(fromStart);
+      if (edge) endpoint = contact(edge);
+      else if (!sticks) {
+        const surfaceEdge = layers.picking.pickAnyEdgeAt(false, fromStart);
+        const cut = surfaceEdge ? contact(surfaceEdge) : null;
+        if (cut && stage.cb.createEdgeCuts?.(cut)) endpoint = cut;
+      }
     }
     const hit = sticks && !endpoint ? stage.pickSurface(access.terrain()) : null; // per pointer move — accelerated
     if (hit) {
       const preview = access.preview();
       const quad = hit.faceIndex != null && preview ? Math.floor(hit.faceIndex / preview.facesPerCell) : null;
       const edge = quad !== null ? layers.picking.pickEdgeAt(quad) : null;
-      if (edge && access.net()) {
-        const closest = layers.picking.curveScreenClosest(edge[0], edge[1]);
-        endpoint = { pos: closest.pos, vertex: null, edge, t: Math.min(0.999, Math.max(0.001, closest.t)) };
-      } else endpoint = { pos: access.snapPoint(sceneToData(hit.point)), vertex: null };
+      endpoint = edge && access.net() ? contact(edge) : { pos: access.snapPoint(sceneToData(hit.point)), vertex: null };
     }
     if (!endpoint) {
       const point = stage.screenPlanePoint(start ? dataToScene(start) : undefined);

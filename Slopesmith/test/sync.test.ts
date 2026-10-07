@@ -243,6 +243,10 @@ async function connect(name: string, projectId: string, document: EditDoc,
   channel.start();
   await until(() => channel.isOpen(), `${name} to connect`);
   if (from === undefined) {
+    // After the welcome here too: a watch sent ahead of it is said again from sequence 0 when the welcome
+    // arrives, and the room's replay of its whole log over a replica that already holds it sends that replica
+    // into a topology resync — during which a flush sends nothing, and the resync then discards the edit.
+    await until(() => welcomed, `${name} to be welcomed`);
     channel.watch(projectId);
     await until(() => joined, `${name} to join the room`);
     sync.adopt(held.doc);
