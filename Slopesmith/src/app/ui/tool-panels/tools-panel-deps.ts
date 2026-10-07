@@ -42,7 +42,7 @@ export type ToolsPanelDeps = {
     | 'completeBridge' | 'cancelBridge' | 'bridgeCandidate' | 'armCreateEdge' | 'armCreatePatch' | 'finishCreatePatch' | 'finishCreateEdge'
     | 'armCreateTube' | 'previewCreateTube' | 'finishCreateTube' | 'cancelCreateTube' | 'armLoopCut'
     | 'armCreateTrail' | 'undoCreateTrailPoint' | 'finishCreateTrail' | 'cancelCreateTrail'
-    | 'selectedTrail' | 'trailStatus' | 'trailError' | 'syncTrailView' | 'resumeTrail' | 'setTrailSetting'
+    | 'selectedTrail' | 'trailStatus' | 'trailError' | 'trailRide' | 'syncTrailView' | 'resumeTrail' | 'setTrailSetting'
     | 'deleteSelectedTrailKnot' | 'disconnectSelectedPoint' | 'splitSelectedPoint' | 'deleteSelectedTrail' | 'dissolveSelectedTrail'
     | 'trailTileSets' | 'addTrailTileSet' | 'editTrailTileSet' | 'deleteTrailTileSet' | 'trailCustomTileCount' | 'resetTrailTextures'
     | 'selectedTrailKnot' | 'setTrailKnotSetting' | 'resetTrailKnotSettings' | 'resumeEnds'

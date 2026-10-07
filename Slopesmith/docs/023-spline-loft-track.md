@@ -171,6 +171,30 @@ point they share with a path not selected moves too, dragging that path's end al
 points each frame — so its patches stay locked and only the trail moves them, and patches joined to it stretch to
 follow. It is World-framed: the mesh's Surface slide does not apply to a trail.
 
+**Predicted speed.** Selected trail patches shade by the ride predicted over them instead of the plain selection
+yellow (`app/ride/trail-speed.ts`), so a network can be read for pace before it is ridden: red where a rider stands
+still, orange on a slow climb, yellow at about the cruise speed flat snow settles at, green at the ordinary speed cap
+(27.9 m/s), a smooth ramp between — and blue under a rider in the air. The colour key shows with the shading; the
+panel's **predicted ride** row gives the selected paths' top speed, their jumps and the trail flown over, and **shade
+by speed** turns it off. Each path's centre spline is ridden at the ride's 60 Hz with the ride's own ground terms
+([Trailmap: 330, 360]): the surface row's world-down load `A/100`, its forward resistance, the automatic cruise drive
+toward the row's target, and the shared cap, on the surface most of the path's patches wear. Nothing tests for
+liftoff (docs/016 · Air + lips): the clearance a crest opens under the travel is integrated against gravity's share
+along the normal, the above-surface pull and the grounded redirect, and past the row's ground threshold the rider
+flies — ballistic, with the air integrator's two-stage gravity and horizontal damping — until the arc meets the
+trail, keeping the speed the touchdown redirect turns along it. Because the cruise drive outpulls snow's 13 m/s² of
+load from a standstill, a rider climbs any rideable snow slope (about 10 m/s up 30°, 8 m/s up 50°): red is a stall,
+which takes a surface with a weaker drive (rock, past about 55°), and the trail beyond one, which the rider never
+reaches.
+
+A path runs from its first point to its last. A path's first point that nothing reaches starts from rest; one other
+paths reach starts with the fastest arrival there — still in the air if that rider is — and a path that ends where
+another runs on through lifts it there when faster. Paths ride feeders first; a loop is broken at its lowest path. It
+is a diagnostic, not a replay: the rider rides the centre line square to it, without steering, carving, braking,
+boost, ollies or tricks, and the profile is the path unrolled into its own vertical plane, so turns cost nothing and a
+jump follows the path round in plan. `test/trail-speed.test.ts` holds it to the ride model itself, on slopes and on
+lips built from the predicted profile.
+
 **The panel** exposes the points, the selected paths' section (target width, lanes and length, centre dish and seam,
 turn density), banking, its tiles and caps (below), **✚ add points before the start** and **after
 the end** (the one selected path's: both with no point picked, the picked end's with an end picked), **⑂ start a new

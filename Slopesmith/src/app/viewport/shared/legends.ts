@@ -11,6 +11,7 @@ import { PROP_DARK_TINT_MIX, PROP_CLAY_COLOR, PROP_SOLID_COLOR, PROP_THROUGH_COL
   propContactTint } from '../scene/prop-shade';
 import type { ShadeMode } from '../types';
 import { foldHeader, foldOnClick, refold } from '../../ui/components/fold-panel';
+import { trailSpeedKey } from '../mesh/trail-speed-colors';
 
 /** One swatch row: [css colour, label, swatch size css]. */
 type LegendRow = [string, string, string];
@@ -39,6 +40,7 @@ function buildLegendPanel(id: string, title: string, items: (LegendRow | string)
  * The lower-left colour keys, mounted into `#lowerleft` (or the viewport container): the cage-colour key in the
  * cage-only / no-solid view, and the SurfaceType + prop-contact pair in the Surface view. `setShadeMode` picks
  * which as the terrain shade view changes; the two Surface keys show together, since that view states both.
+ * The predicted-speed key rides the selection instead: `setTrailSpeed` shows it while trail patches shade by speed.
  */
 export function createLegends(container: HTMLElement) {
   const host = document.getElementById('lowerleft') ?? container;
@@ -112,6 +114,14 @@ export function createLegends(container: HTMLElement) {
     [mixed(PROP_CLAY_COLOR), 'Ships dark — its normal is turned off the sun', 'width:12px;height:12px'],
   ];
   const propLegend = buildLegendPanel('prop', 'Prop types', propRows);
+  // The predicted ride over selected trail patches (docs/023 · Predicted speed): not a shade view's key but the
+  // selection's, so it shows whenever the selection shading does.
+  const speedWords = ['stalled, or never reached', 'a slow climb', 'cruising — about flat snow', 'the speed cap'];
+  const speedLegend = buildLegendPanel('trail-speed', 'Predicted trail speed', trailSpeedKey().map(({ hex, speed }, i) => [
+    hex, speed === null ? 'Airborne' : `${speed.toFixed(0)} m/s (${(speed * 3.6).toFixed(0)} km/h) · ${speedWords[i]}`,
+    'width:12px;height:12px',
+  ]));
+  host.prepend(speedLegend);
   host.prepend(propLegend);    // stacks under Surface types, which prepends after it
   host.prepend(surfaceLegend); // order between cage and surface is irrelevant — never both shown
   host.prepend(cageLegend);    // all three land left of #cmdsheet (the controls list)
@@ -123,7 +133,12 @@ export function createLegends(container: HTMLElement) {
     propLegend.style.display = m === 'surface' ? 'block' : 'none';
   }
 
-  return { setShadeMode };
+  /** Show the predicted-speed key while selected trail patches are shaded by it. */
+  function setTrailSpeed(shown: boolean) {
+    speedLegend.style.display = shown ? 'block' : 'none';
+  }
+
+  return { setShadeMode, setTrailSpeed };
 }
 
 export type Legends = ReturnType<typeof createLegends>;

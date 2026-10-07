@@ -16,8 +16,9 @@ import {
 } from '../../core/mesh/trail-textures';
 import { parseTexRef } from '../../core/paint/textures';
 import type { Store } from '../state/store';
+import { nearestSample, predictTrailSpeeds, type TrailSpeeds } from '../ride/trail-speed';
 import { commitEditMesh } from './mesh-target';
-import type { EditViewportPort, TrailShape, TrailTransform } from './viewport-port';
+import type { CellSpeedTint, EditViewportPort, TrailShape, TrailTransform } from './viewport-port';
 import { toast } from '../ui/components/toast';
 
 /**
@@ -82,6 +83,17 @@ export interface TrailStatus {
 
 /** Some of one trail's paths, selected. */
 export interface TrailPick { trail: AuthoredTrail; paths: number[] }
+
+/** The ride predicted over the selected paths (docs/023 · Predicted speed). */
+export interface TrailRideSummary {
+  /** Fastest speed on the ground, m/s. */
+  topSpeed: number;
+  /** Separate flights, and the trail they pass over, metres. */
+  jumps: number;
+  airborneM: number;
+  /** Paths the rider stops short on, the slope beating its cruise. */
+  stalled: number;
+}
 
 /** The trail the panel and the handles are about, the paths of it selected, and the one whose settings and handles
  *  show — null while a new path is about to be laid. */
@@ -247,6 +259,73 @@ export function createTrailTools(deps: TrailToolDeps) {
     return true;
   }
 
+  // ---- predicted speed (docs/023 · Predicted speed) ---------------------------------------------------------
+
+  /** Each trail's predicted ride, kept while the trail and the surfaces painted on its patches stand. */
+  const speedMemo = new WeakMap<AuthoredTrail, { paint: QuadMeshDoc['quadPaint']; base: number; speeds: TrailSpeeds }>();
+  function trailSpeeds(trail: AuthoredTrail): TrailSpeeds {
+    const doc = store.mdoc, memo = speedMemo.get(trail);
+    if (memo && memo.paint === doc.quadPaint && memo.base === doc.baseSurface) return memo.speeds;
+    const at = nameIndex(doc.quadIds), lists = pathCells(trail);
+    // A path rides the surface most of its patches wear.
+    const surfaceOf = (path: number) => {
+      const counts = new Map<number, number>();
+      for (const id of lists[path] ?? []) {
+        const quad = at.get(id);
+        const surface = (quad === undefined ? undefined : doc.quadPaint?.[quad]) ?? doc.baseSurface;
+        counts.set(surface, (counts.get(surface) ?? 0) + 1);
+      }
+      return [...counts].reduce((best, entry) => entry[1] > best[1] ? entry : best, [doc.baseSurface, 0])[0];
+    };
+    const speeds = predictTrailSpeeds(trail, surfaceOf);
+    speedMemo.set(trail, { paint: doc.quadPaint, base: doc.baseSurface, speeds });
+    return speeds;
+  }
+
+  let tintMemo: { trails: unknown; paint: unknown; tint: CellSpeedTint | null } | null = null;
+
+  /**
+   * What the selected trail patches shade by: the ride predicted over the path each belongs to, at the sample of it
+   * nearest the point — a patch's first point searched along the whole path, the rest around that. Null while the
+   * panel's toggle is off, and for a patch no trail owns, which keeps the selection yellow.
+   */
+  function speedTint(): CellSpeedTint | null {
+    const doc = store.mdoc;
+    const trails = store.trailSpeedColors && !store.modelEditId ? doc.trails ?? [] : [];
+    if (tintMemo && tintMemo.trails === trails && tintMemo.paint === doc.quadPaint) return tintMemo.tint;
+    let tint: CellSpeedTint | null = null;
+    if (trails.length) {
+      const owner = new Map<string, { trail: AuthoredTrail; path: number }>();
+      for (const trail of trails) pathCells(trail).forEach((ids, path) => { for (const id of ids) owner.set(id, { trail, path }); });
+      const near = new Map<string, number>();
+      tint = (quad, point) => {
+        const own = owner.get(quad);
+        const ride = own && trailSpeeds(own.trail).paths[own.path];
+        if (!ride) return null;
+        const sample = nearestSample(ride, point, near.get(quad));
+        near.set(quad, sample);
+        return { speed: ride.speed[sample], airborne: ride.air[sample] === 1 };
+      };
+    }
+    tintMemo = { trails, paint: doc.quadPaint, tint };
+    return tint;
+  }
+
+  /** The ride predicted over the selected paths, or over the path being drawn; null with none. */
+  function rideSummary(): TrailRideSummary | null {
+    const drawn = drawingTrail();
+    const picks = drawn && drawing ? (drawing.path === null || !inDoc(drawn) ? [] : [{ trail: drawn, paths: [drawing.path] }]) : selectionPicks();
+    const rides = picks.flatMap(({ trail, paths }) => paths.map(path => trailSpeeds(trail).paths[path]))
+      .filter(ride => ride !== null && ride !== undefined);
+    if (!rides.length) return null;
+    return {
+      topSpeed: Math.max(...rides.map(ride => ride.topSpeed)),
+      jumps: rides.reduce((sum, ride) => sum + ride.jumps, 0),
+      airborneM: rides.reduce((sum, ride) => sum + ride.airborneM, 0),
+      stalled: rides.filter(ride => ride.stalled).length,
+    };
+  }
+
   // ---- what the viewport shows ------------------------------------------------------------------------------
 
   /** The points the viewport shows, in its order: the path being drawn's (and the point a new path leaves from), or
@@ -300,6 +379,8 @@ export function createTrailTools(deps: TrailToolDeps) {
     // Points catch the path being drawn, and the picked point dragged (docs/023 · Networks).
     const snaps = snapTargets('draw').map(target => target.pos), dragSnaps = snapTargets('drag').map(target => target.pos);
     view().setTrailKnots(knots, picked >= 0 ? picked : null, whole ? selectionCentre() : null, { paths: lines, draw, snaps, dragSnaps });
+    // The tint finds patches by name too, so a cut's lands with the render that draws it.
+    if (rendered || !cellsStale) view().setEditCellSpeedTint?.(speedTint());
     if (rendered && cellsStale) { cellsStale = false; view().refreshEditCells(); seatMoveGizmo(); }
   }
 
@@ -1290,7 +1371,7 @@ export function createTrailTools(deps: TrailToolDeps) {
 
   return {
     selectedTrail, trailFocus: focus, trailSelection: selectionPicks, trailAtQuad, trailVertexIndices, withWholePaths,
-    pathCellsAt, networkCellsAt, selectWholeNetwork, syncTrailView, trailStatus: status, trailError: error,
+    pathCellsAt, networkCellsAt, selectWholeNetwork, syncTrailView, trailStatus: status, trailError: error, trailRide: rideSummary,
     armCreateTrail, resumeTrail, resumeEnds, armPathFrom, selectedPointRole, previewHover, focusSettings,
     /** The point the new path being drawn leaves from, while it has no point of its own yet; else null. */
     drawingFrom: (): number | null => drawingTrail() && drawing?.path === null ? drawing.from : null,

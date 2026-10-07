@@ -22,15 +22,16 @@ import { PATCH_VERTS } from '../../../core/mesh/tessellation';
 import {
   controlPointIndex, edgeIndices, quadIndices, vertexIndices, vertexName, type NamedEdge, type QuadName,
 } from '../../state/mesh-names';
-import type { EditMarqueeSelection, MeshSelectionState, ShadeMode } from '../types';
+import type { CellSpeedTint, EditMarqueeSelection, MeshSelectionState, ShadeMode } from '../types';
 import {
-  LOOP_RENDER_ORDER, EDIT_CELL_FILL_COLOR, EDIT_CELL_FILL_OPACITY, EDIT_EDGE_SEL_COLOR, EDIT_EDGE_SEL_WIDTH,
+  LOOP_RENDER_ORDER, EDIT_CELL_FILL_COLOR, EDIT_CELL_FILL_OPACITY, EDIT_EDGE_SEL_COLOR, EDIT_EDGE_SEL_WIDTH, TRAIL_SPEED_FILL_OPACITY,
   CTRL_NET_COLOR, CTRL_CAGE_COLOR, CTRL_HANDLE_PX, CTRL_NET_LINE_WIDTH, CTRL_NET_PT_PX, CTRL_NET_SEG,
   CTRL_ANCHOR_COLOR, CTRL_SEL_COLOR, CTRL_CORNER_SEL_PX, HANDLE_NUB_PX, F_LINE_WIDTH,
 } from '../constants';
 import { clearGlyphGroup, glyphLines, addCageLines, addLoopDots, addRoundDots } from '../shared/overlays';
 import type { Stage } from '../stage';
 import type { CageLayer } from './cage';
+import { trailSpeedColor } from './trail-speed-colors';
 
 /** A pickable cage handle of the singly-selected cell / edge, as its build spec (with the sphere position)
  *  and, once picked, its identity. Two kinds: an `edge` handle pins a directed-edge tangent (from→to,
@@ -74,6 +75,8 @@ export interface SelectionAccess {
 export interface SelectionHostHooks {
   clearRefSelection(): void;
   applyGizmoFrame(): void;
+  /** The authored cell shading now does (or no longer does) show a predicted trail ride, which its key follows. */
+  cellSpeedShown?(shown: boolean): void;
 }
 
 /**
@@ -115,6 +118,13 @@ export function createSelectionLayer(
   // authored net's fill mesh (under worldRoot) and the reference quilt's (under refRoot); neither is a pick target.
   const cellFillMat = new THREE.MeshBasicMaterial({ color: EDIT_CELL_FILL_COLOR, transparent: true,
     opacity: EDIT_CELL_FILL_OPACITY, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  // Selected trail patches shade by the ride predicted over them (docs/023 · Predicted speed): the same fill, its
+  // colour per vertex. Any plain cell in the same selection keeps the selection yellow in that attribute.
+  const cellSpeedMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true,
+    opacity: TRAIL_SPEED_FILL_OPACITY, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  const cellFillColor = new THREE.Color(EDIT_CELL_FILL_COLOR);
+  let cellSpeedTint: CellSpeedTint | null = null;
+  let cellSpeedShown = false;
   const editCellGroup = new THREE.Group();                   // authored net's shading mesh (worldRoot coords)
   const editCellFill = new THREE.Mesh(new THREE.BufferGeometry(), cellFillMat);
   const editCellNetGroup = new THREE.Group();                // a singly-selected authored cell's 16-point control net (worldRoot coords)
@@ -305,8 +315,8 @@ export function createSelectionLayer(
     const pv = access.preview();
     clearGlyphGroup(editCellNetGroup);
     const cells = cellSelIndices();
-    if (!pv || !cells.length) { editCellFill.visible = false; return; }
-    setCellFill(editCellFill, pv.positions, pv.facesPerCell, cells);
+    if (!pv || !cells.length) { editCellFill.visible = false; showCellSpeed(false); return; }
+    showCellSpeed(setCellFill(editCellFill, pv.positions, pv.facesPerCell, cells, cellSpeedColor() ?? undefined));
     // A pinned selected patch emphasizes its real 4x4 cage. A single pinned patch also promotes its twelve
     // floating points to larger drag spheres; an unpinned selection keeps only its face shading.
     const eh = access.meshHandle();
@@ -458,27 +468,66 @@ export function createSelectionLayer(
 
   /** (Re)build a cell-shading mesh from a set of cell/patch indices into a tessellated buffer (the authored
    *  preview OR the reference quilt — same per-cell layout): each cell's own side² surface verts + winding,
-   *  so the shade hugs the real bicubic surface. Hidden when the set is empty. */
-  function setCellFill(mesh: THREE.Mesh, positions: Float32Array, facesPerCell: number, cells: Iterable<number>) {
+   *  so the shade hugs the real bicubic surface. Hidden when the set is empty. A `tint` colours it per vertex
+   *  (null leaves a vertex the selection yellow); the result says whether it coloured any. */
+  function setCellFill(mesh: THREE.Mesh, positions: Float32Array, facesPerCell: number, cells: Iterable<number>,
+    tint?: (cell: number, x: number, y: number, z: number) => THREE.Color | null): boolean {
     const res = Math.round(Math.sqrt(facesPerCell / 2)), side = res + 1, verts = side * side;
     const nCells = positions.length / 3 / verts;
-    const pos: number[] = [], idx: number[] = [];
+    const pos: number[] = [], idx: number[] = [], rgb: number[] = [];
+    let tinted = false;
     for (const ci of cells) {
       if (ci < 0 || ci >= nCells) continue;
       const base = ci * verts, vBase = pos.length / 3;
-      for (let k = 0; k < verts; k++) { const p = (base + k) * 3; pos.push(positions[p], positions[p + 1], positions[p + 2]); }
+      for (let k = 0; k < verts; k++) {
+        const p = (base + k) * 3;
+        pos.push(positions[p], positions[p + 1], positions[p + 2]);
+        if (!tint) continue;
+        const color = tint(ci, positions[p], positions[p + 1], positions[p + 2]);
+        tinted ||= color !== null;
+        const c = color ?? cellFillColor;
+        rgb.push(c.r, c.g, c.b);
+      }
       for (let iu = 0; iu < res; iu++) for (let iv = 0; iv < res; iv++) {
         const a = vBase + iu * side + iv, b = a + 1, c = a + side, d = c + 1;
         idx.push(a, d, c, a, b, d);
       }
     }
-    if (!pos.length) { mesh.visible = false; return; }
+    if (!pos.length) { mesh.visible = false; return false; }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    if (tinted) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(rgb), 3));
     g.setIndex(idx);
     mesh.geometry.dispose();
     mesh.geometry = g;
     mesh.visible = true;
+    return tinted;
+  }
+
+  /** The tint as `setCellFill` takes it: a cell by its live index, a point by its coordinates (data space). */
+  function cellSpeedColor(): ((cell: number, x: number, y: number, z: number) => THREE.Color | null) | null {
+    const doc = access.meshDoc(), tint = cellSpeedTint;
+    if (!doc || !tint) return null;
+    const point: V3 = [0, 0, 0];
+    return (cell, x, y, z) => {
+      const name = doc.quadIds[cell];
+      point[0] = x; point[1] = y; point[2] = z;
+      const ride = name === undefined ? null : tint(name, point);
+      return ride && trailSpeedColor(ride.speed, ride.airborne);
+    };
+  }
+
+  /** Whether the authored shading shows a predicted ride: its material, and the key the host shows with it. */
+  function showCellSpeed(shown: boolean) {
+    editCellFill.material = shown ? cellSpeedMat : cellFillMat;
+    if (shown !== cellSpeedShown) { cellSpeedShown = shown; host.cellSpeedShown?.(shown); }
+  }
+
+  /** Shade selected trail patches by the ride predicted over them (null: every selected cell plain yellow). */
+  function setCellSpeedTint(tint: CellSpeedTint | null) {
+    if (tint === cellSpeedTint) return;
+    cellSpeedTint = tint;
+    rebuildEditCellSel();
   }
 
   /** Apply a click to the read-only reference CELL (patch) selection through the SAME shared semantics the
@@ -1388,7 +1437,7 @@ export function createSelectionLayer(
     get hiddenQuads(): ReadonlySet<number> { return hiddenQuads; },
     get refHiddenQuads(): ReadonlySet<number> { return refHiddenQuads; },
     fatLineGroups: [editEdgeGroup, editCellNetGroup, controlPointCageGroup, refEdgeGroup, refCellNetGroup, refControlPointCageGroup] as const,
-    refreshEditCells, refreshEditEdges, rebuildEditCellSel, rebuildEditEdgeSel, setCellFill,
+    refreshEditCells, refreshEditEdges, rebuildEditCellSel, rebuildEditEdgeSel, setCellFill, setCellSpeedTint,
     setRegionMarks, setControlPointSelection, refreshControlPointSelection, shiftControlPointMarks, controlPointsMoved,
     rebuildControlPointCages, rebuildReferenceControlPointCages,
     setCornerGroup, setEditMixedGroup, placeCornerMarker, scaleEditMarkers, clearCornerSelection,

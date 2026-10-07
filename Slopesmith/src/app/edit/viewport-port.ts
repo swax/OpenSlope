@@ -3,8 +3,9 @@ import type { MeshVertexClipboard } from '../../core/mesh/clipboard';
 import type { MeshControlPointId } from '../../core/mesh/control-point-types';
 import type { Store } from '../state/store';
 import type { TrailShape, TrailTransform } from '../viewport/tools/create-trail';
+import type { CellSpeedTint } from '../viewport/types';
 
-export type { TrailShape, TrailTransform };
+export type { CellSpeedTint, TrailShape, TrailTransform };
 
 /** Rendering/input surface used by the edit workflow. */
 export interface EditViewportPort {
@@ -27,6 +28,9 @@ export interface EditViewportPort {
   detachSelectionGizmo(): void;
   narrowReferenceEditSelection(kind: 'point' | 'edge' | 'patch'): void;
   refreshEditCells(): void;
+  /** Shade selected trail patches by the ride predicted over them (docs/023 · Predicted speed); null: plain yellow.
+   *  Optional on test doubles, which draw nothing. */
+  setEditCellSpeedTint?(tint: CellSpeedTint | null): void;
   refreshEditEdges(): void;
   refreshHiddenMesh(): void;
   refreshControlCages(): void;
