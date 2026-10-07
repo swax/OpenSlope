@@ -7,9 +7,9 @@ import { setQuadsLocked } from './locks';
 import { assignMap, finishMeshRewrite, looseVertexIds } from './ops/contract';
 import { liveQuadEdges, undirectedEdgeKey } from './primitives';
 import {
-  applyTrailNetwork, applyTrailSpline, layoutTrailSpline, MESA_TRAIL_DEFAULTS, trailSpanPatches, trailStationLanes,
+  applyTrailNetwork, applyTrailSpline, layoutTrailSpline, MESA_TRAIL_DEFAULTS, trailSpanPatches, trailStationLanes, untrimmedSplinePlace,
   type TrailJunction, type TrailKnotProfile, type TrailLayout, type TrailLayoutOptions, type TrailRibbon, type TrailRunSpec,
-  type TrailStation,
+  type TrailSplineTrim, type TrailStation,
 } from './trail';
 import { DEFAULT_TRAIL_TILES, trailSettingsTiles, trailTileSetsWith, trailTileSetTiles, trailTiling } from './trail-textures';
 
@@ -723,7 +723,7 @@ export function trailRunList(trail: Network): TrailRun[] {
  * its ends on the junctions they meet (numbered by point). `names` says each run in words, for a refusal.
  */
 function trailRuns(trail: AuthoredTrail, held: readonly number[] | null, sets: readonly TrailTileSet[] | undefined):
-{ specs: TrailRunSpec[]; names: string[]; runPaths: number[] } {
+{ specs: TrailRunSpec[]; names: string[]; runPaths: number[]; runs: TrailRun[] } {
   const junctions = junctionPoints(trail);
   const runs = trailRunList(trail);
   const cutting = trail.paths.filter(pathCuts).length;
@@ -750,7 +750,7 @@ function trailRuns(trail: AuthoredTrail, held: readonly number[] | null, sets: r
     names.push(whole ? which : `${which} between points ${from + 1} and ${to + 1}`);
   }
   if (held) specs.forEach((spec, i) => { spec.options = { ...spec.options, spanCount: held[i] }; });
-  return { specs, names, runPaths: runs.map(run => run.path) };
+  return { specs, names, runPaths: runs.map(run => run.path), runs };
 }
 
 /** A network refusal in the trail's own words: its runs by path and its junctions by point. */
@@ -772,8 +772,47 @@ function scratchDoc(doc: QuadMeshDoc): QuadMeshDoc {
   };
 }
 
-/** A trail cut on its own, in the order it owns things: the standalone mesh, the shape it has, and its stations. */
-type TrailPiece = { doc: QuadMeshDoc; shape: TrailCutShape; layout: TrailLayout };
+/** A trail cut on its own, in the order it owns things: the standalone mesh, the shape it has, its stations, and where
+ *  each of its patches lies (`TrailPatchPlace`, by its index in the mesh). */
+type TrailPiece = { doc: QuadMeshDoc; shape: TrailCutShape; layout: TrailLayout; places: TrailPatchPlace[] };
+
+/**
+ * Where a patch of a cut lies in its trail, in terms a re-cut keeps (docs/023 · Hand-painted tiles): the path, and the
+ * knot SEGMENT of it, from its knot `segment` to the next. A ribbon's patch runs `t0`..`t1` along that segment's cubic,
+ * and is `lane` of the `lanes` across its span's wider station from the generator's left rim — a `wedge` where a lane
+ * ends or begins. A junction's patch carries on lane `lane` of the `lanes` its arm brings in, the junction standing at
+ * the segment's `start` or `end`.
+ */
+export type TrailPatchPlace = { path: number; segment: number; lane: number; lanes: number }
+  & ({ junction?: undefined; t0: number; t1: number; wedge: boolean } | { junction: 'start' | 'end' });
+
+/** Each patch's place in a cut of `runs`, by its index in the cut's mesh: the ribbons' — `trims` saying where each
+ *  starts and ends on its run's spline, where junctions cut it back — and then the junctions'. */
+function patchPlaces(runs: readonly TrailRun[], ribbons: readonly TrailRibbon[], trims: readonly (TrailSplineTrim | undefined)[],
+  junctions: readonly TrailJunction[]): TrailPatchPlace[] {
+  const places: TrailPatchPlace[] = [];
+  ribbons.forEach((ribbon, r) => {
+    const run = runs[r];
+    let k = 0;
+    ribbon.spans.forEach((span, i) => {
+      const from = untrimmedSplinePlace(trims[r], span.sourceSegment, span.sourceT0);
+      const to = untrimmedSplinePlace(trims[r], span.sourceSegment, span.sourceT1);
+      const patches = trailSpanPatches(ribbon.sections[i].length - 1, ribbon.sections[i + 1].length - 1);
+      patches.forEach((patch, lane) => {
+        places[ribbon.quads[k++]] = {
+          path: run.path, segment: run.first + from.segment, t0: from.t, t1: to.t, lane, lanes: patches.length, wedge: patch.lane === null,
+        };
+      });
+    });
+  });
+  for (const junction of junctions) junction.quads.forEach((quad, k) => {
+    const { run, atHead, lane, of } = junction.lanes[k];
+    places[quad] = {
+      path: runs[run].path, segment: atHead ? runs[run].first : runs[run].last - 1, lane, lanes: of, junction: atHead ? 'start' : 'end',
+    };
+  });
+  return places;
+}
 
 export type TrailCut =
   | { ok: true; doc: QuadMeshDoc; trail: AuthoredTrail; layout: TrailLayout; connected: boolean }
@@ -813,6 +852,7 @@ function planCut(doc: QuadMeshDoc, trail: AuthoredTrail): PlannedCut {
         ...cutSizes(runs.specs.map(spec => spec.options?.lanes ?? 2), [ribbon], []),
       },
       layout: { stations: ribbon.stations, spans: ribbon.spans },
+      places: patchPlaces(runs.runs, [ribbon], [undefined], []),
     } };
   }
 
@@ -827,6 +867,7 @@ function planCut(doc: QuadMeshDoc, trail: AuthoredTrail): PlannedCut {
       ...cutSizes(runs.specs.map(spec => spec.options?.lanes ?? 2), network.runs, network.junctions),
     },
     layout: { stations: network.runs.flatMap(run => run.stations), spans: network.runs.flatMap(run => run.spans) },
+    places: patchPlaces(runs.runs, network.runs, network.trims, network.junctions),
   } };
 }
 
@@ -871,20 +912,171 @@ export function trailPreview(doc: QuadMeshDoc, trail: AuthoredTrail, also: reado
   return { ok: true, doc: piece.doc, quads };
 }
 
+// ---- tiles painted by hand (docs/023 · Hand-painted tiles) -----------------------------------------------------
+
+type Orient = { rot: number; mirror: boolean };
+
+/**
+ * A tile on a trail's patch that its cut did not lay — painted, turned or taken off by hand — and where it is: on which
+ * trail, at which place (`TrailPatchPlace`), between which two of the trail's points, which find its knot segment again
+ * once the trail's paths and points have changed, and in which `slot` of the trail's own patches.
+ */
+export interface TrailCustomTile {
+  trail: string;
+  place: TrailPatchPlace;
+  ends: [V3, V3];
+  slot: number;
+  /** The tile and how it is turned; no tile is one taken off. */
+  tex: string | null;
+  orient: Orient | null;
+  /** The patch's ride feel, painted with the tile. */
+  surface?: number;
+}
+
+/** What a trail's own cut lays on each of its patches, and where each lies: kept per trail — every cut makes a new one
+ *  — and per the tile sets and the hold on its layout it was cut under. */
+const laidMemo = new WeakMap<AuthoredTrail, {
+  sets: unknown; connected: boolean; laid: { tiles: { tex: string | null; orient: Orient | null }[]; places: TrailPatchPlace[] } | null;
+}>();
+
+const sameOrient = (a: Orient | null | undefined, b: Orient | null | undefined) =>
+  (((a?.rot ?? 0) % 4) + 4) % 4 === (((b?.rot ?? 0) % 4) + 4) % 4 && !!a?.mirror === !!b?.mirror;
+
+/**
+ * The tiles on a trail's patches in `doc` that its own cut does not lay there: every patch wearing another tile, the
+ * same tile turned or mirrored, or none where the cut lays one. Null when the trail cannot be found in `doc`, or its
+ * cut no longer comes out the shape of its patches, so nothing can be told apart.
+ */
+export function trailCustomTiles(doc: QuadMeshDoc, trail: AuthoredTrail): TrailCustomTile[] | null {
+  if (!trail.quads.length) return [];
+  const owned = resolveTrail(doc, trail);
+  if (!owned) return null;
+  const connected = trailIsConnected(doc, owned);
+  let memo = laidMemo.get(trail);
+  if (!memo || memo.sets !== doc.trailTileSets || memo.connected !== connected) {
+    const plan = planCut(doc, trail);
+    const local = plan.ok && plan.piece.doc.quads.length === owned.quads.length ? plan.piece : null;
+    memo = {
+      sets: doc.trailTileSets, connected,
+      laid: local && {
+        tiles: local.doc.quads.map((_, j) => ({ tex: local.doc.quadTex?.[j] ?? null, orient: local.doc.quadOrient?.[j] ?? null })),
+        places: local.places,
+      },
+    };
+    laidMemo.set(trail, memo);
+  }
+  const { laid } = memo;
+  if (!laid) return null;
+  const out: TrailCustomTile[] = [];
+  owned.quads.forEach((quad, slot) => {
+    const tex = doc.quadTex?.[quad] ?? null, orient = doc.quadOrient?.[quad] ?? null, want = laid.tiles[slot];
+    if (tex === want.tex && (tex === null || sameOrient(orient, want.orient))) return;
+    const place = laid.places[slot], points = trail.paths[place.path].points, surface = doc.quadPaint?.[quad];
+    out.push({
+      trail: trail.id, place, slot, ends: [copy(trail.points[points[place.segment]]), copy(trail.points[points[place.segment + 1]])],
+      tex, orient: tex !== null && orient ? { rot: orient.rot, mirror: orient.mirror } : null,
+      ...(surface !== undefined ? { surface } : {}),
+    });
+  });
+  return out;
+}
+
+/** A point, to find a knot segment by its two ends. */
+const pointKey = (p: readonly number[]) => `${p[0].toFixed(4)},${p[1].toFixed(4)},${p[2].toFixed(4)}`;
+
+/** Whether two trails run the same paths through the same points: one only moved, reshaped or set differently. */
+const sameNetwork = (a: Network, b: Network) => a.points.length === b.points.length && a.paths.length === b.paths.length
+  && a.paths.every((path, i) => path.points.length === b.paths[i].points.length && path.points.every((point, k) => point === b.paths[i].points[k]));
+
+type WornTile = { tex: string | null; orient: Orient | null; surface?: number };
+
+/**
+ * Where hand-painted tiles go in a new cut of `trail` (`places`), as the tile each patch of it wears, by its index in the
+ * cut. Each goes back to its place on its knot segment — found by path and segment while the trail keeps the paths and
+ * points of `before`, the trail it was read from, and by the segment's two points once those have changed — on the same
+ * lane, or the one as far across where the lanes changed, and on the patch whose stretch of the segment holds the
+ * middle of its own. A segment now run the other way turns the tile round with it. A tile whose place is gone — its
+ * segment, its junction, its wedge — is let go, and where two land on one patch the nearer keeps it.
+ */
+function wearCustomTiles(custom: readonly TrailCustomTile[], before: AuthoredTrail | undefined, trail: AuthoredTrail,
+  places: readonly TrailPatchPlace[]): Map<number, WornTile> {
+  const worn = new Map<number, WornTile & { off: number }>();
+  if (!custom.length) return worn;
+  const same = !!before && sameNetwork(before, trail);
+  const listed = <T>(map: Map<string, T[]>, key: string): T[] => map.get(key) ?? (map.set(key, []), map.get(key)!);
+  const segments = new Map<string, { path: number; segment: number }[]>();
+  trail.paths.forEach((path, index) => path.points.slice(1).forEach((point, k) => {
+    listed(segments, `${pointKey(trail.points[path.points[k]])}>${pointKey(trail.points[point])}`).push({ path: index, segment: k });
+  }));
+  const onSegment = new Map<string, number[]>();
+  places.forEach((place, j) => listed(onSegment, `${place.path}:${place.segment}`).push(j));
+  for (const tile of custom) {
+    const { place } = tile, own = tile.trail === trail.id;
+    let found: { path: number; segment: number } | undefined, turned = false;
+    if (same && own) found = { path: place.path, segment: place.segment };
+    else {
+      const [a, b] = tile.ends.map(pointKey);
+      const pick = (list?: { path: number; segment: number }[]) => list?.find(entry => own && entry.path === place.path) ?? list?.[0];
+      found = pick(segments.get(`${a}>${b}`));
+      if (!found) { found = pick(segments.get(`${b}>${a}`)); turned = !!found; }
+    }
+    if (!found) continue;
+    // Its lane and its stretch of the segment, as the segment runs now.
+    const lane = turned ? place.lanes - 1 - place.lane : place.lane;
+    const end = place.junction && (turned ? (place.junction === 'start' ? 'end' : 'start') : place.junction);
+    const mid = place.junction ? 0 : turned ? 1 - (place.t0 + place.t1) / 2 : (place.t0 + place.t1) / 2;
+    let best: { j: number; off: number } | null = null;
+    for (const j of onSegment.get(`${found.path}:${found.segment}`) ?? []) {
+      const there = places[j];
+      let off = 0;
+      if (place.junction || there.junction) {
+        if (there.junction !== end) continue;
+      } else {
+        if (there.wedge !== place.wedge || (place.wedge && (turned || there.lanes !== place.lanes))) continue;
+        if (mid < there.t0 || mid > there.t1) continue;
+        off = Math.abs(mid - (there.t0 + there.t1) / 2);
+      }
+      if (there.lane !== (there.lanes === place.lanes ? lane : Math.floor(((lane + 0.5) / place.lanes) * there.lanes))) continue;
+      if (!best || off < best.off) best = { j, off };
+    }
+    if (!best || (worn.get(best.j)?.off ?? Infinity) <= best.off) continue;
+    const orient = turned && tile.tex !== null ? { rot: ((tile.orient?.rot ?? 0) + 2) % 4, mirror: !!tile.orient?.mirror } : tile.orient;
+    worn.set(best.j, { tex: tile.tex, orient, ...(tile.surface !== undefined ? { surface: tile.surface } : {}), off: best.off });
+  }
+  return worn;
+}
+
+export interface TrailCutOptions {
+  /**
+   * The hand-painted tiles the cut carries on (`trailCustomTiles`) — by default those on the trail's patches in `doc`,
+   * read against its record in `doc.trails`. Null, or no record to read them against, cannot tell them apart: the cut
+   * then lays its tiles over its patches slot by slot, taking back only a tile set's where it lays none.
+   */
+  custom?: readonly TrailCustomTile[] | null;
+  /** Tiles painted by hand let go of: their patches wear what the cut lays, and the trail's ride feel, again. */
+  dropped?: readonly TrailCustomTile[];
+}
+
 /**
  * Cut a trail from its paths and settings into `doc`. A trail that owns nothing yet appends fresh ribbons; one that
  * does writes over them slot by slot — the same vertices and patches wherever the new cut has one where the old
  * did, new ones past the end of the old, and what the old had past the end of the new retired. A trail with other
- * patches joined to it is held at its current layout, so it never adds or retires anything.
+ * patches joined to it is held at its current layout, so it never adds or retires anything. Tiles painted by hand go
+ * back to their places on the new cut (`wearCustomTiles`), wherever those are now.
  *
  * Returns the new document and the trail with its ownership updated; neither input is changed.
  */
-export function cutTrail(doc: QuadMeshDoc, trail: AuthoredTrail): TrailCut {
+export function cutTrail(doc: QuadMeshDoc, trail: AuthoredTrail, options: TrailCutOptions = {}): TrailCut {
   const plan = planCut(doc, trail);
   if (!plan.ok) return plan;
   const { owned, connected, piece } = plan;
   const local = piece.doc;
   const oldVertices = owned?.vertices ?? [], oldQuads = owned?.quads ?? [];
+  const before = doc.trails?.find(other => other.id === trail.id);
+  const custom = options.custom !== undefined ? options.custom : !oldQuads.length ? [] : before ? trailCustomTiles(doc, before) : null;
+  const worn = custom && wearCustomTiles(custom, before, trail, piece.places);
+  /** The trail's own patches that wore a tile painted by hand: one that wears none now takes the trail's ride feel. */
+  const painted = new Set([...custom ?? [], ...options.dropped ?? []].flatMap(tile => tile.trail === trail.id ? [tile.slot] : []));
 
   // ---- positions: slot by slot over what the trail owns, appended past it ---------------------------------
   const vertices = doc.vertices.slice();
@@ -922,17 +1114,28 @@ export function cutTrail(doc: QuadMeshDoc, trail: AuthoredTrail): TrailCut {
     edgeHandles[`${vertexSlot[a]}>${vertexSlot[b]}`] = [offset[0], offset[1], offset[2]];
   }
 
-  const surface = (owned && doc.quadPaint?.[oldQuads[0]]) ?? MESA_TRAIL_DEFAULTS.surface;
+  // The trail's ride feel is its patches' — one not painted by hand.
+  const plain = oldQuads.find((_, j) => !painted.has(j)) ?? oldQuads[0];
+  const surface = (plain === undefined ? undefined : doc.quadPaint?.[plain]) ?? MESA_TRAIL_DEFAULTS.surface;
   const quadPaint = { ...(doc.quadPaint ?? {}) };
   const quadTex = { ...(doc.quadTex ?? {}) }, quadOrient = { ...(doc.quadOrient ?? {}) };
   const quadLocked = { ...(doc.quadLocked ?? {}) };
   const laid = trailTileSetTiles(trailTileSetsWith(doc.trailTileSets));
   lanes.forEach((quad, j) => {
-    if (j >= oldQuads.length) quadPaint[quad] = surface;
-    const tile = local.quadTex?.[j];
-    if (tile) { quadTex[quad] = tile; quadOrient[quad] = { ...(local.quadOrient?.[j] ?? { rot: 0, mirror: false }) }; }
-    // No tile here now: take back only what a tile set lays, so a tile painted by hand stays.
-    else if (quadTex[quad] && laid.has(quadTex[quad])) { delete quadTex[quad]; delete quadOrient[quad]; }
+    const own = worn?.get(j), tile = local.quadTex?.[j];
+    if (own) {
+      quadPaint[quad] = own.surface ?? surface;
+      if (own.tex === null) { delete quadTex[quad]; delete quadOrient[quad]; } else {
+        quadTex[quad] = own.tex;
+        if (own.orient) quadOrient[quad] = { ...own.orient }; else delete quadOrient[quad];
+      }
+    } else {
+      if (j >= oldQuads.length || painted.has(j)) quadPaint[quad] = surface;
+      if (tile) { quadTex[quad] = tile; quadOrient[quad] = { ...(local.quadOrient?.[j] ?? { rot: 0, mirror: false }) }; }
+      // No tile here now. Where the tiles painted by hand are known, nothing else is left here; where they are not, take
+      // back only what a tile set lays, so a tile painted by hand stays.
+      else if (worn || (quadTex[quad] && laid.has(quadTex[quad]))) { delete quadTex[quad]; delete quadOrient[quad]; }
+    }
     delete quadLocked[quad];
   });
 

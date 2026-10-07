@@ -44,7 +44,7 @@ export type ToolsPanelDeps = {
     | 'armCreateTrail' | 'undoCreateTrailPoint' | 'finishCreateTrail' | 'cancelCreateTrail'
     | 'selectedTrail' | 'trailStatus' | 'trailError' | 'syncTrailView' | 'resumeTrail' | 'setTrailSetting'
     | 'deleteSelectedTrailKnot' | 'disconnectSelectedPoint' | 'splitSelectedPoint' | 'deleteSelectedTrail' | 'dissolveSelectedTrail'
-    | 'trailTileSets' | 'addTrailTileSet' | 'editTrailTileSet' | 'deleteTrailTileSet'
+    | 'trailTileSets' | 'addTrailTileSet' | 'editTrailTileSet' | 'deleteTrailTileSet' | 'trailCustomTileCount' | 'resetTrailTextures'
     | 'selectedTrailKnot' | 'setTrailKnotSetting' | 'resetTrailKnotSettings' | 'resumeEnds'
     | 'armPathFrom' | 'selectedPointRole' | 'drawingFrom' | 'focusSettings' | 'selectWholeNetwork' | 'trailDrawAnchor'
     | 'beginEdgeExtrusion' | 'flipEdgeExtrusionSide' | 'commitEdgeExtrusion' | 'cancelEdgeExtrusion'

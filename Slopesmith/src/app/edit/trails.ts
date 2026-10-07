@@ -4,9 +4,10 @@ import type {
 import { nameIndex, nextTrailId } from '../../core/doc/ids';
 import {
   compactTrail, connectedPaths, cutTrail, disconnectPoint, extendPath, fusePathsAt, joinTrails, mergeTrailPoints, pathCuts, pathEndsAt, pathKnots,
-  pathsThrough, pointArms, removeTrailPatches, resolveTrail, separateTrail, setTrailKnotValue, splitPathsAt, trailCutShape, trailIsConnected,
-  trailOwningQuad, trailPathQuads,
-  trailPathStations, trailPreview, trimPath, withNewPoint, withoutTrailPaths, withoutTrailPoint, withPath, type TrailRenumbering,
+  pathsThrough, pointArms, removeTrailPatches, resolveTrail, separateTrail, setTrailKnotValue, splitPathsAt, trailCustomTiles, trailCutShape,
+  trailIsConnected, trailOwningQuad, trailPathQuads,
+  trailPathStations, trailPreview, trimPath, withNewPoint, withoutTrailPaths, withoutTrailPoint, withPath, type TrailCustomTile,
+  type TrailCutOptions, type TrailRenumbering,
 } from '../../core/mesh/trail-object';
 import type { TrailStation } from '../../core/mesh/trail';
 import {
@@ -410,22 +411,43 @@ export function createTrailTools(deps: TrailToolDeps) {
     remove?: readonly AuthoredTrail[];
     /** The cut document's last change before it is installed. */
     settle?: (doc: QuadMeshDoc) => QuadMeshDoc;
+    /** The document whose tile sets laid the tiles on the trails' patches, where it is not `base`: a set edited is cut
+     *  with its new rows, but its old ones are what the patches wear, and what a tile painted by hand differs from. */
+    laid?: QuadMeshDoc;
+    /** Trails whose tiles painted by hand the cut ones carry on, wherever their knot segments still run: one broken
+     *  apart. The trails in `remove` are carried too. */
+    carry?: readonly AuthoredTrail[];
+    /** Tiles painted by hand to let go of — the panel's reset — so their patches wear what their sets lay again. */
+    drop?: (tile: TrailCustomTile) => boolean;
   };
 
   /**
    * Cut `nexts` into the document and install the result — the new mesh, the trails in their list, and the selected
    * paths' patches as the patch selection. A cut the generator refuses changes nothing; its reason is kept for the
-   * panel and, unless `quiet`, said at once.
+   * panel and, unless `quiet`, said at once. Tiles painted by hand go with the patches they were painted on
+   * (docs/023 · Hand-painted tiles): read before anything changes — from the drag's start, while one is dragged.
    */
   function apply(nexts: readonly AuthoredTrail[], options: ApplyOptions = {}): boolean {
     const before = drag?.picks ?? selectionPicks();
     let doc = options.base ?? store.mdoc;
+    const laid = options.laid ?? doc;
+    const carried = [...(options.remove ?? []), ...(options.carry ?? [])].flatMap(other => trailCustomTiles(laid, other) ?? []);
+    /** The tiles painted by hand that `next` carries on — its own, and those of the trails it takes in or is broken
+     *  from — and those it lets go of. */
+    const customOf = (next: AuthoredTrail): TrailCutOptions => {
+      const record = laid.trails?.find(other => other.id === next.id);
+      const own = record ? trailCustomTiles(laid, record) : [];
+      if (!own) return { custom: null };
+      const all = [...own, ...carried.filter(tile => !record || tile.trail !== next.id)];
+      const { drop } = options;
+      return drop ? { custom: all.filter(tile => !drop(tile)), dropped: all.filter(drop) } : { custom: all };
+    };
     for (const gone of options.remove ?? []) {
       doc = { ...removeTrailPatches(doc, gone), trails: (doc.trails ?? []).filter(other => other.id !== gone.id) };
     }
     const cuts: AuthoredTrail[] = [];
     for (const next of nexts) {
-      const cut = cutTrail(doc, next);
+      const cut = cutTrail(doc, next, customOf(next));
       if (!cut.ok) {
         lastError = cut.error;
         if (!options.quiet) toast(cut.error, 'err');
@@ -996,7 +1018,7 @@ export function createTrailTools(deps: TrailToolDeps) {
       }
     }
     const sides = pointArms(trail)[picked.point] ?? 0;
-    if (!apply(nexts, { select })) return;
+    if (!apply(nexts, { select, carry: [trail] })) return;
     const at = parts.points[picked.point];
     store.trailPoint = at ? { trail: nexts[at.trail].id, point: at.point } : null;
     syncTrailView();
@@ -1105,8 +1127,11 @@ export function createTrailTools(deps: TrailToolDeps) {
     const sets = own.map((set, i) => i === at ? next : set);
     const users = trailsWearing(id);
     // Cut knowing the set as it was too, after the new one so its id finds that: a tile it no longer has — a middle
-    // taken off — is a set's, and is taken back, not left on as if painted by hand.
-    if (users.length) return apply(users, { base: withOwnSets(store.mdoc, [...sets, own[at]]), settle: doc => withOwnSets(doc, sets) });
+    // taken off — is a set's, and is taken back, not left on as if painted by hand. What was painted by hand is read
+    // against the set as it was, which laid the rest.
+    if (users.length) {
+      return apply(users, { base: withOwnSets(store.mdoc, [...sets, own[at]]), laid: store.mdoc, settle: doc => withOwnSets(doc, sets) });
+    }
     commitEditMesh(store, withOwnSets(store.mdoc, sets));
     scheduleRebuild();
     return true;
@@ -1133,6 +1158,26 @@ export function createTrailTools(deps: TrailToolDeps) {
     scheduleRebuild();
     toast(`${id} deleted${paths ? ` — ${paths} path${paths === 1 ? '' : 's'} wearing it went plain` : ''}`, 'ok');
     return true;
+  }
+
+  // ---- tiles painted by hand (docs/023 · Hand-painted tiles) --------------------------------------------------------
+
+  /** How many of the selected paths' patches wear a tile painted by hand: other than their set lays, turned otherwise,
+   *  or taken off. */
+  function trailCustomTileCount(): number {
+    if (drawingTrail()) return 0;
+    return selectionPicks().reduce((sum, { trail, paths }) =>
+      sum + (trailCustomTiles(store.mdoc, trail) ?? []).filter(tile => paths.includes(tile.place.path)).length, 0);
+  }
+
+  /** Put the selected paths' patches back in what their sets lay, letting go of every tile painted by hand on them. */
+  function resetTrailTextures() {
+    const picks = selectionPicks();
+    const count = trailCustomTileCount();
+    if (!picks.length || !count) return;
+    const selected = new Map(picks.map(({ trail, paths }) => [trail.id, new Set(paths)]));
+    if (!apply(picks.map(pick => pick.trail), { drop: tile => !!selected.get(tile.trail)?.has(tile.place.path) })) return;
+    toast(`${count} hand-painted patch${count === 1 ? '' : 'es'} back to the tile set`, 'ok');
   }
 
   /** Every selected path, or the one being drawn: what a setting change applies to. */
@@ -1258,7 +1303,7 @@ export function createTrailTools(deps: TrailToolDeps) {
     selectKnot, knotDrag, moveKnot, transformTrail, focusPath, selectTrailNode, setTrailHandles, deleteSelectedTrailKnot,
     disconnectSelectedPoint, splitSelectedPoint, setTrailSetting, deleteSelectedTrail, dissolveSelectedTrail,
     selectedTrailKnot, setTrailKnotSetting, resetTrailKnotSettings,
-    trailTileSets, addTrailTileSet, editTrailTileSet, deleteTrailTileSet,
+    trailTileSets, addTrailTileSet, editTrailTileSet, deleteTrailTileSet, trailCustomTileCount, resetTrailTextures,
   };
 }
 
