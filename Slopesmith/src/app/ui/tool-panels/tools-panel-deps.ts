@@ -133,6 +133,7 @@ export type ToolsPanelDeps = {
   getPlay: () => Play;
   // model editing (Edit mode): create / enter / leave / revise the authored polygon model session (main.ts owns it)
   modelEdit: {
+    deform: (index: number) => void;
     create: () => void;
     /** Open a model's edit session; with `atIndex` the definition rebases onto that placement first. */
     enter: (id: string, atIndex?: number) => void;
@@ -166,6 +167,7 @@ export type ToolsPanelDeps = {
     isWritable: () => boolean;
     apply: (document: QuadMeshDoc) => Promise<void>;
   };
+  propDeform: import('../../props/deform').PropDeformOps;
   // delete ops
   deleteSelectedProp: () => void;
   deleteMultiSelProps: () => void;

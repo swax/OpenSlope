@@ -17,8 +17,8 @@ import { IMPORTED_PROP_LEVEL } from './imported';
  * flows unbroken along it, and why the Blender bridge sends it no UV layer at all (docs/046).
  *
  * A **textured** prop carries its own UV layout across however many materials it needs. The layout is
- * authored data, so changing the geometry breaks it — which is why editing one belongs where UVs can be
- * re-authored, and why the bridge round-trips its UVs in both directions.
+ * authored data. Cage deformation retains those coordinates while interpolating new cuts; topology and
+ * UV editing belong in Blender, so the bridge round-trips the layout in both directions.
  *
  * Everything else follows from that row, so the vocabulary is worth keeping in one place: the selection
  * panel, the prop library and the Blender add-on all describe a prop through here rather than each
@@ -101,8 +101,8 @@ export function describeProp(facts: PropFacts): PropDescription {
         + 'computed, not stored.'
       : readOnly
         ? 'It carries its own UV layout. Make an editable copy to change it.'
-        : 'It carries its own UV layout, so edit it where UVs can be re-authored. Tiles live in the '
-          + 'Texture Library.',
+        : 'It carries its own UV layout. Bend or stretch a static copy with Deform with cage; edit topology and UVs in Blender. '
+          + 'Tiles live in the Texture Library.',
     readOnly,
   };
 }

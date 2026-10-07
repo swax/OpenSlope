@@ -45,7 +45,7 @@ const layers = {
   },
   cage, transforms: { mode: 'move' },
   clipboardPlacement: { active: false }, surgery: { tool: null, onCommit: () => false },
-  tubeTool: { active: false }, trailTool: { active: false, pickKnot: () => false }, pathHandles: { pickHandle: () => false }, patchTool: { active: false }, weldTool: { active: false },
+  tubeTool: { active: false }, trailTool: { active: false, pickKnot: () => false }, pathHandles: { pickHandle: () => false }, propDeform: { active: false }, patchTool: { active: false }, weldTool: { active: false },
   createEdge: { armed: false, pickCoincidentVertices: () => null, pickEdgeCrossing: () => null },
   gems: { gemLine: null },
 } as unknown as Parameters<typeof createPointerRouter>[2];

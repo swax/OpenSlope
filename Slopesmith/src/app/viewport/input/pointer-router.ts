@@ -24,6 +24,7 @@ import type { PatchToolLayer } from '../tools/create-patch';
 import type { TubeToolLayer } from '../tools/create-tube';
 import type { TrailToolLayer } from '../tools/create-trail';
 import type { PathHandlesLayer } from '../scene/path-handles';
+import type { PropDeformLayer } from '../scene/prop-deform';
 import type { WeldToolLayer } from '../tools/weld';
 import type { ClipboardPlacementLayer } from '../tools/clipboard-placement';
 import type { CourseDrawLayer } from '../tools/course-draw';
@@ -46,6 +47,7 @@ import {
  *  selection entry points in priority order; each layer owns its own scene objects and state. All exist
  *  before the router is constructed. */
 export interface RouterLayers {
+  propDeform: PropDeformLayer;
   selection: SelectionLayer;
   picking: MeshPicking;
   scenePicking: ScenePicking;
@@ -1046,6 +1048,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
     const touch = e.pointerType === 'touch';
     stage.castAt(e);
+    if (layers.propDeform.active) {
+      if (stage.gizmo.enabled) layers.propDeform.pickHandle();
+      e.stopImmediatePropagation(); return;
+    }
 
     if (access.mode() === 'sculpt' && rejectUnsupportedPropPick()) return;
     // Paint: without a brush, LMB on a prop inspects its clicked submesh without arming it. With a brush
@@ -1719,6 +1725,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (layers.cameraCtl.twist && layers.cameraCtl.touchPts.size < 2) layers.cameraCtl.twist = null; // a finger lifted: the twist gesture is over
     if (layers.cameraCtl.orbiting) { layers.cameraCtl.endOrbit(e); return; }
     if (layers.cameraCtl.flying) { layers.cameraCtl.endFly(e); return; }
+    if (layers.propDeform.active) { mmbDown = null; return; }
     // A staged Path extrusion still needs ordinary clicks/taps to select its guide. Only a live pull drag owns release.
     if (layers.edgeExtrusion.dragging) { layers.edgeExtrusion.finish(e, e.type !== 'pointercancel'); return; }
     if (layers.edgeExtrusion.staged && layers.edgeExtrusion.mode === 'pull') return;

@@ -2,6 +2,7 @@ import { readLevelGroups } from '../routes/groups';
 import {
   cloneImportedProp, deleteImportedProp, importedPropsPayload, renameImportedProp, replaceImportedProp,
   saveImportedProp, updateImportedPropDefaults, updateImportedPropMaterials,
+  readImportedProp, deformImportedProp,
 } from '../routes/imported-props';
 import {
   levelsWithProps, nativeArtSource, readLevelProps, readLevelPropsJsonWithCacheInfo, readMaterialTables,
@@ -70,6 +71,17 @@ async function levelPropIndex(level: string): Promise<{ level: string; models: P
  *  slot and an authored model's tile resolve through; GET /api/props/native-art -> which extracted level
  *  supplies the rail skin and gem crystals. */
 export const propRoutes: Record<string, ApiHandler> = {
+  '/api/custom-prop-record': async (req, res) => {
+    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    res.setHeader('content-type', 'application/json');
+    res.setHeader('cache-control', 'private, no-store');
+    try {
+      const id = Number(new URL(req.url ?? '', 'http://localhost').searchParams.get('id') ?? -1);
+      if (!Number.isInteger(id) || id < 0) throw new Error('Choose a prop to deform.');
+      res.end(JSON.stringify(await readImportedProp(id)));
+    } catch (e) { res.statusCode = 400; res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })); }
+  },
+  '/api/custom-prop-deform': manageProp(async (id, _q, body) => deformImportedProp(id, await body())),
   '/api/props': async (req, res) => {
     try {
       const url = new URL(req.url ?? '', 'http://localhost');

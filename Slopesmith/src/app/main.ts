@@ -14,6 +14,7 @@ import { describeApplied, drainBlenderPushes, openBlenderGuide } from './props/b
 import { PropLibrary } from './props/library';
 import { PropPreview } from './props/preview';
 import { createPropOps } from './props/operations';
+import { createPropDeformOps } from './props/deform';
 import { createPropClipboard } from './props/clipboard';
 import { createPropLineOps } from './props/lines';
 import { createTrickTools } from './tricks/operations';
@@ -769,6 +770,8 @@ function renderMountainTerrain(change: NetChange) {
 }
 
 function hiddenModelPlacements(): Set<number> | undefined {
+  const deforming = propDeform.hiddenIndex();
+  if (deforming !== null) return new Set([deforming]);
   return store.modelEditId ? new Set((store.mdoc.props ?? [])
     .map((pp, i) => pp.level === AUTHORED_MODEL_LEVEL && modelIdFromNumber(pp.model) === store.modelEditId
       && (store.modelEditPlacementId === null || pp.id === store.modelEditPlacementId) ? i : -1)
@@ -796,6 +799,7 @@ function renderMountainDetails() {
   viewport.setGems(store.mdoc.gems ?? [], store.selectedGem);
   // Screens resolve against the placements they are attached to, so they rebuild whenever either does.
   viewport.setScreens(store.mdoc.screens ?? [], store.mdoc.props, store.selectedScreen);
+  propDeform.sync();
   if (store.mdoc.gems?.length || store.mdoc.rails?.some(railHasTube))
     void trickTools.ensureTrickArt(); // native crystals + default rail skins (a tubeless curve has no visible art)
 }
@@ -1009,7 +1013,9 @@ const history = createHistory({
   refreshButtons: refreshHistButtons,
   registers: () => registerSync,
 });
-const { scheduleCommit, commit, undo, redo } = history;
+const { scheduleCommit, commit, undo: undoDocument, redo: redoDocument } = history;
+function undo() { if (propDeform.active) propDeform.undo(); else undoDocument(); }
+function redo() { if (propDeform.active) propDeform.redo(); else redoDocument(); }
 
 // The modal dialogs + file actions (New / borrow-a-line / History / mountain import/export
 // / map export, and the resolution behind a refused save). They replace the document via setDoc + re-run loadMountain, and
@@ -1150,6 +1156,12 @@ const propOps = createPropOps({
   scheduleRebuild,
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
+});
+const propDeform = createPropDeformOps({
+  store, viewport, isWritable: () => projectSync.isWritable(),
+  ensureModels: () => propOps.ensurePropLevel(IMPORTED_PROP_LEVEL),
+  reloadModels: () => propOps.reloadImportedProps(), commit,
+  rebuild: scheduleRebuild, tools: () => { rebuildTools(); histBar.refresh(); },
 });
 // Ctrl+C / X / V over selected placements in Props or Edit (docs/012); paste enters Props and waits for a click.
 const propClipboard = createPropClipboard({
@@ -1687,6 +1699,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
   deleteSelectedRailNode: trickTools.deleteSelectedRailNode, finishRail: trickTools.finishRail,
   propLines,
   modelEdit: {
+    deform: index => void propDeform.start(index),
     create: () => createModelFlow(),
     enter: (id, atIndex) => enterModelEdit(id, atIndex),
     exit: () => exitModelEdit(),
@@ -1719,6 +1732,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
       commit();
     },
   },
+  propDeform,
   effects,
   goToEffects,
   goToPropToolbox: () => {
@@ -1773,10 +1787,14 @@ const {
   usersActive: () => usersMode.active(),
   toggleUsers: () => { usersMode.setActive(!usersMode.active()); modeSeg.refresh(); },
   undo, redo, saveStatus: syncChip.indicator,
-  canUndo: () => history.canUndo(), canRedo: () => history.canRedo(),
-  undoSummary: () => history.undoSummary(), redoSummary: () => history.redoSummary(),
-  recentUndo: () => history.recentUndo(), recentRedo: () => history.recentRedo(),
-  historyEntries: () => history.entries(), jumpHistory: index => history.jumpTo(index),
+  canUndo: () => propDeform.active ? !!propDeform.state?.canUndo : history.canUndo(),
+  canRedo: () => propDeform.active ? !!propDeform.state?.canRedo : history.canRedo(),
+  undoSummary: () => propDeform.active ? 'Cage edit' : history.undoSummary(),
+  redoSummary: () => propDeform.active ? 'Cage edit' : history.redoSummary(),
+  recentUndo: () => propDeform.active ? [] : history.recentUndo(),
+  recentRedo: () => propDeform.active ? [] : history.recentRedo(),
+  historyEntries: () => propDeform.active ? [] : history.entries(),
+  jumpHistory: index => { if (!propDeform.active) history.jumpTo(index); },
   toggleProps, getPropsVisible: () => store.propsVisible,
   toggleTricks, getTricksVisible: () => store.tricksVisible,
   toggleWorldEffects, getWorldEffectsVisible: () => store.worldEffectsVisible,
@@ -1949,6 +1967,7 @@ function goToEffects(target?: { sourceIndex: number; called: true }): void {
 }
 
 function setMode(m: Mode) {
+  propDeform.cancel();
   propOps.cancelPropReplacement();
   usersMode.setActive(false); // Users is its own mode: picking a numbered one leaves it (docs/038)
   usersBar.refresh();
@@ -2130,8 +2149,7 @@ async function revisePlacedProp(index: number) {
   commit();
   scheduleRebuild();
   rebuildTools();
-  toast(`${copy.name} is yours now — ${copy.detail}. This placement uses it; edit it in Blender, or `
-    + 'right-click it in the library.', 'ok', 6000);
+  toast(`${copy.name} is yours now — ${copy.detail}. Choose Deform with cage to reshape it here, or Edit in Blender.`, 'ok', 6000);
 }
 
 /**
@@ -2522,7 +2540,7 @@ async function loadMountain() {
 
 // keyboard — the global shortcut listener (shortcuts.ts); everything it routes to exists by now
 installShortcuts({
-  store, viewport, edit, trickTools, propOps, propLines, propClipboard, sculptBrush: brush,
+  store, viewport, edit, trickTools, propOps, propLines, propClipboard, propDeform, sculptBrush: brush,
   undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot,
   courseReset: { finish: finishCourseReset, cancel: cancelCourseReset, undoPoint: undoCourseResetPoint },
   cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile,

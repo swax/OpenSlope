@@ -14,7 +14,7 @@ import { createXrContext } from './xr-context';
 export type GizmoKind =
   | 'corner' | 'corners' | 'controlpoints' | 'knot' | 'anchor' | 'handle' | 'cagehandle' | 'reference'
   | 'prop' | 'props' | 'editmixed' | 'light' | 'railnode' | 'linenode' | 'trailknot' | 'trail' | 'pathhandle' | 'gem' | 'screen'
-  | 'effect' | 'edgeextrusion';
+  | 'effect' | 'edgeextrusion' | 'propdeform';
 
 /**
  * The shared 3D substrate every viewport layer draws into: the renderer, scene, the active camera pair, the

@@ -233,6 +233,7 @@ const layers: any = {
   paint: { paintArm: null, cellAtPointer: () => 0, paintSelectAtPointer() {} },
   edgeExtrusion: { active: false },
   pathHandles: { pickHandle: () => false },
+  propDeform: { active: false, pickHandle() {} },
 };
 let activeMode = 'props';
 let paintPreview: any = null;
@@ -284,6 +285,21 @@ dom.dispatch('pointerdown', {});
 dom.dispatch('pointerup', {});
 check(selected === 7, 'Props select mode routes a click to the authored prop');
 check(placed === 0, 'display-only effect decoration cannot turn a prop click into placement');
+
+// A cage session owns viewport clicks, including empty space, until Apply or Cancel.
+{
+  selected = null;
+  let handles = 0;
+  layers.propDeform.active = true;
+  layers.propDeform.pickHandle = () => { handles++; };
+  stage.gizmo.enabled = true;
+  dom.dispatch('pointerdown', {}); dom.dispatch('pointerup', {});
+  check(handles === 1 && selected === null && placed === 0, 'a deformation draft picks its handles without replacing its prop selection');
+  stage.gizmo.enabled = false;
+  dom.dispatch('pointerdown', {}); dom.dispatch('pointerup', {});
+  check(handles === 1, 'saving a cage disables its handles as well as its transform arrows');
+  layers.propDeform.active = false; stage.gizmo.enabled = true;
+}
 
 // Ctrl/Cmd+click adds the prop to the selection or drops it, as Edit and Effects mode do — the host decides which.
 {

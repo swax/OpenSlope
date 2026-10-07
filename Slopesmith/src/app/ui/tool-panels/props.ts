@@ -60,6 +60,8 @@ import {
 import { rotateByPlacement, writePropRotation } from '../../../core/props/pose';
 import { describeProp, ownGeometry } from '../../../core/props/kind';
 import { openBlenderGuide } from '../../props/blender-bridge';
+import { IMPORTED_PROP_LEVEL } from '../../../core/props/imported';
+import { addPropDeformTools } from '../components/prop-deform';
 import { isEffectTriggerProp } from '../../../core/effects/trigger-volume';
 
 /**
@@ -1443,6 +1445,9 @@ export function createPropTools(ctx: ToolsContext) {
   }
 
   function buildPropTools() {
+    if (ctx.propDeform.active) {
+      ctx.propPreview.hide(); addPropDeformTools(gui, ctx.propDeform); return;
+    }
     keepOpenMember(propPanelGroupKey()); // before the preview card, which shows an open member alone
     updatePropPreview();
     if (store.selectedScreen !== null || store.selectedRefScreen !== null) {
@@ -1588,6 +1593,11 @@ export function createPropTools(ctx: ToolsContext) {
           'Open this prop in Edit mode, AT this placement. Edits change the DEFINITION, so every placement of it updates together.');
         actionRows.push(editAction.domElement);
       }
+      if (prop.level === IMPORTED_PROP_LEVEL && !prop.group && !prop.line) {
+        const deform = tip(gui.add({ deform: () => modelEdit.deform(store.selectedProp!) }, 'deform').name('deform with cage'),
+          'Bend, stretch, twist or taper this prop with a Bézier box. Apply saves a new variant for this placement.');
+        actionRows.push(deform.domElement);
+      }
       // The escape hatch, on the prop itself rather than only in the library's right-click menu — this is
       // where you are standing when a shape turns out to need more than the mesh tools have (docs/046).
       if (ownGeometry(prop.level) && !prop.group) {
@@ -1609,7 +1619,7 @@ export function createPropTools(ctx: ToolsContext) {
           ? 'Opens its edit session. Other placements keep the original, and effects attached to this '
             + 'placement come with it.'
           : 'The copy keeps its UV layout, its materials and its look, so nothing moves and nothing greys '
-            + 'out — effects attached to this placement come with it. Edit the copy in Blender (docs/046).');
+            + 'out — effects attached to this placement come with it. Use Deform with cage here, or edit the copy in Blender.');
         actionRows.push(revise.domElement);
       }
       const hasEffect = !!(prop.id && store.mdoc.effects
