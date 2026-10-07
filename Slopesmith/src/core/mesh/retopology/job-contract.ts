@@ -92,6 +92,9 @@ export interface RetopologyJobResult {
 }
 
 export interface RetopologyCapabilities {
+  /** Whether this server offers retopology at all: off unless started with SLOPESMITH_RETOPOLOGY=1. While off, the
+   *  editor hides the tool and every job route refuses; `available` still describes the strategies installed. */
+  enabled: boolean;
   /** True when at least one strategy can run on this server. */
   available: boolean;
   reason?: string;

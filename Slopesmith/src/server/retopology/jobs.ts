@@ -93,6 +93,12 @@ function unavailableReason(config = nativeConfig()): string | undefined {
   return missing.length ? `QuadWild is not installed on this server (${missing[0]} is missing).` : undefined;
 }
 
+/** Retopology is opt-in per server (SLOPESMITH_RETOPOLOGY=1): off, the job routes refuse and the editor hides it. */
+export const retopologyEnabled = (): boolean => process.env.SLOPESMITH_RETOPOLOGY === '1';
+
+/** What a job route answers while retopology is off. */
+export const RETOPOLOGY_OFF = 'Retopology is turned off on this server. Start it with SLOPESMITH_RETOPOLOGY=1 to turn it on.';
+
 const concurrency = (): number => {
   const parsed = Number(process.env.SLOPESMITH_RETOPOLOGY_CONCURRENCY ?? 1);
   return Number.isSafeInteger(parsed) ? Math.max(1, Math.min(4, parsed)) : 1;
@@ -107,6 +113,7 @@ export function retopologyCapabilities(): RetopologyCapabilities {
     { id: 'contour-flow', available: true, scopes: ['whole-unlocked'] },
   ];
   return {
+    enabled: retopologyEnabled(),
     available: strategies.some(strategy => strategy.available),
     ...(reason ? { reason } : {}),
     scopes: ['whole-unlocked', 'selected-region'],

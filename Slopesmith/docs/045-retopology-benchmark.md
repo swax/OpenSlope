@@ -333,6 +333,10 @@ Deployments can instead set `SLOPESMITH_QUADWILD_ROOT` and, when binaries live e
 `SLOPESMITH_QUADWILD_BIN`. `SLOPESMITH_RETOPOLOGY_CONCURRENCY` permits one to four concurrent native jobs. The
 capabilities endpoint reports a missing executable or config to the editor instead of enabling Run.
 
+Retopology is opt-in: a server offers it only when started with `SLOPESMITH_RETOPOLOGY=1`. Without it the
+capabilities endpoint reports `enabled: false`, the editor hides the Retopology section and the trail toolbox's
+integration guide, and every job route answers 404.
+
 The production MOUNTAIN01_2 smoke solve completes as 56 exact locked patches plus 2,191 generated patches: one
 connected component, a 60-to-60 interface, zero T-junctions, zero inverted patches, and effectively zero locked
 control-point movement. Generated cage edges are 19.67 m median / 26.53 m p95, aspect ratios are 1.25 median /
