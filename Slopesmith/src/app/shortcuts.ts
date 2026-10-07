@@ -30,6 +30,7 @@ import type { EffectsEditor } from './effects/editor';
  */
 
 export type ShortcutDeps = {
+  propDeform: import('./props/deform').PropDeformOps;
   store: Store;
   viewport: Viewport;
   edit: EditSession;
@@ -119,6 +120,20 @@ export function installShortcuts(deps: ShortcutDeps) {
     }
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
+    if (deps.propDeform.active && !typing) {
+      if (mod && (key === 'z' || key === 'y')) {
+        e.preventDefault();
+        if (key === 'y' || e.shiftKey) deps.propDeform.redo(); else deps.propDeform.undo();
+        return;
+      }
+      if (e.key === 'Escape') { e.preventDefault(); deps.propDeform.cancel(); return; }
+      if (!mod && !e.altKey && ['w', 'e', 'r'].includes(key)) {
+        e.preventDefault(); deps.propDeform.transform(key === 'w' ? 'move' : key === 'e' ? 'rotate' : 'scale'); return;
+      }
+      if (['Delete', 'Backspace', 'Enter'].includes(e.key) || mod && ['c', 'x', 'v'].includes(key)) {
+        e.preventDefault(); return;
+      }
+    }
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (typing) return; // let knot/param text fields handle their own keys

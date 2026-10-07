@@ -63,6 +63,41 @@ because the GLB path stages its own art and would only pay for a pass that finds
 A prop that still holds a reference ref — adopted before this, or hand-written — is not stuck: painting its
 tile in Blender forks a Custom copy on push ([046](046-blender-bridge.md)).
 
+## Bending a prop with a cage
+
+Select an imported or revised textured prop in **Props** mode and choose **deform with cage**. For a
+reference prop, first use **revise prop** to make a library copy. The viewport frames the selection and
+shows a Bézier box with four sections along its longest local axis.
+
+- Move an end section to stretch the prop. Move either inner section sideways or upward to bend it,
+  leaving the end sections in place.
+- Select **Sections** to move four corners together; use **W / E / R** to move, rotate or scale that
+  section. Rotation and scaling allow twisting and tapering. **Corners** exposes all sixteen points.
+- **Bend detail** adds cuts along the length, interpolating texture coordinates within each material.
+  Original adds no cuts; Low, Smooth and Fine use 8, 16 and 32 slices. The 50,000-triangle limit still applies.
+- **Ctrl+Z / Ctrl+Y** undo and redo cage edits. **Escape** cancels the draft. Changing **length axis** or
+  using **reset cage** restores the straight source; these actions can also be undone.
+- **Apply as new variant** saves a new mountain-library record and repoints only this placement. Its
+  stable ID, transform and attachments remain. Document Undo restores the previous model. Other placements
+  and the source library record retain their shape.
+
+Reopening the variant restores its cage and original source, so edits do not repeatedly deform an already
+bent mesh. Rendering, collision and export consume the same baked triangle geometry. Bounds-based contact
+on the edited placement becomes a mesh proxy; decorative placements stay decorative. Physics-body contact
+must be changed to mesh proxy before editing.
+
+This first version supports single static props without model emitters. Release a prop-line member before
+editing it. Animated props and grouped props require a different deformation treatment. The cage is cubic
+along one axis and linear across the other two; it is not a full three-axis lattice. A sampled volume check
+rejects collapsed or inverted cages, but does not detect every possible self-intersection. UVs stay attached
+to the surface, so stretching a shape also stretches its texture.
+
+Implementation: `core/props/deform.ts` owns the shared deformation and subdivision math;
+`app/props/deform.ts` owns the draft and save lifecycle; `viewport/scene/prop-deform.ts` draws the handles
+and preview. Editor-only `GET /api/custom-prop-record` reads the source and cage metadata, and
+`POST /api/custom-prop-deform` validates and bakes a new asset on the server. The ordinary prop catalogue
+contains only baked geometry, without the retained source.
+
 ## Generating a prop (✨)
 
 `props/prop-gen.ts` — describe an object ("a weathered wooden trail sign on a single post", or a preset)

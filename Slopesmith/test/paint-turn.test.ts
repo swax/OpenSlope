@@ -73,7 +73,7 @@ const viewport = {
 let loopCuts = 0;
 const edit = { armLoopCut: () => { loopCuts++; } };
 installShortcuts({
-  store, viewport, edit, trickTools: {}, propOps: {}, sculptBrush: {},
+  store, viewport, edit, trickTools: {}, propOps: {}, propDeform: { active: false }, sculptBrush: {},
   turnPaintTexture: (dir: 1 | -1, flip: boolean) => { turns.push([dir, flip]); return turnable; },
   chatFocused: () => chatFocused,
   openChat: () => {},

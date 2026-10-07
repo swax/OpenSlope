@@ -471,6 +471,8 @@ export function importedMaterialFlipbook(extras: unknown): number | null {
  *  Material ids are LOCAL to the file (0…n-1); the server rebases them when it assembles the level payload,
  *  so importing a new model can never renumber an existing one's materials. */
 export interface ImportedPropRecord {
+  /** Original mesh and editable cage; subs always contains the ordinary baked result for every consumer. */
+  deformation?: import('./deform').PropDeformation;
   /** Assigned once at import and never reused — placements store this number. */
   id: number;
   /** Display name shown in the library grid (derived from the GLB file name). */

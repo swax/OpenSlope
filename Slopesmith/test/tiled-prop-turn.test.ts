@@ -137,7 +137,7 @@ let turnable = true;
 const store = { currentMode: 'edit', modelEditId: 'model:0000', paintBrush: null,
   selectedPaintCell: null, paintMultiSel: [] };
 installShortcuts({
-  store, viewport: { riding: false }, edit: {}, trickTools: {}, propOps: {}, sculptBrush: {},
+  store, viewport: { riding: false }, edit: {}, trickTools: {}, propOps: {}, propDeform: { active: false }, sculptBrush: {},
   turnPaintTexture: (dir: 1 | -1, flip: boolean) => { paintTurns.push([dir, flip]); return true; },
   turnModelTexture: (dir: 1 | -1, flip: boolean) => { modelTurns.push([dir, flip]); return turnable; },
   chatFocused: () => false,

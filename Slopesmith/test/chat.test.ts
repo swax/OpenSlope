@@ -464,6 +464,7 @@ try {
     edit: noop,
     trickTools: noop,
     propOps: noop,
+    propDeform: { active: false },
     effects: noop,
     sculptBrush: { op: 'raise', radius: 40 },
     setMode: (mode: string) => called.push(`mode:${mode}`),

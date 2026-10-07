@@ -7,6 +7,8 @@ import { IMPORTED_PROP_LEVEL, type ImportedPropRecord } from '../../core/props/i
 import type { PropsPayload } from '../../core/reference/props';
 import { propAlphaMode } from '../../core/reference/props';
 import { sanitizePropBehaviour } from '../../core/props/defaults';
+import { bakePropDeformation } from '../../core/props/deform';
+import { revisedPropName } from '../../core/props/adopt';
 
 /**
  * Storage for IMPORTED props (docs/032) — the GLB models a user loads through the Prop Library's Custom
@@ -51,6 +53,22 @@ async function findImportedProp(id: number): Promise<{ file: string; record: Imp
   const found = (await listImportedProps()).find(e => e.record.id === id);
   if (!found) throw new Error(`no imported prop ${id}`);
   return found;
+}
+
+/** Authoring metadata is fetched on demand, never added to every viewer's prop catalogue. */
+export async function readImportedProp(id: number): Promise<ImportedPropRecord> {
+  return (await findImportedProp(id)).record;
+}
+
+/** Each Apply creates an immutable geometry revision. Repointing a placement is an ordinary undoable
+ * document edit; an old undo entry never accidentally starts drawing newly overwritten geometry. */
+export async function deformImportedProp(id: number, input: unknown): Promise<{ id: number; name: string }> {
+  const value = input as { cage?: unknown; slices?: number } | null;
+  const record = await readImportedProp(id);
+  const baked = bakePropDeformation(record, value?.cage, value?.slices ?? 16);
+  baked.name = revisedPropName(record.name);
+  const saved = await saveImportedProp(propStem(baked.name), baked);
+  return { id: saved.record.id, name: saved.record.name };
 }
 
 /** The file stem a display name stores under: sanitised to the level-asset alphabet, `prop` when nothing

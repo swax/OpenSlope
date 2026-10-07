@@ -120,6 +120,7 @@ import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch'
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
 import { createTrailToolLayer, type TrailShape, type TrailToolLayer } from './tools/create-trail';
 import { createPathHandlesLayer, type PathHandleSide, type PathHandlesLayer, type ShownPath } from './scene/path-handles';
+import { createPropDeformLayer, type PropDeformLayer } from './scene/prop-deform';
 import { createCourseDrawLayer, type CourseDrawHandlers, type CourseDrawLayer } from './tools/course-draw';
 import { fadeObject } from './shared/fade';
 import { createPointerRouter, type PointerRouter } from './input/pointer-router';
@@ -220,6 +221,7 @@ export class Viewport {
   private createTubePreviewListener: (() => void) | null = null;
   readonly trailTool: TrailToolLayer;
   readonly pathHandles: PathHandlesLayer;
+  readonly propDeform: PropDeformLayer;
   private createTrailPreviewListener: (() => void) | null = null;
   readonly courseDraw: CourseDrawLayer; // Info's reset course: the run redrawn by clicking the terrain
   private courseDragY: number | null = null; // the ground a dragged course knot / flag last stood on
@@ -543,6 +545,7 @@ export class Viewport {
     // A Move drag freezes the slide surface. Rotate / Scale freeze member values around the shared anchor.
     // Release drops that snapshot and re-orients the next gizmo from the resulting geometry.
     this.stage.onGizmoDrag = dragging => {
+      if (this.gizmoKind === 'propdeform') { this.propDeform.dragging(dragging); return; }
       // A course knot / flag drag starts on the deck the point stands on (see onGizmoChange).
       const courseObj = this.gizmoKind === 'knot' || this.gizmoKind === 'anchor' ? this.gizmo.object : undefined;
       this.courseDragY = dragging && courseObj
@@ -658,6 +661,7 @@ export class Viewport {
       hover: pos => this.cb.onTrailHover?.(pos),
     });
     this.pathHandles = createPathHandlesLayer(this.stage); // the selected path's Bézier handles (docs/014)
+    this.propDeform = createPropDeformLayer(this.stage, material => this.assets.propTex.variant(material));
     this.pathHandles.setHost({ select: (owner, node, side) => this.cb.onSelectPathHandle?.(owner, node, side) });
     this.courseDraw = createCourseDrawLayer(this.stage, () => this.terrain);
     this.bridgePreview = createBridgePreviewLayer(this.stage, {
@@ -1110,7 +1114,7 @@ export class Viewport {
       selection: this.selection, picking: this.picking, scenePicking: this.scenePicking,
       cage: this.cageLayer, transforms: this.transforms,
       cameraCtl: this.cameraCtl, rideCtl: this.rideCtl, surgery: this.surgery, patchTool: this.patchTool,
-      tubeTool: this.tubeTool, trailTool: this.trailTool, pathHandles: this.pathHandles, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
+      tubeTool: this.tubeTool, trailTool: this.trailTool, pathHandles: this.pathHandles, propDeform: this.propDeform, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
       courseDraw: this.courseDraw, edgeExtrusion: this.edgeExtrusion, createEdge: this.createEdge, bridgePreview: this.bridgePreview,
       gems: this.gems, screens: this.screens, props: this.props, lights: this.lights, rails: this.rails,
       propLines: this.propLines,
@@ -2610,6 +2614,7 @@ export class Viewport {
   private onGizmoChange() {
     const obj = this.gizmo.object;
     if (!obj) return;
+    if (this.gizmoKind === 'propdeform') { this.propDeform.changed(); return; }
     if (this.heldGizmo) { this.holdGizmo(); return; }
     if (this.gizmoKind === 'edgeextrusion') { this.edgeExtrusion.onGizmoChange(); this.gizmoReadout.update(); return; }
     if (this.gizmoKind === 'trail') { this.trailTool.wholeChanged(); this.gizmoReadout.update(); return; }
