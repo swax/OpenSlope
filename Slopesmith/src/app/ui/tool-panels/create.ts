@@ -360,7 +360,6 @@ export function createCreateTools(ctx: ToolsContext) {
     if (!Object.keys(own()).length) reset.disable();
   }
 
-  const quarter = (turns: number) => ((Math.trunc(turns) % 4) + 4) % 4;
   const CAPS = { none: 'none', 'start': 'start', 'end': 'end', 'both ends': 'both' };
   /** Where each row of a set is worn. */
   const ROW_HINTS: Readonly<Record<TrailTileRowKey, string>> = {
@@ -378,19 +377,10 @@ export function createCreateTools(ctx: ToolsContext) {
     orient: trailTileViewOrient(row.quarterTurns),
     ...(borrowed ? { borrowed } : {}),
   });
-  const rowWords = (row: TrailTileRow) =>
-    trailTileRowLanes(row).map(lane => `${lane.ref ? parseTexRef(lane.ref).name : 'none'}${lane.mirrored ? ' ⇋' : ''}`
-      + `${quarter(lane.turns) ? ` ↻${quarter(lane.turns) * 90}°` : ''}`).join(' | ')
-    + (quarter(row.quarterTurns) ? ` · turned ${quarter(row.quarterTurns) * 90}°` : '');
-  const setTitle = (set: TrailTileSet) => [
-    `${trailTileSetId(set)}${isBuiltInTrailTileSet(trailTileSetId(set)) ? '' : ' · this mountain’s own'}`
-      + `${set.narrow ? ' · narrow: two across, for two-lane paths' : ''}`,
-    ...TRAIL_TILE_ROWS.map(key => `${TRAIL_TILE_ROW_WORDS[key]}: ${set[key] ? rowWords(trailTileSetRow(set, key).row) : 'the trail row'}`),
-  ].join('\n');
   const setOption = (set: TrailTileSet): TileSetOption => ({
     ...rowArt(set.trail),
     rows: TRAIL_TILE_ROWS.map(key => { const { row, borrowed } = trailTileSetRow(set, key); return rowArt(row, borrowed); }),
-    id: trailTileSetId(set), group: set.level, name: `${set.name}${set.narrow ? ' · narrow' : ''}`, title: setTitle(set),
+    id: trailTileSetId(set), group: set.level, name: `${set.name}${set.narrow ? ' · narrow' : ''}`,
   });
 
   // ---- the set builder: the mountain's own set worn, laid out to arrange ------------------------------------------
@@ -538,9 +528,8 @@ export function createCreateTools(ctx: ToolsContext) {
       value: chosen ? trailTileSetId(chosen) : worn.trailTiles,
       // A narrow set is offered a two-lane path only: drawn two across, it leaves a wider one's middle lanes plain.
       options: sets.filter(set => trailTileSetFits(set, lanes) || set === chosen).map(setOption),
-      none: { label: 'none — plain', title: 'No tiles: the path stays plain.' },
-      add: { label: 'new set…', title: 'Make a set of your own: tiles from one map, chosen in the Texture Library.',
-        onAdd: () => newTileSet(chosen) },
+      none: { label: 'none — plain' },
+      add: { label: 'new set…', onAdd: () => newTileSet(chosen) },
       onChange: pick => wearSet(pick),
     });
     // Tiles painted by hand over the set's go with their patches when the paths move, until they are reset.

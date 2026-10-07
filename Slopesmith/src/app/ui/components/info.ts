@@ -2,10 +2,10 @@ import { installStyles } from './styles';
 import { tooltip } from './tooltip';
 
 /**
- * The shared "i" info chip: a small hover badge that carries the longer explanation a control's own
- * tooltip should not. The control's tip stays a one-liner (what it does); the chip holds the detail —
- * defaults, costs, when it applies — for the reader who wants it. One look everywhere: lil-gui rows,
- * panel notes, dialog headings.
+ * The shared "i" info chip: a small hover badge that carries a control's explanation, so help appears
+ * only when asked for instead of springing up as the pointer crosses a panel. A row's chip leads with
+ * the one-liner (what it does), then the detail — defaults, costs, when it applies. One look everywhere:
+ * lil-gui rows, panel notes, dialog headings.
  */
 
 const CSS = `
@@ -14,6 +14,10 @@ const CSS = `
   display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
   margin-left: 6px; user-select: none; }
 .sp-info:hover { color: #cfe3f5; border-color: #4a6b8c; }
+/* Nearly every panel row carries a chip, so it rests faint — a column of them should not read as noise —
+   and comes up while the pointer is on its row, where the help is wanted. */
+.lil-gui .lil-controller .sp-info { opacity: .45; transition: opacity .1s ease; }
+.lil-gui .lil-controller:hover .sp-info { opacity: 1; }
 /* lil-gui turns pointer events off on a disabled controller's children with !important; the chip's help
    still applies, and the higher-specificity selector wins whichever stylesheet lands second */
 .lil-gui .lil-controller.lil-disabled .sp-info { pointer-events: auto !important; }
