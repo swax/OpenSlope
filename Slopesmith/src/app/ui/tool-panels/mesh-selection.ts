@@ -299,7 +299,7 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
         'Sharp edge here: tangents go one-sided so the surface kinks (wall top / lip).');
       if (meshVertexCanSmooth(mdoc, meshAdjacency(buildQuadMesh(mdoc.vertices, mdoc.quads, mdoc.freeEdges)), id)) {
         const smooth = tip(shape.add({ smooth: () => smoothVertices([name]) }, 'smooth').name('smooth (S)'),
-          'Reset this corner to smooth tangents. Regular vertices return to Bessel; extraordinary poles fit a shared tangent plane across their full edge fan.');
+          'Reset this corner to smooth tangents. Regular vertices return to Bessel; extraordinary poles fit a shared tangent plane across their full edge fan, and the interiors of the patches round a pole are refit so its seams meet smoothly along their whole length.');
         actionPair(crease, smooth);
       }
     }

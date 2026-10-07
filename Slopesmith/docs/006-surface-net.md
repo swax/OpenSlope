@@ -49,7 +49,15 @@ you actually shape a wall/crease.
   `corners`, and shared edge handles are derived from the shared corner line — there is no way to
   open a crack. This is the one hard invariant; everything else is shape.
 - **Smooth (G1)** holds wherever handles are Bessel (the default) — the tangents across a seam are
-  collinear by construction, so nothing catches an edge.
+  collinear by construction, so nothing catches an edge. The exception is a seam into an extraordinary
+  vertex (a pole of 3 or 5 patches): the zero-twist interiors agree only at the seam's two ends and kink
+  between them (one authored seam into a valence-5 pole read 0° at both corners and 12° at 70% along).
+  Edit's **Smooth** and **reset shape** therefore also *fair* every pole they touch
+  (`core/mesh/pole-fairing.ts`): a least-squares fit of the interior control point at the pole corner of
+  each unlocked patch in its fan, asking both sides of every pole seam to share one tangent plane along its
+  length. That control point bends only the patch's two seams out of the pole, so the fit stays inside the
+  fan; it is written as `quadTwist`, and kept only when it lowers the fan's widest seam angle. Terrain
+  generation's own smoothing pass does not fair.
 - A **crease** (the top of a wall, a lip) is just a seam where the two sides' handles are *not*
   collinear. That is a feature, authored by pulling a handle or via a "crease" assist. Smoothness is
   therefore a per-seam choice, not a global property — exactly what walls need.
