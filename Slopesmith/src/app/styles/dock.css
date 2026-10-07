@@ -136,6 +136,10 @@ body.os-xr-editing .sp-head, body.os-xr-editing .pl-head { flex-wrap: wrap; over
 .sp-pair-item:hover { background: #ffffff10; border-color: #6ee7a8; }
 .sp-pair-item.sel { border-color: #ffc24d; background: #ffc24d14; }
 .sp-pair-new .sp-pair-thumb-none { color: #9fb3c8; font-size: 16px; }
+/* A trail tile SET is a 4×3 — cap, trail, right turn, left turn, top to bottom — listed as its rows stacked, a row it
+   has none of faded: the trail row is worn there. (Its builder styles itself: components/tile-set-builder.ts.) */
+.sp-set-thumb { display: inline-flex; flex-direction: column; gap: 1px; flex: 0 0 auto; }
+.sp-set-thumb-borrowed { opacity: .3; }
 /* Related binary actions (Crease / Smooth) share one compact row while remaining ordinary lil-gui
    controllers. Keeping them as direct siblings preserves lil-gui's normal rebuild / destroy lifecycle. */
 .lil-gui .lil-controller.sp-action-pair { display: inline-flex; width: 50%; box-sizing: border-box;

@@ -1,8 +1,9 @@
-import type { CoursePath, CourseKnot, MountainMeta, PaintMap, TexPaintMap, QuadMeshDoc, V3 } from './types';
+import type { CoursePath, CourseKnot, MountainMeta, PaintMap, TexPaintMap, QuadMeshDoc, TrailTileSet, V3 } from './types';
 import { normalizeEnvironmentBed } from '../audio/environment';
 import { normalizeAnnouncer } from '../audio/announcer';
 import { ensureGemIds, ensureLightIds, ensureScreenIds, ensureTrailIds, seedMeshIds } from './ids';
 import { normalizeTrails } from './trails';
+import { builtInTrailTileSetTwin, retiredTrailTileSetSuccessor, trailTileSetFromRow, trailTileSetId } from '../mesh/trail-textures';
 import { keyMountainByIndex, storedById } from './serialize';
 import { frameAt, sampleSpine, spineAt, totalLength, type SpineSample } from '../math/spine';
 import { add, dot, lerp, mul, norm, sub } from '../math/vec';
@@ -1293,6 +1294,38 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
     ensureScreenIds(doc.screens);
     ensurePropLineIds(doc.propLines);
     if (doc.trails) doc.trails = normalizeTrails(doc.trails);
+    // The mountain's own trail tile sets were each one row, of a trail, a turn or a cap — and before that pairs, saved
+    // under that name: each is a set of that row alone now, worn along its spans.
+    const savedSets = (doc.trailTileSets ?? d.trailTilePairs) as unknown[] | undefined;
+    delete d.trailTilePairs;
+    if (savedSets) {
+      const sets = savedSets.map(set => (set as Partial<TrailTileSet>).trail ? set as TrailTileSet : trailTileSetFromRow(set))
+        .filter((set): set is TrailTileSet => !!set);
+      // One laid exactly as a built-in set — laid as the mountain's own, since built in — gives way to it: the set goes
+      // and its paths wear the built-in one.
+      const twins = new Map(sets.flatMap(set => {
+        const twin = builtInTrailTileSetTwin(set);
+        return twin ? [[trailTileSetId(set), trailTileSetId(twin)] as const] : [];
+      }));
+      const own = sets.filter(set => !twins.has(trailTileSetId(set)));
+      if (own.length) doc.trailTileSets = own; else delete doc.trailTileSets;
+    }
+    // A path names the set it wears by the name that set goes by now: a built-in one since renamed under its new name —
+    // unless the mountain has a set of its own by the old one.
+    const ownIds = new Set((doc.trailTileSets ?? []).map(trailTileSetId));
+    const twinIds = new Map((savedSets ?? []).flatMap(set => {
+      const whole = (set as Partial<TrailTileSet>).trail ? set as TrailTileSet : trailTileSetFromRow(set);
+      const twin = whole && builtInTrailTileSetTwin(whole);
+      return whole && twin ? [[trailTileSetId(whole), trailTileSetId(twin)] as const] : [];
+    }));
+    const wornAs = (id: string) => twinIds.get(id) ?? (ownIds.has(id) ? id : retiredTrailTileSetSuccessor(id) ?? id);
+    if (doc.trails?.some(trail => trail.paths.some(path => path.settings.trailTiles && wornAs(path.settings.trailTiles) !== path.settings.trailTiles))) {
+      doc.trails = doc.trails.map(trail => ({
+        ...trail,
+        paths: trail.paths.map(path => path.settings.trailTiles && wornAs(path.settings.trailTiles) !== path.settings.trailTiles
+          ? { ...path, settings: { ...path.settings, trailTiles: wornAs(path.settings.trailTiles) } } : path),
+      }));
+    }
     ensureTrailIds(doc.trails);
     normalizeLabels(doc);
     // A dropped `edgeHandles` key raises nothing: the edge falls back to its Bessel default and the terrain

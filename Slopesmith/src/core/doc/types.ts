@@ -181,20 +181,24 @@ export interface MountainMeta {
    *  lamps (docs/070). The members are ordinary `props` entries tagged with the line's id; this is the path
    *  and the settings they are laid out from. Absent in docs saved before prop lines. */
   propLines?: PropLine[];
-  /** TRAILS — a centre spline that owns the two-patch ribbon generated along it (docs/023). The patches are
+  /** TRAILS — a centre spline that owns the ribbon of patches generated along it (docs/023). The patches are
    *  ordinary terrain in the mesh; this is the spline and section they are cut from, and the stable ids of the
    *  vertices and patches it owns. Absent in docs saved before owned trails. */
   trails?: AuthoredTrail[];
-  /** The mountain's own trail tile PAIRS (docs/023 · Textures), beside the shipped maps' built-in ones: what its
-   *  trail paths may wear, by id. Absent while it has none. */
-  trailTilePairs?: TrailTilePair[];
+  /** The mountain's own trail tile SETS (docs/023 · Textures), beside the shipped maps' built-in ones: what its
+   *  trail paths may wear, by id. Absent while it has none; a document saved while a set was one row (or a pair,
+   *  saved as `trailTilePairs`) has them read as sets of that row on load. */
+  trailTileSets?: TrailTileSet[];
 }
 
 /** The section and density a trail's ribbon is cut with — the Create Trail panel's settings (docs/023). */
 export interface TrailSettings {
   /** Rim-to-rim plan width, metres. */
   widthM: number;
-  /** Centre seam across the width, in (0,1); 0.5 makes two equal lanes. */
+  /** Patches across the width — its lanes. Two is Mesa's; a path saved before lanes could change has two. */
+  lanes: number;
+  /** Where the centre spline sits across the width, in (0,1): 0.5 is the middle, larger gives the lanes on the left
+   *  rim's side (the generator's) more of the width. With two lanes it is the centre seam. */
   centerBias: number;
   /** Centre seam below the banked rim chord, as a percentage of width. */
   dishPercent: number;
@@ -206,39 +210,65 @@ export interface TrailSettings {
   bankGainM: number;
   /** Absolute bank clamp, degrees. */
   maxBankDegrees: number;
-  /** The tile pair its spans wear, by id — `MESA/Trail 1` (`TrailTilePair`) — or null to leave them plain. A path
-   *  saved before tile pairs has none, and carries `mesaTextures` instead (`trailSettingsTiles` reads either). */
+  /** The tile set it wears, by id — `MESA/Trail 1` (`TrailTileSet`) — or null to leave it plain. A path saved before
+   *  tile sets has none, and carries `mesaTextures` instead (`trailSettingsTiles` reads either). */
   trailTiles: string | null;
-  /** The pair worn through left turns tighter than `turnRadiusM` — `GARI/Turn 2` — or null to wear `trailTiles`
-   *  there too. Left as a rider going along the path sees it, from its first point to its last. */
-  leftTurnTiles: string | null;
-  /** The same through right turns. */
-  rightTurnTiles: string | null;
-  /** Spans turning tighter than this radius, metres, wear the turn pairs. */
+  /** Spans turning tighter than this radius, metres, wear the set's turn rows. */
   turnRadiusM: number;
+  /** Which of its ends are CAPPED — closed with a square span, one lane long, wearing the set's cap row — where they
+   *  are free ends: an end at a junction has none. A path saved before caps has none. */
+  caps: 'none' | 'start' | 'end' | 'both';
 }
 
 /**
- * A matched PAIR of trail tiles (docs/023 · Textures): one tile drawn across the trail's width and cut in two, a half
- * for each lane of a span — the lane to a rider's left going along the path, and the one to their right. A pair belongs
- * to the map both its
- * tiles come from and is named within it, so its id reads `MESA/Trail 1`, `GARI/Turn 2`. The shipped maps' pairs are
- * built in (`core/mesh/trail-textures.ts`); a mountain's own are in its `trailTilePairs`.
+ * One ROW of a trail tile set (docs/023 · Textures): the tiles a span wears across its lanes — the edge lane to a
+ * rider's left going along the path, the edge lane to their right, and every lane between them the middle tile. A
+ * two-lane path wears its left and right tiles, a one-lane path its middle.
  */
-export interface TrailTilePair {
-  /** The map both halves come from, as their tile refs name it: `MESA`, `GARI`, `Custom`. */
-  level: string;
-  /** Its name within the map: `Trail 1`, `Turn 2`. */
-  name: string;
-  /** Worn along ordinary spans, through left turns, through right turns, or through turns either way: which slots
-   *  the panel offers it in. */
-  kind: 'trail' | 'left-turn' | 'right-turn' | 'turn';
-  /** The tiles of the lanes to a rider's left and right going along the path, as refs: `MESA/0045.png`. */
+export interface TrailTileRow {
+  /** The tiles of the edge lanes to a rider's left and right going along the path, as refs: `MESA/0046.png`; '' leaves
+   *  that lane plain. */
   left: string;
   right: string;
-  /** Quarter turns the halves are worn at beyond a trail tile's own (`TRAIL_TILE_ORIENT`: the tile's v running
+  /** The tile of every lane between them. Absent, a trail row's lanes there stay plain and another row's wear the trail
+   *  row's middle; '' leaves them plain either way. */
+  middle?: string;
+  /** Which of its tiles are worn MIRRORED across the trail — one tile serving both edges, say, its strip on the outside
+   *  of each. Absent: none. */
+  mirrored?: ('left' | 'middle' | 'right')[];
+  /** Quarter turns the tiles are worn at beyond a trail tile's own (`TRAIL_TILE_ORIENT`: the tile's v running
    *  along the path). */
   quarterTurns: number;
+  /** Quarter turns a tile is worn at beyond `quarterTurns`, each its own — laid by hand in the panel's set builder.
+   *  Absent: none. */
+  turns?: Partial<Record<'left' | 'middle' | 'right', number>>;
+}
+
+/**
+ * A matched SET of trail tiles (docs/023 · Textures), a 4×3: the rows a path wears — its CAP row on its capped ends,
+ * its TRAIL row along its spans, and a row each through its tight right and left turns. A set with no cap or turn row
+ * wears its trail row there. A set belongs to the map its tiles come from and is named within it, so its id reads
+ * `MESA/Trail 1`. The shipped maps' sets are built in (`core/mesh/trail-textures.ts`); a mountain's own are in its
+ * `trailTileSets`.
+ */
+export interface TrailTileSet {
+  /** The map its tiles come from, as their refs name it: `MESA`, `GARI`, `Custom`. */
+  level: string;
+  /** Its name within the map: `Trail 1`. */
+  name: string;
+  /** A NARROW set is drawn two across, for two-lane paths — a turn mark or cap drawn across both lanes — and its rows
+   *  have no middle; a path wider wears its edges and leaves the lanes between plain. A WIDE set (absent) is three
+   *  across and fits a path of any width, two lanes wearing its left and right. */
+  narrow?: boolean;
+  /** Worn on a capped end's square span. Its left and right are as a rider travelling out to that end sees them, and its
+   *  turn as it is laid at a path's last point. */
+  cap?: TrailTileRow;
+  /** Worn along ordinary spans. */
+  trail: TrailTileRow;
+  /** Worn through right turns tighter than the path's `turnRadiusM` — right as a rider going along the path sees it,
+   *  from its first point to its last — and through left turns. */
+  rightTurn?: TrailTileRow;
+  leftTurn?: TrailTileRow;
 }
 
 /**
@@ -282,11 +312,12 @@ export interface AuthoredTrail {
   pointSettings?: (TrailKnotSettings | null)[];
   /** The paths, all alike, each its own centre spline with its own settings and handles. */
   paths: TrailPath[];
-  /** Owned vertices by stable id: run by run, three per station (left rim, centre seam, right rim), then for each
-   *  junction a crotch per arm and the hub. */
+  /** Owned vertices by stable id: run by run, station by station, one more than the lanes there (from the generator's
+   *  left rim across to its right), then for each junction a crotch per arm, the hub, and any points of a split
+   *  line. */
   vertices: string[];
-  /** Owned patches by stable id: run by run, two per span (the left lane, then the right), then two per arm of
-   *  each junction. */
+  /** Owned patches by stable id: run by run, span by span, as each lays them (`trailSpanPatches`: a lane at a time from
+   *  the generator's left rim), then each junction's: arm by arm, its lanes carried on. */
   quads: string[];
   /** The shape of its last cut, which is how `vertices` and `quads` divide up. Absent: one run, of the first path. */
   network?: TrailCutShape;
@@ -300,6 +331,13 @@ export interface TrailCutShape {
   runPaths: number[];
   /** How many arms meet at each junction — three at a fork, four at a crossing, two where a loop closes. */
   junctionArms: number[];
+  /** Lanes in each run, and each junction's vertices and patches. Absent while every run has two lanes: then a
+   *  junction has a crotch per arm and the hub, and two patches per arm. */
+  runLanes?: number[];
+  junctionSizes?: { vertices: number; quads: number }[];
+  /** The lanes each run narrows (or widens) to at its first and last stations, into its junctions. Absent while
+   *  every run keeps its own lanes end to end. */
+  runEnds?: [number, number][];
 }
 
 /**

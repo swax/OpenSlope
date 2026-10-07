@@ -249,6 +249,7 @@ export class TextureLibrary {
     this.selKey = req.current ? `tile:${req.current}` : '';
     this.titleEl.textContent = req.title;
     this.cancelBtn.style.display = '';
+    this.cancelBtn.textContent = req.keep ? 'Done' : 'Cancel';
     this.el.classList.add('sp-picking');
     this.show();
     void this.revealPickTarget(req.current);
@@ -428,6 +429,10 @@ export class TextureLibrary {
   }
 
   private select(key: string) { this.selKey = key; this.render(); }
+  /** Move the selection box to `selKey` without a re-render, so the grid keeps its place. */
+  private markSelected() {
+    for (const tile of this.body.querySelectorAll<HTMLElement>('.sp-tile[data-ref]')) tile.classList.toggle('sel', `tile:${tile.dataset.ref}` === this.selKey);
+  }
 
   private render() {
     this.body.innerHTML = '';
@@ -456,7 +461,9 @@ export class TextureLibrary {
       !(staged && staged.has(makeTexRef(this.tex!.level, t.name))));
     const hint = document.createElement('p');
     hint.className = 'sp-hint';
-    hint.textContent = this.pick
+    hint.textContent = this.pick?.keep
+      ? this.pick.hint ?? 'Click a tile to use it. Esc or Done closes the library.'
+      : this.pick
       ? 'Click a tile to use it. Switch level above to browse another bank; Esc or Cancel keeps the current one.'
       : custom
       ? 'Your own tiles. Add an image with the + tile or describe one with ✨, then paint with it or set it on a model from the model banner’s texture swatch (Edit ▸ Editing <model>). Right-click a tile to rename, duplicate or delete it.'
@@ -492,7 +499,11 @@ export class TextureLibrary {
       ? `${label} · your custom tile (${ref}) · drag into your Palette · right-click to rename, duplicate or delete`
       : t.count > 0 ? `${label} · used ${t.count}× · drag into your Palette` : `${label} · not used on terrain · drag into your Palette`);
     // While a pick is up a click ANSWERS it; otherwise it arms the paint brush as usual.
-    sw.onclick = () => { if (this.pick) { this.endPick(ref); return; } this.select(`tile:${ref}`); this.emitTile(ref); };
+    sw.onclick = () => {
+      if (this.pick?.keep) { this.selKey = `tile:${ref}`; this.pick.onPick(ref); this.markSelected(); return; }
+      if (this.pick) { this.endPick(ref); return; }
+      this.select(`tile:${ref}`); this.emitTile(ref);
+    };
     sw.draggable = true;
     sw.ondragstart = e => {
       e.dataTransfer?.setData(DRAG_TILE, JSON.stringify({ ref, surface: DEFAULT_SURFACE }));
@@ -663,7 +674,7 @@ export class TextureLibrary {
     none.className = 'sp-tile sp-add sp-none' + (this.selKey === '' ? ' sel' : '');
     none.textContent = '∅';
     tooltip(none, 'No texture — the model falls back to untextured clay.');
-    none.onclick = () => this.endPick(null);
+    none.onclick = () => { if (this.pick?.keep) { this.pick.onPick(null); return; } this.endPick(null); };
     return none;
   }
 

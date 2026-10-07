@@ -106,7 +106,8 @@ turn concentrated at a join between two cubics now contributes to both banking a
 Edit mode's empty-selection **Create Terrain** group includes **Create Trail**. It lays centre points with the same
 Catmull-Rom-to-Bézier curve as Add Rail and Add Motion Path, and the trail it builds keeps its splines: an
 `AuthoredTrail` in the document's `trails` list (`core/doc/types.ts`) holds its points and paths and the stable ids
-of the vertices and patches it cut. It is the first, two-patch-wide cut of the Track object below.
+of the vertices and patches it cut. It is the first cut of the Track object below: two patches wide as Mesa's are, or
+any number of LANES from 1 to 12 (below).
 
 **Networks.** A trail is a NETWORK: a list of POINTS and the PATHS through them (`TrailPath`: an ordered list of
 point places, with its own settings and Bézier handles). Every path is alike — there is no main trail and no
@@ -170,8 +171,8 @@ point they share with a path not selected moves too, dragging that path's end al
 points each frame — so its patches stay locked and only the trail moves them, and patches joined to it stretch to
 follow. It is World-framed: the mesh's Surface slide does not apply to a trail.
 
-**The panel** exposes the points, the selected paths' section (target width and length, centre dish and seam, turn
-density), banking, its tiles (below), **✚ add points before the start** and **after
+**The panel** exposes the points, the selected paths' section (target width, lanes and length, centre dish and seam,
+turn density), banking, its tiles and caps (below), **✚ add points before the start** and **after
 the end** (the one selected path's: both with no point picked, the picked end's with an end picked), **⑂ start a new
 path here** (any picked point but a free end), **✂ disconnect here** (any point two arms or more meet at,
 `disconnectPoint`: every path running through it is cut there, keeping its shape — the handles either side of the cut
@@ -189,54 +190,150 @@ path's starting value. Deleting a point takes it out of every path through it, e
 and a path left with one point goes. Deleting a path takes its patches and the points only it used; the paths it met
 re-cut without it.
 
-**Textures.** A trail's tiles come in matched PAIRS (`TrailTilePair`): one tile drawn across the trail's width and
-cut in two, a half for each lane of a span — the lane to a rider's left going along the path, and the one to their
-right. A pair belongs to the map both its tiles come from and is named within it, so its id reads `MESA/Trail 1` or
-`GARI/Turn 2`. A path wears three, by id, among its settings: its **trail tiles** along every span, its **left turn
-tiles** through left turns tighter than **turns under** (80 m by default), and its **right turn tiles** through right
-ones — a turn slot left empty wears the trail tiles there too. Left and right are as the path runs, from its first point
-to its last: data space is the game's left-handed frame, so a rider's left is the side the generator calls `right`
-(`[-tz, 0, tx]`), a span turning left has positive signed curvature, and a pair's left half goes on each span's second
-patch. One pair per slot and nothing cycled: a path that should change its tiles part of the way along is split there
-(below) and each piece set on its own. Each pair carries the quarter turn its halves are worn at beyond a trail tile's
-own (the tile's v along the path, above). Each pair is of a KIND — `trail`, `left-turn`, `right-turn`, or `turn` for
-either way — which says which slots list it.
+**Lanes.** A path's **lanes** setting is how many patches wide it is cut: a rail of vertices per lane and one more at
+every station, and a patch per lane per span. The centre spline sits **centre seam** of the way across from the
+generator's left rim, and the lanes either side of it share that side's width evenly — 0.5 makes every lane alike, and
+with two lanes the spline is the centre seam, as it always was. The dish is a parabola across the section, the rims
+**centre dish** above the spline and the rails between them the square of their way out of that. An even number of
+lanes has a rail on the spline, which carries the exact Bézier handles of the centre seam; an odd number puts the
+spline inside the middle lane, and no rail carries them. The width is shared, not multiplied, so a wider trail wants a
+wider width too. A path joined to other patches keeps its lanes with the rest of its layout.
 
-The shipped maps' pairs are built in (`core/mesh/trail-textures.ts`, `TRAIL_TILE_PAIRS`): Mesa's four trail pairs —
-variants of one groomed look, `0045|0044`, `0047|0046`, `0061|0059` (almost only Mesa's section D) and `0042|0002` as
-[left|right] — and its blue and red striped turn pairs. Mesa marks a turn's WAY with them: the same striped tile turned
-round, its stripes down the centre seam either way — blue `0064|0066` with its top downhill on 12 left turns and 1
-right, `0066|0064` with its top uphill on 24 right turns and no left; red `0062|0063` on left turns only and `0063|0062`
-on right ones. So they are `MESA/Left Turn 1` and `2` and `MESA/Right Turn 1` and `2`, and a new path wears
-`MESA/Trail 1`, `MESA/Left Turn 1` and `MESA/Right Turn 1`. (A path still naming the single `MESA/Turn 1` or `2` of
-before wears the split pair for each side; those names are never given out again.)
+Where a path meets others its lanes TAPER. A junction (below) is two lanes in and out at its hub, whatever meets
+there, and two path ends meeting alone — a path SPLIT in two (below), two paths laid end to end, a loop closed — are as
+wide as the narrower across the point. So each run's ends have a lane count of their own (`trailStationLanes`): over
+its last spans it changes to it a lane a span — a six-lane path joining a four-lane one is six, five, then four — or
+as many a span as it must, where the run is too short, and one too short to reach its own width stays narrower
+between. A lane dropping out is a middle one, the middle-most first, and ends in a WEDGE (docs/017: a patch whose last
+two corners are one) running to a point on the next station, the lanes either side closing over it like a road's
+(`trailSpanPatches`); a lane coming in begins as one. So the edge lanes run on unbroken, their tiles with them, and
+the wedges wear the middle tile. A fork of three, two and four lanes is the ordinary six-pole round its hub, the
+three-lane path narrowing over one span and the four-lane over two. At a split the two sides, as wide as each other
+by then, run straight on across the split line, which has a point on every rail — the hub one of them, where a rail
+runs along the spline — so a four-lane path split is four lanes wide there too.
 
-**Finding a map's pairs.** `tools/mountain-study/trail-pairs.ts` finds them from a map's patches alone, with no
+**Textures.** A trail's tiles come in matched SETS (`TrailTileSet`), each a 4×3: four ROWS (`TrailTileRow`) of a
+**left** tile for the edge lane to a rider's left going along the path, a **right** tile for the edge lane to their
+right, and a **middle** tile for every lane between them — a two-lane path wears a row's left and right (a pair, as
+Mesa's are: one picture drawn across the trail's width and cut in two), a one-lane path its middle. Its **trail** row is
+worn along every span; its **right turn** and **left turn** rows through turns tighter than **turns under** (80 m by
+default); and its **cap** row on a capped end (below). A set with no cap or turn row wears its trail row there, and a
+cap or turn row with no middle the trail row's (`trailTileSetRow`) — a map marks a turn on its edges; a trail row with
+no middle leaves the lanes between plain. A set is WIDE — three across, fitting a path of any width, two lanes wearing
+its left and right — or NARROW (`narrow`): two across, for two-lane paths, its rows with no middle, for turn marks and
+caps drawn across both lanes, which a third lane between would split (`trailTileSetFits`). The panel offers a narrow
+set to a two-lane path only, and a path wider that wears one keeps its middle lanes plain, and says so. A set belongs to
+the map its tiles come from and is named within it, so its id reads `MESA/Trail 1`; a path wears one, by id, among its
+settings. Left and right are as the path runs, from its first
+point to its last: data space is the game's left-handed frame, so a rider's left is the side the generator calls
+`right` (`[-tz, 0, tx]`), a span turning left has positive signed curvature, and a row's left tile goes on each span's
+last patch. One set per path and nothing cycled: a path that should change its tiles part of the way along is split
+there (below) and each piece set on its own. Each row carries the quarter turn its tiles are worn at beyond a trail
+tile's own (the tile's v along the path, above), and may wear any of its tiles MIRRORED across the trail (`mirrored`)
+— one edge tile serving both edges, its strip on the outside of each. The D4 mirror flips a tile along the trail (the
+patch's u), so across is that and half a turn (`mirrorAcross`). A junction's lanes wear their lanes' tiles on into it,
+and the wedges where lanes drop out wear the middle tile.
+
+The shipped maps' sets are built in (`core/mesh/trail-textures.ts`, `TRAIL_TILE_SETS`): laid by hand in the set builder
+(below), tile by tile as each reads to a rider going along the path, and copied out as their layouts. Most maps mark a
+turn with RIGHT TRIANGLES, laid to point into the turn: the flat side facing downhill, the hypotenuse uphill, and the
+upright side on the turn's side — ◥ against the right edge through a right turn, ◤ against the left through a left; a
+triangle drawn across two tiles has its big part on the turn's side and its point on the other, which a narrow set
+keeps whole. (The study reads the maps laying them the other way round, and its rows keep no mirroring, so the sets are
+laid by their art rather than as found.) Each is its map's **Preset 1**, and on to 2 and 3 where a map has more:
+**ALASKA/Preset 1** (`0137` right across, red triangles `0003`), **ALOHA/Preset 1** (cyan ice edged white, red and blue
+triangles), **GARI/Preset 1** and **2** (narrow, Gari's groomed edge `0012` both sides), **GARI/Preset 3** (wide,
+`0012|0020|0012`), **MESA/Preset 1** (narrow, Mesa's groomed `0047` both sides, its blue and red stripes through turns,
+its rounded end) and **SNOW/Preset 1**. A new path wears `GARI/Preset 3` until a set is chosen for one; then the panel
+remembers the last chosen, across reloads too (`StoredUi.trailTileSet`), and falls back to `GARI/Preset 3` in a mountain
+without a set of that name. A path saved before tile sets wears `MESA/Preset 1`. The sets these replaced, and the names
+the presets were laid under as a mountain's own (`GARI/Trail 3`, …), are never given out again: a path still naming one
+wears the set after it with the same trail row — `MESA/Trail 1` to `4` as `MESA/Preset 1`, `GARI/Snow Trail` as
+`GARI/Preset 3`, and so on (`RETIRED_TRAIL_TILE_SETS`) — or, where none follows it, goes plain; and a mountain loaded
+names it by its new name, unless it has a set of its own by the old one. A mountain's own set laid exactly as a preset
+(`builtInTrailTileSetTwin`) gives way to it on load: the set goes and its paths wear the preset. One with a built-in
+one's name stands behind it.
+`trail-presets.ts` in the study tools draws every built-in set as its 4×3, to judge by (`temp/trail-presets.html`;
+`--inline` puts the pictures in the page).
+
+**Finding a map's sets.** `tools/mountain-study/trail-sets.ts` finds them from a map's patches alone, with no
 centreline picked: wherever two textured patches meet with the right art edge of one tile on the left art edge of the
-other, art up the same way, the picture runs across the seam — a matched pair. It keeps a seam only when neither half is
-matched again across its far side, since a trail is two patches across and a rock wall or tiled field is matched on
-every side, and drops tiles laid mostly on rock, walls or out of bounds. Going downhill along each seam it reads which
-tile is on a rider's left, which way the art's top faces, and how tightly and which way the seam turns (the inner rim is
-the shorter). Two tiles laid through turns under 80 m at least 60% of the time are turn pairs — the way they are laid
-most through left turns a left-turn pair, through right turns a right-turn pair — and others are a trail pair laid
-their commonest way. It prints every candidate as a `TrailTilePair` line to paste in, named by how often the map lays
-it, and writes `temp/trail-pairs.html`: each candidate as the art, as a rider going downhill sees it, to choose by eye —
-a ground transition can match too. It recovers Mesa's pairs exactly, and finds directional turn pairs on ALASKA, ALOHA
-(a marker on the outside half only), ELYSIUM and MERQUER; MEGAPLE and UNTRACK lay almost no two-patch matched ribbons.
+other, art up the same way, and the pixels either side of the seam agree, the picture runs across the seam. Following
+such seams across gives a ROW, the tiles one span wears from rim to rim. Plain ground runs on across its seams too,
+tiled with itself, so a tile laid beside itself that way often is ground and is trimmed off a row's ends: a trail
+running into snow is as wide as its own tiles. A row two to eight tiles wide, its edges other tiles than its middles, on
+mostly trail ground, is kept: two wide is a pair, and a wider one shows a MIDDLE the map lays between those edges. Going
+downhill along each row it reads which edge is on a rider's left, which way the art's top faces, and how tightly and
+which way the row turns (the inner rim is the shorter). Edges laid through turns under 80 m at least 60% of the time
+are turn sets — the way they are laid most through left turns a left-turn set, through right turns a right-turn set —
+and others a trail set laid their commonest way. (A "set" here is one row of a set: the study's sets are rows, its
+kinds which rows they are.) Every set is also given middles by its art: each of the map's trail
+tiles scored by how well its left edge runs on from the left tile's right edge and its right edge into the right
+tile's left edge (mean colour difference along the edge columns, beside the edges' own seam), how well it repeats
+beside itself, and how near its whole colour is to the edges' — edges alone would take a logo with snow round it. It
+prints every candidate as a row line to paste into a set, its middle the one seen in use or else the best by art, and
+writes `temp/trail-sets.html`: each candidate as the art, as a rider going downhill sees it, with the middles seen and
+the best five by art, to choose by eye. It also counts, for each set, the sets whose rows are next along its trails —
+a map's turn rows are next to the trail they mark — and draws each trail set as a whole set too: its row, the turn rows
+it runs on into most each way (with the trail's middle where none was seen between theirs), and its commonest cap, the
+4×3 a path wears, with the literal to paste into `TRAIL_TILE_SETS`. It recovers Mesa's pairs, and finds trails wider than two on ALASKA,
+ALOHA (up to six), ELYSIUM, MERQUER (three and five), SNOW (four, its commonest trail) and UNTRACK (three throughout);
+PIPE's are its halfpipe walls. Mesa's own trails are two wide, so its middles are by art: its groomed tiles' other
+variants.
 
-A mountain's own pairs live in its document's
-`trailTilePairs` (one global register, docs/039) and are named on the same pattern, next among their map's: the first a
-mountain makes from GARI's tiles is `GARI/Trail 1`. Each slot is a dropdown of pictures: its value is the worn pair's
-two halves and its id, and it opens a list of every pair of its kind as its art, under its map's name, with none first
-and **new pair…** last. A pair is drawn as a rider going along the path sees it, the path running up the screen: its
-left half on the left, each half turned as the terrain wears it (`trailTileViewOrient`: a half's quarter turns plus
-two, as `orientCss` draws a D4). **new pair…** makes one of the mountain's own — its left lane's tile and then its
-right lane's, chosen in the Texture Library, both from one map — and wears it. A pair of the mountain's own that a
-selected path wears shows below, its halves to choose again, **⇄ swap** its halves, its turn and **✕ delete**: every
-change re-cuts every path wearing it, and deleting it leaves those paths plain there. A pair that cannot be found lays
-nothing. A re-cut that lays no tile on a patch takes back only what a pair lays there — the built-in ones' tiles and
-the mountain's own — so a tile painted by hand stays. Paths saved before tile pairs carried only `mesaTextures`, and
-load wearing Mesa's first pairs, or plain; ones saved with a single turn pair wear it through both turns.
+A trail ENDS as well, and many maps close it with a CAP: corner pieces drawn round its end, a row across or more. Along
+a trail its rows meet across their tiles' art tops and bottoms, so the study walks out along every trail row, row by
+row, until open ground. A tile whose patches lie mostly within a row or so of an end is a cap tile; rows of cap tiles,
+on trail ground, passed on the way out are the set's cap (up to three rows deep), and the set's own row running
+straight into ground is a bare end. Each cap tile is read as a rider sees it travelling out to the end — which way its
+art's top faces, and whether it is mirrored — so a cap at a trail's start and one at its end read alike, and the sheet
+draws each cap above the set's last row: two lanes and a row of cap a 2×2 block, three lanes a 2×3. A row that is
+mostly a cap is not offered as a set of its own. Mesa closes its groomed trails with `0043 | 0041`, a rounded end
+across both lanes (mirrored for some ends, and once turned into a 90° corner); ALOHA and SNOW end some with a red
+triangle across the trail, TRICK with a rounded end, and PIPE its halfpipe with three rows across three lanes. Between
+two rows it also reads how the next is laid — repeated, turned half round, flipped or mirrored — which is how a map runs
+its art on along a trail: Mesa mixes all four. It writes `temp/trail-caps.html` too: every cap found, square, closing
+its trail two lanes wide (2×2: the trail's last row and the cap) and three (2×3: the set's middle in the trail's row,
+and in the cap's the best middle by art — its edges running on from the cap's left and right tiles, its foot from the
+trail's middle), with its `cap:` row to paste into a set where the cap is laid at one turn (some tiles mirrored). Mesa's
+most common, `0041|0043` mirrored, is `MESA/Trail 1`'s cap row.
+
+**Caps.** A path's **caps** setting (Textures: none, start, end or both ends) closes its free ends: the last stretch of
+spline before a capped end, as long as a lane is wide, is a span of its own — square — and wears its set's **cap** row
+(its trail row, where the set has none). A new path is capped at both ends until the setting says otherwise; a path
+saved before caps has none. An end at a junction or a joint carries on into it and is never capped. A cap
+row's tiles read as a rider travelling out to the end sees them, and its turn is as laid at a path's last point; at its first point the row is turned round, its left tile on the path's
+right, so one cap closes either end. The spans between are cut as ever; a path too short from its first point (or to
+its last) for a cap is refused by name, and a path turned round keeps its caps on the ends they were on.
+
+A mountain's own sets live in its document's
+`trailTileSets` (one global register, docs/039) and are named on the same pattern, next among their map's: the first a
+mountain makes from GARI's tiles is `GARI/Trail 1` (past any name retired). The **tile set** setting is a dropdown of
+pictures: its value is the worn set's trail row and its id, and it opens a list of every set as its 4×3, under its
+map's name, a row a set has none of faded, with none first and **new set…** last. A row is drawn as a rider going along
+the path sees it, the path running up the screen: its left tile on the left, then its middle, then its right, each
+turned as the terrain wears it (`trailTileViewOrient`: a tile's quarter turns plus two, as `orientCss` draws a D4).
+**new set…** makes one of the mountain's own — its trail row's left lane's tile and then its right lane's, chosen in
+the Texture Library, all from one map, and for a path other than two lanes wide its middle lanes' last (Esc there
+leaves them plain) — and wears it; a built-in set worn offers **⧉ copy** instead, which makes it the mountain's own,
+every row, to change. A set of the mountain's own that a selected path wears shows below — its **set width**, wide or narrow (made narrow,
+it loses its middles), and the SET BUILDER (`ui/components/tile-set-builder.ts`): its 4×3, or a narrow set's 4×2, in
+squares as large as the panel allows, packed edge to edge as the
+Palette's are, each tile as a rider going along the path sees it. Tiles are dragged in from the Texture Library —
+**▦ texture library** opens it in Edit mode as a standing pick, every click placing the tile in the selected square
+(upright) until **Done** — and a square dragged onto another swaps the two (⇧ copies). ← / → turn the selected
+square's tile and ⇧ (or ↑ / ↓) mirrors it, the editor's one tile-turning gesture (`turnD4`, shortcuts.ts); a tile turned so carries
+a quarter turn of its own beyond its row's (`TrailTileRow.turns`, `withTrailTileRowView`). A ✕ clears a square — a cap
+or turn row's middle cleared stays plain, where one left out wears the trail row's — and the ✕ by a cap or turn row
+takes it off (its trail row is worn there again). A row the set has none of shows faded, and changing it gives the set
+the row, starting from its trail row; a change between two rows is one edit. **⧉ copy layout** copies the set as it is
+written among the built-in ones (`trailTileSetLiteral`), to paste in as a preset. **✕ delete** deletes it. Every change
+re-cuts every path wearing it, and deleting it leaves those paths plain. A set that cannot be found lays nothing. A re-cut that lays no tile on a patch takes back only what a set lays
+there — the built-in ones' tiles, those of the sets retired, and the mountain's own, the edited set's old tiles among
+them — so a tile painted by hand stays. Paths saved before tile sets carried only `mesaTextures`, and load wearing
+Mesa's set, or plain; ones saved while turns and caps wore sets of their own load wearing their trail's set alone,
+whose rows those are now; and a document saved while a set was one row of a kind (or a pair, as `trailTilePairs`) has
+each read as a set of that row along its spans, and its paths load two lanes wide.
 
 **Per-point section.** A picked point adds a **Point N** group to the panel: its width, centre seam and centre dish,
 and its bank. Each row shows the value it is cut with there; moving it makes the value the point's own (the row is
@@ -259,16 +356,18 @@ trail again further out — and every lane carries on into the opening: each run
 point, each pair of facing rims runs on to the crotch where they cross (on the rim itself, abeam the point, where a
 path runs straight through), and between a seam and a crotch lies one patch per lane, written as the lane's own next
 patch and wearing its path's ordinary tile — never the tight-turn stripes, which stop where the ribbon does. A fork is
-six quads around a valence-6 hub — the six-pole the shipped levels knit by hand — a crossing eight around a
-valence-8 hub, a joint four around a valence-4 hub. A junction that cannot be knitted — a path leaving too close
-along another — is refused by name (which path, between which points; which junction point).
+six quads around a valence-6 hub — the six-pole the shipped levels knit by hand — a crossing eight around a valence-8
+hub, a joint four around a valence-4 hub; a path of other lanes tapers on its way in, as **Lanes** says. A
+junction that cannot be knitted — a path leaving too close along another — is refused by name (which path, between
+which points; which junction point).
 
 **The cut** (`core/mesh/trail-object.ts` `cutTrail`) lays the trail out on its own first — one ribbon, or the
-network: the runs path by path, then for each junction a crotch per arm and the hub — and writes that over what the
-trail already owns slot by slot: the same vertices and patches wherever the old cut had one, new ones past its end,
-and what it had past the new end retired through the shared compactor. A trail of more than one run keeps the shape
-of its last cut (`network`: spans per run, the path each run belongs to, and the arms of each junction), which is how
-its names divide up. Every handle on the ribbons' edges is cleared and derived again — the exact centre seam, then the
+network: the runs path by path, station by station, then for each junction a crotch per arm, the hub, and the points
+of a split line — and writes that over what the trail already owns slot by slot: the same vertices and patches wherever
+the old cut had one, new ones past its end, and what it had past the new end retired through the shared compactor. A
+trail of more than one run, or of lanes other than two, keeps the shape of its last cut (`network`: spans per run, the
+path each run belongs to, and the arms of each junction — and, once any run is not two lanes wide, each run's lanes,
+the lanes it tapers to at its ends, and each junction's vertex and patch counts), which is how its names divide up. Every handle on the ribbons' edges is cleared and derived again — the exact centre seam, then the
 lock's materialised Bessel handles — so a re-cut in place is the same surface as cutting the moved spline fresh. A
 point drag cuts once per frame, each time from the document as it stood when the drag began, so the frames do not
 pile up each other's minted and retired ids.

@@ -9,28 +9,43 @@ import { directedEdgeKey } from './primitives';
 export type TrailCubic = readonly [V3, V3, V3, V3];
 
 /**
- * One matched pair as a ribbon wears it: the tiles of the lanes to a rider's left and right going along the spline,
- * and the quarter turns both are worn at beyond a trail tile's own (`TRAIL_TILE_ORIENT`). A half that is '' leaves its
- * lane plain.
+ * One matched set as a ribbon wears it: the tiles of the edge lanes to a rider's left and right going along the
+ * spline, the tile of every lane between them, and the quarter turns all are worn at beyond a trail tile's own
+ * (`TRAIL_TILE_ORIENT`). A ribbon one lane wide wears the middle tile. A tile that is '' (or a middle that is absent)
+ * leaves its lanes plain.
  *
  * Data space is the game's left-handed frame, so a rider's left is the side the generator calls `right` (its
- * `[-tz, 0, tx]`): the `left` half goes on each span's second patch, the `right` half on its first.
+ * `[-tz, 0, tx]`): the `left` tile goes on each span's last patch, the `right` tile on its first.
  */
-export interface TrailTileHalves {
+export interface TrailLaneTiles {
   left: string;
   right: string;
+  middle?: string;
   quarterTurns?: number;
+  /** The tiles worn mirrored across the trail. */
+  mirrored?: readonly ('left' | 'middle' | 'right')[];
+  /** Quarter turns a tile is worn at beyond `quarterTurns`, each its own. */
+  turns?: Readonly<Partial<Record<'left' | 'middle' | 'right', number>>>;
 }
 
-/** The tiles a ribbon wears: one pair along its spans, and others through left and right turns tighter than
- *  `turnRadiusM`. */
+/** A tile orientation mirrored ACROSS the trail. The D4 mirror flips the tile along it (the patch's u, which runs
+ *  along the trail), so across is that and half a turn. */
+export const mirrorAcross = (o: { rot: number; mirror: boolean }): { rot: number; mirror: boolean } =>
+  ({ rot: (o.rot + 2) % 4, mirror: !o.mirror });
+
+/** The tiles a ribbon wears, a tile set's rows: one along its spans, others through left and right turns tighter than
+ *  `turnRadiusM`, and one on its capped ends. */
 export interface TrailTiling {
   /** Worn along every span but the tight ones; absent leaves them plain. */
-  trail?: TrailTileHalves | null;
+  trail?: TrailLaneTiles | null;
   /** Worn through left (right) turns tighter than `turnRadiusM` — a rider's left going along the spline, where the
    *  signed curvature is positive (negative); absent wears `trail` there too. */
-  leftTurn?: TrailTileHalves | null;
-  rightTurn?: TrailTileHalves | null;
+  leftTurn?: TrailLaneTiles | null;
+  rightTurn?: TrailLaneTiles | null;
+  /** Worn on a capped end's square span, as a rider travelling out to that end sees it: laid as given at the path's
+   *  last point, and turned round at its first — where travelling out is going back along it. Absent wears the
+   *  trail's own tiles there. */
+  cap?: TrailLaneTiles | null;
   turnRadiusM?: number;
 }
 
@@ -40,7 +55,7 @@ export interface TrailTiling {
 export interface TrailKnotProfile {
   widthM?: readonly number[];
   dishFraction?: readonly number[];
-  /** Centre seam position across the width: 0.5 is equal lanes, larger gives the minus/left lane more width. */
+  /** The spline's place across the width: 0.5 is the middle, larger gives the minus/left lanes more width. */
   centerBias?: readonly number[];
   /** Explicit signed banks in degrees; a null entry is the curvature auto-bank at that knot. Between two knots
    *  the bank eases from one knot's to the next, an automatic knot's being the auto-bank wherever it is read:
@@ -54,9 +69,13 @@ export interface TrailKnotProfile {
 export interface TrailOptions {
   /** Horizontal rim-to-rim width. Mesa's selected two-lane trail median is ~13.0m in plan (~15.5m on surface). */
   widthM?: number;
-  /** Centre seam position across the full width, in (0,1); 0.5 makes two equal patch lanes. */
+  /** Patches across the width, 1 to `MAX_TRAIL_LANES`. Mesa's trails are two. */
+  lanes?: number;
+  /** Where the spline sits across the full width, in (0,1). The lanes either side of it share their side's width
+   *  evenly, so 0.5 makes equal lanes, and with two lanes it is the centre seam. */
   centerBias?: number;
-  /** Centre seam below the banked rim chord, as a fraction of width. Mesa plan-width median is 0.105. */
+  /** The spline's place below the banked rim chord, as a fraction of width — the dish, a parabola across the lanes
+   *  (two lanes: the centre seam). Mesa plan-width median is 0.105. */
   dishFraction?: number;
   /** Ordinary station spacing cap. Curvature can cut shorter spans. */
   maxPatchLengthM?: number;
@@ -72,10 +91,13 @@ export interface TrailOptions {
   surface?: number;
   textures?: TrailTiling;
   knotProfile?: TrailKnotProfile;
+  /** Close the ribbon's first (last) span as a CAP: square, as long as a lane is wide, wearing the tiling's cap. */
+  caps?: { start?: boolean; end?: boolean };
 }
 
 export const MESA_TRAIL_DEFAULTS = {
   widthM: 13,
+  lanes: 2,
   centerBias: 0.5,
   dishFraction: 0.105,
   maxPatchLengthM: 22.5,
@@ -87,10 +109,16 @@ export const MESA_TRAIL_DEFAULTS = {
   surface: 1,
 } as const;
 
+/** The most lanes a trail is cut with. */
+export const MAX_TRAIL_LANES = 12;
+
 export interface TrailStation {
+  /** The spline's point, and the rims. */
   center: V3;
   left: V3;
   right: V3;
+  /** Every rail's point, from the generator's left rim across to its right: one more than the lanes. */
+  rails: V3[];
   tangent: V3;
   signedCurvature: number;
   bankDegrees: number;
@@ -109,19 +137,86 @@ export interface TrailSpan {
   planLengthM: number;
   signedCurvature: number;
   radiusM: number;
-  textures?: readonly [string, string];
-  /** How both halves are worn: `TRAIL_TILE_ORIENT`, turned further for the tight set. */
+  /** Each of its patches' tiles, in the order it lays them (`trailSpanPatches`): a lane at a time from the generator's
+   *  left rim; '' leaves one plain. */
+  textures?: readonly string[];
+  /** How its tiles are worn: `TRAIL_TILE_ORIENT`, turned further as its set says — and, where `textureMirrors` says,
+   *  mirrored across the trail. */
   textureOrient?: { rot: number; mirror: boolean };
+  textureMirrors?: readonly boolean[];
+  /** Quarter turns each patch's tile is worn at beyond `textureOrient`, where its set turns tiles of their own. */
+  textureTurns?: readonly number[];
+  /** The cap closing the ribbon's first or last point, where this span is one. */
+  cap?: 'start' | 'end';
 }
 
-/** One generated ribbon: the mesh it was appended to, the three rails of vertices along it, and the geometry
- *  each was derived from. */
+/** One generated ribbon: the mesh it was appended to, its vertices station by station — from the generator's left rim
+ *  across to its right, one more than the lanes there — and the geometry each was derived from. */
 export interface TrailRibbon {
   doc: QuadMeshDoc;
-  rails: { left: number[]; center: number[]; right: number[] };
+  sections: number[][];
+  /** Its patches, span by span, as each span lays them (`trailSpanPatches`). */
   quads: number[];
   stations: TrailStation[];
   spans: TrailSpan[];
+}
+
+/** The rail running along the spline itself, which carries its exact handles: the middle one of an even number of
+ *  lanes. An odd number puts the spline inside the middle lane, on no rail. */
+export const trailSeamRail = (lanes: number): number | null => lanes % 2 ? null : lanes / 2;
+
+/**
+ * The lanes at each station of a run `spans` long and `lanes` wide whose first and last stations are `ends` lanes wide
+ * — narrowing into a junction, or to meet a path not as wide. From each end it changes a lane a span toward its own
+ * width, or as many a span as it must to get there and back; a run too short to reach its width stays narrower.
+ */
+export function trailStationLanes(spans: number, lanes: number, ends?: readonly [number, number]): number[] {
+  const [head, tail] = ends ?? [lanes, lanes];
+  const rate = Math.max(1, Math.ceil(Math.max(Math.abs(head - lanes), Math.abs(tail - lanes)) / Math.max(1, spans)));
+  const off = (end: number, steps: number) => Math.sign(end - lanes) * Math.max(0, Math.abs(end - lanes) - rate * steps);
+  return Array.from({ length: spans + 1 }, (_, i) => {
+    const a = off(head, i), b = off(tail, spans - i);
+    return lanes + (a <= 0 && b <= 0 ? Math.min(a, b) : a >= 0 && b >= 0 ? Math.max(a, b) : a + b);
+  });
+}
+
+/** One patch of a span: its corners as [0 for the span's first station or 1 for its next, rail there], the lane of the
+ *  wider station it is — null for a lane ending (or starting) in a wedge — and whether it is a wedge pointing back
+ *  along the trail, its tile turned half round to match. */
+export interface TrailSpanPatch { corners: [0 | 1, number][]; lane: number | null; turned: boolean }
+
+/** The lanes a station narrowing from `wider` to `narrower` leaves out: the middle-most, a lane at a time, so the
+ *  edge lanes run on. */
+function droppedLanes(wider: number, narrower: number): Set<number> {
+  const lanes = Array.from({ length: wider }, (_, i) => i), out = new Set<number>();
+  while (lanes.length > narrower) out.add(lanes.splice(Math.floor((lanes.length - 1) / 2), 1)[0]);
+  return out;
+}
+
+/**
+ * The patches of a span from a station `from` lanes wide to the next, `to` lanes wide, a lane at a time from the
+ * generator's left rim. Each lane carries on; where the lanes change, the middle-most of the wider station's end (or
+ * begin) in a WEDGE (docs/017: a patch whose last two corners are one) to a point on the narrower station — a lane
+ * dropping out like a road's, the lanes either side closing over it.
+ */
+export function trailSpanPatches(from: number, to: number): TrailSpanPatch[] {
+  const wider = Math.max(from, to), dropped = droppedLanes(wider, Math.min(from, to));
+  const narrowing = from >= to;
+  const out: TrailSpanPatch[] = [];
+  let j = 0;
+  for (let g = 0; g < wider; g++) {
+    if (dropped.has(g)) {
+      out.push(narrowing
+        ? { corners: [[0, g], [0, g + 1], [1, j], [1, j]], lane: null, turned: false }
+        : { corners: [[1, g + 1], [1, g], [0, j], [0, j]], lane: null, turned: true });
+      continue;
+    }
+    out.push(narrowing
+      ? { corners: [[0, g], [0, g + 1], [1, j], [1, j + 1]], lane: g, turned: false }
+      : { corners: [[0, j], [0, j + 1], [1, g], [1, g + 1]], lane: g, turned: false });
+    j++;
+  }
+  return out;
 }
 
 export type TrailResult = ({ ok: true } & TrailRibbon) | { ok: false; error: string };
@@ -212,19 +307,38 @@ function sliceCubic(cp: TrailCubic, t0: number, t1: number): [V3, V3, V3, V3] {
 }
 
 /**
- * The tiles a span turning at `signedCurvature` wears, and how: through a turn tighter than the tiling's radius, the
- * pair for that way of turning — positive curvature turns to a rider's left — and the trail pair elsewhere, or where
- * that turn has none. `tiles` follows the span's patches, the generator's left rail's lane first: the rider's right.
+ * The tiles a span turning at `signedCurvature` wears across `lanes`, and how: on a cap, the tiling's cap; through a
+ * turn tighter than the tiling's radius, the set for that way of turning — positive curvature turns to a rider's left
+ * — and the trail set elsewhere, or where those have none. `tiles` follows the span's patches, the generator's left rail's lane first:
+ * the rider's right edge, then the middle lanes, then the rider's left edge. `middle` is the set's middle tile, for
+ * the patches of a junction between its lanes and its hub.
  */
-function textureForSpan(tiling: TrailTiling | undefined, signedCurvature: number):
-{ tiles: readonly [string, string]; orient: { rot: number; mirror: boolean } } | undefined {
+function textureForSpan(tiling: TrailTiling | undefined, signedCurvature: number, lanes: number, cap?: 'start' | 'end'):
+{
+  tiles: string[]; middle: string; mirrors: boolean[]; middleMirrored: boolean; turns: number[]; middleTurns: number;
+  orient: { rot: number; mirror: boolean };
+} | undefined {
   const tight = Math.abs(signedCurvature) >= 1 / (tiling?.turnRadiusM ?? 80);
   const turn = tight ? (signedCurvature > 0 ? tiling?.leftTurn : tiling?.rightTurn) : null;
-  const pair = turn ?? tiling?.trail;
-  if (!pair) return undefined;
-  const turns = Math.trunc(pair.quarterTurns ?? 0);
+  const capSet = cap ? tiling?.cap : null;
+  const set = capSet ?? turn ?? tiling?.trail;
+  if (!set) return undefined;
+  // A cap reads as a rider travelling out to its end sees it; at the first point that is back along the path, so the
+  // row is turned round, and its left lane is the path's right.
+  const back = !!capSet && cap === 'start';
+  const turns = Math.trunc(set.quarterTurns ?? 0) + (back ? 2 : 0);
+  const middle = set.middle ?? '';
+  const [first, last] = back ? ['left', 'right'] as const : ['right', 'left'] as const;
+  const which = (lane: number) => lanes === 1 ? 'middle' : lane === 0 ? first : lane === lanes - 1 ? last : 'middle';
+  const flipped = (side: 'left' | 'middle' | 'right') => !!set.mirrored?.includes(side);
+  const turned = (side: 'left' | 'middle' | 'right') => Math.trunc(set.turns?.[side] ?? 0);
   return {
-    tiles: [pair.right, pair.left],
+    tiles: Array.from({ length: lanes }, (_, lane) => { const side = which(lane); return side === 'middle' ? middle : set[side]; }),
+    middle,
+    mirrors: Array.from({ length: lanes }, (_, lane) => flipped(which(lane))),
+    middleMirrored: flipped('middle'),
+    turns: Array.from({ length: lanes }, (_, lane) => turned(which(lane))),
+    middleTurns: turned('middle'),
     orient: { rot: (((TRAIL_TILE_ORIENT.rot + turns) % 4) + 4) % 4, mirror: TRAIL_TILE_ORIENT.mirror },
   };
 }
@@ -235,6 +349,8 @@ export interface TrailLayoutOptions extends TrailOptions {
    *  vertices move, and the patches sharing them stretch with it. The spans are shared out across the source
    *  cubics by the same length and turn demand the adaptive count reads, at least one each. */
   spanCount?: number;
+  /** The lanes at its first and last stations, where they are not its own (`trailStationLanes`). */
+  laneEnds?: readonly [number, number];
 }
 
 /** The stations and spans of one ribbon, before any of it is written into a mesh. */
@@ -259,9 +375,9 @@ function apportionSpans(demand: readonly number[], total: number): number[] {
 }
 
 /**
- * The geometry of a Mesa-like two-patch-wide trail around an exact cubic spline: where every station's three
- * rail points sit and which exact sub-cubic each span's centre seam follows. Pure — `applyTrailSpline` appends
- * it as new mesh, and an owned trail (`trail-object.ts`) writes it back over the vertices it already has.
+ * The geometry of a Mesa-like trail, some patches wide, around an exact cubic spline: where every station's rail
+ * points sit and which exact sub-cubic each span follows. Pure — `applyTrailSpline` appends it as new mesh, and an
+ * owned trail (`trail-object.ts`) writes it back over the vertices it already has.
  */
 export function layoutTrailSpline(spline: readonly TrailCubic[], options: TrailLayoutOptions = {}): TrailLayoutResult {
   if (!spline.length) return { ok: false, error: 'Trail needs at least one cubic spline segment.' };
@@ -273,6 +389,11 @@ export function layoutTrailSpline(spline: readonly TrailCubic[], options: TrailL
   }
 
   const opts = { ...MESA_TRAIL_DEFAULTS, ...options };
+  if (!Number.isInteger(opts.lanes) || opts.lanes < 1 || opts.lanes > MAX_TRAIL_LANES)
+    return { ok: false, error: `A trail is 1 to ${MAX_TRAIL_LANES} patches wide.` };
+  const lanes = opts.lanes;
+  if (options.laneEnds?.some(end => !Number.isInteger(end) || end < 1 || end > MAX_TRAIL_LANES))
+    return { ok: false, error: `A trail's ends are 1 to ${MAX_TRAIL_LANES} patches wide.` };
   if (!(opts.widthM > 0) || !(opts.centerBias > 0 && opts.centerBias < 1)
     || !(opts.dishFraction >= 0) || !(opts.maxPatchLengthM > 0)
     || !(opts.minPatchLengthM > 0 && opts.minPatchLengthM <= opts.maxPatchLengthM)
@@ -322,37 +443,58 @@ export function layoutTrailSpline(spline: readonly TrailCubic[], options: TrailL
   const spans: TrailSpan[] = [];
   /** Where each span starts and ends along its source cubic, as fractions of that cubic's arc length. */
   const spanArcs: [number, number][] = [];
+  // A capped end's last lane-width of spline is a span of its own, as long as a lane is wide (docs/023 · Caps); the
+  // stretch between is cut as ever.
+  const firstMeasured = measurable.indexOf(true), lastMeasured = measurable.lastIndexOf(true);
+  const capLength = (knot: number) => (opts.knotProfile?.widthM?.[knot] ?? opts.widthM) / lanes;
   for (let sourceSegment = 0; sourceSegment < spline.length; sourceSegment++) {
     const source = spline[sourceSegment], metrics = sourceMetrics[sourceSegment];
     if (!measurable[sourceSegment]) continue;
-    const effectiveTurn = effectiveTurns[sourceSegment];
+    const head = !!options.caps?.start && sourceSegment === firstMeasured;
+    const tail = !!options.caps?.end && sourceSegment === lastMeasured;
+    const from = head ? capLength(sourceSegment) / metrics.length : 0;
+    const to = tail ? 1 - capLength(sourceSegment + 1) / metrics.length : 1;
+    if ((head || tail) && to - from < 0.1) {
+      return { ok: false, error: `The trail is too short ${head ? 'from its first point' : 'to its last point'} for its cap: `
+        + 'a cap is as long as a lane is wide. Move the point further off, or take the cap off.' };
+    }
+    const effectiveTurn = effectiveTurns[sourceSegment] * (to - from), length = metrics.length * (to - from);
     const required = Math.max(1,
-      Math.ceil(metrics.length / opts.maxPatchLengthM),
+      Math.ceil(length / opts.maxPatchLengthM),
       Math.ceil(effectiveTurn / (opts.maxTurnDegrees * DEG)));
     // Mesa keeps a ~6m practical floor even at hairpins; maxTurn becomes soft once satisfying it would make
     // smaller patches. Long/ordinary curves still honour both caps exactly.
-    const floorLimited = Math.max(1, Math.floor(metrics.length / opts.minPatchLengthM));
-    let count = fixedCounts ? fixedCounts[sourceSegment] : Math.min(512, Math.min(required, floorLimited));
-    let cuts = Array.from({ length: count + 1 }, (_, i) => arcFractionT(source, i / count));
+    const floorLimited = Math.max(1, Math.floor(length / opts.minPatchLengthM));
+    let count = fixedCounts ? fixedCounts[sourceSegment] - Number(head) - Number(tail) : Math.min(512, Math.min(required, floorLimited));
+    if (count < 1) return { ok: false, error: 'The trail keeps its spans while other patches are joined to it, and has none to spare for a cap.' };
+    /** The arc fractions the spans are cut at: the caps, and `n` even spans between. */
+    const fractions = (n: number) => [
+      ...(head ? [0] : []), ...Array.from({ length: n + 1 }, (_, i) => from + ((to - from) * i) / n), ...(tail ? [1] : []),
+    ];
+    let arcs = fractions(count);
+    let cuts = arcs.map(f => arcFractionT(source, f));
     // Total turn establishes the first count. A cubic can concentrate that turn locally, so refine until every
-    // exact sub-curve also respects the turn target or the practical minimum-length budget makes it soft.
+    // exact sub-curve between the caps also respects the turn target or the practical minimum-length budget makes it
+    // soft.
     while (!fixedCounts && count < Math.min(512, floorLimited)) {
-      const locallyTooSharp = Array.from({ length: count }, (_, i) =>
-        cubicMetrics(sliceCubic(source, cuts[i], cuts[i + 1])).turn > opts.maxTurnDegrees * DEG + 1e-6).some(Boolean);
+      const locallyTooSharp = cuts.slice(Number(head), cuts.length - Number(tail)).some((t, i, between) => i + 1 < between.length
+        && cubicMetrics(sliceCubic(source, t, between[i + 1])).turn > opts.maxTurnDegrees * DEG + 1e-6);
       if (!locallyTooSharp) break;
       count++;
-      cuts = Array.from({ length: count + 1 }, (_, i) => arcFractionT(source, i / count));
+      arcs = fractions(count);
+      cuts = arcs.map(f => arcFractionT(source, f));
     }
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i + 1 < cuts.length; i++) {
       const center = sliceCubic(source, cuts[i], cuts[i + 1]);
       const local = cubicMetrics(center);
       const signedCurvature = local.signedTurn / Math.max(1e-6, local.planLength);
       const radiusM = Math.abs(signedCurvature) > 1e-7 ? 1 / Math.abs(signedCurvature) : Infinity;
+      const cap = head && i === 0 ? 'start' : tail && i === cuts.length - 2 ? 'end' : null;
       spans.push({
         center, sourceSegment, sourceT0: cuts[i], sourceT1: cuts[i + 1], lengthM: local.length,
-        planLengthM: local.planLength, signedCurvature, radiusM,
+        planLengthM: local.planLength, signedCurvature, radiusM, ...(cap ? { cap } : {}),
       });
-      spanArcs.push([i / count, (i + 1) / count]);
+      spanArcs.push([arcs[i], arcs[i + 1]]);
     }
   }
   if (!spans.length) return { ok: false, error: 'Spline has no measurable length.' };
@@ -367,12 +509,22 @@ export function layoutTrailSpline(spline: readonly TrailCubic[], options: TrailL
       : 0;
     return (before.signedCurvature + after.signedCurvature) / 2 + joinCurvature;
   });
+  const stationLanes = trailStationLanes(spans.length, lanes, options.laneEnds);
   // Texture bands respond to curvature carried at source-cubic joins too, not only turn inside one cubic.
   for (let i = 0; i < spans.length; i++) {
     const curvature = Math.max(Math.abs(spans[i].signedCurvature), Math.abs(stationCurvature[i]), Math.abs(stationCurvature[i + 1]));
     spans[i].radiusM = curvature > 1e-7 ? 1 / curvature : Infinity;
-    const tile = textureForSpan(opts.textures, spans[i].signedCurvature);
-    if (tile) { spans[i].textures = tile.tiles; spans[i].textureOrient = tile.orient; }
+    const [from, to] = [stationLanes[i], stationLanes[i + 1]];
+    const tile = textureForSpan(opts.textures, spans[i].signedCurvature, Math.max(from, to), spans[i].cap);
+    if (tile) {
+      const patches = trailSpanPatches(from, to);
+      spans[i].textures = patches.map(patch => patch.lane === null ? tile.middle : tile.tiles[patch.lane]);
+      spans[i].textureOrient = tile.orient;
+      if (tile.mirrors.some(Boolean) || tile.middleMirrored)
+        spans[i].textureMirrors = patches.map(patch => patch.lane === null ? tile.middleMirrored : tile.mirrors[patch.lane]);
+      if (tile.turns.some(Boolean) || tile.middleTurns)
+        spans[i].textureTurns = patches.map(patch => patch.lane === null ? tile.middleTurns : tile.turns[patch.lane]);
+    }
   }
   // Every station reads the knot profile at its place between two knots: its source cubic, and how far along it
   // by arc length — the spans were cut at even arc fractions, so a taper runs evenly however the handles bend.
@@ -416,10 +568,16 @@ export function layoutTrailSpline(spline: readonly TrailCubic[], options: TrailL
     const centerBias = profileAt(opts.knotProfile?.centerBias, i, opts.centerBias);
     const minusWidth = widthM * centerBias, plusWidth = widthM * (1 - centerBias);
     const dishM = widthM * dishFraction, bankSlope = Math.tan(bank[i] * DEG);
-    const left = add(add(center, mul(right, -minusWidth)), [0, dishM - bankSlope * minusWidth, 0]);
-    const rightPoint = add(add(center, mul(right, plusWidth)), [0, dishM + bankSlope * plusWidth, 0]);
+    // Across from the left rim (-1) to the right (+1), the spline at 0: each side's lanes share that side's width,
+    // the dish rises as the square of the way out, and the bank tilts the whole section.
+    const here = stationLanes[i];
+    const rails = Array.from({ length: here + 1 }, (_, k): V3 => {
+      const across = (2 * k) / here - 1;
+      const offset = across * (across < 0 ? minusWidth : plusWidth);
+      return add(add(center, mul(right, offset)), [0, dishM * across * across + bankSlope * offset, 0]);
+    });
     return {
-      center, left, right: rightPoint, tangent, signedCurvature: stationCurvature[i],
+      center, left: rails[0], right: rails[here], rails, tangent, signedCurvature: stationCurvature[i],
       bankDegrees: bank[i], widthM, dishM, centerBias,
     };
   });
@@ -427,24 +585,29 @@ export function layoutTrailSpline(spline: readonly TrailCubic[], options: TrailL
   // Catch an offset rail folding through the centre on a turn tighter than half the width. The reference uses
   // hand-knit darts/junctions there; a regular chart must refuse rather than emit inverted patches.
   for (let i = 0; i < stations.length - 1; i++) {
-    for (const [lane, a, b, c] of [
-      ['left', stations[i].left, stations[i].center, stations[i + 1].left],
-      ['right', stations[i].center, stations[i].right, stations[i + 1].center],
-    ] as const) {
+    const wide = Math.max(stationLanes[i], stationLanes[i + 1]);
+    for (const { corners, lane } of trailSpanPatches(stationLanes[i], stationLanes[i + 1])) {
+      const [a, b, c] = corners.map(([station, rail]) => stations[i + station].rails[rail]);
       const dv = sub(b, a), du = sub(c, a);
       const normalY = dv[2] * du[0] - dv[0] * du[2]; // cross(dv,du).y
-      if (normalY <= 1e-5)
-        return { ok: false, error: `Trail ${lane} lane folds at span ${i}; narrow the trail or widen the spline turn.` };
+      if (normalY <= 1e-5) {
+        const which = lane === null ? 'narrowing lane' : wide === 2 ? (lane ? 'right lane' : 'left lane') : `lane ${lane + 1}`;
+        return { ok: false, error: `Trail ${which} folds at span ${i}; narrow the trail or widen the spline turn.` };
+      }
     }
   }
   return { ok: true, stations, spans };
 }
 
-/** Write a span's exact centre-seam Bézier handles, both directions, for a ribbon whose centre rail is `center`. */
-export function writeTrailSeamHandles(edgeHandles: Record<string, V3>, center: readonly number[], spans: readonly TrailSpan[]) {
+/** Write each span's exact centre-seam Bézier handles, both directions, for a ribbon whose stations' vertices are
+ *  `sections`: where a span keeps an even number of lanes, along the rail running on the spline at both its ends. */
+export function writeTrailSeamHandles(edgeHandles: Record<string, V3>, sections: readonly (readonly number[])[], spans: readonly TrailSpan[]) {
   for (let i = 0; i < spans.length; i++) {
-    edgeHandles[directedEdgeKey(center[i], center[i + 1])] = sub(spans[i].center[1], spans[i].center[0]);
-    edgeHandles[directedEdgeKey(center[i + 1], center[i])] = sub(spans[i].center[2], spans[i].center[3]);
+    const lanes = sections[i].length - 1, seam = trailSeamRail(lanes);
+    if (seam === null || sections[i + 1].length - 1 !== lanes) continue;
+    const [a, b] = [sections[i][seam], sections[i + 1][seam]];
+    edgeHandles[directedEdgeKey(a, b)] = sub(spans[i].center[1], spans[i].center[0]);
+    edgeHandles[directedEdgeKey(b, a)] = sub(spans[i].center[2], spans[i].center[3]);
   }
 }
 
@@ -452,7 +615,7 @@ export function writeTrailSeamHandles(edgeHandles: Record<string, V3>, center: r
 export const TRAIL_TILE_ORIENT = { rot: 1, mirror: false } as const;
 
 /**
- * Append a Mesa-like two-patch-wide trail chart around an exact cubic spline.
+ * Append a Mesa-like trail chart, some patches wide, around an exact cubic spline.
  *
  * This emits only ordinary ribbon spans — one strip, two ends, no branching. A spline network is generated by
  * `applyTrailNetwork`, which calls this for each run between two junctions and knits the junctions themselves.
@@ -464,26 +627,26 @@ export function applyTrailSpline(doc: QuadMeshDoc, spline: readonly TrailCubic[]
   const surface = options.surface ?? MESA_TRAIL_DEFAULTS.surface;
 
   const vertices = doc.vertices.slice();
-  const left: number[] = [], center: number[] = [], right: number[] = [];
-  for (const station of stations) {
-    left.push(vertices.length / 3); vertices.push(...station.left);
-    center.push(vertices.length / 3); vertices.push(...station.center);
-    right.push(vertices.length / 3); vertices.push(...station.right);
-  }
+  const sections = stations.map(station => station.rails.map(point => vertices.push(...point) / 3 - 1));
   const quads = doc.quads.map(quad => quad.slice()), createdQuads: number[] = [];
+  /** Each patch laid, span by span, and how its tile turns. */
+  const laid: { span: number; at: number; turned: boolean }[] = [];
   for (let i = 0; i < spans.length; i++) {
-    createdQuads.push(quads.length); quads.push([left[i], center[i], left[i + 1], center[i + 1]]);
-    createdQuads.push(quads.length); quads.push([center[i], right[i], center[i + 1], right[i + 1]]);
+    trailSpanPatches(sections[i].length - 1, sections[i + 1].length - 1).forEach((patch, at) => {
+      createdQuads.push(quads.length);
+      laid.push({ span: i, at, turned: patch.turned });
+      quads.push(patch.corners.map(([station, rail]) => sections[i + station][rail]));
+    });
   }
   const manifold = checkManifold(quads);
   if (!manifold.ok) return { ok: false, error: 'Trail would drive an existing edge onto three or more patches; generate into an open area or stitch explicitly.' };
 
   const out: QuadMeshDoc = {
     ...doc, vertices, quads,
-    ...appendMeshIds(doc, stations.length * 3, spans.length * 2),
+    ...appendMeshIds(doc, vertices.length / 3 - doc.vertices.length / 3, createdQuads.length),
   };
   const edgeHandles = { ...(doc.edgeHandles ?? {}) };
-  writeTrailSeamHandles(edgeHandles, center, spans);
+  writeTrailSeamHandles(edgeHandles, sections, spans);
   out.edgeHandles = edgeHandles;
 
   const quadPaint = { ...(doc.quadPaint ?? {}) };
@@ -491,19 +654,19 @@ export function applyTrailSpline(doc: QuadMeshDoc, spline: readonly TrailCubic[]
   out.quadPaint = quadPaint;
   if (spans.some(span => span.textures?.some(Boolean))) {
     const quadTex = { ...(doc.quadTex ?? {}) }, quadOrient = { ...(doc.quadOrient ?? {}) };
-    for (let i = 0; i < spans.length; i++) {
-      const textures = spans[i].textures;
-      if (!textures) continue;
-      for (const lane of [0, 1]) {
-        if (!textures[lane]) continue; // a plain half
-        quadTex[createdQuads[i * 2 + lane]] = textures[lane];
-        quadOrient[createdQuads[i * 2 + lane]] = { ...(spans[i].textureOrient ?? TRAIL_TILE_ORIENT) };
-      }
-    }
+    laid.forEach(({ span, at, turned }, k) => {
+      const texture = spans[span].textures?.[at];
+      if (!texture) return; // a plain lane
+      const worn = spans[span].textureOrient ?? TRAIL_TILE_ORIENT;
+      const rot = worn.rot + (turned ? 2 : 0) + (spans[span].textureTurns?.[at] ?? 0);
+      const orient = { rot: ((rot % 4) + 4) % 4, mirror: worn.mirror };
+      quadTex[createdQuads[k]] = texture;
+      quadOrient[createdQuads[k]] = spans[span].textureMirrors?.[at] ? mirrorAcross(orient) : orient;
+    });
     out.quadTex = quadTex; out.quadOrient = quadOrient;
   }
 
-  return { ok: true, doc: out, rails: { left, center, right }, quads: createdQuads, stations, spans };
+  return { ok: true, doc: out, sections, quads: createdQuads, stations, spans };
 }
 
 // ---- networks --------------------------------------------------------------------------------------------
@@ -521,8 +684,12 @@ export interface TrailRunSpec {
 /** A knitted junction: the patch fan filling the opening the retracted ribbons left around a node. */
 export interface TrailJunction {
   node: number;
-  /** Vertex at the centre of the fan; its valence is twice the number of trails meeting here. */
-  center: number;
+  /** Vertex at the centre of the fan, its valence twice the number of trails meeting here — or null on the split
+   *  line of a path of an odd number of lanes, which has no rail at the centre. */
+  center: number | null;
+  /** Every vertex it added, in order: a crotch per arm, the hub, then the points its lanes run through. */
+  vertices: number[];
+  /** Its patches, arm by arm: the arm's lanes carried on, and the patches narrowing a wider one to two. */
   quads: number[];
   /** How far back up each trail the fan reaches. */
   reachM: number;
@@ -670,6 +837,11 @@ function halfWithin(spline: readonly TrailCubic[], profile: readonly number[] | 
  * wound and parameterised as the lane it continues: a three-way junction is six quads around a valence-6 hub,
  * which is what the shipped levels knit by hand. The end vertices are the ribbons' own, so the network comes out
  * as one connected surface.
+ *
+ * Every junction is two lanes in and out at its hub, so a trail of other than two lanes changes to two over its last
+ * spans on its way in — a lane a span, the middle ones ending in wedges (`trailSpanPatches`). Two arms meeting alone —
+ * a path split in two, two paths laid end to end — are as wide as the narrower: the wider narrows to it, and every lane
+ * runs straight on across the split line.
  */
 export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[],
   options: TrailNetworkOptions = {}): TrailNetworkResult {
@@ -677,6 +849,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const maxReach = options.maxJunctionReachM ?? NETWORK_DEFAULTS.maxJunctionReachM;
   const minRun = options.minRunLengthM ?? NETWORK_DEFAULTS.minRunLengthM;
   const optionsFor = (run: TrailRunSpec): TrailOptions => ({ ...options, ...run.options });
+  const lanesOf = (run: number): number => optionsFor(runs[run]).lanes ?? MESA_TRAIL_DEFAULTS.lanes;
 
   // ---- who meets whom, and where -----------------------------------------------------------------------
   interface Arm {
@@ -830,6 +1003,16 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
     list.push(...list.splice(0, first));
   }
 
+  // ---- the lanes each run ends with ------------------------------------------------------------------------------
+  // Every junction is two lanes in and out at its hub, and a path split — or two paths laid end to end — as wide as the
+  // narrower across the point: a run changes to that over its last spans (`trailStationLanes`), a lane a span.
+  const laneEnds = runs.map((_, i): [number, number] => [lanesOf(i), lanesOf(i)]);
+  for (const list of arms.values()) {
+    if (list.length < 2) continue;
+    const meeting = list.length === 2 ? Math.min(...list.map(arm => lanesOf(arm.run))) : 2;
+    for (const arm of list) laneEnds[arm.run][arm.atHead ? 0 : 1] = meeting;
+  }
+
   // ---- generate every ribbon, cut back to its junctions -----------------------------------------------------
   let out = doc;
   const ribbons: TrailRibbon[] = [];
@@ -844,7 +1027,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
     if (chainArcs(trimmed.spline).total < minRun) {
       return { ok: false, error: `Run ${i} is under ${minRun} m once its junctions have taken their room.` };
     }
-    const ribbon = applyTrailSpline(out, trimmed.spline, { ...opts, knotProfile: trimmed.profile });
+    const ribbon = applyTrailSpline(out, trimmed.spline, { ...opts, knotProfile: trimmed.profile, laneEnds: laneEnds[i] });
     if (!ribbon.ok) return { ok: false, error: `Run ${i}: ${ribbon.error}` };
     out = ribbon.doc;
     ribbons.push(ribbon);
@@ -856,26 +1039,26 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const vertices = out.vertices.slice();
   const quads = out.quads.map(quad => quad.slice());
   const junctions: TrailJunction[] = [];
-  /** Every junction patch and the lane it carries on — its run, which lane, and which end of the run. */
-  const laneOf: { quad: number; run: number; lane: 0 | 1 }[] = [];
+  /** Every junction patch, the run it carries on, and which of the lanes at that end of the run — `of` them, from the
+   *  generator's left rim. */
+  const laneOf: { quad: number; run: number; lane: number; of: number }[] = [];
   const point = (v: number): V3 => [vertices[v * 3], vertices[v * 3 + 1], vertices[v * 3 + 2]];
+  const between = (a: V3, b: V3, t: number): V3 => [lerpNumber(a[0], b[0], t), lerpNumber(a[1], b[1], t), lerpNumber(a[2], b[2], t)];
+  const addVertex = (p: V3): number => vertices.push(p[0], p[1], p[2]) / 3 - 1;
 
   for (const [node, list] of arms) {
     if (list.length < 2) continue;
     const R = reach.get(node)!;
     const centre = position.get(node)!;
+    const first = vertices.length / 3;
 
-    /** Each trail's end cross-section, in the frame of a skier leaving the junction along it: the ribbon's
-     *  own left/right swap when the trail runs INTO the node rather than out of it. */
+    /** Each trail's end cross-section, rim to rim, in the frame of a skier leaving the junction along it: the
+     *  ribbon's own rails run the other way when the trail runs INTO the node rather than out of it. */
     const ends = list.map(arm => {
       const ribbon = ribbons[arm.run];
-      const at = arm.atHead ? 0 : ribbon.rails.center.length - 1;
-      return {
-        arm,
-        left: arm.atHead ? ribbon.rails.left[at] : ribbon.rails.right[at],
-        seam: ribbon.rails.center[at],
-        right: arm.atHead ? ribbon.rails.right[at] : ribbon.rails.left[at],
-      };
+      const at = arm.atHead ? 0 : ribbon.stations.length - 1;
+      const across = [...ribbon.sections[at]];
+      return { arm, cross: arm.atHead ? across : across.reverse(), middle: ribbon.stations[at].center };
     });
 
     // A crotch between every neighbouring pair, `crotches[i]` between trail i's right rim and trail i+1's left.
@@ -896,7 +1079,7 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
         if (s < -1e-6 || s > R + 1e-3 || u < -1e-6 || u > R + 1e-3) return null;
         return [from[0] - along[0] * s, 0, from[2] - along[2] * s];
       };
-      const aPoint = point(a.right), bPoint = point(b.left);
+      const aPoint = point(a.cross[a.cross.length - 1]), bPoint = point(b.cross[0]);
       const met = wedge < Math.PI * 0.97 ? back(aPoint, a.arm.out, bPoint, b.arm.out) : null;
       /**
        * Where the rims do not meet ahead of the node — a wide side, where the two trails part at or past a straight
@@ -913,41 +1096,70 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
       vertices.push(...plan);
     }
 
-    // The hub is the junction ITSELF, where every trail's centre line runs to.
-    const hub = vertices.length / 3;
-    vertices.push(centre[0], ends.reduce((s, e) => s + vertices[e.seam * 3 + 1], 0) / ends.length, centre[2]);
+    /**
+     * Two arms meet as wide as each other (`laneEnds`) — a path split in two, a loop closed on itself, two paths laid
+     * end to end — and run straight on across the point, lane for lane, through a cross-section of its own there: a
+     * point a rail, crotch to crotch, sharing out each side as the ribbon does, at the height where the rail's two ends
+     * meet. More arms meet two lanes wide at the hub.
+     */
+    const through = ends.length === 2;
+    const width = ends[0].cross.length - 1;
+    // The hub is the junction ITSELF, where every trail's centre line runs to: one rail's point on a split line, which
+    // an odd number of lanes has no rail at.
+    const hubAt: V3 = [centre[0], ends.reduce((s, e) => s + e.middle[1], 0) / ends.length, centre[2]];
+    const hub = through && width % 2 ? null : addVertex(hubAt);
 
     /**
-     * One patch per lane: each trail's two lanes carry on from its end cross-section, the seam to the hub and the
-     * rim to its crotch, written as the ribbon writes its own lane quads — a station further along, or one
-     * before the first — so it winds as the ribbon does and wears the lane's tile the same way round.
+     * Each lane carried on, written as the ribbon writes its own lane quads — a station further along, or one before
+     * the first — so it winds as the ribbon does and wears its lane's tile the same way round. Leaving the junction the
+     * ribbon's left is the skier's; arriving, its left is the skier's right.
      *
      * A patch that turns over is a crotch in the wrong place, and there is no repairing it downstream: an
      * inverted locked patch fails the mountain's own check and the retopologiser's after it. Where the rims
      * genuinely cannot be resolved the junction is refused by name, and the caller drops or moves a trail.
      */
     const fan: number[] = [];
+    let splitLine: number[] = [];
     for (let i = 0; i < ends.length; i++) {
-      const end = ends[i];
+      const end = ends[i], lanes = end.cross.length - 1;
       const before = crotches[(i + ends.length - 1) % ends.length], after = crotches[i];
-      // Leaving the junction the ribbon's left is the skier's; arriving, its left is the skier's right.
-      const lanes: [number[], number[]] = end.arm.atHead
-        ? [[before, hub, end.left, end.seam], [hub, after, end.seam, end.right]]
-        : [[end.right, end.seam, after, hub], [end.seam, end.left, hub, before]];
-      for (const lane of [0, 1] as const) {
-        const corners = lanes[lane];
+      /** `k` of `lanes` sides across from `before` through the hub to `after`, each half shared as the ribbon shares
+       *  its side of the width. */
+      const across = (k: number): V3 =>
+        k <= lanes / 2 ? between(point(before), hubAt, k / (lanes / 2)) : between(hubAt, point(after), k / (lanes / 2) - 1);
+      let inner: number[];
+      if (!through) {
+        if (lanes !== 2) return { ok: false, error: `Junction ${node}: run ${end.arm.run} reaches it ${lanes} lanes wide, not two.` };
+        inner = [before, hub!, after];
+      } else if (i === 0) {
+        // The first arm makes the split line's points, crotch 1 to crotch 0; the second runs back along them.
+        inner = splitLine = Array.from({ length: width + 1 }, (_, k) => {
+          if (k === 0) return before;
+          if (k === width) return after;
+          if (hub !== null && k === width / 2) return hub;
+          const p = across(k);
+          p[1] = (point(end.cross[k])[1] + point(ends[1].cross[width - k])[1]) / 2;
+          return addVertex(p);
+        });
+      } else inner = [...splitLine].reverse();
+      for (let k = 0; k < lanes; k++) {
+        const corners = end.arm.atHead ? [inner[k], inner[k + 1], end.cross[k], end.cross[k + 1]]
+          : [end.cross[k + 1], end.cross[k], inner[k + 1], inner[k]];
         if (Math.sign(patchPlanArea(vertices, corners)) !== upright) {
-          const beside = ends[(i + (lane === (end.arm.atHead ? 0 : 1) ? ends.length - 1 : 1)) % ends.length];
+          const beside = ends[(i + (k < lanes / 2 ? ends.length - 1 : 1)) % ends.length];
           return { ok: false, error: `Junction ${node}: runs ${end.arm.run} and ${beside.arm.run} leave it in a shape `
             + 'its lanes cannot be carried into — one of them has to go, or leave at a wider angle. '
             + `[reach ${R.toFixed(0)} m, halves ${list.map(arm => arm.half.toFixed(0)).join('/')}]` };
         }
         fan.push(quads.length);
-        laneOf.push({ quad: quads.length, run: end.arm.run, lane });
+        laneOf.push({ quad: quads.length, run: end.arm.run, lane: end.arm.atHead ? k : lanes - 1 - k, of: lanes });
         quads.push(corners);
       }
     }
-    junctions.push({ node, center: hub, quads: fan, reachM: R, runs: list.map(arm => arm.run) });
+    junctions.push({
+      node, center: hub, quads: fan, reachM: R, runs: list.map(arm => arm.run),
+      vertices: Array.from({ length: vertices.length / 3 - first }, (_, k) => first + k),
+    });
     created.push(...fan);
   }
 
@@ -965,11 +1177,15 @@ export function applyTrailNetwork(doc: QuadMeshDoc, runs: readonly TrailRunSpec[
   const quadPaint = { ...(network.quadPaint ?? {}) };
   const quadTex = { ...(network.quadTex ?? {}) };
   const quadOrient = { ...(network.quadOrient ?? {}) };
-  for (const { quad, run, lane } of laneOf) {
+  for (const { quad, run, lane, of } of laneOf) {
     const dress = { ...MESA_TRAIL_DEFAULTS, ...optionsFor(runs[run]) };
     quadPaint[quad] = dress.surface;
-    const tile = textureForSpan(dress.textures, 0);
-    if (tile?.tiles[lane]) { quadTex[quad] = tile.tiles[lane]; quadOrient[quad] = { ...tile.orient }; }
+    const tile = textureForSpan(dress.textures, 0, of);
+    if (tile?.tiles[lane]) {
+      const orient = { rot: (((tile.orient.rot + tile.turns[lane]) % 4) + 4) % 4, mirror: tile.orient.mirror };
+      quadTex[quad] = tile.tiles[lane];
+      quadOrient[quad] = tile.mirrors[lane] ? mirrorAcross(orient) : orient;
+    }
   }
   network.quadPaint = quadPaint;
   if (Object.keys(quadTex).length) { network.quadTex = quadTex; network.quadOrient = quadOrient; }
