@@ -567,6 +567,9 @@ export interface ViewportCallbacks {
   onMoveEffect?(pos: V3): void;
   /** Create Edge tool: vertices/free space draw ordinary edges; surface-edge hits route a conforming surface cut. */
   onCreateEdgePoint?(endpoint: CreateEdgeEndpoint): void;
+  /** Create Edge hover: whether this patch-edge point would continue a surface cut from the chain's start, so it
+   *  may take the point without Ctrl (across a patch the start touches, or out of a T-junction). */
+  createEdgeCuts?(endpoint: CreateEdgeEndpoint): boolean;
   /** Edit diagnostic: select a close non-connected edge pair, or clear it by clicking elsewhere. */
   onSelectEdgeCrossing?(crossing: EdgeCrossing | null): void;
   /** Edit diagnostic: select a pair of distinct vertices occupying the same position, or clear it. */

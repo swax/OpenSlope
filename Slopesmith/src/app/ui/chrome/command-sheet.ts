@@ -170,7 +170,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         : store.currentMode === 'edit' && store.bridgeRails !== null
           ? helpPanel('Edit Mode — bridge', [['LMB / double-click', 'select candidate rail'], ['⇧LMB', 'extend candidate']])
         : store.currentMode === 'edit' && store.createEdgeTool
-          ? helpPanel('Edit Mode — create edge', [['LMB', 'start on a vertex, edge or surface'], ['LMB', 'next point at the chain depth'], ['Ctrl+LMB', 'stick to a vertex, edge or surface'], ['⇧LMB', 'axis-lock free edge'], ['Enter / Esc', 'finish']])
+          ? helpPanel('Edit Mode — create edge', [['LMB', 'start on a vertex, edge or surface'], ['LMB', 'next point: snaps to a vertex, free edge or a patch edge it can cut to, else at the chain depth'], ['Ctrl+LMB', 'stick to any surface edge or the surface'], ['⇧LMB', 'axis-lock free edge'], ['Esc', 'new strand (again to finish)'], ['Enter', 'finish']])
         : store.currentMode === 'edit' && store.surgeryTool === 'tube'
           ? helpPanel('Edit Mode — create tube', [['LMB', 'place axis endpoint'], ['Ctrl+LMB', 'second end on the surface'], ['⇧LMB', 'lock world axis'], ['Enter', 'create + select patches'], ['Esc', 'cancel']])
         : store.currentMode === 'edit' && store.surgeryTool === 'trail'

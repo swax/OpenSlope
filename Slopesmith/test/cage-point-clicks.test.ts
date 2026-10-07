@@ -113,15 +113,26 @@ click({ ctrlKey: true });
 check(cornerCalls.join() === 'range 1,toggle 1' && sent.length === 1,
   'corner: with no cage pinned, Shift and Ctrl keep the corner range and toggle', cornerCalls.join());
 
-// Create Edge: in a busy map a corner is nearly always under the cursor. The first point sticks to it (a click
-// has no other depth); later points stay free at the chain depth unless Ctrl is held — or a provisional surface
-// cut is under way, which only an edge or a point can continue.
-const created: { vertex: number | null }[] = [];
+// Create Edge: an existing corner and a free construction edge always take a point — they are what a wire web
+// is drawn between. In a busy map a surface edge or the terrain is nearly always under the cursor, so past the
+// first point those stick only while Ctrl is held — or while a provisional surface cut is under way, which only
+// an edge or a point can continue.
+type Created = { vertex: number | null; edge?: [number, number] | null };
+const created: Created[] = [];
 const ghosts: boolean[] = [];
+const label = (e: Created) => e.vertex ?? (e.edge ? `edge ${e.edge.join('-')}` : 'free');
+let freeEdge: [number, number] | null = null, surfaceEdge: [number, number] | null = null;
 Object.assign(stage, { pickSurface: () => null, screenPlanePoint: () => new THREE.Vector3(5, 6, 7) });
-Object.assign(stage.cb, { onCreateEdgePoint: (endpoint: { vertex: number | null }) => created.push(endpoint) });
-Object.assign(layers.picking, { cornerPos: () => [1, 2, 3], pickAnyEdgeAt: () => null });
-Object.assign(access, { snapPoint: (p: number[]) => p, terrain: () => null, net: () => null, createEdgePreviewChanged() {} });
+Object.assign(stage.cb, { onCreateEdgePoint: (endpoint: Created) => created.push(endpoint) });
+Object.assign(layers.picking, {
+  // Vertex 3 sits on the chain's last point; every other one is elsewhere.
+  cornerPos: (v: number) => v === 3 ? [0, 0, 0] : [1, 2, 3],
+  pickAnyEdgeAt: (_selecting: boolean, skip?: (a: number, b: number) => boolean) =>
+    surfaceEdge && !skip?.(...surfaceEdge) ? surfaceEdge : null,
+  pickFreeEdgeAt: (skip?: (a: number, b: number) => boolean) => freeEdge && !skip?.(...freeEdge) ? freeEdge : null,
+  curveScreenClosest: () => ({ d2: 0, t: 0.5, pos: [4, 4, 4] }),
+});
+Object.assign(access, { snapPoint: (p: number[]) => p, terrain: () => null, net: () => ({}), createEdgePreviewChanged() {} });
 for (const tool of ['clipboardPlacement', 'patchTool', 'tubeTool', 'trailTool', 'weldTool', 'surgery'] as const) {
   Object.assign(layers[tool], { onHover: () => false });
 }
@@ -133,14 +144,25 @@ corner = 2;
 click();
 edgeLayer.start = [0, 0, 0];
 click();
+corner = null; freeEdge = [5, 6];
+click();
+freeEdge = [3, 6];
+click();
+freeEdge = null; surfaceEdge = [0, 1];
+click();
 click({ ctrlKey: true });
 edgeLayer.cutting = true;
 click();
 edgeLayer.cutting = false;
-check(created.map(e => e.vertex ?? 'free').join() === '2,free,2,2',
-  'create edge: the first point sticks, a later one only under Ctrl or mid surface cut',
-  created.map(e => e.vertex ?? 'free').join());
-// The ghost follows the key itself: pressing Ctrl over a corner snaps it without moving the mouse.
+// …or when the host says the chain can cut to it (across a patch the start touches, or out of a T-junction).
+let cuttable = true;
+Object.assign(stage.cb, { createEdgeCuts: () => cuttable });
+click();
+cuttable = false;
+check(created.map(label).join() === '2,2,edge 5-6,free,free,edge 0-1,edge 0-1,edge 0-1',
+  'create edge: corners and free edges always take a point; a surface edge only the first, under Ctrl, mid cut or '
+  + 'where the chain can cut to it; an edge out of the chain\'s last point never does', created.map(label).join());
+// The ghost follows the key itself: pressing Ctrl over a surface edge snaps it without moving the mouse.
 click({}, ['pointermove']);
 router.refreshCreateEdgeGhost(false, true);
 router.refreshCreateEdgeGhost(false, false);

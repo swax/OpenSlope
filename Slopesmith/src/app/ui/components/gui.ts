@@ -371,6 +371,18 @@ export function tip<C extends { domElement: HTMLElement }>(c: C, text: string, m
   return c;
 }
 
+/** Let a lil-gui number field take a typed value past its slider. The slider keeps [min, max] — the useful range,
+ *  at a usable drag resolution — but lil-gui clamps a typed value to it too; while the field holds focus the
+ *  clamp widens to `typed` instead (an omitted bound is open). A value past the slider shows it full. */
+export function typedRange<C extends { domElement: HTMLElement }>(c: C, typed: { min?: number; max?: number }): C {
+  const number = c as unknown as { _clamp(value: number): number; _inputFocused?: boolean };
+  const slider = number._clamp.bind(number);
+  number._clamp = value => number._inputFocused
+    ? Math.min(typed.max ?? Infinity, Math.max(typed.min ?? -Infinity, value))
+    : slider(value);
+  return c;
+}
+
 /** Add a shared outline glyph before a lil-gui action's text without falling back to coloured emoji. */
 export function iconAction<C extends { domElement: HTMLElement }>(controller: C, iconSvg: string): C {
   const name = controller.domElement.querySelector<HTMLElement>('button > .lil-name');

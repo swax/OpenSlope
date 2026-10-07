@@ -224,7 +224,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
   /** Orthographic edge-on fallback: a face ray has zero area when viewed exactly from the side, so scan the
    *  visible control net directly in screen space. Pixel distance wins; coincident lines prefer the front-most
    *  edge, matching cornerAtScreen's overlap rule. Called only after the terrain raycast misses. */
-  function pickAnyEdgeAt(selecting = false): [number, number] | null {
+  function pickAnyEdgeAt(selecting = false, skip?: (a: number, b: number) => boolean): [number, number] | null {
     const net = access.net();
     if (!net) return null;
     const limit = reach(EDGE_PICK_PX) ** 2;
@@ -232,7 +232,8 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     const c = net.positions, mid = new THREE.Vector3();
     for (let a = 0; a < net.adj.neighbors.length; a++) {
       for (const b of net.adj.neighbors[a] ?? []) {
-        if (b <= a || access.edgeHidden(a, b) || (selecting && insideTrail(a, b))) continue; // each visible undirected edge once
+        // each visible undirected edge once
+        if (b <= a || access.edgeHidden(a, b) || (selecting && insideTrail(a, b)) || skip?.(a, b)) continue;
         const d2 = curveScreenDist2(a, b);
         if (d2 > limit) continue;
         mid.set((c[a * 3] + c[b * 3]) / 2, (c[a * 3 + 1] + c[b * 3 + 1]) / 2,
@@ -245,29 +246,9 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     return best;
   }
 
-  /** Screen-space boundary pick used by Create Edge. Unlike a face raycast, this still finds the outside seam
-   * when the cursor sits a pixel beyond the rendered terrain silhouette. */
-  function pickBoundaryEdgeAt(): [number, number] | null {
-    const net = access.net();
-    if (!net) return null;
-    const limit = reach(EDGE_PICK_PX) ** 2;
-    let best: [number, number] | null = null, bestD2 = limit, bestZ = Infinity;
-    const c = net.positions, mid = new THREE.Vector3();
-    for (let a = 0; a < net.adj.neighbors.length; a++) for (const b of net.adj.neighbors[a] ?? []) {
-      if (b <= a || access.edgeHidden(a, b) || (net.adj.edgeQuads.get(ekey(a, b))?.length ?? 0) !== 1) continue;
-      const d2 = curveScreenDist2(a, b);
-      if (d2 > limit) continue;
-      mid.set((c[a * 3] + c[b * 3]) / 2, (c[a * 3 + 1] + c[b * 3 + 1]) / 2,
-        -(c[a * 3 + 2] + c[b * 3 + 2]) / 2).project(stage.camera);
-      if (d2 < bestD2 - 0.25 || (Math.abs(d2 - bestD2) <= 0.25 && mid.z < bestZ)) {
-        best = [a, b]; bestD2 = d2; bestZ = mid.z;
-      }
-    }
-    return best;
-  }
-
-  /** Free edges have no terrain face to raycast, so pick their drawn cubic directly in screen space. */
-  function pickFreeEdgeAt(): [number, number] | null {
+  /** Free edges have no terrain face to raycast, so pick their drawn cubic directly in screen space. `skip`
+   *  passes edges by, so the next-nearest one can still take the pick. */
+  function pickFreeEdgeAt(skip?: (a: number, b: number) => boolean): [number, number] | null {
     const mesh = access.preview()?.mesh;
     const net = access.net();
     if (!mesh?.freeEdges.length || !net) return null;
@@ -275,7 +256,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     let best: [number, number] | null = null, bestD2 = limit, bestZ = Infinity;
     const c = net.positions, mid = new THREE.Vector3();
     for (const [a, b] of mesh.freeEdges) {
-      if (access.edgeHidden(a, b)) continue;
+      if (access.edgeHidden(a, b) || skip?.(a, b)) continue;
       const d2 = curveScreenDist2(a, b);
       if (d2 > limit) continue;
       mid.set((c[a * 3] + c[b * 3]) / 2, (c[a * 3 + 1] + c[b * 3 + 1]) / 2,
@@ -409,7 +390,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
     vertexSourceAtPointer,
     pickCorner, pickSubCagePoint, pickReferenceSubCagePoint, pickReferenceCorner,
     vertexAtScreen, cornerAtScreen, cornerPos,
-    pickEdgeAt, pickAnyEdgeAt, pickBoundaryEdgeAt, pickFreeEdgeAt,
+    pickEdgeAt, pickAnyEdgeAt, pickFreeEdgeAt,
     curveScreenDist2, curveScreenClosest, chordScreenDist2, chordScreenClosest,
     selectedEdgeAtPointer, pickRefPatch, pickRefEdge, pickMeshComponent,
   };

@@ -3,7 +3,9 @@ import { appendMeshIds } from '../../doc/ids';
 import { add, cross, mul, norm, sub, dot, len } from '../../math/vec';
 import { buildQuadMesh, meshEdgeHandles, meshAdjacency } from '../topology';
 import { ekey, checkManifold } from './contract';
+import { edgePointAt, splitEdgeHandlesExact } from './cut-primitives';
 import { quadPerimeterEdges, readVertex } from '../primitives';
+import { remapTJunctionsForEdgeSplits } from '../t-junctions';
 
 /**
  * Topology born from nothing: append a free-standing patch, an open elliptical tube, a corner-clicked
@@ -227,6 +229,10 @@ export function appendPatchFromCorners(
  * Append one ordinary control-net edge not owned by a surface. The endpoint inputs may reuse existing vertices or
  * create new ones, which lets the viewport snap a drawn chain onto the mesh without duplicating the snapped point.
  * Existing surface/free edges are refused: the document stores one topological edge between a vertex pair.
+ *
+ * An endpoint on another edge's interior is a contact. On a free edge the contact splits that edge there, exactly
+ * on its curve, so a web of construction edges meets at shared vertices and its cells can be filled as patches.
+ * On a surface edge it stays an explicit T-junction: splitting there would put a fifth side on the patch beyond.
  */
 export function appendFreeEdge(
   doc: QuadMeshDoc, from: FreeEdgeEndpoint | FreeEdgeContact, to: FreeEdgeEndpoint | FreeEdgeContact,
@@ -250,16 +256,34 @@ export function appendFreeEdge(
       return { ok: false, error: 'An embedded edge endpoint is stale — pick it again.' };
   }
 
+  const beforeMesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
+  const beforeAdj = meshAdjacency(beforeMesh), beforeHandle = meshEdgeHandles(beforeMesh, doc.edgeHandles);
+  const pos = (id: number) => readVertex(doc.vertices, id);
+  const hostExists = ([x, y]: [number, number]) => (beforeAdj.neighbors[x] ?? []).includes(y);
+  /** The live free (patch-less) edge this endpoint lands inside, which the new edge splits; else null. */
+  const freeHost = (endpoint: FreeEdgeEndpoint | FreeEdgeContact): FreeEdgeContact | null => {
+    const hit = contact(endpoint);
+    return hit && hostExists(hit.edge) && !beforeAdj.edgeQuads.get(ekey(hit.edge[0], hit.edge[1]))?.length ? hit : null;
+  };
+
   const firstNew = count;
   const a = typeof from === 'number' ? from : firstNew;
   const b = typeof to === 'number' ? to : firstNew + (typeof from === 'number' ? 0 : 1);
   if (a === b) return { ok: false, error: 'An edge needs two different endpoints.' };
-  const point = (endpoint: FreeEdgeEndpoint | FreeEdgeContact, id: number): V3 => typeof endpoint === 'number'
-    ? readVertex(doc.vertices, id)
-    : rawPoint(endpoint)!;
+  // A split lands exactly on its host curve, so the two halves trace the edge they replace.
+  const point = (endpoint: FreeEdgeEndpoint | FreeEdgeContact, id: number): V3 => {
+    if (typeof endpoint === 'number') return pos(id);
+    const host = freeHost(endpoint);
+    return host ? edgePointAt(host.edge[0], host.edge[1], host.t, beforeHandle, pos) : rawPoint(endpoint)!;
+  };
   const pa = point(from, a), pb = point(to, b);
   if (Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]) < 1e-6)
     return { ok: false, error: 'An edge needs two different endpoint positions.' };
+  const fromHost = freeHost(from), toHost = freeHost(to);
+  if (fromHost && toHost && ekey(fromHost.edge[0], fromHost.edge[1]) === ekey(toHost.edge[0], toHost.edge[1]))
+    return { ok: false, error: 'Both ends lie on the same edge.' };
+  if ((fromHost?.edge.includes(b)) || (toHost?.edge.includes(a)))
+    return { ok: false, error: 'That edge would double back along the edge it ends on.' };
 
   const key = ekey(a, b);
   const exists = (doc.freeEdges ?? []).some(([x, y]) => ekey(x, y) === key)
@@ -269,15 +293,13 @@ export function appendFreeEdge(
 
   const appendedVertices: number[] = [];
   const vertices = [...doc.vertices];
-  if (typeof from !== 'number') { vertices.push(...rawPoint(from)!); appendedVertices.push(a); }
-  if (typeof to !== 'number') { vertices.push(...rawPoint(to)!); appendedVertices.push(b); }
+  if (typeof from !== 'number') { vertices.push(...pa); appendedVertices.push(a); }
+  if (typeof to !== 'number') { vertices.push(...pb); appendedVertices.push(b); }
   const edge: [number, number] = a < b ? [a, b] : [b, a];
   // A new neighbour changes automatic Bessel classification at a reused vertex. If that vertex already belongs
   // to the surface, materialize its current outgoing handles first so snapping on a construction edge cannot warp
   // any existing patch boundary. A free-only chain remains automatic, allowing its joined segments to smooth.
   const edgeHandles = { ...(doc.edgeHandles ?? {}) };
-  const beforeMesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
-  const beforeAdj = meshAdjacency(beforeMesh), beforeHandle = meshEdgeHandles(beforeMesh, doc.edgeHandles);
   for (const id of [typeof from === 'number' ? from : null, typeof to === 'number' ? to : null]) {
     if (id === null) continue;
     const surfaceVertex = (beforeAdj.neighbors[id] ?? []).some(n => (beforeAdj.edgeQuads.get(ekey(id, n))?.length ?? 0) > 0);
@@ -287,23 +309,36 @@ export function appendFreeEdge(
       edgeHandles[`${id}>${n}`] = [h[0], h[1], h[2]];
     }
   }
-  const tJunctions = [...(doc.tJunctions ?? [])];
+  let freeEdges: [number, number][] = [...(doc.freeEdges ?? []), edge];
+  const splits: { edge: [number, number]; vertex: number; t: number }[] = [];
+  let tJunctions = [...(doc.tJunctions ?? [])];
   const seenTJunctions = new Set(tJunctions.map(node => `${node.vertex}:${ekey(node.edge[0], node.edge[1])}`));
-  for (const [endpoint, vertex] of [[from, a], [to, b]] as const) {
+  for (const [endpoint, vertex, at] of [[from, a, pa], [to, b, pb]] as const) {
+    const host = freeHost(endpoint);
+    if (host) {
+      const [x, y] = host.edge, hostKey = ekey(x, y);
+      splitEdgeHandlesExact(edgeHandles, x, y, vertex, host.t, at, beforeHandle, pos);
+      freeEdges = freeEdges.flatMap(([p, q]): [number, number][] => ekey(p, q) !== hostKey ? [[p, q]]
+        : [[Math.min(x, vertex), Math.max(x, vertex)], [Math.min(vertex, y), Math.max(vertex, y)]]);
+      splits.push({ edge: [x, y], vertex, t: host.t });
+      continue;
+    }
     const hit = contact(endpoint);
-    if (!hit || !(beforeAdj.neighbors[hit.edge[0]] ?? []).includes(hit.edge[1])) continue;
+    if (!hit || !hostExists(hit.edge)) continue;
     const key = `${vertex}:${ekey(hit.edge[0], hit.edge[1])}`;
     if (!seenTJunctions.has(key)) {
       seenTJunctions.add(key); tJunctions.push({ vertex, edge: [...hit.edge], t: hit.t });
     }
   }
+  // T-nodes already embedded in a split free edge move onto the half that now carries them.
+  if (splits.length) tJunctions = remapTJunctionsForEdgeSplits(tJunctions, splits);
   return {
     ok: true,
     doc: {
       ...doc,
       vertices,
       ...appendMeshIds(doc, appendedVertices.length, 0),
-      freeEdges: [...(doc.freeEdges ?? []), edge],
+      freeEdges,
       tJunctions,
       ...(Object.keys(edgeHandles).length ? { edgeHandles } : {}),
     },

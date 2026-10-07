@@ -1,4 +1,4 @@
-import type { V3 } from '../../core/doc/types';
+import type { QuadMeshDoc, V3 } from '../../core/doc/types';
 import {
   appendFreeEdge, appendTube, applySurfaceCut, autoWeldCreatedEdgeCrossings, ekey, routeSurfaceCutPath, validateSurfaceCutPath,
   fillSelectedEdgeHoles, type SurfaceCutPoint,
@@ -15,6 +15,45 @@ import type { EditViewportPort } from './viewport-port';
 import { toast } from '../ui/components/toast';
 import type { CreateEdgeEndpoint } from '../viewport/types';
 import { quadPerimeterEdges } from '../../core/mesh/primitives';
+import { buildQuadMesh, meshAdjacency } from '../../core/mesh/topology';
+import { findTJunctions } from '../../core/mesh/t-junctions';
+
+const quadHasEdge = (q: number[], edge: readonly [number, number]) =>
+  quadPerimeterEdges(q).some(([a, b]) => a !== b && ekey(a, b) === ekey(edge[0], edge[1]));
+const isSurfaceEdge = (doc: QuadMeshDoc, edge: readonly [number, number]) => doc.quads.some(q => quadHasEdge(q, edge));
+
+/** Carry the Create Edge chain across a commit that split some of its edges — a later edge drawn to end on one,
+ *  or a crossing welded into it. A named edge the commit removed becomes the run of edges joining its two ends
+ *  through points the commit created; one that cannot be traced is dropped, so the chain (and the selection it
+ *  becomes) never names an edge the mesh does not have. */
+function traceSplitChain(before: QuadMeshDoc, after: QuadMeshDoc, chain: readonly NamedEdge[]): NamedEdge[] {
+  const adj = meshAdjacency(buildQuadMesh(after.vertices, after.quads, after.freeEdges));
+  const born = (v: number) => vertexIndex(before, after.vertexIds[v]) === null;
+  const out: NamedEdge[] = [], seen = new Set<string>();
+  const push = (edge: NamedEdge) => {
+    const key = edge.join('|');
+    if (!seen.has(key)) { seen.add(key); out.push(edge); }
+  };
+  for (const named of chain) {
+    const at = edgeIndex(after, named);
+    if (!at) continue;
+    const [a, b] = at;
+    if (adj.neighbors[a]?.includes(b)) { push(named); continue; }
+    const previous = new Map<number, number>([[a, a]]), queue = [a];
+    for (let i = 0; i < queue.length && !previous.has(b); i++) for (const n of adj.neighbors[queue[i]] ?? []) {
+      if (previous.has(n) || (n !== b && !born(n))) continue;
+      previous.set(n, queue[i]); queue.push(n);
+    }
+    if (!previous.has(b)) continue;
+    const run: NamedEdge[] = [];
+    for (let v = b; v !== a; v = previous.get(v)!) {
+      const edge = namedEdge(after, [previous.get(v)!, v]);
+      if (edge) run.push(edge);
+    }
+    run.reverse().forEach(push);
+  }
+  return out;
+}
 
 export type TopologyToolDeps = {
   store: Store;
@@ -199,7 +238,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     store.surgeryTool = null; store.weldTool = null; store.weldSource = []; store.weldEdgeSource = [];
     view().setSurgeryTool(null); view().setWeldTool(false); view().setCreateEdgeTool(true, null);
     scheduleRebuild(); rebuildTools(); updateCmdSheet();
-    toast('click any point or edge to start — keep clicking to extend — Enter / Esc to finish', 'info');
+    toast('click any point or edge to start — keep clicking to extend — Esc starts a new strand — Enter to finish', 'info');
   }
 
   function armCreatePatch() {
@@ -287,20 +326,61 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     if (created.length) toast(`${created.length} ${created.length === 1 ? 'patch' : 'patches'} created${selectCreated ? ' and selected' : ''}`, 'ok');
   }
 
+  /** The surface cut a Create Edge point would continue from the chain's start: the path as drawn and its plan,
+   *  and — for a single segment the drawn path cannot cross — the route across the strip of patches between.
+   *  `route: false` skips that strip search. Shared by the click and by the hover's `createEdgeCuts`. */
+  function surfaceCutCandidate(
+    doc: QuadMeshDoc, start: NonNullable<Store['createEdgeStart']>, surfacePath: SurfaceCutPoint[],
+    endpoint: CreateEdgeEndpoint, route = true,
+  ) {
+    const startVertex = start.vertex === null ? null : vertexIndex(doc, start.vertex);
+    const endpointOnSurfaceEdge = endpoint.edge != null && isSurfaceEdge(doc, endpoint.edge);
+    const endpointOnSurfaceVertex = endpoint.vertex !== null && doc.quads.some(q => q.includes(endpoint.vertex!));
+    const endpointPoint: SurfaceCutPoint | null = endpointOnSurfaceVertex
+      ? { vertex: endpoint.vertex! }
+      : endpoint.edge && endpoint.t !== undefined && endpointOnSurfaceEdge ? { edge: endpoint.edge, t: endpoint.t } : null;
+    const startOnSurface = startVertex !== null && doc.quads.some(q => q.includes(startVertex));
+    const path: SurfaceCutPoint[] | null = endpointPoint && (surfacePath.length || startOnSurface)
+      ? surfacePath.length
+        ? [...surfacePath, endpointPoint]
+        : [{ vertex: startVertex! }, endpointPoint]
+      : null;
+    const plan = path ? validateSurfaceCutPath(doc, path) : null;
+    const routed = route && path?.length === 2 && plan && !plan.ok ? routeSurfaceCutPath(doc, path[0], path[1]) : null;
+    return { startVertex, startOnSurface, endpointOnSurfaceEdge, endpointPoint, path, plan, routed };
+  }
+
+  /** The last hover answer, kept while the pointer stays on the same edge of the same document and chain. */
+  let cutsCache: { doc: QuadMeshDoc; key: string; cuts: boolean } | null = null;
+
+  /** Whether a patch edge under the pointer continues a cut from the chain's start, so the hover sticks to it
+   *  without Ctrl and a patch can be split by drawing across it. Any cut across a patch the start touches
+   *  qualifies; a route across a longer strip only out of a T-junction, the vertex a cut is drawn from to
+   *  stitch a split patch back into its neighbours. Elsewhere a patch edge still needs Ctrl, so a busy map
+   *  does not pull a free-standing wall onto the terrain behind it. */
+  function createEdgeCuts(endpoint: CreateEdgeEndpoint): boolean {
+    const start = store.createEdgeStart;
+    if (!store.createEdgeTool || !start || !endpoint.edge || endpoint.t === undefined) return false;
+    const doc = mdoc();
+    const key = JSON.stringify([start, store.createEdgeSurfacePath, ekey(endpoint.edge[0], endpoint.edge[1])]);
+    if (cutsCache?.doc === doc && cutsCache.key === key) return cutsCache.cuts;
+    const startVertex = start.vertex === null ? null : vertexIndex(doc, start.vertex);
+    const fromJunction = startVertex !== null && findTJunctions(doc, undefined, [startVertex]).length > 0;
+    const candidate = surfaceCutCandidate(doc, start, surfaceCutPathIndices(doc, store.createEdgeSurfacePath), endpoint, fromJunction);
+    const cuts = candidate.plan?.ok === true || candidate.routed !== null;
+    cutsCache = { doc, key, cuts };
+    return cuts;
+  }
+
   function addCreateEdgePoint(endpoint: CreateEdgeEndpoint) {
     if (!store.createEdgeTool) return;
     const doc = mdoc();
-    const quadHasEdge = (q: number[], edge: [number, number]) => {
-      const perimeter = quadPerimeterEdges(q);
-      return perimeter.some(([a, b]) => a !== b && ekey(a, b) === ekey(edge[0], edge[1]));
-    };
-    const isSurfaceEdge = (edge: [number, number]) => doc.quads.some(q => quadHasEdge(q, edge));
     // The chain commits a topology edit per click, so the pending start and the provisional route are held by
     // NAME and resolved fresh here: a cut that splits a patch renumbers the very edge the route is standing on.
     const surfacePath = surfaceCutPathIndices(doc, store.createEdgeSurfacePath);
     const start = store.createEdgeStart;
     if (!start) {
-      if (endpoint.edge && endpoint.t !== undefined && isSurfaceEdge(endpoint.edge)) {
+      if (endpoint.edge && endpoint.t !== undefined && isSurfaceEdge(doc, endpoint.edge)) {
         const point: SurfaceCutPoint = { edge: endpoint.edge, t: endpoint.t };
         const plan = validateSurfaceCutPath(doc, [point]);
         if (!plan.ok) { toast(plan.error, 'err'); return; }
@@ -322,28 +402,16 @@ export function createTopologyTools(deps: TopologyToolDeps) {
       };
       view().setCreateEdgeStart(store.createEdgeStart.pos); rebuildTools(); return;
     }
-    const startVertex = start.vertex === null ? null : vertexIndex(doc, start.vertex);
     const startEdge = start.edge ? edgeIndex(doc, start.edge) : null;
-    const endpointOnSurfaceEdge = endpoint.edge != null && isSurfaceEdge(endpoint.edge);
-    const endpointOnSurfaceVertex = endpoint.vertex !== null && doc.quads.some(q => q.includes(endpoint.vertex!));
-    const endpointPoint: SurfaceCutPoint | null = endpointOnSurfaceVertex
-      ? { vertex: endpoint.vertex! }
-      : endpoint.edge && endpoint.t !== undefined && endpointOnSurfaceEdge ? { edge: endpoint.edge, t: endpoint.t } : null;
+    const {
+      startVertex, startOnSurface, endpointOnSurfaceEdge, endpointPoint,
+      path: candidateSurfacePath, plan: candidateSurfacePlan, routed: routedSurfacePath,
+    } = surfaceCutCandidate(doc, start, surfacePath, endpoint);
     const cutEnd = endpoint.vertex;
-    const startOnSurface = startVertex !== null && doc.quads.some(q => q.includes(startVertex));
     const sharePatch = startOnSurface && cutEnd !== null
-      && doc.quads.some(q => q.includes(startVertex) && q.includes(cutEnd));
+      && doc.quads.some(q => q.includes(startVertex!) && q.includes(cutEnd));
     const endpointEdgeSharesPatch = startOnSurface && endpoint.edge != null && endpointOnSurfaceEdge
       && doc.quads.some(q => q.includes(startVertex!) && quadHasEdge(q, endpoint.edge!));
-    const candidateSurfacePath: SurfaceCutPoint[] | null = endpointPoint && (surfacePath.length || startOnSurface)
-      ? surfacePath.length
-        ? [...surfacePath, endpointPoint]
-        : [{ vertex: startVertex! }, endpointPoint]
-      : null;
-    const candidateSurfacePlan = candidateSurfacePath ? validateSurfaceCutPath(doc, candidateSurfacePath) : null;
-    const routedSurfacePath = candidateSurfacePath?.length === 2 && candidateSurfacePlan && !candidateSurfacePlan.ok
-      ? routeSurfaceCutPath(doc, candidateSurfacePath[0], candidateSurfacePath[1])
-      : null;
     const directSurfaceIntent = candidateSurfacePlan?.ok === true || routedSurfacePath !== null;
     const surfaceIntent = surfacePath.length > 0
       || sharePatch || endpointEdgeSharesPatch || directSurfaceIntent;
@@ -367,7 +435,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
           if (!result.ok) { toast(result.error, 'err'); return; }
           const automatic = autoWeldCreatedEdgeCrossings(result.doc, result.edges);
           commitEditMesh(store, automatic.doc);
-          store.createEdgeChain.push(...namedEdges(mdoc(), automatic.edges));
+          store.createEdgeChain = traceSplitChain(doc, mdoc(), [...store.createEdgeChain, ...namedEdges(mdoc(), automatic.edges)]);
           store.edgeSel = [...store.createEdgeChain]; store.anchorEdge = store.edgeSel[0] ?? null;
           store.createEdgeSurfacePath = [];
           store.createEdgeSurfacePositions = [];
@@ -398,13 +466,24 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     if (!result.ok) { toast(result.error, 'err'); return; }
     const automatic = autoWeldCreatedEdgeCrossings(result.doc, [result.edge]);
     commitEditMesh(store, automatic.doc);
-    store.createEdgeChain.push(...namedEdges(mdoc(), automatic.edges));
+    store.createEdgeChain = traceSplitChain(doc, mdoc(), [...store.createEdgeChain, ...namedEdges(mdoc(), automatic.edges)]);
     store.edgeSel = [...store.createEdgeChain]; store.anchorEdge = store.edgeSel[0] ?? null;
     const endVertex = endpoint.vertex ?? result.appendedVertices[result.appendedVertices.length - 1];
     store.createEdgeStart = { vertex: vertexName(mdoc(), endVertex), pos: [...endpoint.pos] as V3 };
     view().setCreateEdgeStart(store.createEdgeStart.pos);
     scheduleRebuild(); rebuildTools();
     if (automatic.welded) toast(`${automatic.welded === 1 ? 'crossing' : `${automatic.welded} crossings`} auto-welded`, 'ok');
+  }
+
+  /** Esc's first press: end the strand being drawn but keep the tool armed, so a web of separate strands is
+   *  drawn without re-arming, and its edges stay collected for the final selection. False when no strand is
+   *  under way — Esc then leaves the tool. */
+  function endCreateEdgeChain(): boolean {
+    if (!store.createEdgeTool || !store.createEdgeStart) return false;
+    store.createEdgeStart = null; store.createEdgeSurfacePath = []; store.createEdgeSurfacePositions = [];
+    view().setCreateEdgeStart(null); view().setCreateEdgePath([]);
+    rebuildTools();
+    return true;
   }
 
   function finishCreateEdge() {
@@ -424,7 +503,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   return {
     bridgeCandidate, startBridge, addBridgeRail, reverseBridgeRail, removeBridgeRail, moveBridgeRail, cancelBridge, completeBridge,
     createPatchesFromEdges, armCreateEdge, armCreatePatch, armLoopCut, armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
-    finishCreatePatch, addCreateEdgePoint, finishCreateEdge, clearCreateEdge,
+    finishCreatePatch, addCreateEdgePoint, createEdgeCuts, endCreateEdgeChain, finishCreateEdge, clearCreateEdge,
   };
 }
 

@@ -1,7 +1,10 @@
-import { tip } from '../components/gui';
+import { tip, typedRange } from '../components/gui';
 import { segmented, type SegOption } from '../components/controls';
 import { svg } from '../components/icons';
-import type { BrushDir, BrushFalloff, BrushOp, FlattenMode, FlattenPlaneBehavior } from '../../../core/doc/mountain';
+import {
+  SCULPT_RADIUS_MIN, SCULPT_RADIUS_SLIDER_MAX,
+  type BrushDir, type BrushFalloff, type BrushOp, type FlattenMode, type FlattenPlaneBehavior,
+} from '../../../core/doc/mountain';
 import type { ToolsContext } from './widgets';
 
 const SCULPT_ICON = {
@@ -69,8 +72,9 @@ export function buildSculptTools(ctx: ToolsContext) {
 
   const common = gui.addFolder('Brush');
   common.open();
-  tip(common.add(brush, 'radius', 10, 250, 5).name('size (m)'),
-    'Radius along the connected control surface. The green ring aligns to the surface under the pointer.')
+  tip(typedRange(common.add(brush, 'radius', SCULPT_RADIUS_MIN, SCULPT_RADIUS_SLIDER_MAX, 1), { min: SCULPT_RADIUS_MIN }).name('size (m)'),
+    'Radius along the connected control surface. The green ring aligns to the surface under the pointer.',
+    `The slider runs ${SCULPT_RADIUS_MIN}–${SCULPT_RADIUS_SLIDER_MAX} m; type a larger value for a bigger brush.`)
     .onChange((r: number) => (viewport.brushRadius = r));
   iconChoice<BrushFalloff>(common, 'Falloff', [
     { value: 'smooth', label: 'Smooth falloff', icon: SCULPT_ICON.falloffSmooth, title: 'Smooth — a rounded bell that eases softly to zero at the brush edge.' },

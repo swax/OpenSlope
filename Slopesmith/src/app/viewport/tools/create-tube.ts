@@ -3,8 +3,8 @@ import type { V3 } from '../../../core/doc/types';
 import type { PlacementEndpoint } from '../input/placement-constraint';
 import { resolvePlacementEndpoint } from '../input/placement';
 import type { Stage } from '../stage';
+import { DRAW_POINT_GEO, scaleDrawMarkers } from './draw-markers';
 
-const POINT_GEO = new THREE.SphereGeometry(1.15, 10, 8);
 const POINT_COLOR = 0x50d8d0;
 const SNAP_COLOR = 0x62f0b6;
 const LINE_COLOR = 0x8ffff8;
@@ -22,8 +22,8 @@ export function createTubeToolLayer(
   let listener: (() => void) | null = null;
   const pointMat = new THREE.MeshBasicMaterial({ color: POINT_COLOR, depthTest: false, depthWrite: false });
   const snapMat = new THREE.MeshBasicMaterial({ color: SNAP_COLOR, depthTest: false, depthWrite: false });
-  const dots = Array.from({ length: 2 }, () => new THREE.Mesh(POINT_GEO, pointMat));
-  const hoverDot = new THREE.Mesh(POINT_GEO, pointMat);
+  const dots = Array.from({ length: 2 }, () => new THREE.Mesh(DRAW_POINT_GEO, pointMat));
+  const hoverDot = new THREE.Mesh(DRAW_POINT_GEO, pointMat);
   const line = new THREE.Line(
     new THREE.BufferGeometry(),
     new THREE.LineBasicMaterial({ color: LINE_COLOR, depthTest: false, depthWrite: false }),
@@ -105,6 +105,8 @@ export function createTubeToolLayer(
 
   return {
     setActive, onHover, onCommit, refresh,
+    /** Per frame: hold the endpoint and cursor dots at a constant size on screen. */
+    scaleMarkers: () => scaleDrawMarkers(stage, [...dots, hoverDot]),
     setListener(next: (() => void) | null) { listener = next; },
     get active() { return active; },
     get points(): readonly V3[] { return points.map(point => point.pos); },

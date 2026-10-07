@@ -246,6 +246,9 @@ export function meshFromNet(net: GridNet, meta: Omit<MountainMeta, 'kind' | 'spa
 // ---- sculpt brushes (surface-space dabs + stable view-plane Grab gesture) ----
 
 export type BrushOp = 'raise' | 'lower' | 'smooth' | 'flatten' | 'grab' | 'push';
+/** Brush radius bounds, metres. The size slider spans MIN–SLIDER_MAX; a typed size (or [ / ]) may go past it. */
+export const SCULPT_RADIUS_MIN = 1;
+export const SCULPT_RADIUS_SLIDER_MAX = 100;
 /** Which way raise/lower pushes: straight up, or out of the slope face (build walls / overhangs). */
 export type BrushDir = 'vertical' | 'normal';
 /** How brush strength changes from its centre to the edge of its surface-space footprint. */

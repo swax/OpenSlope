@@ -55,7 +55,7 @@ type EditCallbackName =
   | 'onRotateControlPoints' | 'onRotateCorners'
   | 'onScaleControlPoints' | 'onScaleCorners' | 'onSlideCorners'
   | 'onSlideBegin' | 'onSlideRecut' | 'onSlideMergePending' | 'onSlideEnd' | 'onEditTransformBegin' | 'onEditTransformEnd'
-  | 'onCreateEdgePoint' | 'onCreateTubeAxisChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
+  | 'onCreateEdgePoint' | 'createEdgeCuts' | 'onCreateTubeAxisChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
   | 'onAppendTrailKnot' | 'onSelectTrailKnot' | 'onMoveTrailKnot' | 'onTrailKnotDrag' | 'onTransformTrail' | 'onTrailHover'
   | 'trailInterior'
   | 'onSelectEditCell' | 'onSelectCellLoop' | 'onSelectEdge' | 'onSelectEdgeLoop'
@@ -1975,6 +1975,7 @@ export function createEditSession(deps: EditSessionDeps) {
     onEditTransformBegin(target) { return beginEditTransform(target); },
     onEditTransformEnd() { scheduleRebuild(); },
     onCreateEdgePoint(endpoint) { topology.addCreateEdgePoint(endpoint); },
+    createEdgeCuts(endpoint) { return topology.createEdgeCuts(endpoint); },
     onCreateTubeAxisChange() {
       if (store.surgeryTool !== 'tube') return;
       const count = view().createTubePoints.length;

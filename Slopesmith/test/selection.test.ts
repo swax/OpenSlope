@@ -223,6 +223,117 @@ for (const reverse of [false, true]) {
   'create edge across gap: the committed selection is exactly the requested direct connection');
 }
 
+// ---- Create Edge draws a spider web: spokes as separate strands, rings that land on them, then patches ------
+{
+  const { store, session } = editor();
+  const before = store.mdoc.quads.length, Y = 60, C: V3 = [200, Y, 200];
+  const tips: V3[] = [[220, Y, 200], [200, Y, 220], [180, Y, 200], [200, Y, 180]];
+  // The vertex nearest p, as the corner picker would snap to it (a split point sits on its spoke's curve).
+  const vertexAt = (p: V3) => {
+    let best = -1, bestD = 0.5;
+    for (let v = 0; v < store.mdoc.vertices.length / 3; v++) {
+      const q = getVertex(store.mdoc, v), d = Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+      if (d < bestD) { best = v; bestD = d; }
+    }
+    if (best < 0) throw new Error(`no vertex at ${p.join()}`);
+    return best;
+  };
+  const point = (p: V3) => session.viewportCallbacks.onCreateEdgePoint?.({ vertex: null, pos: p });
+  const corner = (p: V3) => session.viewportCallbacks.onCreateEdgePoint?.({ vertex: vertexAt(p), pos: p });
+  // The free (patch-less) edge between two drawn points, picked halfway along as the viewport would.
+  const onEdge = (p: V3, q: V3) => {
+    const a = vertexAt(p), b = vertexAt(q);
+    session.viewportCallbacks.onCreateEdgePoint?.({
+      vertex: null, edge: [a, b], t: 0.5, pos: p.map((x, i) => (x + q[i]) / 2) as V3,
+    });
+  };
+  session.armCreateEdge();
+  point(C); point(tips[0]);
+  for (const tip of tips.slice(1)) {
+    check(session.endCreateEdgeChain() && store.createEdgeTool, 'create edge web: Esc ends a strand and keeps the tool armed');
+    corner(C); point(tip);
+  }
+  session.endCreateEdgeChain();
+  const mids = tips.map(tip => tip.map((x, i) => (x + C[i]) / 2) as V3);
+  tips.forEach(tip => onEdge(C, tip));
+  corner(mids[0]);
+  session.endCreateEdgeChain();
+  [...tips, tips[0]].forEach(corner);
+  session.endCreateEdgeChain();
+  check(!session.endCreateEdgeChain() && store.createEdgeTool,
+    'create edge web: with no strand under way there is nothing to end — the next Esc leaves the tool');
+  session.finishCreateEdge();
+  flushFrames();
+  check(!store.mdoc.tJunctions?.length && store.mdoc.freeEdges?.length === 16,
+    'create edge web: every ring point splits its spoke — 8 spoke halves, 8 ring edges, no T-junctions');
+  const adj = meshContext(store.mdoc).adj;
+  check(store.edgeSel.length === 16 && store.edgeSel.every(name => {
+    const edge = edgeIndex(store.mdoc, name);
+    return !!edge && !!adj.neighbors[edge[0]]?.includes(edge[1]);
+  }), 'create edge web: the finished selection is every edge drawn, the split spokes as their live halves');
+  session.createPatchesFromEdges();
+  flushFrames();
+  check(store.mdoc.quads.length === before + 8 && !store.mdoc.freeEdges?.length,
+    'create edge web: Create Patches fills the four triangles at the hub and the four quads around them');
+}
+
+// ---- Create Edge splits a patch edge to edge, then stitches each T-junction back out to the rim --------------
+// Quad (r, c) is [5r+c, 5r+c+1, 5(r+1)+c, 5(r+1)+c+1]. Cell (2, 1) is cut between its column edges: both ends
+// land inside edges shared with an untouched neighbour, so both become T-junctions. Drawing out of each T to the
+// rim resolves it — one patch to the left rim, a routed strip of two to the right.
+{
+  const { store, session } = editor();
+  const ids = [...store.mdoc.vertexIds], before = store.mdoc.quads.length;
+  const live = (v: number) => vertexIndex(store.mdoc, ids[v])!;
+  const contact = (a: number, b: number) => {
+    const [x, y] = [live(a), live(b)].sort((p, q) => p - q) as [number, number];
+    const pos = getVertex(store.mdoc, x).map((value, i) => (value + getVertex(store.mdoc, y)[i]) / 2) as V3;
+    return { vertex: null, edge: [x, y] as [number, number], t: 0.5, pos };
+  };
+  const tAt = (z: number) => {
+    const node = (store.mdoc.tJunctions ?? []).find(n => Math.abs(getVertex(store.mdoc, n.vertex)[2] - z) < 1);
+    return node ? { vertex: node.vertex, pos: getVertex(store.mdoc, node.vertex) } : null;
+  };
+  const cuts = (endpoint: ReturnType<typeof contact>) => session.viewportCallbacks.createEdgeCuts?.(endpoint) ?? false;
+  session.armCreateEdge();
+  session.viewportCallbacks.onCreateEdgePoint?.(contact(11, 16));
+  check(cuts(contact(12, 17)) && !cuts(contact(0, 1)),
+    'create edge split: from an edge point, the hover sticks to another edge of the same patch — and not to a far one');
+  session.viewportCallbacks.onCreateEdgePoint?.(contact(12, 17));
+  const left = tAt(10), right = tAt(20);
+  check(store.mdoc.quads.length === before + 1 && store.mdoc.tJunctions?.length === 2 && !!left && !!right
+    && store.createEdgeStart?.vertex === vertexName(store.mdoc, right!.vertex),
+  'create edge split: an edge-to-edge cut splits only that patch, leaving a T-junction at each end, and the chain goes on from the last');
+  check(cuts(contact(14, 19)) && !cuts(contact(0, 1)),
+    'create edge split: out of a T-junction the hover sticks to a rim edge a routed strip away, still not to an unrelated edge');
+  session.viewportCallbacks.onCreateEdgePoint?.(contact(14, 19));
+  check(store.mdoc.tJunctions?.length === 1 && store.mdoc.quads.length === before + 3,
+    'create edge stitch: drawing from the T vertex to the rim splits the strip it crosses and resolves that T-junction');
+  session.endCreateEdgeChain();
+  const leftT = tAt(10)!;
+  session.viewportCallbacks.onCreateEdgePoint?.({ vertex: leftT.vertex, pos: leftT.pos });
+  check(cuts(contact(10, 15)), 'create edge stitch: a new strand from the other T vertex sticks to its rim edge');
+  session.viewportCallbacks.onCreateEdgePoint?.(contact(10, 15));
+  session.finishCreateEdge();
+  flushFrames();
+  check(!store.mdoc.tJunctions?.length && store.mdoc.quads.length === before + 4
+    && store.mdoc.quads.every(q => new Set(q).size === 4),
+  'create edge stitch: with both T-junctions drawn out, the grid is all conforming quads again');
+}
+{
+  // From an ordinary surface corner the hover only sticks across the patches that corner touches: a long
+  // route over a busy map would pull a free-standing wall drawn from it onto the terrain behind.
+  const { store, session } = editor();
+  session.armCreateEdge();
+  session.viewportCallbacks.onCreateEdgePoint?.({ vertex: 0, pos: getVertex(store.mdoc, 0) });
+  const at = (a: number, b: number) => ({ vertex: null, edge: [a, b] as [number, number], t: 0.5,
+    pos: getVertex(store.mdoc, a).map((value, i) => (value + getVertex(store.mdoc, b)[i]) / 2) as V3 });
+  check(session.viewportCallbacks.createEdgeCuts?.(at(1, 6)) === true
+    && session.viewportCallbacks.createEdgeCuts?.(at(3, 8)) === false
+    && session.viewportCallbacks.createEdgeCuts?.(at(0, 1)) === false,
+  'create edge split: from a plain corner, only an edge across one of its own patches sticks — not a far one, nor its own edge');
+}
+
 // ---- path extrusion captures normal edge selections without enabling transforms on the guide -------------
 {
   const { store, session, viewport } = editor();

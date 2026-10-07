@@ -4,8 +4,8 @@ import type { EdgeCrossing } from '../../../core/mesh/edge-crossings';
 import type { CoincidentVertices } from '../../../core/mesh/coincident-vertices';
 import type { Stage } from '../stage';
 import { T_JUNCTION_COLOR } from '../constants';
+import { DRAW_POINT_GEO, scaleDrawMarkers } from './draw-markers';
 
-const POINT_GEO = new THREE.SphereGeometry(1.1, 10, 8);
 const POINT_COLOR = 0x9a5cff;
 const SNAP_COLOR = 0x62f0b6;
 const LINE_COLOR = 0xd7b3ff;
@@ -60,8 +60,8 @@ export function createEdgeLayer(stage: Stage) {
   let diagnosticsVisible = true;
   const pointMat = new THREE.MeshBasicMaterial({ color: POINT_COLOR, depthTest: false, depthWrite: false });
   const snapMat = new THREE.MeshBasicMaterial({ color: SNAP_COLOR, depthTest: false, depthWrite: false });
-  const startDot = new THREE.Mesh(POINT_GEO, pointMat);
-  const hoverDot = new THREE.Mesh(POINT_GEO, pointMat);
+  const startDot = new THREE.Mesh(DRAW_POINT_GEO, pointMat);
+  const hoverDot = new THREE.Mesh(DRAW_POINT_GEO, pointMat);
   const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({
     color: LINE_COLOR, depthTest: false, depthWrite: false,
   }));
@@ -213,6 +213,8 @@ export function createEdgeLayer(stage: Stage) {
   }
 
   return {
+    /** Per frame: hold the start and cursor dots at a constant size on screen. */
+    scaleMarkers: () => scaleDrawMarkers(stage, [startDot, hoverDot]),
     get armed() { return armed; },
     get start() { return start; },
     get hover() { return hover; },

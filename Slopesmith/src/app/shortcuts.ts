@@ -7,7 +7,7 @@ import type { PropLineOps } from './props/lines';
 import type { PropClipboardSession } from './props/clipboard';
 import type { TrickTools } from './tricks/operations';
 import type { Viewport } from './viewport/viewport';
-import type { BrushOp } from '../core/doc/mountain';
+import { SCULPT_RADIUS_MIN, type BrushOp } from '../core/doc/mountain';
 import { modeForShortcut } from './mode-shortcuts';
 import { turnBuilderSquare } from './ui/components/tile-set-builder';
 import type { Mode } from './viewport/types';
@@ -90,7 +90,7 @@ export function installShortcuts(deps: ShortcutDeps) {
     hideSelectedMesh, showAllHidden, canHideSelection, toggleSelectedControlCages, canEditCurvature,
     selectConnected, canSelectConnected,
     startBridge, addBridgeRail, cancelBridge, completeBridge,
-    finishCreateEdge, clearCreateEdge, finishCreateTube, cancelCreateTube,
+    endCreateEdgeChain, finishCreateEdge, clearCreateEdge, finishCreateTube, cancelCreateTube,
     finishCreateTrail, cancelCreateTrail, undoCreateTrailPoint,
     beginEdgeExtrusion, flipEdgeExtrusionSide, commitEdgeExtrusion, ripEdges,
     creaseVertices, smoothVertices,
@@ -163,7 +163,9 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (!mod && !e.altKey && store.currentMode === 'sculpt') {
       if (e.key === '[' || e.key === ']') {
         e.preventDefault();
-        sculptBrush.radius = Math.min(250, Math.max(10, sculptBrush.radius + (e.key === '[' ? -5 : 5)));
+        // 5 m steps on the 5 m grid, down to the minimum; like a typed size, they may pass the slider's end.
+        const r = sculptBrush.radius;
+        sculptBrush.radius = e.key === ']' ? Math.floor(r / 5) * 5 + 5 : Math.max(SCULPT_RADIUS_MIN, Math.ceil(r / 5) * 5 - 5);
         viewport.brushRadius = sculptBrush.radius;
         rebuildTools();
         return;
@@ -330,6 +332,11 @@ export function installShortcuts(deps: ShortcutDeps) {
       else if (store.currentMode === 'props' && store.selectedProp !== null) propOps.deleteSelectedProp();
       else if (store.currentMode === 'props' && store.selectedRefProp) { /* the reference is read-only */ }
       else if (store.currentMode === 'edit' && (store.selectedCorner !== null || store.regionSel.length || store.edgeSel.length || store.cellSel.length)) { e.preventDefault(); deleteSelectedMesh(); }
+      // Edit selects placements and free lights too (its click picks them as Props mode does); Delete removes them
+      // the same way. A mixed mesh + prop marquee stays dormant until narrowed, as deleteSelectedMesh does.
+      else if (store.currentMode === 'edit' && store.multiSel.length && !mixedEditSelection()) { e.preventDefault(); propOps.deleteMultiSelProps(); }
+      else if (store.currentMode === 'edit' && store.selectedProp !== null && !mixedEditSelection()) { e.preventDefault(); propOps.deleteSelectedProp(); }
+      else if (store.currentMode === 'edit' && store.selectedLight !== null) { e.preventDefault(); deleteSelectedLight(); }
       else if (store.currentMode === 'paint' && store.selectedPaintCell !== null) deleteSelectedPaintTile();
       else if (store.currentMode === 'paint' && store.selectedRefPatch !== null) { /* the reference is read-only */ }
       else deleteKnot();
@@ -344,7 +351,8 @@ export function installShortcuts(deps: ShortcutDeps) {
       if (viewport.xrPlaying) { viewport.stopXrPlay(); return; }
       if (store.railDrawing) { trickTools.finishRail(); return; } // Esc finishes the rail (as the placement toast says)
       if (store.lineDrawing) { propLines.finishLine(); return; } // …and a prop line being drawn
-      if (store.createEdgeTool) { finishCreateEdge(); return; }
+      // The first Esc ends the strand being drawn and keeps the tool; the next leaves it.
+      if (store.createEdgeTool) { if (!endCreateEdgeChain()) finishCreateEdge(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'tube') { cancelCreateTube(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'trail') { cancelCreateTrail(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'patch') { edit.finishCreatePatch(false); return; }
