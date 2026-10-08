@@ -125,7 +125,7 @@ namespace OpenSlope.VrcPlugin
             float speed = _vel.magnitude;
             Vector3 predicted = _railPoint + _railFwd * (speed * dt);
             railNetwork.QueryRail(_railIndex, predicted);
-            if (!railNetwork.RFound) { ExitGrind(); return; } // rail data gone (shouldn't happen)
+            if (!railNetwork.RFound) { ExitGrind(); return; } // rail switched off by an effect/gate (or its data is gone)
 
             Vector3 tan = railNetwork.RTangent;
             if (Vector3.Dot(tan, _railFwd) < 0f) tan = -tan; // keep going the same way along the rail

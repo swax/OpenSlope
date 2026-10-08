@@ -313,22 +313,18 @@ namespace OpenSlope.VrcPlugin
         public float lowGripTiltLift = 0.5f;
 
         [Header("Head steering (VR-only: look/turn to steer; the seat stays pinned so the view never spins)")]
-        [Tooltip("Steer by looking - VR ONLY (see headLookVROnly). The heading rotates to MATCH where your head points " +
-                 "and stops there; the seat is pinned so steering never moves your view (no feedback spin, no sickness). " +
-                 "On the GROUND the gaze offset also drives the game's input->lean slew like a stick (full lean ~30 deg " +
-                 "past the deadzone), so a head-steered turn carves with the real tilt force - ice included - and banks " +
-                 "the deck. Force-disabled on desktop (mouse-look is seat-relative there and would spin) - desktop uses stick-steer.")]
+        [Tooltip("Steer by looking - VR ONLY (see headLookVROnly). On the GROUND the gaze offset from your travel is a " +
+                 "steering input exactly like the stick (full lean ~30 deg past the deadzone), so a head-steered turn " +
+                 "carves with the same lean, tilt force and speed as a stick turn. In the AIR the heading rotates to " +
+                 "match where you look and stops there. The seat is pinned so steering never moves your view (no " +
+                 "feedback spin). Force-disabled on desktop (mouse-look is seat-relative there and would spin).")]
         public bool headLookSteer = true;
-        [Tooltip("Head yaw (deg) treated as 'aligned' - the board stops turning once within this of your gaze, so small " +
-                 "glances don't nudge it. Smaller = tracks your look more exactly.")]
+        [Tooltip("Gaze offset (deg) treated as no steering, so small glances don't nudge the board. In the air the board " +
+                 "stops turning once within this of your gaze. Smaller = tracks your look more exactly.")]
         public float headLookDeadzone = 5f;
-        [Tooltip("Gaze offset from the TRAVEL direction (deg past the deadzone) that maps to FULL lean when head-steering " +
-                 "on the ground. Measured against travel, never the nose: the yaw closure parks the nose on the gaze in " +
-                 "~0.1 s, so a nose-referenced lean cancels itself before its force can act. The gaze drives the same " +
-                 "input->lean slew as the stick, so a head turn EDGES the board and the lean ebbs as the carve brings the " +
-                 "path around - on ice the facing yaw alone cannot bend the path (near-zero carve drag); only the lean's " +
-                 "banked force can. A deflected stick always overrides the gaze lean. 0 disables gaze lean (head-steer " +
-                 "aims the nose only).")]
+        [Tooltip("Gaze offset from the TRAVEL direction (deg past the deadzone) that maps to FULL steer on the ground. " +
+                 "Measured against travel, so the edge holds until the path has turned toward your look. A deflected " +
+                 "stick always overrides the gaze. 0 disables grounded head steering (air aiming is unaffected).")]
         public float headLeanFullAngle = 30f;
         // The head-follow slew speed is not separate: air uses the generated rate and rails use their state field.
         [Tooltip("Keep head-steer to VR only (recommended TRUE). Desktop mouse-look is seat-relative, so head-steer there " +
@@ -1252,6 +1248,10 @@ namespace OpenSlope.VrcPlugin
         private const float RIDER_DRIVE = RIDE_RIDER_DRIVE;
         private const float BOOST_ACCEL = RIDE_BOOST_ACCEL;
         private const float BOOST_LEAN_WINDOW = RIDE_BOOST_LEAN_WINDOW;
+        // Low-speed cruise recovery band (m/s): full drive at the 0.5 m/s standstill gate, faded out by Slopesmith's
+        // 2 m/s switch-latch speed. Port safeguards shared with Slopesmith's physics-tuning.ts, not retail constants.
+        private const float CRUISE_RECOVERY_FULL_SPEED = 0.5f;
+        private const float CRUISE_RECOVERY_FADE_SPEED = 2f;
         // [Trailmap: 330-carving] The generated response helper owns the per-tick yaw cap and resistance laws.
         // [Trailmap: 340-jump-air-landing] the charged launch: the 6.309 m/s floor (a bare tap is already a real pop),
         // the mid-stat rider curve, the speed-factor saturation, and the flat fallback tangent lean an ordinary
@@ -1923,10 +1923,17 @@ namespace OpenSlope.VrcPlugin
             else if (_throttle < 0f) _tickAccel += ride * ((Mathf.MoveTowards(u, 0f, -_throttle * brakeStrength * h) - u) / h);
             float speedNow = _vel.magnitude;
             float deficit = Mathf.Min(SurfTarget(surf) - speedNow, RIDE_CRUISE_DEFICIT_MAX);
-            if (deficit > 0f && speedNow > 0.5f)
+            if (deficit > 0f && speedNow > CRUISE_RECOVERY_FULL_SPEED)
             {
                 float offDeg = Mathf.Acos(Mathf.Clamp(u / speedNow, -1f, 1f)) * Mathf.Rad2Deg;
-                float driveAlign = Mathf.Clamp01((60f - offDeg) / 30f);
+                // Port recovery (Slopesmith docs/061): a collision or skid can leave the board drifting sideways or
+                // backwards too slowly to straighten, yet fast enough to close the 30-60 deg alignment gate for
+                // seconds. Fade a full-drive floor out across CRUISE_RECOVERY_FULL_SPEED..CRUISE_RECOVERY_FADE_SPEED;
+                // braking suppresses it, and above the fade the recovered gate is unchanged.
+                float travel = Mathf.Sqrt(u * u + w * w);
+                float recovery = _throttle < 0f ? 0f : Mathf.Clamp01((CRUISE_RECOVERY_FADE_SPEED - travel)
+                    / (CRUISE_RECOVERY_FADE_SPEED - CRUISE_RECOVERY_FULL_SPEED));
+                float driveAlign = Mathf.Max(Mathf.Clamp01((60f - offDeg) / 30f), recovery);
                 _tickAccel += ride * (RIDER_DRIVE * driveAlign * SurfMult(surf) * deficit);
             }
             if (boost > 0f) _tickAccel += ride * (BOOST_ACCEL * Mathf.Clamp01(1f - Mathf.Abs(_lean) / BOOST_LEAN_WINDOW));
@@ -1951,7 +1958,7 @@ namespace OpenSlope.VrcPlugin
             int surf = _pSurf;
             float assist = SurfIceAssist(surf);
             // --- Steering: the SSX heading model (docs/vrchat/020) [Trailmap: 330-carving]. A stick "lean" yaws the heading around the
-            // contact normal toward a REFERENCE direction, LEADING it by the lean angle; the carve below drags the
+            // contact normal toward the TRAVEL direction, LEADING it by the lean angle; the carve below drags the
             // velocity to follow. The yaw is speed-GATED UP (quadratic) and capped at GROUND_TURN_RATE, surface-
             // INDEPENDENT (forward resistance does not set yaw). The self-centering slip term makes the cap a bounded carve angle.
             float vmag = _vel.magnitude;
@@ -1960,12 +1967,11 @@ namespace OpenSlope.VrcPlugin
             Vector3 velN = Vector3.ProjectOnPlane(_vel, n);
             Vector3 velDir = velN.sqrMagnitude > 1e-4f ? velN.normalized : fwdN;
 
-            // The direction the heading homes onto: in VR head-steer your GAZE; otherwise your VELOCITY (let go of the
-            // stick and the board straightens onto its travel). Head-steer stays VR-only. The gaze also drives the
-            // shared input->lean slew below whenever the stick is centred (headLeanFullAngle), so a head-steered turn
-            // EDGES the board instead of only aiming the nose - the facing yaw alone cannot bend an ice line.
+            // VR head-steer supplies a steering INTENT, just like the stick: the gaze offset from travel drives the shared
+            // input->lean slew below whenever the stick is centred (headLeanFullAngle). The heading closure stays
+            // referenced to TRAVEL for both - also homing the nose onto the gaze would add a second turn on top of the
+            // carve lead, push the board across its travel and scrub speed (Slopesmith docs/061). Air aiming is separate.
             bool headOn = headLookSteer && (!headLookVROnly || vr) && vr;
-            Vector3 refDir = velDir;
             float headSteer = 0f; // gaze-derived steer intent: 0 inside the deadzone, full at headLeanFullAngle past it
             if (headOn)
             {
@@ -1975,16 +1981,10 @@ namespace OpenSlope.VrcPlugin
                 {
                     gaze = gaze.normalized;
                     float off = Mathf.Atan2(Vector3.Dot(Vector3.Cross(fwdN, gaze), n), Vector3.Dot(fwdN, gaze));
-                    bool settled = Mathf.Abs(off) <= headLookDeadzone * Mathf.Deg2Rad;
-                    refDir = settled ? fwdN : gaze; // within deadzone: just hold
-                    _headAligned = settled;         // settled -> let the seat ease to square up with the deck (orientation block)
-                    // The gaze LEAN measures the gaze against the TRAVEL direction, never the heading: the yaw closure
-                    // below parks the heading on the gaze within ~0.1 s (and at equilibrium LEADS it by turnLean, which
-                    // flips a heading-referenced offset's sign), so a heading-referenced lean self-cancels before its
-                    // tilt force can act - on ice, where that force is the only thing that bends the path, a head turn
-                    // then does nothing. Against travel it mirrors the stick's own loop: the lean holds while the PATH
-                    // still points away from the gaze and ebbs as the carve brings it around. Same Atan2 frame as
-                    // slipRef/slipVel, so gaze right of travel -> positive -> the rightward tilt force.
+                    _headAligned = Mathf.Abs(off) <= headLookDeadzone * Mathf.Deg2Rad; // gaze ~ down the deck -> seat may ease square (orientation block)
+                    // Measured against TRAVEL, never the nose, so the edge stays engaged until the path has actually
+                    // turned toward the gaze, and ebbs as the carve brings it around. Same Atan2 frame as slipVel, so
+                    // gaze right of travel -> positive -> the rightward tilt force.
                     if (headLeanFullAngle > 0f)
                     {
                         float offTravel = Mathf.Atan2(Vector3.Dot(Vector3.Cross(velDir, gaze), n), Vector3.Dot(velDir, gaze));
@@ -2011,12 +2011,10 @@ namespace OpenSlope.VrcPlugin
             if (surf == 3 || surf == 4) leanRate *= RESPONSE_LEAN_POWDER_SLEW_SCALE; // powder steers into the lean slower
             _lean = Mathf.MoveTowards(_lean, leanTarget, leanRate * h);
             float turnLean = RideHeadingLead(_lean, _charge) * RIDE_STEER_STRENGTH;
-            float slipRef = Mathf.Atan2(Vector3.Dot(Vector3.Cross(refDir, fwdN), n), Vector3.Dot(refDir, fwdN));
             float slipVel = Mathf.Atan2(Vector3.Dot(Vector3.Cross(velDir, fwdN), n), Vector3.Dot(velDir, fwdN));
             Vector3 fallLine = n * n.y - Vector3.up;
             fallLine = fallLine.sqrMagnitude > RESPONSE_YAW_FLAT_CROSS_LENGTH_SQ ? fallLine.normalized : fwdN;
             float projection = Vector3.Dot(Vector3.Cross(_vel, fwdN), n) / Mathf.Max(vmag, RESPONSE_GUARDS_SPEED_MPS);
-            if (headOn) projection = Mathf.Sin(slipRef); // VR reference adaptation.
             float rawYaw = RideHeadingYaw(_lean, turnLean, projection, vmag,
                 Vector3.Dot(_vel, fwdN), Vector3.Dot(_vel, fallLine), h);
             // Low-grip assist term 1: damp the yaw only while it is UN-COMMITTING - the commanded lead has fallen
@@ -2025,12 +2023,7 @@ namespace OpenSlope.VrcPlugin
             // rider is REVERSING the carve (lead and drift on opposite sides), which is the one moment full retail
             // authority is most wanted. Entering a carve fails the magnitude test and is likewise untouched.
             //
-            // The gate reads slipVel (the DRIFT), never slipRef, while the yaw itself stays referenced to slipRef.
-            // Under head-steer those are different quantities - slipRef measures the GAZE against the heading - so a
-            // slipRef-gated damp would key on where the rider is looking rather than on the drift. That also makes
-            // the same-side guard do real work here that it never had to do in Slopesmith: looking ACROSS a drift to
-            // correct it puts the lead opposite the slip, which now correctly exempts the correction from damping.
-            // Slopesmith cannot show any of this - it has no head-steer and aliases `slipVel = slipRef`.
+            // Both head and stick steering use the actual drift here, just as they do for the heading closure above.
             //
             // Damps the CLAMPED yaw: the re-alignment runs into the 6 deg/tick cap, so scaling the pre-clamp closure
             // fraction would not reach it. Gating on "is the input centred" also does not work - the lean slews to

@@ -466,7 +466,7 @@ The deep physics provenance is in [020](020-surface-physics.md); these are the *
 the loop above:
 
 - **Per-state turn rates.** The generated shared profile owns the ground cap (`6°/tick = 360°/s`) and air rate
-  (`270°/s`); rail free-steer reuses that same `270°/s` trick-state rate. Ground heading leads the velocity/gaze reference
+  (`270°/s`); rail free-steer reuses that same `270°/s` trick-state rate. Ground heading leads the travel direction
   by lean, speed-gates up quadratically, and closes through the surface lateral-drag path rather than a second
   heading-response knob. VR steering runs on the **left stick** (`InputMoveHorizontal`, the same stick whose Y is
   accel/brake), leaving the right stick free for the rider's view.

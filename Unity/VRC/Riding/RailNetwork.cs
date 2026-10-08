@@ -476,6 +476,8 @@ namespace OpenSlope.VrcPlugin
             RFound = false; RSurface = 13; RAtStart = false; RAtEnd = false;
             if (!_ready) { Bake(); if (!_ready) return; }
             if (rail < 0 || rail >= _railN || !_railValid[rail]) return;
+            // Re-checked every tick so an effect/gate switch also releases a rider already grinding this rail.
+            if (_railEnabled != null && (!_railEnabled[rail] || !_railModeEnabled[rail])) return;
             ClosestOnRail(rail, pos, true);   // FOLLOW: ride the analytic cubic - exact point + continuous tangent P'(t)
             RFound = true; RRail = rail;
             RSurface = SurfaceForRail(rail);
