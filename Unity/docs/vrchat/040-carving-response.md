@@ -32,6 +32,16 @@ may retain their chosen setting. Gaze steering, seat comfort, mounting, push/bra
 contact acquisition and recovery remain platform adaptations. These differences must
 be considered in a live comparison; scalar formula agreement alone is insufficient.
 
+Grounded gaze steering matches Slopesmith (its docs/061): the gaze offset from travel
+is only a steering intent through the stick's lean slew, and the heading closure stays
+referenced to travel. Homing the nose onto the gaze as well added a second turn on top
+of the carve lead and scrubbed speed. Air aiming still turns toward the gaze.
+
+The VRChat board also carries Slopesmith's low-speed cruise recovery: full alignment at
+the 0.5 m/s cruise gate, fading to none by 2 m/s, suppressed while braking. Unlike
+Slopesmith it keeps refusing cruise drive below 0.5 m/s, so a board mounted at rest
+does not drive itself away; VRChat riders push off instead.
+
 ## Verification
 
 `Snowknife.Tests/CarvingResponseTests.cs` compiles and executes the generated scalar

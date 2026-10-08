@@ -86,6 +86,12 @@ namespace OpenSlope.VrcPlugin
         // so RetryPlayback re-issues the SAME url rather than reverting to the inspector field.
         private VRCUrl _current;
 
+        // A stream is open and decodable: set by OnVideoReady, cleared by every (re)load, stop and error. AVPro's
+        // GetDuration/GetTime/SetTime throw inside the EXTERN until a stream is open, and an Udon exception halts this
+        // behaviour for the session - and the jukebox's 10 Hz scrub-bar tick polls Duration() from Start, before any
+        // video. So the decode is only queried while ready; otherwise the readers report an empty, stopped player.
+        private bool _ready;
+
         void Start()
         {
             AssignMaterial();   // every screen quad references the one shared video material (whether shown or not)
@@ -122,6 +128,7 @@ namespace OpenSlope.VrcPlugin
             if (player == null || !HasUrl(u)) return;
             _current = u;
             _retryPending = false;   // a deliberate (re)load supersedes any pending retry of the old url
+            _ready = false;
             ShowScreens();
             player.PlayURL(u);
             _videoActive = true;
@@ -135,17 +142,19 @@ namespace OpenSlope.VrcPlugin
             if (player != null) player.Stop();
             HideScreens();
             _videoActive = false;
+            _ready = false;
             _current = null;
         }
 
-        public float CurrentTime() { return player != null ? player.GetTime() : 0f; }
-        public float Duration()    { return player != null ? player.GetDuration() : 0f; }
-        public bool  IsPlaying()   { return player != null && player.IsPlaying; }
+        public float CurrentTime() { return _ready && player != null ? player.GetTime() : 0f; }
+        public float Duration()    { return _ready && player != null ? player.GetDuration() : 0f; }
+        public bool  IsPlaying()   { return _ready && player != null && player.IsPlaying; }
 
         // Jump the local decode to t seconds (the jukebox's shared-playhead sync + the scrub bar both seek through here).
+        // Dropped before the stream is ready: the jukebox seeks onto the shared playhead in OnRendererVideoReady anyway.
         public void Seek(float t)
         {
-            if (player == null) return;
+            if (player == null || !_ready) return;
             if (t < 0f) t = 0f;
             player.SetTime(t);
         }
@@ -186,18 +195,21 @@ namespace OpenSlope.VrcPlugin
         public override void OnVideoEnd()
         {
             if (jukebox != null) jukebox.OnRendererVideoEnd();
-            else if (HasUrl(_current)) player.PlayURL(_current);
+            else if (HasUrl(_current)) { _ready = false; player.PlayURL(_current); }
         }
 
         // Ready to play: the jukebox seeks us to the shared playhead here (you can't SetTime before the stream is ready), so a
         // late joiner / a freshly-loaded item lands at the right offset instead of restarting everyone from 0.
         public override void OnVideoReady()
         {
+            _ready = true;   // before the jukebox call: its ready handler seeks, which needs the open stream
             if (jukebox != null) jukebox.OnRendererVideoReady();
         }
 
         public override void OnVideoError(VideoError videoError)
         {
+            _ready = false;
+
             // A malformed/unsupported URL won't fix itself - don't retry. Tell the jukebox so the OWNER skips to the next
             // item rather than leaving everyone stuck on a dead link.
             if (videoError == VideoError.InvalidURL)
@@ -227,7 +239,7 @@ namespace OpenSlope.VrcPlugin
         public void RetryPlayback()
         {
             _retryPending = false;
-            if (HasUrl(_current) && player != null) player.PlayURL(_current);
+            if (HasUrl(_current) && player != null) { _ready = false; player.PlayURL(_current); }
         }
     }
 }
