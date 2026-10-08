@@ -1,5 +1,6 @@
 import type { EffectNode, JsonObject, JsonValue } from './document';
 import { SPLINE_END_MODE_OPTIONS, SPLINE_ORIENTATION_MODE_OPTIONS } from './play-runtime';
+import { MPH_PER_MPS } from '../math/units';
 
 export interface EffectSemanticNumberOption {
   value: number;
@@ -24,8 +25,11 @@ export interface EffectSemanticNumberField {
    * and gates nothing. Nothing in the editor could see that, so the standing advice was "set it in Raw",
    * which is an instruction to hand-assemble a float. The conversion belongs here instead: the control takes
    * and shows the readable number, and the document keeps the exact int the packer writes.
+   *
+   * `mph` is a speed the document keeps in m/s, as the ride reads it, shown in the mph the ride's HUD reads
+   * (`core/math/units.ts`) — to a tenth, so a stored value does not show as a run of float digits.
    */
-  codec?: 'f32-bits';
+  codec?: 'f32-bits' | 'mph';
 }
 
 export interface EffectSemanticInspector {
@@ -36,6 +40,10 @@ export interface EffectSemanticInspector {
 const field = (label: string, path: readonly string[], title: string, step?: string,
   options?: readonly EffectSemanticNumberOption[]): EffectSemanticNumberField =>
   ({ label, path, title, step, options });
+
+/** A speed stored in m/s, shown in mph (`codec`). */
+const speedField = (label: string, path: readonly string[], title: string): EffectSemanticNumberField =>
+  ({ label: `${label} (mph)`, path, title, codec: 'mph' });
 
 /** A word stored as the int bit pattern of the float the engine reads out of it. */
 const bitsField = (label: string, path: readonly string[], title: string, step?: string)
@@ -229,7 +237,7 @@ const stageFields = (stage: number, firstAxisWord: string, speedWord: string)
     ...['X', 'Y', 'Z'].map((axis, offset) => field(`Stage ${stage} direction ${axis}`,
       ['type0', 'type0Sub24', `U${first + offset}`],
       `Stage ${stage} launch direction ${axis}. A world direction, not one that follows the prop.`)),
-    field(`Stage ${stage} speed (m/s)`, ['type0', 'type0Sub24', speedWord],
+    speedField(`Stage ${stage} speed`, ['type0', 'type0Sub24', speedWord],
       `How fast stage ${stage} launches the rider.`),
   ];
 };
@@ -344,10 +352,10 @@ export function semanticInspectorForNode(node: EffectNode): EffectSemanticInspec
       field('Approach rate (per second)', ['type0', 'Boost', 'U2'],
         'How hard it grabs the rider — the real tuning knob. Around 0.1 is a gentle air shaft, 3–4 is an '
         + 'exhaust vent or a gust of wind, and 10 slams the rider up to speed like a conveyor.'),
-      field('Target speed (m/s)', ['type0', 'Boost', 'BoostAmount'],
+      speedField('Target speed', ['type0', 'Boost', 'BoostAmount'],
         'The speed to drive the rider up to. It only ever adds speed — a rider already going faster that way '
-        + 'is left alone, so this never brakes anyone. Usual values are 45–200; near the top the target is '
-        + 'out of reach and only the rate matters.'),
+        + 'is left alone, so this never brakes anyone. Usual values are about 100–450 mph; near the top the '
+        + 'target is out of reach and only the rate matters.'),
       field('Direction X', ['type0', 'Boost', 'BoostDir', 'X'], PUSH_AXIS_TITLE('X')),
       field('Direction Y', ['type0', 'Boost', 'BoostDir', 'Y'], PUSH_AXIS_TITLE('Y')),
       field('Direction Z', ['type0', 'Boost', 'BoostDir', 'Z'], PUSH_AXIS_TITLE('Z')),
@@ -357,8 +365,9 @@ export function semanticInspectorForNode(node: EffectNode): EffectSemanticInspec
     // mechanism reads as shared in the inspector.
     case 'property.z-boost': return { fields: [
       field('Approach rate (per second)', ['type0', 'type0Sub18', 'U0'], LIFT_RATE_TITLE),
-      field('Target speed (m/s)', ['type0', 'type0Sub18', 'U1'],
-        'How fast the lift rises. The target height below is what really matters here. Usual values are 19–25.'),
+      speedField('Target speed', ['type0', 'type0Sub18', 'U1'],
+        'How fast the lift rises. The target height below is what really matters here. Usual values are about '
+        + '40–55 mph.'),
       ...axisFields(['type0', 'type0Sub18'], 'U2', 'Lift axis'),
       field('Target altitude (world Z)', ['type0', 'type0Sub18', 'U5'],
         'The height the lift carries riders up to. Only riders BELOW it are taken; anyone at or above passes '
@@ -370,7 +379,7 @@ export function semanticInspectorForNode(node: EffectNode): EffectSemanticInspec
     ], note: 'It also stops the rider travelling forwards while it lifts them — they only rise.' };
     case 'property.lap-boost': return { fields: [
       field('Approach rate (per second)', ['type0', 'type0Sub15', 'U0'], LIFT_RATE_TITLE),
-      field('Target speed (m/s)', ['type0', 'type0Sub15', 'U1'],
+      speedField('Target speed', ['type0', 'type0Sub15', 'U1'],
         'Stored here, but this node does not use it the way a Directional boost would — see the note below.'),
       ...axisFields(['type0', 'type0Sub15'], 'U2', 'Push axis'),
     ], note: 'This lifts only riders who still have a lap to go. It takes each rider\'s lap count when it is '
@@ -385,7 +394,7 @@ export function semanticInspectorForNode(node: EffectNode): EffectSemanticInspec
       field('Window (seconds)', ['type0', 'type0Sub24', 'U1'],
         'How long the node stays armed after activation, quantised to 60 Hz ticks.'),
       field('Approach rate (per second)', ['type0', 'type0Sub24', 'U2'], LIFT_RATE_TITLE),
-      field('Target speed (m/s)', ['type0', 'type0Sub24', 'U3'], 'Inherited target speed for the base push.'),
+      speedField('Target speed', ['type0', 'type0Sub24', 'U3'], 'Inherited target speed for the base push.'),
       ...axisFields(['type0', 'type0Sub24'], 'U4', 'Base push axis'),
       ...stageFields(1, 'U7', 'U16'),
       ...stageFields(2, 'U10', 'U17'),
@@ -475,7 +484,7 @@ export function semanticInspectorForNode(node: EffectNode): EffectSemanticInspec
         'Chooses whether the spline tangent drives yaw, pitch, both, or neither.',
         '1', SPLINE_ORIENTATION_MODE_OPTIONS),
       field('Instance count', ['type2', 'SplineAnimation', 'InstanceCount'], 'Number of copies distributed by the native spline mover.', '1'),
-      field('Speed (m/s)', ['type2', 'SplineAnimation', 'AnimationSpeed'],
+      speedField('Speed', ['type2', 'SplineAnimation', 'AnimationSpeed'],
         'How fast the copies travel. Movers start at the beginning of the route, so a negative speed leaves them stuck there unless the route goes back and forth.'),
       field('Yaw offset (radians)', ['type2', 'SplineAnimation', 'U5'], 'Model-facing correction subtracted from the route tangent.'),
       field('Show route line', ['type2', 'SplineAnimation', 'U6'],
@@ -589,7 +598,8 @@ export function semanticNumberValue(node: EffectNode, spec: EffectSemanticNumber
   }
   const value = current[spec.path[spec.path.length - 1]];
   if (typeof value !== 'number') return null;
-  return spec.codec === 'f32-bits' ? floatFromBits(value) : value;
+  return spec.codec === 'f32-bits' ? floatFromBits(value)
+    : spec.codec === 'mph' ? Math.round(value * MPH_PER_MPS * 10) / 10 : value;
 }
 
 export function setSemanticNumberValue(node: EffectNode, spec: EffectSemanticNumberField, value: number): boolean {
@@ -602,6 +612,6 @@ export function setSemanticNumberValue(node: EffectNode, spec: EffectSemanticNum
   }
   const key = spec.path[spec.path.length - 1];
   if (typeof current[key] !== 'number') return false;
-  current[key] = spec.codec === 'f32-bits' ? bitsFromFloat(value) : value;
+  current[key] = spec.codec === 'f32-bits' ? bitsFromFloat(value) : spec.codec === 'mph' ? value / MPH_PER_MPS : value;
   return true;
 }

@@ -21,6 +21,7 @@ import {
   trailTileSetFits, trailTileSetId, trailTileSetLiteral, trailTileSetRow, trailTileViewOrient, withTrailTileRowView, type TrailTileRowKey,
 } from '../../../core/mesh/trail-textures';
 import { parseTexRef } from '../../../core/paint/textures';
+import { mphText } from '../../../core/math/units';
 
 /**
  * The Edit-mode creation tools: Create Edge (mesh-native drawing and surface cuts), Create Patch, the armed
@@ -622,7 +623,7 @@ export function createCreateTools(ctx: ToolsContext) {
   /** The predicted ride in a line: top speed, the jumps, and any path the rider stalls on. */
   function rideText(ride: ReturnType<typeof trailRide>): string {
     if (!ride) return '—';
-    const parts = [`top ${ride.topSpeed.toFixed(1)} m/s`];
+    const parts = [`top ${mphText(ride.topSpeed)}`];
     if (ride.jumps) parts.push(`${ride.jumps} ${ride.jumps === 1 ? 'jump' : 'jumps'} · ${fmtM(ride.airborneM)} airborne`);
     if (ride.stalled) parts.push(ride.stalled === 1 ? 'stalls' : `stalls on ${ride.stalled} paths`);
     return parts.join(' · ');

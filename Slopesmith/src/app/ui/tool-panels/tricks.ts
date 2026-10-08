@@ -1,5 +1,6 @@
 import { authoredSplineId, splineEffectUses } from '../../../core/effects/authoring';
 import type { Rail } from '../../../core/doc/types';
+import { mphText } from '../../../core/math/units';
 import {
   isMotionPath, railHasTube, railMaterialLabel, railStyle, railTubeTexture, RAIL_MATERIAL_OPTIONS,
 } from '../../../core/rails/rails';
@@ -111,7 +112,7 @@ function buildRailTools(ctx: ToolsContext) {
     // and they ride differently. Read off the contract rather than
     // written down here, so the numbers cannot drift from the table the test ride actually uses.
     const surface = surfaceFor(railStyle(rail));
-    note(gui, `Rides surface ${surface.type} “${surface.name}” — settles near ${surface.target.toFixed(1)} m/s, `
+    note(gui, `Rides surface ${surface.type} “${surface.name}” — settles near ${mphText(surface.target)}, `
       + `drag ${surface.drag.toFixed(2)}.`);
     // lil-gui binds to the property, so materialize the optional flags before offering the checkboxes
     if (tube) {

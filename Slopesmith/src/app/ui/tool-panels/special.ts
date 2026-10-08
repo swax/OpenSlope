@@ -5,6 +5,7 @@ import { isEffectTriggerProp } from '../../../core/effects/trigger-volume';
 import {
   SPECIAL_LABELS, specialPropKind, specialPropNode, teleportDestination, type SpecialPropKind,
 } from '../../../core/props/special';
+import { MPH_PER_MPS } from '../../../core/math/units';
 import { note, tip } from '../components/gui';
 import type { ToolsContext } from './widgets';
 
@@ -59,13 +60,16 @@ export function buildSpecialPropTools(ctx: ToolsContext): boolean {
     if (template) template.key = `boost-pad:${kind === 'speed-boost' ? 'speed' : 'trick'}:${JSON.stringify(template.circumstances)}`;
     if (prop) scheduleRebuild();
   };
+  /** A stored field as a slider showing `stored / factor`, to `decimals` places when given. */
   const scalar = (target: Record<string, unknown>, field: string, label: string, min: number, max: number,
-    step: number, hint: string, factor = 1) => {
+    step: number, hint: string, factor = 1, decimals?: number) => {
     const value = { amount: Number(target[field] ?? 0) / factor };
-    tip(section.add(value, 'amount', min, max, step).name(label).onChange((v: number) => {
+    const control = section.add(value, 'amount', min, max, step).name(label).onChange((v: number) => {
       if (!Number.isFinite(v)) return;
       target[field] = v * factor; changed();
-    }), hint);
+    });
+    if (decimals !== undefined) control.decimals(decimals);
+    tip(control, hint);
   };
   if (node) {
     if (kind === 'speed-boost' || kind === 'trick-boost') {
@@ -75,7 +79,7 @@ export function buildSpecialPropTools(ctx: ToolsContext): boolean {
       const boost = (node.payload as { type0?: { Boost?: Record<string, unknown> } }).type0?.Boost;
       if (boost) {
         scalar(boost, 'U2', 'strength', 0, 20, 0.1, 'How quickly the rider approaches the target speed.');
-        scalar(boost, 'BoostAmount', 'target speed (m/s)', 0, 200, 1, 'The speed the wind pushes toward.');
+        scalar(boost, 'BoostAmount', 'target speed (mph)', 0, 450, 1, 'The speed the wind pushes toward.', 1 / MPH_PER_MPS, 0);
         const direction = boost.BoostDir as Record<string, number>;
         if (direction) {
           scalar(direction, 'X', 'direction X', -1, 1, 0.1, 'World-space sideways component.', -1);
@@ -90,7 +94,7 @@ export function buildSpecialPropTools(ctx: ToolsContext): boolean {
         scalar(lift, 'U5', 'target height (m)', -10000, 10000, 1,
           'Absolute world height. Moving the lift does not change this destination height.', 100);
         scalar(lift, 'U0', 'strength', 0, 20, 0.1, 'How quickly the rider approaches the lift speed.');
-        scalar(lift, 'U1', 'lift speed (m/s)', 0, 200, 1, 'Target upward speed.');
+        scalar(lift, 'U1', 'lift speed (mph)', 0, 450, 1, 'Target upward speed.', 1 / MPH_PER_MPS, 0);
       }
     } else if (kind === 'teleport-entrance' && prop) {
       teleportControls(ctx, section, prop, node as EffectNode);

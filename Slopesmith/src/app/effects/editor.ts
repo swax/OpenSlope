@@ -6,6 +6,7 @@ import {
   RAIL_STYLE_METAL,
 } from '../../core/rails/rails';
 import type { ParticleVolume } from '../../core/particles/volumes';
+import { mphText } from '../../core/math/units';
 import {
   cloneParticleVolume,
   createFogVolume,
@@ -1149,7 +1150,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       // surface, not paint, and Speed is that surface row's cruise-drive target rather than a per-rail override.
       row('Material', input(railMaterialLabel(style), () => {}, { readonly: true }),
         `SplineStyle ${style}. This is what the board rides, not just what the pipe looks like.`),
-      row('Speed', input(`${surface.target.toFixed(1)} m/s target`, () => {}, { readonly: true }),
+      row('Speed', input(`${mphText(surface.target)} target`, () => {}, { readonly: true }),
         `Surface ${surface.type} “${surface.name}”, drag ${surface.drag.toFixed(2)}. This is the cruise target; `
         + 'gravity can carry the rider faster.'),
       row('Shape', input(bare ? 'Bare spline' : 'Pipe', () => {}, { readonly: true }),
@@ -1252,7 +1253,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       s.body.append(
         row('Material', input(railMaterialLabel(nativeRow.style), () => {}, { readonly: true }),
           `SplineStyle ${nativeRow.style}. This is what the board rides, not what any tube along it looks like.`),
-        row('Speed', input(`${surface.target.toFixed(1)} m/s target`, () => {}, { readonly: true }),
+        row('Speed', input(`${mphText(surface.target)} target`, () => {}, { readonly: true }),
           `Surface ${surface.type} “${surface.name}”, drag ${surface.drag.toFixed(2)}. This is the cruise target; `
           + 'gravity can carry the rider faster.'));
     }
@@ -2799,7 +2800,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const speed = Math.abs(viewer.command.speed);
     const lapSeconds = speed > 1e-8 ? viewer.info.length / speed : 0;
     s.body.append(
-      el('div', 'sp-fx-summary', `Spline #${String(viewer.info.originalIndex).padStart(4, '0')} · ${viewer.info.segments} cubic${viewer.info.segments === 1 ? '' : 's'} · ${viewer.info.length.toFixed(1)} m${speed > 1e-8 ? ` · ${lapSeconds.toFixed(2)} s one way at ${speed.toFixed(1)} m/s` : ' · stationary'}`),
+      el('div', 'sp-fx-summary', `Spline #${String(viewer.info.originalIndex).padStart(4, '0')} · ${viewer.info.segments} cubic${viewer.info.segments === 1 ? '' : 's'} · ${viewer.info.length.toFixed(1)} m${speed > 1e-8 ? ` · ${lapSeconds.toFixed(2)} s one way at ${mphText(speed, 1)}` : ' · stationary'}`),
       el('div', 'sp-fx-note', 'This is an external world-space route. It moves the complete prop; it is separate from animation stored inside the model.'),
       el('div', 'sp-fx-spline-meta', `${splineEndModeLabel(viewer.command.endMode)} · ${splineOrientationModeLabel(viewer.command.orientationMode)} · yaw offset ${(viewer.command.yawOffset * 180 / Math.PI).toFixed(1)}° · ${viewer.command.instanceCount} instance${viewer.command.instanceCount === 1 ? '' : 's'}`),
     );

@@ -62,7 +62,8 @@ and **Vertical lift** at the current view target. Each opens its own compact too
 invisible trigger props, visible and selectable as boxes in Props and Effects modes. Move, turn and
 resize them with the gizmo or numeric controls. Reset zones start as wide, shallow catch volumes;
 wind controls expose strength, target speed and world-space direction; lifts expose target world
-height, strength and upward speed. Rotating a wind box does not rotate its world-space push direction.
+height, strength and upward speed. Speeds show in mph, like the ride's HUD, and are stored in the m/s the ride
+reads. Rotating a wind box does not rotate its world-space push direction.
 
 Adding a teleport entrance creates and pairs a destination 20 metres beside it. The destination picker
 can redirect an entrance to another placed prop; multiple entrances can share a destination. Pairing
