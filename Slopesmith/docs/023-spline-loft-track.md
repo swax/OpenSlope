@@ -174,9 +174,10 @@ follow. It is World-framed: the mesh's Surface slide does not apply to a trail.
 **Predicted speed.** Selected trail patches shade by the ride predicted over them instead of the plain selection
 yellow (`app/ride/trail-speed.ts`), so a network can be read for pace before it is ridden: red where a rider stands
 still, orange on a slow climb, yellow at about the cruise speed flat snow settles at, green at the ordinary speed cap
-(27.9 m/s), a smooth ramp between — and blue under a rider in the air. The colour key shows with the shading; the
-panel's **predicted ride** row gives the selected paths' top speed, their jumps and the trail flown over, and **shade
-by speed** turns it off. Each path's centre spline is ridden at the ride's 60 Hz with the ride's own ground terms
+(27.9 m/s, 62 mph), a smooth ramp between — and blue under a rider in the air. The colour key shows with the
+shading, in whole mph like the ride's HUD; the panel's **predicted ride** row gives the selected paths'
+top speed the same way, their jumps and the trail flown over, and **shade by speed** turns it off. Each path's
+centre spline is ridden at the ride's 60 Hz with the ride's own ground terms
 ([Trailmap: 330, 360]): the surface row's world-down load `A/100`, its forward resistance, the automatic cruise drive
 toward the row's target, and the shared cap, on the surface most of the path's patches wear. Nothing tests for
 liftoff (docs/016 · Air + lips): the clearance a crest opens under the travel is integrated against gravity's share

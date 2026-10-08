@@ -5,6 +5,7 @@ import type { PadMirror } from './gamepad';
 import type { RideEffectState } from './effect-actions';
 import { boostMeterSegments, RIDE_BOOST_METER_SEGMENTS } from './score';
 import { formatRunClock } from '../../core/doc/race';
+import { MPH_PER_MPS } from '../../core/math/units';
 import type { RideRunStatus } from './run-status';
 import { toast } from '../ui/components/toast';
 import { lastRidePointerWasTouch, primaryPointerIsCoarse } from './input-modality';
@@ -968,7 +969,7 @@ export function createRideHud(o: RideHudOpts) {
   }
 
   function update(st: RideState, boost: boolean, perf: RidePerf, effects?: Readonly<RideEffectState>) {
-    const mph = Math.round(st.vel.length() * 2.236936); // whole mph, matching the in-world run HUD
+    const mph = Math.round(st.vel.length() * MPH_PER_MPS); // whole mph, matching the in-world run HUD
     const grade = Math.round(Math.acos(clamp(st.contactN.y, -1, 1)) / D2R);
     (hud.querySelector('[data-mph]') as HTMLElement).textContent = String(mph);
     (hud.querySelector('[data-grade]') as HTMLElement).textContent = `grade ${grade}°`;

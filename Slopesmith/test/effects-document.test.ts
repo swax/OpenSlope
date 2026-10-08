@@ -1050,8 +1050,18 @@ check(bindEffectFunctionCall(moverDoc, secondCallSel, madeFunctionId) === madeFu
 check(validateEffectsDocument(moverDoc).length === 0,
   'a document carrying authored functions and the calls into them validates clean');
 check(semanticInspectorForNode(moverNode).fields.map(field => field.label).join(',')
-  === 'End mode,Orientation mode,Instance count,Speed (m/s),Yaw offset (radians),Show route line,Route line red,Route line green,Route line blue,Route line opacity',
+  === 'End mode,Orientation mode,Instance count,Speed (mph),Yaw offset (radians),Show route line,Route line red,Route line green,Route line blue,Route line opacity',
   'spline mover exposes motion plus generic route-line visibility, colour, and opacity controls');
+// A speed is kept in m/s, as the ride reads it, and shown in the mph the ride's HUD reads.
+const mphBoost: EffectNode = {
+  id: 'test:boost-mph', mainType: 0, semanticType: 'property.boost', references: {},
+  payload: { type0: { SubType: 7, Boost: { Mode: 1, U1: 0, U2: 3, BoostAmount: 45, BoostDir: { X: 0, Y: 0, Z: 1 } } } },
+};
+const mphBoostSpeed = semanticInspectorForNode(mphBoost).fields.find(spec => spec.label === 'Target speed (mph)');
+check(!!mphBoostSpeed && semanticNumberValue(mphBoost, mphBoostSpeed) === 100.7
+  && setSemanticNumberValue(mphBoost, mphBoostSpeed, 100)
+  && Math.abs((mphBoost.payload.type0 as { Boost: { BoostAmount: number } }).Boost.BoostAmount - 44.704) < 1e-3,
+  'a boost target shows in mph to a tenth and writes back the m/s the ride reads');
 const moverFields = semanticInspectorForNode(moverNode).fields;
 check(moverFields[0]?.options?.map(option => option.label).join('|')
   === 'One-shot (finish)|Loop (wrap)|Ping-pong|Hold at end'

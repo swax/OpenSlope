@@ -12,6 +12,7 @@ import { PROP_DARK_TINT_MIX, PROP_CLAY_COLOR, PROP_SOLID_COLOR, PROP_THROUGH_COL
 import type { ShadeMode } from '../types';
 import { foldHeader, foldOnClick, refold } from '../../ui/components/fold-panel';
 import { trailSpeedKey } from '../mesh/trail-speed-colors';
+import { mphText } from '../../../core/math/units';
 
 /** One swatch row: [css colour, label, swatch size css]. */
 type LegendRow = [string, string, string];
@@ -118,7 +119,7 @@ export function createLegends(container: HTMLElement) {
   // selection's, so it shows whenever the selection shading does.
   const speedWords = ['stalled, or never reached', 'a slow climb', 'cruising — about flat snow', 'the speed cap'];
   const speedLegend = buildLegendPanel('trail-speed', 'Predicted trail speed', trailSpeedKey().map(({ hex, speed }, i) => [
-    hex, speed === null ? 'Airborne' : `${speed.toFixed(0)} m/s (${(speed * 3.6).toFixed(0)} km/h) · ${speedWords[i]}`,
+    hex, speed === null ? 'Airborne' : `${mphText(speed)} · ${speedWords[i]}`,
     'width:12px;height:12px',
   ]));
   host.prepend(speedLegend);

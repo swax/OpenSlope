@@ -5,6 +5,7 @@ import {
 } from '../perf';
 import type { XrLayerMode } from './config';
 import { formatRunClock } from '../../../core/doc/race';
+import { MPH_PER_MPS } from '../../../core/math/units';
 import type { RideRunStatus } from '../run-status';
 import { boostMeterSegments, RIDE_BOOST_METER_SEGMENTS } from '../score';
 
@@ -297,7 +298,7 @@ export function createXrHud(label: string, showPerf = true) {
         ? `${formatRunClock(run.elapsedSeconds)} · ${Math.max(0, Math.round(run.score)).toLocaleString()} pts`
         : formatRunClock(run.elapsedSeconds), 26, 105);
     } else if (state) {
-      const digits = String(Math.round(state.speed * 2.236936));
+      const digits = String(Math.round(state.speed * MPH_PER_MPS));
       ctx.fillStyle = '#eaf4ff';
       ctx.font = '700 68px system-ui, sans-serif';
       ctx.fillText(digits, 26, 106);

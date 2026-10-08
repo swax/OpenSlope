@@ -14,7 +14,8 @@ server), and in the test harness alike, grouped by domain:
 
 - **`math/`** — primitives everything else stands on: `scalar`, `color`, `vec`, `segment`,
   `spatial-hash`, `bezier` (bicubic patch evaluation), `spine` (Catmull-Rom centerline
-  sampling, arc length).
+  sampling, arc length), `units` (speeds are stored and simulated in m/s and shown in mph,
+  the unit the ride's HUD reads — every panel's speed goes through it).
 - **`doc/`** — the authored document: `types` (the shared vocabulary: `V3`, surfaces,
   `QuadMeshDoc`), `mountain` (control net → derived quilt, generators, migration),
   `doc-edit` (vertex/quad-addressed editing accessors).
