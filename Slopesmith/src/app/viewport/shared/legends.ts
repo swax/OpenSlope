@@ -41,7 +41,8 @@ function buildLegendPanel(id: string, title: string, items: (LegendRow | string)
  * The lower-left colour keys, mounted into `#lowerleft` (or the viewport container): the cage-colour key in the
  * cage-only / no-solid view, and the SurfaceType + prop-contact pair in the Surface view. `setShadeMode` picks
  * which as the terrain shade view changes; the two Surface keys show together, since that view states both.
- * The predicted-speed key rides the selection instead: `setTrailSpeed` shows it while trail patches shade by speed.
+ * The predicted-speed key rides what is shaded by speed instead: `setSpeedKey` shows it while selected trail patches
+ * or the whole mountain are.
  */
 export function createLegends(container: HTMLElement) {
   const host = document.getElementById('lowerleft') ?? container;
@@ -115,13 +116,17 @@ export function createLegends(container: HTMLElement) {
     [mixed(PROP_CLAY_COLOR), 'Ships dark — its normal is turned off the sun', 'width:12px;height:12px'],
   ];
   const propLegend = buildLegendPanel('prop', 'Prop types', propRows);
-  // The predicted ride over selected trail patches (docs/023 · Predicted speed): not a shade view's key but the
-  // selection's, so it shows whenever the selection shading does.
+  // The predicted ride over selected trail patches, or over the whole mountain from its start (docs/023 · Predicted
+  // speed): not a shade view's key but theirs, so it shows whenever either shading does.
   const speedWords = ['stalled, or never reached', 'a slow climb', 'cruising — about flat snow', 'the speed cap'];
-  const speedLegend = buildLegendPanel('trail-speed', 'Predicted trail speed', trailSpeedKey().map(({ hex, speed }, i) => [
+  const speedLegend = buildLegendPanel('trail-speed', 'Predicted speed', trailSpeedKey().map(({ hex, speed }, i) => [
     hex, speed === null ? 'Airborne' : `${mphText(speed)} · ${speedWords[i]}`,
     'width:12px;height:12px',
   ]));
+  const speedNote = document.createElement('div');
+  speedNote.className = 'll-note';
+  speedNote.style.display = 'none';
+  speedLegend.querySelector('.ll-body')!.append(speedNote);
   host.prepend(speedLegend);
   host.prepend(propLegend);    // stacks under Surface types, which prepends after it
   host.prepend(surfaceLegend); // order between cage and surface is irrelevant — never both shown
@@ -134,12 +139,20 @@ export function createLegends(container: HTMLElement) {
     propLegend.style.display = m === 'surface' ? 'block' : 'none';
   }
 
-  /** Show the predicted-speed key while selected trail patches are shaded by it. */
-  function setTrailSpeed(shown: boolean) {
-    speedLegend.style.display = shown ? 'block' : 'none';
+  /** Show the predicted-speed key while selected trail patches, the mountain or the reference are shaded by it. */
+  const speedShown = new Set<'trail' | 'mountain' | 'reference'>();
+  function setSpeedKey(by: 'trail' | 'mountain' | 'reference', shown: boolean) {
+    if (shown) speedShown.add(by); else speedShown.delete(by);
+    speedLegend.style.display = speedShown.size ? 'block' : 'none';
   }
 
-  return { setShadeMode, setTrailSpeed };
+  /** A line under the speed key's colours — why the mountain reads as it does — or null for none. */
+  function setSpeedNote(text: string | null) {
+    speedNote.textContent = text ?? '';
+    speedNote.style.display = text ? 'block' : 'none';
+  }
+
+  return { setShadeMode, setSpeedKey, setSpeedNote };
 }
 
 export type Legends = ReturnType<typeof createLegends>;

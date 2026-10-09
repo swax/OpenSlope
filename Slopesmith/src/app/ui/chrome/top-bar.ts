@@ -8,11 +8,11 @@ import type { HistoryEntry } from '../../state/history';
  * The top dock (#dock-top): the three clusters of the editor's chrome — the Slopesmith brand, File and
  * undo/redo on the left, the
  * Scene / Edit / Sculpt / Paint / Props / Effects / Test mode segment in the centre with Users beside it, and
- * the View controls on the right (the shade controls, the tile-orientation overlay, the Props / Tricks show
- * filters, the light cluster, and Frame map). It's pure wiring: every button's action and active/enabled state
- * is an injected callback into the host, and the objects the host repaints (the mode segment, history bar, the
- * show + lighting pills, and the view pills whose enabled states track the shade view) are handed back. The
- * toggle *behaviour* lives in the host — this module just lays out the bar and routes clicks.
+ * the View controls on the right (the shade controls, the tile-orientation and predicted-speed overlays, the
+ * Props / Tricks show filters, the light cluster, and Frame map). It's pure wiring: every button's action and
+ * active/enabled state is an injected callback into the host, and the objects the host repaints (the mode segment,
+ * history bar, the show + lighting pills, and the view pills whose enabled states track the shade view) are handed
+ * back. The toggle *behaviour* lives in the host — this module just lays out the bar and routes clicks.
  */
 
 export type TopBarDeps = {
@@ -45,6 +45,7 @@ export type TopBarDeps = {
   toggleSkybox: () => void; getSkyboxVisible: () => boolean;
   toggleCage: () => void;
   toggleFOverlay: () => void; getFOverlayOn: () => boolean;
+  toggleSpeedShade: () => void; getSpeedShadeOn: () => boolean;
   focusActive: () => void;
   newMountainDialog: () => void;
   canCreateMountains: () => boolean;
@@ -69,7 +70,7 @@ export function createTopBar(deps: TopBarDeps) {
     toggleProps, getPropsVisible, toggleTricks, getTricksVisible, toggleWorldEffects, getWorldEffectsVisible,
     toggleLights, getLightRigVisible,
     toggleSunLight, getSunOn, toggleSkybox, getSkyboxVisible, toggleCage,
-    toggleFOverlay, getFOverlayOn, focusActive, newMountainDialog, canCreateMountains, canManageMountain,
+    toggleFOverlay, getFOverlayOn, toggleSpeedShade, getSpeedShadeOn, focusActive, newMountainDialog, canCreateMountains, canManageMountain,
     openProjectDialog, historyDialog, renameMountain,
     closePreview, isPreviewing, conflictDialog, hasConflict, duplicateMountain, deleteMountain,
     exportMountain, importMountain, exportDialog, settingsDialog } = deps;
@@ -172,9 +173,11 @@ export function createTopBar(deps: TopBarDeps) {
   // as a focused, sticky working set, not a mountain-wide top-bar toggle. Reading the F glyphs: texture
   // rotation is stored relative to the patch, so pink parallel to green is 0° and the pair can be matched by
   // eye; a selected prop additionally shows green facing-normal arrows — the side the game lights from —
-  // for comparing an authored prop against a shipped one.
+  // for comparing an authored prop against a shipped one. Beside it, the mountain shaded by the speed a rider
+  // carries from the start, in the trail prediction's colours (docs/023 · Predicted speed).
   const viewOverlays = iconBar([
     { icon: VIEW_ICON.fGlyph, label: 'Orientation', title: 'Orientation — an F on every tile: pink = texture orientation, green = patch orientation.', onClick: toggleFOverlay, active: () => getFOverlayOn() },
+    { icon: VIEW_ICON.speed, label: 'Predicted speed', title: 'Predicted speed — shade the mountain by the speed a rider carries from the start: red standing, orange slow, yellow cruising, green at the speed cap, blue in the air.', onClick: toggleSpeedShade, active: () => getSpeedShadeOn() },
   ]);
   const viewFrame = iconBar([
     { icon: VIEW_ICON.focus, label: 'Frame map', title: 'Frame the whole map — start upper-right, finish lower-left.', onClick: focusActive },
@@ -230,7 +233,7 @@ export function createTopBar(deps: TopBarDeps) {
     group(usersBar.el),          // ...and Users beside them: the server rather than the map
     spacer(),
     xrEdit('view', group(label('View'))),     // labels the right-side view controls
-    xrEdit('view', group(viewOverlays.el)),   // tile-orientation F overlay
+    xrEdit('view', group(viewOverlays.el)),   // tile-orientation F overlay + predicted-speed shading
     xrEdit('view', group(viewShade.el)),      // control cage plus the Surface / Textures solid-view toggles
     xrEdit('view', group(viewShow.el)),       // show group: Props · Tricks (placed + reference), right of the shade controls
     xrEdit('view', group(viewLighting.el)),   // sources · complete lighting · nearest-mountain skybox

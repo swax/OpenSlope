@@ -160,6 +160,7 @@ export type Store = {
   snapStep: SnapStep;                // position / placement snap increment in metres
   rotationSnapStep: RotationSnapStep; // rotation snap increment in degrees
   fOverlayOn: boolean;               // the tile-orientation F overlay (3D + Library + Palette)
+  speedShadeOn: boolean;             // the whole mountain shaded by the predicted ride from its start (docs/023)
   courseGuideOn: boolean;            // authored Course + reference SOP/AIP path in Info; default on
   normalsOn: boolean;                // pink back-face tint that exposes the surface-normal direction; default on
   aiPathsOn: boolean;                // AI-path overlay in Info (derived opponent lines + reference AIP network); default off
@@ -428,6 +429,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     snapStep: step(ui.snapStep),
     rotationSnapStep: rotationStep(ui.rotationSnapStep),
     fOverlayOn: ui.fOverlay === true,
+    speedShadeOn: ui.speedShade === true,
     courseGuideOn: ui.courseGuide !== false,
     normalsOn: ui.normals !== false,
     aiPathsOn: ui.aiPaths === true,

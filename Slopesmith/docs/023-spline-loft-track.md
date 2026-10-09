@@ -196,6 +196,39 @@ boost, ollies or tricks, and the profile is the path unrolled into its own verti
 jump follows the path round in plan. `test/trail-speed.test.ts` holds it to the ride model itself, on slopes and on
 lips built from the predicted profile.
 
+**The mountain.** **Predicted speed**, beside Orientation (F) in the View bar, shades a mountain's course in the same
+colours (`app/ride/mountain-speed.ts`, drawn by `app/viewport/mesh/speed-shade.ts`): the authored mountain, and a
+loaded reference level too. Rather than set the rider loose on the terrain, it sends it down the course's own lines,
+so it rides the way the course runs, with the heading and the lead-in a real rider has: on an authored mountain the
+run from where the field is staged, across its floor and walls, and the six AI lines it exports from the gates; on a
+shipped level its AI-path network and its main course line. Each line is widened into lanes 3 m apart — the run out
+to half its floor plus a wall, an AI path 3 m either side, a shipped course line 12 m — and each lane is draped on the
+terrain under it, on the layer its height leads it to, height and normal blended from the quilt lattice's tangent
+planes so the ground runs smooth under it. A lane is ridden like a trail path, with the helpers `trail-speed.ts`
+shares — the ride's 60 Hz ground terms and its clearance-against-gravity liftoff — over the surface each stretch
+wears, and it may leave the ground altogether: over a gap between two pieces of the quilt, off a cliff, off a kicker,
+flying on along it until the arc meets ground again.
+
+The gate's lines set off from rest, and a line leaving another starts with the speed the other carries where it
+leaves. A rider that stalls, comes down on ground nobody rides or slams into the far side of a gap it did not clear is
+put back on the course from rest at the next ground that does not climb — as an AI is, and as though it had set off a
+little up the course — though a ride set off again only speaks for ground no unbroken ride covers, and the flight that
+ended off the course says nothing. Every point then shows the nearest lane's ride over it, blue where the lane is
+25 cm or more clear above it; a climb past a stall is red, and ground no lane comes near is left bare. Some ground
+nobody rides, though a lane may fly over it: a face steeper than 70°, whose ride would be a wall-ride, sideways and
+banked; and the surfaces the ride itself does not ride — out of bounds (0), which carries a rider back to the course
+the moment it stands there, bounce (6), wall (10) and no collision (17). Such ground is bare unless a lane flies over it.
+As with a trail it is a diagnostic, not a replay: the rider rides square to its lane, without steering, braking, boost
+or tricks, and turns cost nothing.
+
+The shading shares the terrain's geometry, so it follows a drag; the prediction is ridden again a quarter second after
+the mountain, its paint or its course last moved, a lane at a time, and the colours it replaces stand until it is
+done. A gate more than 10 m from any ground to ride says so in the key. On the shipped levels it settles in 0.1–2 s
+over 7–33 km of AI path, and Tokyo Megaplex's lap loop reads as far as its boost volumes, which this terrain-only rider
+knows nothing of, would carry it. The toggle is remembered, shown to a screen's observers, and set by a view link's
+`speed=1`. `test/mountain-speed.test.ts` holds a lane down a plain slope to a straight trail, and covers coverage, a
+line leaving another, a stall, a gap, a wall, out of bounds, an off-mountain gate and slicing.
+
 **The panel** exposes the points, the selected paths' section (target width, lanes and length, centre dish and seam,
 turn density), banking, its tiles and caps (below), **✚ add points before the start** and **after
 the end** (the one selected path's: both with no point picked, the picked end's with an end picked), **⑂ start a new

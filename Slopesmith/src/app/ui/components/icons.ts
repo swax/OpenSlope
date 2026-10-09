@@ -113,6 +113,7 @@ export const VIEW_ICON = {
   surface: svg('<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>'), // palette
   cage: svg('<path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/>'), // dashed control box
   fGlyph: svg('<path d="M8 20V4h9"/><path d="M8 12h7"/>'), // the letter F (tile-orientation overlay)
+  speed: svg('<path d="M3 17a9 9 0 0 1 18 0"/><path d="M12 17l4.5-5.5"/><path d="M7.5 12.5 6 11M12 8V6M16.5 12.5 18 11"/>'), // speedometer (predicted-speed shading)
   // [lucide] Lucide v0.100.0 `focus`, element-for-element (the centre circle is what tells it from `scan`).
   focus: svg('<circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>'), // focus frame
   // [lucide] shares an element with Lucide v0.100.0 `sun`.

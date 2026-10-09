@@ -19,7 +19,7 @@ import { stepCharacterGlow } from '../ride/character-glow';
 import { edgeIndices, quadIndices, vertexIndex } from '../state/mesh-names';
 import {
   buildMountainPreview, buildMountainPreviewProgressive, previewMatchesTopology, previewMismatch,
-  refreshPreviewPatches, PATCH_VERTS, type PreviewData,
+  refreshPreviewPatches, PATCH_VERTS, PREVIEW_RES, type PreviewData,
 } from '../../core/mesh/tessellation';
 import { patchDependency, patchVertexSpans, type NetChange } from '../../core/mesh/incremental';
 import { aiLineRatings, aiPathLines, courseCenters, DEFAULT_AI_SEED, finishFrame } from '../../core/doc/course';
@@ -102,6 +102,8 @@ import { createTerrainLayer, type TerrainLayer, type TerrainLightOptions } from 
 import { rideTree, type TreeGeometry } from './mesh/surface-trees';
 import { clearGlyphGroup, addCageLines } from './shared/overlays';
 import { createLegends, type Legends } from './shared/legends';
+import { createSpeedShade, type SpeedShade } from './mesh/speed-shade';
+import { courseSpeedLines, referenceSpeedLines } from '../ride/mountain-speed';
 import { createReferenceDecor, type ReferenceDecor } from './scene/reference-decor';
 import {
   createReferenceEffectsLayer, type ReferenceEffectsLayer, type ReferenceSplineMotionInfo,
@@ -345,6 +347,8 @@ export class Viewport {
   private meshDoc: QuadMeshDoc | null = null;
   private meshEdgeHandle: EdgeHandle | null = null;
   private legends!: Legends; // the two lower-left colour keys (cage colours / SurfaceType tints), one per shade view
+  private speedShadeLayer!: SpeedShade; // the whole mountain washed by the predicted ride from its start (docs/023)
+  private refSpeedShadeLayer!: SpeedShade; // ...and the loaded reference level, from its own start
   private selected: number | null = null;
   private selectedKnots = new Set<number>();
   // Picking / ride physics keep the original patch-major index so faceIndex -> patch remains exact. Textured
@@ -816,6 +820,7 @@ export class Viewport {
     }, {
       onGeometryRebuilt: g => {
         this.cageLayer.setDepthMaskGeometry(g); // share the rebuilt geometry so cage-view occlusion tracks edits
+        this.speedShadeLayer.geometryRebuilt(g); // ...and the speed wash, which re-rides its prediction once it settles
         this.applyHiddenTerrainIndex();
         this.paint.rebuildAuthoredF();   // the F overlay tracks paints / sculpting (no-op while toggled off)
         this.paint.rebuildPaintSel();    // the selected-cell outline hugs the (possibly re-shaped) surface
@@ -825,6 +830,27 @@ export class Viewport {
         this.loftPreview.rebuild();       // the loft ghost tracks the rails' corners as the surface reshapes
         this.paint.invalidateGhostCell(); // the ghost's cached cell geometry is stale; the next hover rebuilds it
       },
+    });
+    this.speedShadeLayer = createSpeedShade(this.stage.worldRoot, {
+      quilt: () => {
+        const pv = this.preview;
+        return pv && { positions: pv.positions, normals: pv.normals, cellSurf: pv.cellSurf, side: PREVIEW_RES + 1 };
+      },
+      lines: () => this.meshDoc ? courseSpeedLines(this.meshDoc.course, this.meshDoc.aiSeed ?? DEFAULT_AI_SEED) : [],
+      applies: () => !this.modelContextOn,
+      shown: on => this.legends.setSpeedKey('mountain', on),
+      note: text => this.legends.setSpeedNote(text),
+    });
+    // ...and the loaded reference level along its own lines, in its own frame under refRoot.
+    this.refSpeedShadeLayer = createSpeedShade(this.refRoot, {
+      quilt: () => {
+        const data = this.refData;
+        return data && { positions: data.positions, normals: data.normals, cellSurf: data.patchSurf,
+          side: Math.round(Math.sqrt(data.facesPerPatch / 2)) + 1 };
+      },
+      lines: () => referenceSpeedLines(this.refCourse, this.refAiPaths),
+      applies: () => !!this.refData,
+      shown: on => this.legends.setSpeedKey('reference', on),
     });
 
     // the control-net cage (authored curved wires + explicitly pinned sub-cages + the reference cage) lives in
@@ -1045,7 +1071,7 @@ export class Viewport {
     }, {
       clearRefSelection: () => this.clearRefSelection(),
       applyGizmoFrame: () => this.transforms.applyGizmoFrame(),
-      cellSpeedShown: shown => this.legends.setTrailSpeed(shown),
+      cellSpeedShown: shown => this.legends.setSpeedKey('trail', shown),
     });
 
     this.liveEditFill.renderOrder = 9; // like the selection layer's cell fills: above the terrain, below the cage wires
@@ -2161,6 +2187,7 @@ export class Viewport {
     // bigger handles: a mountain is viewed from much further away than a course
     this.syncKnots(doc.course.knots.map(k => k.pos), selected, selectedKnots, 5);
     this.courseMarkers.setCourse(doc.course.knots.length >= 2 ? doc.course : null);
+    this.speedShadeLayer.linesChanged(JSON.stringify([doc.course, doc.aiSeed ?? DEFAULT_AI_SEED]));
     this.aiPathsLayer.setCourse(doc.course.knots.length >= 2 ? doc.course : null, doc.aiSeed ?? DEFAULT_AI_SEED);
     // Peer marks are id-named, so re-resolving them here is what carries somebody else's selection across a
     // topology edit rather than leaving it where the indices used to be.
@@ -2177,6 +2204,7 @@ export class Viewport {
    *  lazily-created layer empty. */
   setModelEditContext(on: boolean, mountainDoc?: EditDoc) {
     this.modelContextOn = !!(on && mountainDoc);
+    this.speedShadeLayer.refresh(); // the speed wash means nothing on the model's mesh standing in the terrain's place
     if (this.contextWireGroup) { // rebuilt below when the session is (re-)entered
       this.stage.worldRoot.remove(this.contextWireGroup);
       clearGlyphGroup(this.contextWireGroup);
@@ -2312,6 +2340,7 @@ export class Viewport {
     // Both are no-ops unless their toggle is on, which is why they can be run unconditionally here.
     this.paint.rebuildAuthoredF();
     this.paint.invalidateGhostCell();
+    this.speedShadeLayer.changed(); // the wash rides along on the shared geometry; its prediction waits for a pause
     this.selection.rebuildEditCellSel();
     this.selection.rebuildEditEdgeSel();
     if (this.selection.controlPointSel.length) this.selection.refreshControlPointSelection();
@@ -2741,6 +2770,10 @@ export class Viewport {
   /** Toggle the pink tile-orientation F overlay on the 3D terrain (authored painted cells + reference
    *  patches). Independent of the cage; the 2D panels (Library / preview / pad) draw their own Fs. */
   set tileF(on: boolean) { this.paint.setTileF(on); }
+
+  /** Wash the whole mountain by the speed a rider carries over it from the course start (docs/023 · Predicted speed),
+   *  in the trail prediction's colours, and a loaded reference level from its own start; its key shows with it. */
+  set speedShade(on: boolean) { this.speedShadeLayer.setOn(on); this.refSpeedShadeLayer.setOn(on); }
 
   /** The F toggle's prop half: green facing arrows on the selected prop — a placed one (authored model or
    *  retail placement) and the reference map's read-only instance selection alike (facing-arrows.ts). */
@@ -3207,6 +3240,7 @@ export class Viewport {
     this.refLightingOn = false; // a freshly loaded reference starts on its normal shading
     this.refLightColors = null;
     if (!data) {
+      this.refSpeedShadeLayer.geometryRebuilt(null);
       this.cageLayer.hideRefCage();
       this.refRoot.position.set(0, 0, 0); // drop the comparison offset
       this.refBounds = null;
@@ -3263,6 +3297,7 @@ export class Viewport {
     this.refRoot.add(chunks);
     this.applyHiddenReferenceIndex();
     this.cageLayer.setRefDepthMask(g); // invisible depth stand-in for cage-only view
+    this.refSpeedShadeLayer.geometryRebuilt(g); // the speed wash shares it too, from the level's start once pushed
     this.cageLayer.buildRefCage(data);
 
     const refX = data.max[0] - data.min[0];
@@ -3477,6 +3512,13 @@ export class Viewport {
     this.refCourse = points;
     this.refAnchors = anchors ?? null;
     this.refDecor.setCourse(points, anchors);
+    this.refSpeedShadeLayer.linesChanged(this.referenceLinesKey());
+  }
+  /** What the loaded reference's lines are — its course line and AI network, as the session pushes them — for the
+   *  speed wash to tell a new level's from the same ones pushed again. */
+  private referenceLinesKey(): string | null {
+    if (!this.refCourse && !this.refAiPaths) return null;
+    return `${this.refLevel}:${this.refCourse?.length ?? 0}:${this.refAiPaths?.map(path => path.points.length).join(',') ?? ''}`;
   }
   /** How many passes the loaded reference level is raced over — what a reference Play counts down, and what
    *  gates its lap-gated boost volumes (core/doc/race). */
@@ -3488,6 +3530,7 @@ export class Viewport {
   setReferenceAiPaths(paths: RefAiPath[] | null) {
     this.refAiPaths = paths;
     this.refDecor.setAiPaths(paths);
+    this.refSpeedShadeLayer.linesChanged(this.referenceLinesKey());
   }
   showReferenceLights(on: boolean) { this.refDecor.showLights(on); }
   hasReferenceLights(): boolean { return this.refDecor.hasLights(); }

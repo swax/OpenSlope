@@ -636,6 +636,7 @@ function setPropLibWanted(want: boolean) {
 // map draws in the saved shading (incl. the cage-only 'none' view) with no default-state flash.
 if (SHADES.includes(storedUi.shadeMode as ShadeMode)) viewport.shadeMode = storedUi.shadeMode as ShadeMode;
 if (store.fOverlayOn) applyFOverlay(); // restore the persisted F overlay across all its displays
+viewport.speedShade = store.speedShadeOn; // ...and the speed shading, which rides once the mountain is built
 viewport.viewGridStep = store.viewGridStep;
 viewport.viewGrid = store.viewGridOn;  // restore the XYZ world-coordinate reference grid
 viewport.snapStep = store.snapStep;
@@ -662,7 +663,7 @@ const persistence = createPersistence({
   getView: () => viewport.serializeView(),
   getUi: () => ({ mode: store.currentMode, cageOn: store.cageOn, viewGrid: store.viewGridOn, viewGridStep: store.viewGridStep,
     snapOn: store.snapOn, snapStep: store.snapStep, rotationSnapStep: store.rotationSnapStep,
-    shadeMode: viewport.shadeMode, fOverlay: store.fOverlayOn, courseGuide: store.courseGuideOn, normals: store.normalsOn, aiPaths: store.aiPathsOn, propsVisible: store.propsVisible,
+    shadeMode: viewport.shadeMode, fOverlay: store.fOverlayOn, speedShade: store.speedShadeOn, courseGuide: store.courseGuideOn, normals: store.normalsOn, aiPaths: store.aiPathsOn, propsVisible: store.propsVisible,
     collisionOverlay: store.collisionOverlayOn,
     worldEffects: store.worldEffectsVisible,
     lightRig: store.lightRigVisible, propLights: store.propLightsVisible, skybox: store.skyboxVisible,
@@ -1536,6 +1537,7 @@ function currentSharedViewOptions(): SharedViewOptions {
     cage: cageActive(),
     viewGrid: store.viewGridOn,
     orientation: store.fOverlayOn,
+    speed: store.speedShadeOn,
     courseGuide: store.courseGuideOn,
     normals: store.normalsOn,
     aiPaths: store.aiPathsOn,
@@ -1562,6 +1564,8 @@ function applyScreenOptions(state: SharedScreenState): void {
   viewport.viewGrid = options.viewGrid;
   store.fOverlayOn = options.orientation;
   applyFOverlay();
+  store.speedShadeOn = options.speed;
+  viewport.speedShade = options.speed;
   store.courseGuideOn = options.courseGuide;
   viewport.courseGuide = options.courseGuide;
   store.normalsOn = options.normals;
@@ -1804,6 +1808,7 @@ const {
   toggleSkybox, getSkyboxVisible: () => store.skyboxVisible,
   toggleCage,
   toggleFOverlay, getFOverlayOn: () => store.fOverlayOn,
+  toggleSpeedShade, getSpeedShadeOn: () => store.speedShadeOn,
   focusActive, newMountainDialog, canCreateMountains: () => session.mayCreateMountains(),
   canManageMountain: () => session.mayManageMountain(projectSync.current()),
   openProjectDialog, historyDialog, renameMountain,
@@ -1879,6 +1884,13 @@ function applyFOverlay() {
 function toggleFOverlay() {
   store.fOverlayOn = !store.fOverlayOn;
   applyFOverlay();
+  persistUi();
+}
+
+/** Shade the whole mountain by the speed a rider carries over it from the start (docs/023 · Predicted speed). */
+function toggleSpeedShade() {
+  store.speedShadeOn = !store.speedShadeOn;
+  viewport.speedShade = store.speedShadeOn;
   persistUi();
 }
 
