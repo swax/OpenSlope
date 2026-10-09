@@ -15,7 +15,6 @@ body.os-riding.os-ride-fullscreen #lowerright { display: none; }
    handset is 852–932 px wide on its side, so the desktop dock and its desktop type were what you got on
    the one orientation you actually ride in. ---- */
 @media (max-width: 760px), (max-height: 500px) {
-  .sp-brand > span { display: none; }
   .sp-music-graph-back { padding: 0; }
   .sp-music-graph-modal { width: 100vw; height: 100vh; max-width: none; border: 0; border-radius: 0; }
   .sp-music-graph-head { padding: 8px 10px; }

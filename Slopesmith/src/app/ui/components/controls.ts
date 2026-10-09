@@ -218,7 +218,8 @@ export interface MenuOptions {
 let openPop: HTMLElement | null = null;
 let menuSeq = 0;
 
-function closeMenu() {
+/** Close whichever menu or panel is open. */
+export function closeMenu() {
   if (openPop) { openPop.remove(); openPop = null; }
 }
 // any click/Escape outside the popup or trigger closes it (triggers/items stopPropagation)
@@ -300,6 +301,34 @@ export function menu(triggerLabel: string, items: MenuItem[] | (() => MenuItem[]
     openPop = pop;
   };
   return { el: btn, setLabel: t => { text.textContent = t; } };
+}
+
+/**
+ * A trigger that opens live controls rather than menu rows — the top bar's folded groups. Clicks inside keep
+ * it open, so several toggles can be pressed in one visit; `closeOnPick` closes it on any enabled button
+ * instead, for a panel that is really a choice. Shares the one-open-at-a-time slot and its close paths.
+ */
+export function panelMenu(trigger: HTMLButtonElement, content: HTMLElement, opts: { closeOnPick?: boolean } = {}) {
+  const id = `m${menuSeq++}`;
+  trigger.addEventListener('click', e => {
+    e.stopPropagation();
+    const reopeningSame = openPop?.dataset.owner === id;
+    closeMenu();
+    if (reopeningSame) return;
+
+    const pop = document.createElement('div');
+    pop.className = 'sp-menu-pop sp-panel-pop';
+    pop.dataset.owner = id;
+    pop.onclick = ev => {
+      ev.stopPropagation();
+      if (opts.closeOnPick && ev.target instanceof Element && ev.target.closest('button')) closeMenu();
+    };
+    pop.appendChild(content);
+    document.body.appendChild(pop);
+    const r = trigger.getBoundingClientRect();
+    placePop(pop, r.left, r.bottom + 4);
+    openPop = pop;
+  });
 }
 
 /**

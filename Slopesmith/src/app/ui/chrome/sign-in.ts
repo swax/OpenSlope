@@ -55,8 +55,13 @@ function installAccountMenu(user: Member, deps: AccountMenuDeps): void {
   account.el.classList.add('sp-account-menu');
   account.el.setAttribute('aria-label', 'Account menu');
   tooltip(account.el, () => `Signed in as ${current.username} (${current.role}).`);
+  // A narrow bar trades the name for its initial (`sp-fit-account`, top-bar.ts); CSS picks which one shows.
+  const initial = document.createElement('span');
+  initial.className = 'sp-menu-btn-icon sp-account-initial';
+  account.el.appendChild(initial);
   const paint = () => {
     account.setLabel(current.username);
+    initial.textContent = [...current.username][0]?.toUpperCase() ?? '?';
   };
   paint();
   onAccountChanged(changed => { current = changed; paint(); });
@@ -83,8 +88,9 @@ export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
   const account = await currentAccount();
   if (!('user' in account)) {
     const bar = document.getElementById('dock-top');
+    // File ▸ Settings… reaches the same dialog, so a narrow bar drops this button (`sp-fit-account`).
     if (bar) bar.append(group(button('Settings', deps.openSettings, {
-      title: 'Application and server settings.',
+      title: 'Application and server settings.', cls: 'sp-settings-btn',
     })));
     return;
   }

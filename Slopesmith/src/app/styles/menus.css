@@ -5,14 +5,18 @@
 .sp-menu-btn-icon svg { display: block; width: 16px; height: 16px; }
 .sp-history-menu { min-width: 27px; padding-inline: 7px; }
 .sp-history-menu::after { margin-left: 0; }
-/* Narrow bar: File collapses to its hamburger, alongside the wordmark dropping to the bare mark in the
-   mobile block below — the dock has icon rows to seat before either word earns its width. */
-@media (max-width: 760px), (max-height: 500px) {
-  .sp-app-menu { display: inline-flex; align-items: center; padding-inline: 7px; }
-  .sp-app-menu .sp-menu-btn-label { display: none; }
-  .sp-app-menu .sp-menu-btn-icon { display: block; }
-  .sp-app-menu::after { margin-left: 4px; }
-}
+/* Narrow bar (bar-fit.ts sets these classes as the row runs out of room): File collapses to its hamburger,
+   and the account menu to the initial of its name. */
+#dock-top.sp-fit-file .sp-app-menu,
+#dock-top.sp-fit-account .sp-account-menu { display: inline-flex; align-items: center; padding-inline: 7px; }
+#dock-top.sp-fit-file .sp-app-menu .sp-menu-btn-label,
+#dock-top.sp-fit-account .sp-account-menu .sp-menu-btn-label { display: none; }
+#dock-top.sp-fit-file .sp-app-menu .sp-menu-btn-icon,
+#dock-top.sp-fit-account .sp-account-menu .sp-menu-btn-icon { display: block; }
+#dock-top.sp-fit-file .sp-app-menu::after,
+#dock-top.sp-fit-account .sp-account-menu::after { margin-left: 4px; }
+.sp-account-initial { width: 16px; height: 16px; border-radius: 50%; background: #2d4f6b; color: #eaf6ff;
+  font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
 .sp-menu-pop {
   position: fixed; z-index: 50; min-width: 200px; max-width: 320px; max-height: 72vh; overflow: auto;
   background: #0e1a26; border: 1px solid #34506b; border-radius: 8px; padding: 4px; box-shadow: 0 8px 30px #000a;

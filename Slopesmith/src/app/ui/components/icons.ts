@@ -73,6 +73,9 @@ export const WATCHING_ICON = svg('<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6
 /** The app menu's stand-in on a narrow bar: three rules where the word "Slopesmith" no longer fits. */
 export const MENU_ICON = svg('<path d="M4 7h16M4 12h16M4 17h16"/>');
 
+/** The trigger a narrow bar folds its View groups behind: three dots, "there is more of this row". */
+export const MORE_ICON = svg('<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3.5"/>');
+
 // Undo / redo as icons, dimmed when there's no history to step through.
 export const HIST_ICON = {
   // [lucide] shares an element with Lucide v0.100.0 `undo-2`.
