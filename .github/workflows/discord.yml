@@ -61,7 +61,10 @@ jobs:
               ? `${base}/compare/${before}...${after}`
               : `${base}/commit/${after}`;
             const summary = event.forced ? 'force-pushed' : 'committed';
-            const prefix = `${branch} · ${actor} ${summary} `;
+            const multiline = count > 1;
+            const prefix = `${branch} · ${actor} ${summary}${multiline ? '\n' : ' '}`;
+            const formatEntries = values => values.filter(Boolean)
+              .map(value => multiline ? `- ${value}` : value).join(multiline ? '\n' : ', ');
             const entries = [];
             const more = remaining => remaining > 0 ? `[${remaining} more](<${url}>)` : '';
             // Reserve room for a compare link when the push exceeds Discord's content limit
@@ -69,11 +72,11 @@ jobs:
             for (const commit of commits) {
               const id = commit.id || after;
               const entry = `[${id.slice(0, 7)}](<${base}/commit/${id}>) ${clean(commit.message)}`;
-              const candidate = [...entries, entry, more(count - entries.length - 1)].filter(Boolean).join(', ');
+              const candidate = formatEntries([...entries, entry, more(count - entries.length - 1)]);
               if (prefix.length + candidate.length > 2000) break;
               entries.push(entry);
             }
-            content = prefix + [...entries, more(count - entries.length)].filter(Boolean).join(', ');
+            content = prefix + formatEntries([...entries, more(count - entries.length)]);
           } else if (eventName === 'issues') {
             if (!['opened', 'closed', 'reopened'].includes(event.action)) process.exit(0);
             content = `[#${event.issue.number}](<${base}/issues/${event.issue.number}>) ${event.action} by ${actor} · ${clean(event.issue.title)}`;
