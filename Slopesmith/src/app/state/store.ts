@@ -4,7 +4,7 @@ import type { PropEffectTemplate } from '../../core/props/effect-defaults';
 import type { EffectCircumstance } from '../../core/effects/authoring-contract';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { Brush } from '../../core/paint/textures';
-import type { GizmoFrame, GizmoMode, Mode, RotationSnapStep, SnapStep } from '../viewport/viewport';
+import type { GizmoFrame, GizmoMode, Mode, PropGizmoFrame, RotationSnapStep, SnapStep } from '../viewport/viewport';
 import type { StoredUi } from './storage';
 import type { MeshControlPointId } from '../../core/mesh/control-points';
 import type {
@@ -165,6 +165,7 @@ export type Store = {
   normalsOn: boolean;                // pink back-face tint that exposes the surface-normal direction; default on
   aiPathsOn: boolean;                // AI-path overlay in Info (derived opponent lines + reference AIP network); default off
   gizmoFrame: GizmoFrame;            // World axes, slope-local axes, or slope-local axes + surface sliding
+  propGizmoFrame: PropGizmoFrame;    // placed props: world axes, or riding the terrain at their height over it
   gizmoMode: GizmoMode;              // transient transform tool; every new selection returns to Move
   // Transient ordinary Edit-pick filters. All begin enabled; the top-of-toolbox Select group lets the user
   // temporarily limit point / edge / patch / prop clicks without hiding geometry or changing the current
@@ -434,6 +435,7 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     normalsOn: ui.normals !== false,
     aiPathsOn: ui.aiPaths === true,
     gizmoFrame: ui.gizmoFrame === 'world' || ui.gizmoFrame === 'local' ? ui.gizmoFrame : 'surface',
+    propGizmoFrame: ui.propGizmoFrame === 'world' ? 'world' : 'surface',
     gizmoMode: 'move',
     editPickKinds: { point: true, edge: true, patch: true, prop: true },
     modelEditId: null,

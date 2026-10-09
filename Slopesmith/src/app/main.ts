@@ -683,7 +683,7 @@ const persistence = createPersistence({
     playVrEyeBuffer: store.playVrEyeBuffer,
     playVrLayerMode: store.playVrLayerMode, playVrStats: store.playVrStatsOn,
     playDrawDistance: store.playDrawDistance,
-    gizmoFrame: store.gizmoFrame }),
+    gizmoFrame: store.gizmoFrame, propGizmoFrame: store.propGizmoFrame }),
   getRef: () => (reference.hasReference() && reference.getRefLevel() && !reference.getRefLevel().startsWith('('))
     ? { level: reference.getRefLevel(), offset: viewport.referenceOffset() } : null,
 });

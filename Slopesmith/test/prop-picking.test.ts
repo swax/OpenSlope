@@ -1001,11 +1001,13 @@ const selectionWorld = new THREE.Group();
 const selectionScene = new THREE.Scene();
 let selectionAttachCount = 0;
 let selectionDetachCount = 0;
+let selectionReframeCount = 0;
 const selectionStage: any = {
   worldRoot: selectionWorld, scene: selectionScene, gizmo: { dragging: false }, gizmoKind: null,
   snapDataPoint: (point: unknown) => point,
   attachGizmo(_object: THREE.Object3D, kind: string) { this.gizmoKind = kind; selectionAttachCount++; },
   detachGizmo() { this.gizmoKind = null; selectionDetachCount++; },
+  reframeGizmo() { selectionReframeCount++; },
   cb: {},
 };
 const selectionLayer = createPropsLayer(selectionStage, extentAssets, {
@@ -1105,6 +1107,8 @@ selectionLayer.setPlacedProps([{
     physicsSource: { level: 'TEST', body: 7 },
   },
 }], 0);
+check(selectionAttachCount === 2 && selectionReframeCount === 1,
+  'Re-rendering a selected prop re-frames its seated gizmo (a Surface frame re-reads the slope) rather than re-seating it');
 const inactiveSpheres = authoredColliderOverlay?.children.find(object => object instanceof THREE.InstancedMesh);
 check(inactiveSpheres instanceof THREE.InstancedMesh && inactiveSpheres.count === 2
   && (inactiveSpheres.material as THREE.MeshBasicMaterial).color.getHex() === COLLISION_OVERLAY_INACTIVE_COLOR,

@@ -242,6 +242,7 @@ export function createScreensLayer(stage: Stage) {
         placeHandle(at);
         moveHandle.visible = true;
         if (stage.gizmoKind !== 'screen') stage.attachGizmo(moveHandle, 'screen', at);
+        else stage.reframeGizmo(); // a Surface frame re-reads the slope the screen now stands over
       }
     } else if (stage.gizmoKind === 'screen') clearSelection();
     syncSelectionAppearance();
@@ -331,6 +332,11 @@ export function createScreensLayer(stage: Stage) {
     get referenceGroup() { return reference; },
     get screens() { return screens; },
     get selectedScreen() { return selected; },
+    /** The selected screen is fitted to a board prop, stored in its frame — it moves with the board, not the ground. */
+    get selectedAttached() {
+      const screen = screens[selectedIndex()];
+      return !!screen && !!screenProp(screen, props);
+    },
     get selectedReferenceScreen() { return selectedReference; },
     setScreens, setReference, setVisible, setVideoTexture, seatScreen, seatReferenceScreen,
     clearSelection, handlePosition,

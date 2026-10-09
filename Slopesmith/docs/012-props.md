@@ -337,6 +337,56 @@ The library, placement and the reference-props view all fetch through one `ensur
 a level's few-MB payload is fetched at most once per session; `registerPropModels` hands its geometries to
 the viewport.
 
+### Surface frame
+
+A selected prop, group or set — in Props, Edit or Effects mode — shows a **Move in / Scale in: World | Surface** pill
+at the top of its toolbox under **Transform**, its own setting apart from the mesh's World / Local / Surface pill
+(persisted as `propGizmoFrame`, default Surface). So do the points Props mode places, each with its own toolbox: a
+**rail or prop-line point**, a **gem**, a **free light** (in Edit mode too) and a **free-standing screen** — they
+move only, so the pill is their whole Transform section. A Bézier handle (whose gizmo is off its point) and a screen
+fitted to a board (stored in the board's frame, so it moves with the board) stay World. **World** is the free
+world-axis gizmo described above. **Surface** carries placements over the terrain (`core/props/surface-follow.ts`):
+
+- **Move** frames the gizmo to the slope under the prop — X down the fall line (world X on level ground), Y the
+  surface normal, Z across the slope — and shows the mesh Surface frame's four handles. The two arrows and the
+  tangent pad slide the selection across the ground, and each placement keeps the **vertical offset** it had from
+  the ground under its origin: a tree sunk into the snow stays sunk as deep, a sign floating above it stays as high,
+  and orientation is untouched (an upright tree stays upright on a steeper slope). The up post is the deliberate
+  move off the surface (along the normal); the next drag measures the new offset. Where the mountain passes over
+  itself a placement keeps riding the deck it started on (the course-knot rule), and dragged off the mountain's
+  edge it holds the height it last reached. The pad is the tangent plane through the prop, so the plane the gizmo
+  drags in stays on the slope as the prop rides it.
+- **Scale** pivots on the ground under each placement: what rests on the surface keeps resting on it as it grows or
+  shrinks (a centre-origin box no longer sinks into the slope), and what is sunk in or floats above sinks or floats
+  in proportion. A set's spacing spreads about its centroid over the ground, each member landing on the ground it
+  reaches. A trigger volume's per-axis resize is unchanged.
+- An authored group ([015](015-groups.md#authored-groups)) is one **rigid** unit: every member takes the same lift,
+  the mean change in the ground under its members, so a group keeps its shape over uneven ground. Loose members of a
+  set each ride their own ground (`onSlideProps` reports each member's new origin; selected free lights and group
+  lights are carried as for any set move).
+- A **point** Moves exactly as a lone prop does: a gem keeps its float height, a rail point its height over the
+  slope, a light its height above the ground (`slidePoint` re-seats the anchor before the point's own report).
+- **Shift** held while dragging forces World for that drag, as on the mesh pill. Rotate has no frame choice: rings stay
+  world-aligned, so the pill hides while Rotate is active. A placement over no terrain at all moves and scales as
+  World would.
+
+Every frame of a drag is evaluated from the drag-start freeze, so the gizmo's repeated reports never accumulate
+drift; the viewport reads the ground through the ride tree's column cast (`terrainNearest`), and re-reads the slope
+whenever the handle is re-placed under it (`Stage.reframeGizmo`).
+
+### Drop lines
+
+Where a prop stands relative to the snow is most of what matters about it, and from a perspective view a floating
+gem and a seated one can look the same. So whatever holds the gizmo in Props, Edit or Effects mode — a placed prop
+(every member of a set), a gem, a rail or prop-line point, a free light, a screen — hangs a thin amber **drop line**
+straight down to the first authored surface beneath it, ending in a dot where it lands
+(`app/viewport/scene/drop-lines.ts`). It shows in World and Surface frames alike and follows a drag as it goes, so
+a Surface slide visibly holds its height and a World move along the up post visibly grows or shrinks it. Nothing is
+drawn for something on or sunk into the surface, or over no surface at all, and nothing while riding. The lines draw
+over the scene as the gizmo does. The viewport hands the layer the selected points every frame
+(`Viewport.dropLinePoints`), and the layer casts down the ride tree (`terrainBelow`) only when a point — or the
+ground's position buffer — has changed, at most 256 lines per selection.
+
 ### Instance and surface details
 
 A selected **reference** placement exposes the native instance rather than guessing from its appearance. Its
