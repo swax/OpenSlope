@@ -1,0 +1,135 @@
+{
+  "bezier-patch-trail": {
+    "source": "bezier patch trail.png",
+    "width": 992,
+    "height": 1083,
+    "previewWidth": 992,
+    "previewHeight": 1083
+  },
+  "cage-control-snow-overhangs": {
+    "source": "cage control snow overhangs.png",
+    "width": 1909,
+    "height": 1286,
+    "previewWidth": 1280,
+    "previewHeight": 862
+  },
+  "course-definition": {
+    "source": "course definition.png",
+    "width": 2325,
+    "height": 1281,
+    "previewWidth": 1280,
+    "previewHeight": 705
+  },
+  "course-speed-profiles": {
+    "source": "course speed profiles.png",
+    "width": 2732,
+    "height": 1780,
+    "previewWidth": 1280,
+    "previewHeight": 834
+  },
+  "custom-map": {
+    "source": "custom map.png",
+    "width": 2670,
+    "height": 1905,
+    "previewWidth": 1280,
+    "previewHeight": 913
+  },
+  "custom-props": {
+    "source": "custom props.png",
+    "width": 2549,
+    "height": 1356,
+    "previewWidth": 1280,
+    "previewHeight": 681
+  },
+  "edge-loops": {
+    "source": "edge loops.png",
+    "width": 1181,
+    "height": 1202,
+    "previewWidth": 1181,
+    "previewHeight": 1202
+  },
+  "effects-editor": {
+    "source": "effects editor.png",
+    "width": 2194,
+    "height": 1270,
+    "previewWidth": 1280,
+    "previewHeight": 741
+  },
+  "integrating-trail-with-terrain": {
+    "source": "integrating trail with terrain.png",
+    "width": 2536,
+    "height": 1568,
+    "previewWidth": 1280,
+    "previewHeight": 791
+  },
+  "map-editing": {
+    "source": "map editing.png",
+    "width": 2331,
+    "height": 1473,
+    "previewWidth": 1280,
+    "previewHeight": 809
+  },
+  "map-texturing": {
+    "source": "map texturing.png",
+    "width": 2628,
+    "height": 1909,
+    "previewWidth": 1280,
+    "previewHeight": 930
+  },
+  "maya-research": {
+    "source": "maya research.png",
+    "width": 1685,
+    "height": 1293,
+    "previewWidth": 1280,
+    "previewHeight": 982
+  },
+  "multilane-trail-junctions": {
+    "source": "multilane trail junctions.png",
+    "width": 2622,
+    "height": 1240,
+    "previewWidth": 1280,
+    "previewHeight": 605
+  },
+  "patch-editing": {
+    "source": "patch editing.png",
+    "width": 1125,
+    "height": 654,
+    "previewWidth": 1125,
+    "previewHeight": 654
+  },
+  "play-testing": {
+    "source": "play testing.png",
+    "width": 3169,
+    "height": 1909,
+    "previewWidth": 1280,
+    "previewHeight": 771
+  },
+  "prop-placement": {
+    "source": "prop placement.png",
+    "width": 1207,
+    "height": 861,
+    "previewWidth": 1207,
+    "previewHeight": 861
+  },
+  "surface-types": {
+    "source": "surface types.png",
+    "width": 2014,
+    "height": 1184,
+    "previewWidth": 1280,
+    "previewHeight": 752
+  },
+  "texture-palette": {
+    "source": "texture palette.png",
+    "width": 596,
+    "height": 718,
+    "previewWidth": 596,
+    "previewHeight": 718
+  },
+  "wireframe-diagram": {
+    "source": "wireframe diagram.png",
+    "width": 2290,
+    "height": 1657,
+    "previewWidth": 1280,
+    "previewHeight": 926
+  }
+}

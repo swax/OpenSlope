@@ -257,15 +257,16 @@ class RepoHygieneTests(unittest.TestCase):
                 encoding="utf-8",
             )
             findings = repo_hygiene.scan_binaries(
-                ["media/kept.png", "media/undeclared.glb", "README.md"], manifest
+                ["media/kept.png", "media/undeclared.glb", "media/undeclared.webp", "README.md"], manifest
             )
         self.assertEqual(
-            {("media/undeclared.glb", "binary-provenance"), ("media/gone.png", "binary-provenance-stale")},
+            {("media/undeclared.glb", "binary-provenance"), ("media/undeclared.webp", "binary-provenance"),
+             ("media/gone.png", "binary-provenance-stale")},
             {(finding.path, finding.rule) for finding in findings},
         )
 
     def test_unknown_formats_fail_instead_of_being_ignored(self):
-        for path in ("Maps/level.iso", "Audio/loop.wav", "pack.zip", "tool.exe", "blob.bin", "art.webp"):
+        for path in ("Maps/level.iso", "Audio/loop.wav", "pack.zip", "tool.exe", "blob.bin", "art.avif"):
             self.assertEqual("unclassified", repo_hygiene.classify(path), path)
 
     def test_a_binary_under_a_dirty_prefix_still_needs_provenance(self):
