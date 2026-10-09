@@ -119,6 +119,7 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
         placeGemHandle(selIdx);
         gemMoveHandle.visible = true;
         if (stage.gizmoKind !== 'gem') stage.attachGizmo(gemMoveHandle, 'gem', selIdx);
+        else stage.reframeGizmo(); // a Surface frame re-reads the slope the gem now floats over
       }
     } else if (stage.gizmoKind === 'gem') {
       clearSelection();

@@ -102,7 +102,7 @@ const board = (over: Partial<PlacedProp> = {}): PlacedProp => ({
       picks.push({ level, screen });
     } },
     gizmoKind: null,
-    attachGizmo() {}, detachGizmo() {},
+    attachGizmo() {}, detachGizmo() {}, reframeGizmo() {},
     worldPerPixel: () => 0.1,
   };
   const layer = createScreensLayer(stage);

@@ -10,11 +10,19 @@ import type { PreviewData } from '../../../core/mesh/tessellation';
 import { frozenPos, planSlideRecut, slideDragFrame, slideRail, type SlideExact } from '../../../core/mesh/slide-gesture';
 import type { SurfaceRails } from './arcs';
 import type { QuadName, VertexName } from '../../state/mesh-names';
-import type { GizmoFrame, GizmoMode } from '../types';
-import type { Stage } from '../stage';
+import type { GizmoFrame, GizmoMode, PropGizmoFrame } from '../types';
+import type { GizmoKind, Stage } from '../stage';
 import { dataToScene, sceneToData, setScenePositionFromData } from '../coordinates';
 import { clampEffectTriggerSize, isEffectTriggerProp } from '../../../core/effects/trigger-volume';
 import { placementQuat, propRotationFromQuat } from '../../../core/props/pose';
+import {
+  freezeSurfaceFollow, placementSurfaceItems, scaleOverSurface, slideOverSurface, type SurfaceFollow, type SurfaceHeight,
+} from '../../../core/props/surface-follow';
+
+/** The point-like things Props mode places that the prop World / Surface pill also frames (docs/012 · Surface
+ *  frame): a free light, a rail or prop-line point, a gem and a free-standing screen. Each gizmo rides a plain
+ *  scene-root anchor whose orientation means nothing, so it can take the slope frame and drop it again. */
+const SURFACE_POINT_KINDS: ReadonlySet<GizmoKind | null> = new Set<GizmoKind>(['light', 'railnode', 'linenode', 'gem', 'screen']);
 
 /** Resolve the persisted frame plus the one-drag Shift override into the frame TransformControls should use. */
 export function resolveGizmoFrame(frame: GizmoFrame, forceWorld: boolean): GizmoFrame {
@@ -47,6 +55,9 @@ export interface TransformMeshAccess {
   preview(): PreviewData | null;
   edgeHandle(): EdgeHandle | null;
   terrainBVH(): MeshBVH | null;
+  /** The authored ground under data-space (x, z) nearest `nearY`, with its skyward unit normal (data space), or null
+   *  off it: what a Surface-frame prop rides, and the slope its gizmo frames to. */
+  groundAt(x: number, z: number, nearY: number): { y: number; normal: V3 } | null;
 }
 
 /** The selection families a transform can be seated on — the shell's mutually exclusive edit sets (corner /
@@ -62,6 +73,8 @@ export interface TransformSelectionAccess {
   selectedCageHandle(): { vertex: number } | null;
   selectedProp(): number | null;
   multiSelProps(): readonly number[];
+  /** The selected screen is fitted to a board prop — stored in the board's frame, so it never rides the ground. */
+  selectedScreenAttached(): boolean;
   placedProp(index: number): PlacedProp | undefined;
   extrusionStaged(): boolean;
   extrusionFanMode(): boolean;
@@ -76,6 +89,9 @@ export interface TransformAnchors {
   cornerGroupHandle: THREE.Object3D;
   cornerGroupHandleLast: THREE.Vector3;
   cageHandleAnchor: THREE.Object3D;
+  /** The props layer's multi-selection handle position (data space) at the last gizmo report — the delta baseline
+   *  its World Move measures from, which a Surface slide keeps current as it parks the handle. */
+  propsHandleLast: THREE.Vector3;
 }
 
 /** Host work a transform triggers: handing a cage-handle gizmo back to the selection centroid before Rotate /
@@ -120,8 +136,13 @@ export function createTransformLayer(
   //    cave roofs). Shift held while dragging forces World for a quick off-surface escape from either local frame.
   // Corners take the full Surface slide contract. Floating cage handles and directly-selected sub-cage points
   // use the same Local / Surface orientation, but remain free control-point moves: they shape the surface and
-  // therefore cannot themselves be projected or re-cut along it. Knots, props, gems and the reference stay world.
+  // therefore cannot themselves be projected or re-cut along it. Knots, gems and the reference stay world.
+  // Placed props take a World / Surface pill of their own (`propFrame`, docs/012 · Surface frame): Surface frames the
+  // gizmo to the slope under the prop with the same four handles, and its arrows and tangent pad carry the selection
+  // over the terrain at the height it stands above (or is sunk into) it, while Scale pivots on the ground beneath.
+  // The same pill frames Props mode's points (SURFACE_POINT_KINDS), which move the same way.
   let gizmoFrame: GizmoFrame = 'surface'; // host-driven frame pill; Surface alone implies a constrained slide
+  let propFrame: PropGizmoFrame = 'surface'; // the prop pill; Shift forces World here too
   let gizmoMode: GizmoMode = 'move'; // W / E / R transform tool; rotate / scale are selection-gated below
   let gizmoShift = false;      // Shift held → force World for this drag (free 3D off-surface)
   type FrozenCorners = {
@@ -155,6 +176,8 @@ export function createTransformLayer(
   } | {
     kind: 'prop' | 'props'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3;
     members: { index: number; pos: THREE.Vector3; scale: number; triggerSize?: V3 }[];
+    /** Surface frame: the members as they stood over the ground, which the scale pivots on. */
+    surface: SurfaceFollow | null;
   } | null = null;
   let slideBVH: MeshBVH | null = null; // frozen surface for slide re-projection, built at corner drag-start
   const slideRay = new THREE.Ray();    // reused down-ray for the slide surface probe (regions + a degenerate frame)
@@ -173,12 +196,40 @@ export function createTransformLayer(
   // past a far end so a release would weld. Seated for a single corner, an edge / edge-loop and a cell selection.
   let slideExact: SlideExact | null = null;
   let slideMergePending = false;
+  // Surface-frame slide (arrow or tangent pad on a prop / props gizmo, or a Props-mode point's): the members frozen
+  // over the ground they stood on, the gizmo anchor's data-space position at drag-start that the drag's offset is
+  // measured from, and whether it is a point — re-seated in place for its own report (slidePoint) — or placements.
+  let propSlide: { follow: SurfaceFollow; anchor0: V3; point: boolean } | null = null;
+  const groundHeight: SurfaceHeight = (x, z, nearY) => mesh.groundAt(x, z, nearY)?.y ?? null;
 
   /** World / Local / Surface pill (docs/006): Local and Surface use the slope frame; Surface additionally
    *  slides along the terrain, while World uses the plain world axes. Host-driven. */
   function setGizmoFrame(frame: GizmoFrame) {
     gizmoFrame = frame;
     applyGizmoFrame();
+  }
+
+  /** The prop World / Surface pill (docs/012 · Surface frame). Host-driven, like the mesh pill. */
+  function setPropGizmoFrame(frame: PropGizmoFrame) {
+    propFrame = frame;
+    applyGizmoFrame();
+  }
+
+  /** The gizmo is on one of Props mode's points that can ride the ground — a fitted screen moves with its board. */
+  function surfacePointKind(): boolean {
+    return SURFACE_POINT_KINDS.has(stage.gizmoKind) && !(stage.gizmoKind === 'screen' && sel.selectedScreenAttached());
+  }
+
+  /** The gizmo is on a placed prop or prop set, or a Props-mode point, in the Surface frame (Shift forces World). */
+  function propSurfaceActive(): boolean {
+    return (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || surfacePointKind())
+      && resolveGizmoFrame(propFrame, gizmoShift) === 'surface';
+  }
+
+  /** The placements the prop gizmo carries: the lone selection, or the multi-selection its centre handle drives. */
+  function gizmoPropIndices(): number[] {
+    const selectedProp = sel.selectedProp();
+    return stage.gizmoKind === 'prop' ? (selectedProp === null ? [] : [selectedProp]) : [...sel.multiSelProps()];
   }
 
   /** Switch the shared TransformControls between move / rotate / scale. Unsupported point selections keep
@@ -290,8 +341,8 @@ export function createTransformLayer(
       if (stage.gizmoKind === 'knot' || stage.gizmoKind === 'anchor') stage.gizmo.showY = false;
       // These remaining anchors carry no authored orientation, so clear any stale local rotation before Scale
       // (always local in TransformControls) reads it.
-      if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || stage.gizmoKind === 'editmixed')
-        stage.gizmo.object?.quaternion.identity();
+      if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || stage.gizmoKind === 'editmixed'
+        || SURFACE_POINT_KINDS.has(stage.gizmoKind)) stage.gizmo.object?.quaternion.identity();
       // All three rings show for props: a placement authors a full rotation (yaw / pitch / roll, core/props/pose),
       // so tilting one onto a slope or laying it on its side is an ordinary drag rather than something the
       // document would silently discard. Rings stay WORLD-aligned, which is the frame a turn is judged in.
@@ -308,6 +359,17 @@ export function createTransformLayer(
           const [x, y, z, w] = placementQuat(prop);
           stage.gizmo.object?.quaternion.set(-x, -y, z, w); // authored → scene frame (worldRoot mirrors Z)
         }
+      }
+      // A Surface-frame prop (or point) Move frames to the slope beneath it, with the corner Surface frame's four
+      // handles: the up post lifts it off the ground (or sinks it in) along the normal, and the two arrows and the
+      // tangent pad carry it over the terrain (slideProps / slidePoint). The pad is the tangent plane through it, so the plane
+      // TransformControls drags in stays on the slope as the prop rides it. Scale needs no frame — a prop's is
+      // uniform — and turns stay world-judged.
+      if (!rotating && !scaling && propSurfaceActive()) {
+        stage.gizmoRestrict = true;
+        stage.gizmo.setSpace('local');
+        const frame = propGroundFrame();
+        if (frame) stage.gizmo.object?.quaternion.copy(frameQuat(frame.tu, frame.tv, frame.n));
       }
       return;
     }
@@ -525,16 +587,14 @@ export function createTransformLayer(
       return;
     }
     if (stage.gizmoKind !== 'prop' && stage.gizmoKind !== 'props') return;
-    const selectedProp = sel.selectedProp();
-    const indices = stage.gizmoKind === 'prop'
-      ? (selectedProp === null ? [] : [selectedProp])
-      : sel.multiSelProps();
+    const indices = gizmoPropIndices();
     const members = indices.flatMap(index => {
       const p = sel.placedProp(index);
       return p ? [{ index, pos: dataToScene(p.pos), scale: p.scale,
         ...(isEffectTriggerProp(p) ? { triggerSize: clampEffectTriggerSize(p.effectTrigger.size) } : {}) }] : [];
     });
-    if (members.length) scaleDrag = { kind: stage.gizmoKind, anchor, startScale, pivot, members };
+    const surface = propSurfaceActive() ? freezeSurfaceFollow(placementSurfaceItems(sel.placedProp, indices), groundHeight) : null;
+    if (members.length) scaleDrag = { kind: stage.gizmoKind, anchor, startScale, pivot, members, surface };
   }
 
   /** Apply the live scale relative to the frozen drag-start snapshot and emit authored absolute values. */
@@ -557,10 +617,12 @@ export function createTransformLayer(
       const factor = Math.max(0.01, [factors.x, factors.y, factors.z]
         .reduce((best, value) => Math.abs(value - 1) > Math.abs(best - 1) ? value : best, factors.x));
       const scaled = (p: THREE.Vector3) => p.clone().sub(drag.pivot).multiplyScalar(factor).add(drag.pivot);
-      const updates = drag.members.map(m => {
-        const p = scaled(m.pos);
-        return { index: m.index, pos: sceneToData(p), scale: m.scale * factor };
-      });
+      // Surface: the spacing spreads about the pivot over the ground, and each prop grows about the ground under it.
+      const updates = drag.surface ? scaleOverSurface(drag.surface, factor, sceneToData(drag.pivot), groundHeight)
+        : drag.members.map(m => {
+          const p = scaled(m.pos);
+          return { index: m.index, pos: sceneToData(p), scale: m.scale * factor };
+        });
       if (drag.kind === 'prop') {
         const u = updates[0];
         if (u) stage.cb.onScaleProp?.(u.index, u.pos, u.scale);
@@ -622,6 +684,8 @@ export function createTransformLayer(
     slideGroup = null;
     slideExact = null;
     slideMergePending = false;
+    propSlide = null;
+    if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || surfacePointKind()) { beginPropSlide(); return; }
     if (resolveGizmoFrame(gizmoFrame, gizmoShift) !== 'surface') return;
     if (stage.gizmoKind !== 'corner' && stage.gizmoKind !== 'corners') return;
     if (stage.gizmo.axis === 'XYZ') return;
@@ -640,9 +704,73 @@ export function createTransformLayer(
     slideBVH = null;
     slideGroup = null;
     slideExact = null;
+    propSlide = null;
     setSlideMergePending(false);
     if (exact) stage.cb.onSlideEnd?.(merge);
     applyGizmoFrame();
+  }
+
+  /** Seat a Surface-frame slide when the drag is on an in-plane arrow or the tangent pad: freeze the members over the
+   *  ground they stand on (core/props/surface-follow) — the placements the prop gizmo carries, or the one point at
+   *  the anchor. The up post is the deliberate move off the surface, and the headset's free centre a free 3D move,
+   *  so both stay ordinary moves. */
+  function beginPropSlide() {
+    const ax = stage.gizmo.axis, obj = stage.gizmo.object;
+    if (!obj || !propSurfaceActive() || (ax !== 'X' && ax !== 'Z' && ax !== 'XZ')) return;
+    const anchor0 = sceneToData(obj.position), point = surfacePointKind();
+    const follow = freezeSurfaceFollow(point ? [{ index: -1, pos: anchor0 }]
+      : placementSurfaceItems(sel.placedProp, gizmoPropIndices()), groundHeight);
+    if (follow.members.length) propSlide = { follow, anchor0, point };
+  }
+
+  /**
+   * One frame of a Surface-frame prop slide: the anchor's travel across the ground since drag-start moves every
+   * member as far, each riding the terrain at its own height over it (slideOverSurface). Parks the anchor where the
+   * selection landed — a lone prop's own origin, a set's centre lifted by its members' mean lift — so the gizmo
+   * rides with it (safe for the reason `slideRecut` gives). True when it owned the frame.
+   */
+  function slideProps(obj: THREE.Object3D): boolean {
+    const s = propSlide;
+    if (!s || s.point) return false;
+    const p = sceneToData(obj.position);
+    const updates = slideOverSurface(s.follow, p[0] - s.anchor0[0], p[2] - s.anchor0[2], groundHeight);
+    if (!updates.length) return true;
+    const lift = updates.reduce((sum, u, i) => sum + u.pos[1] - s.follow.members[i].pos[1], 0) / updates.length;
+    const at: V3 = [p[0], s.anchor0[1] + lift, p[2]];
+    setScenePositionFromData(obj.position, at);
+    if (stage.gizmoKind === 'prop') stage.cb.onMoveProp?.(updates[0].index, updates[0].pos);
+    else {
+      anchors.propsHandleLast.set(at[0], at[1], at[2]); // a later World report measures its delta from here
+      stage.cb.onSlideProps?.(updates);
+    }
+    return true;
+  }
+
+  /** One frame of a Surface-frame POINT slide: re-seat the dragged anchor at the height it stood over the ground,
+   *  wherever the drag has carried it, before its kind's own report reads it (as `slideProject` does a corner). */
+  function slidePoint(obj: THREE.Object3D) {
+    const s = propSlide;
+    if (!s?.point) return;
+    const p = sceneToData(obj.position);
+    const [u] = slideOverSurface(s.follow, p[0] - s.anchor0[0], p[2] - s.anchor0[2], groundHeight);
+    if (u) setScenePositionFromData(obj.position, u.pos);
+  }
+
+  /** The slope frame on the ground under the prop gizmo's anchor — X down the fall line (world X on level ground,
+   *  which has none), Y the skyward normal, Z across the slope — so the gizmo's XZ pad is the tangent plane. Null
+   *  where the anchor stands over no terrain, which leaves the gizmo on the world axes. */
+  function propGroundFrame(): LocalFrame | null {
+    const obj = stage.gizmo.object;
+    if (!obj) return null;
+    const [x, y, z] = sceneToData(obj.position);
+    const ground = mesh.groundAt(x, z, y);
+    if (!ground) return null;
+    const n = new THREE.Vector3(ground.normal[0], ground.normal[1], ground.normal[2]).normalize();
+    const tu = new THREE.Vector3(0, -1, 0).addScaledVector(n, n.y); // straight down, projected into the tangent plane
+    if (tu.lengthSq() < 1e-4) tu.set(1, 0, 0).addScaledVector(n, -n.x);
+    if (tu.lengthSq() < 1e-8) return null;
+    tu.normalize();
+    return { tu, tv: new THREE.Vector3().crossVectors(n, tu), n };
   }
 
   /**
@@ -970,17 +1098,18 @@ export function createTransformLayer(
       slideBVH = null;
       slideGroup = null;
       slideExact = null;
+      propSlide = null;
       setSlideMergePending(false);
     },
     /** The active W / E / R transform tool; rotate / scale are selection-gated (rotationActive / scaleActive). */
     get mode() { return gizmoMode; },
     /** A frozen-net group slide is live (a corner-REGION drag): its updates belong to slideGroupUpdate. */
     get groupSliding() { return slideGroup !== null; },
-    setGizmoFrame, setGizmoMode, shiftKey, applyGizmoFrame,
+    setGizmoFrame, setPropGizmoFrame, setGizmoMode, shiftKey, applyGizmoFrame,
     rotationActive, scaleActive,
     beginRotation, rotateSelection, endRotation,
     beginScale, scaleSelection, endScale,
-    beginSlide, endSlide, slideRecut, slideProject, slideGroupUpdate,
+    beginSlide, endSlide, slideRecut, slideProject, slideGroupUpdate, slideProps, slidePoint,
   };
 }
 

@@ -38,6 +38,7 @@ const stage: any = {
   gizmoKind: null,
   attachGizmo(_object: THREE.Object3D, kind: string) { this.gizmoKind = kind; },
   detachGizmo() { this.gizmoKind = null; },
+  reframeGizmo() {},
   cb: {},
 };
 const assets = createPropAssets();
