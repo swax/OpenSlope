@@ -23,6 +23,7 @@ Slopesmith/deploy/slopesmith-update-runner text eol=lf
 *.patch -whitespace
 *.png binary
 *.jpg binary
+*.webp binary
 *.ico binary
 *.glb binary
 *.blend binary
