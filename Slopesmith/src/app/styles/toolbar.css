@@ -8,6 +8,28 @@
 .sp-brand img { display: block; height: 22px; width: auto; }
 .sp-brand > span { white-space: nowrap; }
 .sp-group { display: inline-flex; align-items: center; gap: 4px; }
+.sp-group[hidden] { display: none; }
+/* Narrow bar (bar-fit.ts): the Mode / View captions go first, then the wordmark, then the accountless Settings
+   button, which File ▸ Settings… repeats. The account menu's own trade is with the menus (menus.css). */
+#dock-top.sp-fit-captions .sp-group:has(> .sp-label),
+#dock-top.sp-fit-brand .sp-brand > span,
+#dock-top.sp-fit-account .sp-group:has(> .sp-settings-btn) { display: none; }
+/* The triggers folded rows hide behind: the lit mode's own icon (with a caret: it is a choice), or the dots at
+   the end of the View row. */
+.sp-bar-fold { display: inline-flex; align-items: center; padding: 5px 7px; }
+.sp-bar-fold svg { display: block; width: 16px; height: 16px; }
+.sp-bar-fold-mode { background: #2d4f6b; color: #eaf6ff; }
+.sp-bar-fold.sp-bar-fold-mode::after { margin-left: 4px; }
+.sp-bar-fold.sp-bar-fold-more::after { display: none; }
+/* A folded group lists its buttons as labelled rows: the bar's icon pills, with their names back. */
+.sp-fold-panel .sp-group { display: block; }
+.sp-fold-panel .sp-group + .sp-group { margin-top: 3px; padding-top: 3px; border-top: 1px solid #21374b; }
+.sp-fold-panel .sp-seg { display: flex; flex-direction: column; gap: 2px; border: 0; border-radius: 0; overflow: visible; }
+.sp-fold-panel .sp-seg button.sp-seg-icon { justify-content: flex-start; gap: 9px; width: 100%; padding: 6px 10px;
+  border: 0; border-radius: 5px; background: transparent; color: #d7e3f0; font-size: 13px; }
+.sp-fold-panel .sp-seg button.sp-seg-icon::after { content: attr(aria-label); white-space: nowrap; }
+.sp-fold-panel .sp-seg button.sp-seg-icon:hover:not(:disabled) { background: #1c3247; }
+.sp-fold-panel .sp-seg button.sp-seg-icon.on { background: #2d4f6b; color: #eaf6ff; }
 .sp-btn { background: #1c2b3a; color: #cfe3f5; border: 1px solid #34506b; border-radius: 5px;
   padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .sp-btn:hover { background: #25425c; }

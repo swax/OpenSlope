@@ -1,6 +1,7 @@
 import { brand, group, iconBar, label, menu, segmented, spacer } from '../components/controls';
 import { tooltip } from '../components/tooltip';
-import { MODE_ICON, HIST_ICON, MENU_ICON, USERS_ICON, VIEW_ICON } from '../components/icons';
+import { MODE_ICON, HIST_ICON, MENU_ICON, MORE_ICON, USERS_ICON, VIEW_ICON } from '../components/icons';
+import { barFold, fitBar } from './bar-fit';
 import type { Mode, ShadeMode, Viewport } from '../../viewport/viewport';
 import type { HistoryEntry } from '../../state/history';
 
@@ -13,6 +14,8 @@ import type { HistoryEntry } from '../../state/history';
  * active/enabled state is an injected callback into the host, and the objects the host repaints (the mode segment,
  * history bar, the show + lighting pills, and the view pills whose enabled states track the shade view) are handed
  * back. The toggle *behaviour* lives in the host — this module just lays out the bar and routes clicks.
+ * A window too narrow for the whole row gets a fitted one (bar-fit.ts): the list at the bottom of
+ * `createTopBar` says what goes first.
  */
 
 export type TopBarDeps = {
@@ -223,22 +226,65 @@ export function createTopBar(deps: TopBarDeps) {
   tooltip(fileMenu.el, 'File — open and manage mountains; Settings.');
   // `data-xr-edit` names the three strips the headset's wrist EDIT palette crops out of this bar (docs/068).
   const xrEdit = (key: 'file' | 'mode' | 'view', el: HTMLElement) => { el.dataset.xrEdit = key; return el; };
+  const modeGroup = xrEdit('mode', group(modeSeg.el));
+  const usersGroup = group(usersBar.el);
+  const overlaysGroup = xrEdit('view', group(viewOverlays.el));
+  const shadeGroup = xrEdit('view', group(viewShade.el));
+  const showGroup = xrEdit('view', group(viewShow.el));
+  const lightingGroup = xrEdit('view', group(viewLighting.el));
+  const frameGroup = xrEdit('view', group(viewFrame.el));
+  // Where a narrow bar folds rows away (bar-fit.ts): the modes behind the lit mode's own icon, so the bar still
+  // says which one you are in, and the View row behind a "more" trigger at its end.
+  const litMode = () => modeSeg.el.querySelector<HTMLElement>('button.on') ?? usersBar.el.querySelector<HTMLElement>('button.on');
+  const modeFold = barFold({ label: 'Mode', icon: '', heading: 'Mode', closeOnPick: true,
+    title: () => `Mode: ${litMode()?.getAttribute('aria-label') ?? 'none'} · click to switch (1–7)` });
+  const viewFold = barFold({ label: 'More view controls', icon: MORE_ICON, heading: 'View' });
+  modeFold.trigger.classList.add('sp-bar-fold-mode');
+  viewFold.trigger.classList.add('sp-bar-fold-more');
+  let paintedMode: HTMLElement | null | undefined;
+  const paintModeFold = () => {
+    const lit = litMode();
+    if (lit === paintedMode) return;
+    paintedMode = lit;
+    modeFold.trigger.innerHTML = lit?.innerHTML ?? MODE_ICON.info;
+  };
+  const modeWatch = new MutationObserver(paintModeFold);
+  for (const el of [modeSeg.el, usersBar.el]) modeWatch.observe(el, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  paintModeFold();
   bar.append(
     group(brandEl),              // left: the mark + Slopesmith wordmark
     xrEdit('file', group(fileMenu.el)), // ...then File (a hamburger once the bar is narrow); Export lives in here
     xrEdit('file', group(histBar.el, historyMenu.el, saveStatus)), // left: undo / redo + history dropdown, then passive save state
     spacer(),
     xrEdit('mode', group(label('Mode'))), // labels the centre mode segment
-    xrEdit('mode', group(modeSeg.el)),    // centre: Scene / Edit / Sculpt / Paint / Props (Add rail / gem / light live in the Prop Tools)
-    group(usersBar.el),          // ...and Users beside them: the server rather than the map
+    xrEdit('mode', modeFold.el), // the mode row folded behind the lit mode, once the bar is narrow
+    modeGroup,                   // centre: Scene / Edit / Sculpt / Paint / Props (Add rail / gem / light live in the Prop Tools)
+    usersGroup,                  // ...and Users beside them: the server rather than the map
     spacer(),
-    xrEdit('view', group(label('View'))),     // labels the right-side view controls
-    xrEdit('view', group(viewOverlays.el)),   // tile-orientation F overlay + predicted-speed shading
-    xrEdit('view', group(viewShade.el)),      // control cage plus the Surface / Textures solid-view toggles
-    xrEdit('view', group(viewShow.el)),       // show group: Props · Tricks (placed + reference), right of the shade controls
-    xrEdit('view', group(viewLighting.el)),   // sources · complete lighting · nearest-mountain skybox
-    xrEdit('view', group(viewFrame.el)),      // frame map
+    xrEdit('view', group(label('View'))), // labels the right-side view controls
+    overlaysGroup,               // tile-orientation F overlay + predicted-speed shading
+    shadeGroup,                  // control cage plus the Surface / Textures solid-view toggles
+    showGroup,                   // show group: Props · Tricks (placed + reference), right of the shade controls
+    lightingGroup,               // sources · complete lighting · nearest-mountain skybox
+    frameGroup,                  // frame map
+    xrEdit('view', viewFold.el), // whatever of the View row a narrow bar has folded away
   );
+  // What a narrow bar gives up, cheapest first. Captions and words go before any control does; the View groups
+  // fold least-reached first (Frame map also answers to F); the modes fold last, being how every task starts.
+  // The account menu (sign-in.ts) arrives later and trades its name for an initial at `sp-fit-account`.
+  fitBar(bar, [
+    { compact: 'sp-fit-captions' },
+    { compact: 'sp-fit-brand' },
+    { compact: 'sp-fit-account' },
+    { fold: overlaysGroup, into: viewFold },
+    { fold: frameGroup, into: viewFold },
+    { fold: lightingGroup, into: viewFold },
+    { fold: showGroup, into: viewFold },
+    { fold: shadeGroup, into: viewFold },
+    { compact: 'sp-fit-file' },
+    { fold: modeGroup, into: modeFold },
+    { fold: usersGroup, into: modeFold },
+  ]);
 
   // Handed back: the objects the host repaints on programmatic state changes (mode / history / show filters /
   // lighting pills) + the view pills refreshed by applyCage.
