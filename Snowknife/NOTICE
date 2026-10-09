@@ -160,9 +160,9 @@ here:
 
 The SSX-Library submodule brings its own build-time packages, likewise from
 nuget.org and not redistributed here: BCnEncoder.Net, SharpGLTF, SharpZipLib
-and System.IO.Hashing (MIT), and SixLabors.ImageSharp with SixLabors.Fonts and
-ImageSharp.Drawing under the Six Labors Split License, which extends its
-Apache-2.0 terms to open-source consumers such as this program. A
+and System.IO.Hashing (MIT), and SixLabors.ImageSharp with SixLabors.Fonts,
+ImageSharp.Drawing and PolygonClipper under the Six Labors Split License, which
+extends its Apache-2.0 terms to open-source consumers such as this program. A
 redistributor who does not qualify for that branch needs a licence from Six
 Labors.
 
