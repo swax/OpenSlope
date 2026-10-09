@@ -145,7 +145,8 @@ sweepable run, sweeping a fall line for a doc that carries none). Branching woul
     a band slid "half a cell down-mountain" keeps its ratios on a non-uniform net — then rides the frozen
     surface (per-corner step oriented to the gizmo arrow so both axes track the drag); the handle's normal
     component lifts the whole group off the surface rigidly. Tangent nubs use Local / Surface only for their
-    slope-aligned orientation (they never slide). Every other non-corner node kind (knots, props, gems, the
+    slope-aligned orientation (they never slide). Placed props take a World / Surface pill of their own
+    ([012 · Surface frame](012-props.md#surface-frame)). Every other non-corner node kind (knots, gems, the
     reference) stays plain World. (Surface framing added later.)
   - **The in-plane arrows are an exact slide (`core/mesh/slide.ts`).** An arrow drag re-cuts the control net instead of
     deforming it — a de Casteljau split of the net frozen at drag-start, so the ridable surface is bit-for-bit what

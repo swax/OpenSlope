@@ -768,12 +768,14 @@ for (const reverse of [false, true]) {
       worldRoot: new THREE.Group(),
       gizmoKind: null as string | null,
       gizmo: { dragging: false },
+      reframes: 0,
       cb: {
         onSelectLight: (id: string | null) => { picked.light = id; },
         onSelectGem: (id: string | null) => { picked.gem = id; },
       },
       attachGizmo: (_object: unknown, kind: string) => { stage.gizmoKind = kind; },
       detachGizmo: () => { stage.gizmoKind = null; },
+      reframeGizmo: () => { stage.reframes++; },
     };
     return stage;
   }
@@ -809,6 +811,9 @@ for (const reverse of [false, true]) {
   gemLayer.setGems(gems, 'gem:0001');
   check(gemLayer.selectedGem === 'gem:0001' && near(seatedAt(gemHandle), gems[1].pos),
     'gems: the move gizmo seats on the gem the selection names');
+  gemLayer.setGems(gems, 'gem:0001');
+  check(gemStage.gizmoKind === 'gem' && gemStage.reframes === 1,
+    'gems: a re-render under the seated gizmo re-frames it (a Surface frame re-reads the slope) rather than re-seating it');
   gemLayer.setPlayMode('race');
   check(!gemLayer.gemGroup.visible, 'gems: Race Test setup hides the native Showoff-only pickup layer');
   gemLayer.setPlayMode('showoff');

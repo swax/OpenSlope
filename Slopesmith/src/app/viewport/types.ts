@@ -130,6 +130,9 @@ export type RotationSnapStep = 5 | 15 | 45;
 export type GizmoMode = 'move' | 'rotate' | 'scale';
 /** Transform axes / constraint frame: world axes, slope-local axes, or slope-local axes plus surface sliding. */
 export type GizmoFrame = 'world' | 'local' | 'surface';
+/** A placed prop's transform frame: world axes, or the slope frame with Move riding the terrain at the prop's height
+ *  over it and Scale pivoting on the ground beneath it (core/props/surface-follow). */
+export type PropGizmoFrame = 'world' | 'surface';
 /** Terrain solid: the real tiles ('textured'), a flat SurfaceType / ride-feel tint ('surface'), or no
  *  solid surface at all ('none' — e.g. wireframe / control-cage only). */
 export type ShadeMode = 'textured' | 'surface' | 'none';
@@ -482,6 +485,9 @@ export interface ViewportCallbacks {
   /** Props mode: the multi-selection's centre gizmo was dragged — move EVERY selected prop by this
    *  data-space delta (the host owns the index set). */
   onMoveProps?(delta: V3): void;
+  /** Props mode: a Surface-frame drag carried the multi-selection over the terrain — each member's new origin, every
+   *  one at its own height over the ground (core/props/surface-follow). */
+  onSlideProps?(updates: { index: number; pos: V3 }[]): void;
   /** Props mode: rotate a multi-selection rigidly about its centroid, including each member's own rotation. */
   onRotateProps?(updates: PropRotationUpdate[]): void;
   /** Props mode: uniformly scale a multi-selection about its centroid, including each member's size. */

@@ -722,12 +722,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         placeMultiHandle();
         propMoveHandle.visible = true;
         if (stage.gizmoKind !== 'props') stage.attachGizmo(propMoveHandle, 'props', -1);
+        else stage.reframeGizmo(); // the handle moved under a seated gizmo: a Surface frame re-reads its slope
       }
     } else if (selectedProp !== null && placedPropMeshes[selectedProp]) {
       if (stage.gizmoKind !== 'editmixed' && !(stage.gizmoKind === 'prop' && stage.gizmo.dragging)) {
         placePropHandle(selectedProp);
         propMoveHandle.visible = true;
         if (stage.gizmoKind !== 'prop') stage.attachGizmo(propMoveHandle, 'prop', selectedProp);
+        else stage.reframeGizmo();
       }
     } else {
       propMoveHandle.visible = false;

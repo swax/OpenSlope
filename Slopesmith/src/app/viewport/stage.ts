@@ -88,6 +88,9 @@ export class Stage {
   snapDataPoint: (point: V3) => V3 = point => [...point] as V3;
   /** Just seated the gizmo on `kind`: re-frame a corner gizmo to the slope and drop the reference selection. */
   afterGizmoAttach: (kind: GizmoKind) => void = () => {};
+  /** The seated gizmo's anchor was re-placed without a re-seat (a rebuild moved the selection, or another member of
+   *  the same kind was picked): re-derive its frame as a seat would — a Surface-frame prop's slope is where it stands. */
+  reframeGizmo: () => void = () => {};
   /** A gizmo drag started (true) or ended (false): freeze / release the slide surface. */
   onGizmoDrag: (dragging: boolean) => void = () => {};
   /** The gizmo moved its target: forward the new position through the matching host callback. */

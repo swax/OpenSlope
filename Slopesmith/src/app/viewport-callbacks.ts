@@ -422,6 +422,16 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
       scheduleRebuild();
     },
+    onSlideProps(updates) { // a Surface-frame drag: every member lands at its own height over the ground it reached
+      if (!store.mdoc.props) return;
+      const before = placementPoses(store.mdoc.props, updates.map(u => u.index));
+      for (const u of updates) {
+        const p = store.mdoc.props[u.index];
+        if (p) p.pos = u.pos;
+      }
+      carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
+      scheduleRebuild();
+    },
     onRotateProps(updates) { // rigid turn around the set's centre: both origins and authored rotations follow
       if (!store.mdoc.props) return;
       const before = placementPoses(store.mdoc.props, updates.map(u => u.index));

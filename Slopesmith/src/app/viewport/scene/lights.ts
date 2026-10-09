@@ -151,6 +151,7 @@ export function createLightsLayer(stage: Stage) {
         placeLightHandle(selIdx);
         lightMoveHandle.visible = true;
         if (stage.gizmoKind !== 'light') stage.attachGizmo(lightMoveHandle, 'light', selIdx);
+        else stage.reframeGizmo(); // a Surface frame re-reads the slope the light now stands over
       }
     } else if (stage.gizmoKind === 'light') {
       clearSelection();

@@ -213,6 +213,7 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
         placeRailHandle(selRail, selNode);
         railMoveHandle.visible = true;
         if (stage.gizmoKind !== 'railnode') stage.attachGizmo(railMoveHandle, 'railnode', selNode);
+        else stage.reframeGizmo(); // a Surface frame re-reads the slope the point now stands on
       }
     } else if (stage.gizmoKind === 'railnode') {
       clearSelection();

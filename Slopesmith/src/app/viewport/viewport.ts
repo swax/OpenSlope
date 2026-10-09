@@ -59,8 +59,8 @@ import { runDiagnosticPhase, runDiagnosticPhaseAsync } from '../net/diagnostics'
 import type { SharedCameraView } from '../../core/session/screen-share';
 import { nearestSkyWorld, type SkyPreviewTarget } from '../sky/preview';
 
-import { type CellSpeedTint, type GizmoFrame, type GizmoMode, type MeshSelectionState, type Mode, type RotationSnapStep, type ShadeMode, type SnapStep, type ViewState, type PickResult, type ViewportCallbacks, type EditTransformTarget } from './types';
-export type { GizmoFrame, GizmoMode, MeshSelectionState, Mode, RotationSnapStep, ShadeMode, SnapStep, ViewState, PickResult, ViewportCallbacks, MeshControlPointId };
+import { type CellSpeedTint, type GizmoFrame, type GizmoMode, type PropGizmoFrame, type MeshSelectionState, type Mode, type RotationSnapStep, type ShadeMode, type SnapStep, type ViewState, type PickResult, type ViewportCallbacks, type EditTransformTarget } from './types';
+export type { GizmoFrame, GizmoMode, PropGizmoFrame, MeshSelectionState, Mode, RotationSnapStep, ShadeMode, SnapStep, ViewState, PickResult, ViewportCallbacks, MeshControlPointId };
 import { TOUCH_NONE, REF_LOAD_OFFSET_X, CAGE_EDGE_SEG, CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, LOOP_RENDER_ORDER, LIVE_EDIT_FILL_COLOR, LIVE_EDIT_FILL_OPACITY, CTRL_CAGE_COLOR, SURFACE_POLY_OFFSET } from './constants';
 import { Stage, type GizmoKind } from './stage';
 import { createRailsLayer, type RailsLayer } from './scene/rails';
@@ -86,6 +86,7 @@ import {
 import { createPropAssets } from './scene/prop-assets';
 import { setCutoutAlphaToCoverage } from '../props/texture-alpha';
 import { createPropsLayer, type PropArm, type PropsLayer } from './scene/props';
+import { createDropLinesLayer, type DropLinesLayer } from './scene/drop-lines';
 import { createSurgeryLayer, type SurgeryLayer } from './tools/surgery';
 import { createCageLayer, type CageLayer } from './mesh/cage';
 import { createMeshPicking, type MeshPicking } from './input/mesh-picking';
@@ -145,6 +146,9 @@ const STUDIO_TOTAL = 3.7;
 
 /** How much of the old course stays visible while Course ▸ reset course draws its replacement. */
 const COURSE_DRAW_FADE = 0.25;
+
+/** The single-anchor gizmos a drop line hangs from (docs/012 · Drop lines); a prop SET draws one per member. */
+const DROP_LINE_KINDS: ReadonlySet<GizmoKind> = new Set<GizmoKind>(['prop', 'light', 'railnode', 'linenode', 'gem', 'screen']);
 
 /** Stable scene-layer label for the low-frequency transparent census. Prefer semantic ownership over a GLTF
  * child mesh name so a field of riders reads as one cause rather than dozens of one-off primitives. */
@@ -217,6 +221,8 @@ export class Viewport {
   readonly edgeExtrusion: EdgeExtrusionLayer;
   readonly weldTool: WeldToolLayer;
   readonly gizmoReadout: GizmoReadout;
+  /** Plumb lines from the selected Props-mode things down to the surface (docs/012 · Drop lines). */
+  readonly dropLines: DropLinesLayer;
   readonly bridgePreview: BridgePreviewLayer;
   readonly patchTool: PatchToolLayer;
   readonly tubeTool: TubeToolLayer;
@@ -546,6 +552,7 @@ export class Viewport {
       if (kind !== 'reference') { this.refSelected = false; this.refMoveHandle.visible = false; }
       this.transforms.applyGizmoFrame(); // corner / corners → the surface frame + restricted handles; every other kind → world
     };
+    this.stage.reframeGizmo = () => this.transforms.applyGizmoFrame();
     // A Move drag freezes the slide surface. Rotate / Scale freeze member values around the shared anchor.
     // Release drops that snapshot and re-orients the next gizmo from the resulting geometry.
     this.stage.onGizmoDrag = dragging => {
@@ -1108,6 +1115,7 @@ export class Viewport {
       preview: () => this.preview,
       edgeHandle: () => this.meshHandle(),
       terrainBVH: () => this.buildTerrainBVH(),
+      groundAt: (x, z, nearY) => this.terrainNearest(x, z, nearY),
     }, {
       selectedCorner: () => this.selectedCornerIndex(),
       cornerGroupIdx: () => this.selection.cornerGroupIdx,
@@ -1118,6 +1126,7 @@ export class Viewport {
       selectedCageHandle: () => this.selection.selectedCageHandle,
       selectedProp: () => this.props.selectedProp,
       multiSelProps: () => this.props.multiSelProps,
+      selectedScreenAttached: () => this.screens.selectedAttached,
       placedProp: index => this.props.lastPlacedProps[index],
       extrusionStaged: () => this.edgeExtrusion.staged,
       extrusionFanMode: () => this.edgeExtrusion.fanMode,
@@ -1126,6 +1135,7 @@ export class Viewport {
       cornerGroupHandle: this.selection.cornerGroupHandle,
       cornerGroupHandleLast: this.selection.cornerGroupHandleLast,
       cageHandleAnchor: this.selection.cageHandleAnchor,
+      propsHandleLast: this.props.multiHandleLast,
     }, {
       releaseCageHandle: () => this.selection.releaseCageHandle(),
       enableExtrusionTransform: () => this.edgeExtrusion.enableTransform(),
@@ -1133,6 +1143,17 @@ export class Viewport {
     });
 
     this.legends = createLegends(this.container); // lower-left colour keys (cage / surface), each shown only in its shade view
+
+    // Where the selection stands over the snow: a plumb line from each selected prop / point to the surface below.
+    this.dropLines = createDropLinesLayer(this.stage, {
+      points: () => this.dropLinePoints(),
+      groundBelow: (x, y, z) => this.terrainBelow(x, y, z),
+      groundVersion: () => {
+        const geometry = this.terrain.geometry;
+        const position = geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+        return `${geometry.id}:${position?.version ?? 0}`;
+      },
+    });
 
     // the pointer / wheel input dispatch: wires its own DOM listeners on the canvas + container at
     // construction, routes every gesture through the layers above, and reaches back into the host only
@@ -1274,6 +1295,7 @@ export class Viewport {
       this.patchTool.scaleMarkers();
       this.tubeTool.scaleMarkers();
       this.trailTool.scaleMarkers(); // ...and the trail's point bulbs and snap rings
+      this.dropLines.sync(); // the selection's plumb lines follow a drag, a re-select and a terrain edit
       sceneMs += performance.now() - phaseStarted;
       // Last before submission: seat the headset rig on whatever the rider is standing on this frame — the board
       // the physics above has just moved, or their own feet — so the view and the world agree.
@@ -1549,6 +1571,39 @@ export class Viewport {
    *  already rides keeps it. Every surface in the column comes off one cast down the cached ride tree, so a drag
    *  can ask on every move and a sculpt stroke can re-seat the whole run as it lifts. Null off the terrain. */
   terrainNearestAt(x: number, z: number, nearY: number): number | null {
+    return this.terrainNearest(x, z, nearY)?.y ?? null;
+  }
+
+  /** The height of the first authored surface straight below data-space (x, y, z) — what a drop line lands on — or
+   *  null where nothing is beneath. Casts down the cached ride tree, as terrainNearest does. */
+  terrainBelow(x: number, y: number, z: number): number | null {
+    const mesh = this.terrain;
+    const bvh = rideTree(mesh.geometry as TreeGeometry);
+    if (!bvh) return null;
+    mesh.updateWorldMatrix(true, false);
+    const ray = this.effectGroundRay;
+    ray.origin.set(x, y, -z);
+    ray.direction.set(0, -1, 0);
+    ray.applyMatrix4(this.effectGroundToLocal.copy(mesh.matrixWorld).invert());
+    const hit = bvh.raycastFirst(ray, THREE.DoubleSide);
+    return hit ? hit.point.applyMatrix4(mesh.matrixWorld).y : null;
+  }
+
+  /** The selected things a drop line hangs from (docs/012 · Drop lines): a lone placed prop's origin, every member of
+   *  a set, and the anchor a gem, rail or prop-line point, light or screen is moved by. None while riding. */
+  private dropLinePoints(): V3[] {
+    const obj = this.gizmo.object, kind = this.gizmoKind;
+    if (!obj?.visible || this.rideCtl.riding || kind === null) return [];
+    if (kind === 'props') {
+      const placed = this.props.lastPlacedProps, single = this.props.selectedProp;
+      return [...(single === null ? [] : [single]), ...this.props.multiSelProps].flatMap(i => placed[i] ? [placed[i].pos] : []);
+    }
+    return DROP_LINE_KINDS.has(kind) ? [[obj.position.x, obj.position.y, -obj.position.z]] : [];
+  }
+
+  /** `terrainNearestAt` with the surface's skyward unit normal at that point (data space): the ground a Surface-frame
+   *  prop rides, and the slope its gizmo frames to. Null off the terrain. */
+  terrainNearest(x: number, z: number, nearY: number): { y: number; normal: V3 } | null {
     const mesh = this.terrain;
     const bvh = rideTree(mesh.geometry as TreeGeometry);
     if (!bvh) return null;
@@ -1557,12 +1612,17 @@ export class Viewport {
     ray.origin.set(x, 1e5, -z);
     ray.direction.set(0, -1, 0);
     ray.applyMatrix4(this.effectGroundToLocal.copy(mesh.matrixWorld).invert());
-    let best: number | null = null;
+    let best: THREE.Intersection | null = null, bestY = 0;
     for (const hit of bvh.raycast(ray, THREE.DoubleSide, 0, 2e5)) {
       const y = hit.point.applyMatrix4(mesh.matrixWorld).y;
-      if (best === null || Math.abs(y - nearY) < Math.abs(best - nearY)) best = y;
+      if (best === null || Math.abs(y - nearY) < Math.abs(bestY - nearY)) { best = hit; bestY = y; }
     }
-    return best;
+    if (!best) return null;
+    // The face normal is geometry-local; carry it into the scene, then off worldRoot's Z mirror back to data, and
+    // turn it skyward — the terrain draws DoubleSide, so either winding can be the face the cast met.
+    const n = best.face ? best.face.normal.clone().transformDirection(mesh.matrixWorld) : new THREE.Vector3(0, 1, 0);
+    const sign = n.y < 0 ? -1 : 1;
+    return { y: bestY, normal: [n.x * sign, n.y * sign, -n.z * sign] };
   }
 
   setReferenceEffects(data: ReferenceEffectsData | null) {
@@ -2589,6 +2649,8 @@ export class Viewport {
 
   /** Host-facing facade; the transform layer owns World / Local / Surface framing and Surface's slide. */
   setGizmoFrame(frame: GizmoFrame) { this.transforms.setGizmoFrame(frame); }
+  /** The placed-prop World / Surface pill (docs/012 · Surface frame). */
+  setPropGizmoFrame(frame: PropGizmoFrame) { this.transforms.setPropGizmoFrame(frame); }
 
   /** Host-facing facade; the transform layer gates rotate / scale to selections with extent. */
   setGizmoMode(mode: GizmoMode) { this.transforms.setGizmoMode(mode); }
@@ -2656,7 +2718,9 @@ export class Viewport {
     if (this.transforms.rotationActive()) { this.transforms.rotateSelection(); this.gizmoReadout.update(); return; }
     if (this.transforms.scaleActive()) { this.transforms.scaleSelection(); this.gizmoReadout.update(); return; }
     if (this.transforms.slideRecut(obj)) { this.gizmoReadout.update(); return; } // Slide, arrow or tangent pad: an exact de Casteljau re-cut owns the frame
+    if (this.transforms.slideProps(obj)) { this.gizmoReadout.update(); return; } // Surface-frame props ride the terrain
     this.transforms.slideProject(obj); // Slide: snap a corner with no axes back onto the frozen surface before reporting
+    this.transforms.slidePoint(obj); // Surface: a Props-mode point keeps its height over the ground before reporting
     this.gizmoReadout.update();
     const p: V3 = [obj.position.x, obj.position.y, -obj.position.z]; // gizmo drags in the flipped scene-root frame -> negate Z back to data
     const corner = this.selectedCornerIndex();

@@ -1,8 +1,9 @@
 import { editMesh } from '../../edit/mesh-target';
 import { selectedSetLights } from '../../state/store';
+import { screenProp } from '../../../core/props/screen';
 import GUI from 'lil-gui';
 import { segmented, toggleBar, label } from '../components/controls';
-import type { GizmoFrame } from '../../viewport/types';
+import type { GizmoFrame, PropGizmoFrame } from '../../viewport/types';
 import type { Mode } from '../../viewport/types';
 import { MultiSelectList } from '../../props/multi-select-list';
 import { BridgeRailList } from '../components/bridge-rail-list';
@@ -110,6 +111,25 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   rightGui.$children.prepend(framePillRow);
   viewport.setGizmoFrame(store.gizmoFrame); // sync the viewport to the restored pill
 
+  // Placed props take their own World / Surface pill (docs/012 · Surface frame): Surface carries a moved prop over
+  // the terrain at the height it stands above (or is sunk into) the ground, and scales it about the ground beneath
+  // it. A prop has no slope of its own to frame to without sliding, so there is no Local. Move and Scale only —
+  // turns are judged on the world axes either way. Shift-drag is the same one-off World move as the mesh pill's.
+  const propFramePill = segmented<PropGizmoFrame>(
+    [
+      { value: 'world', label: 'World', title: 'Use world X / Y / Z for the transform.' },
+      { value: 'surface', label: 'Surface', title: 'Move over the terrain, keeping each prop’s height above (or depth in) it; scale about the ground beneath it. Shift-drag for a one-off free move.' },
+    ],
+    () => store.propGizmoFrame,
+    v => { store.propGizmoFrame = v; viewport.setPropGizmoFrame(v); persistUi(); },
+  );
+  const propFramePillRow = document.createElement('div');
+  propFramePillRow.className = 'sp-frame-pill';
+  const propFramePillLabel = label('Move in');
+  propFramePillRow.append(propFramePillLabel, propFramePill.el);
+  viewport.setPropGizmoFrame(store.propGizmoFrame);
+  const frameLabel = () => store.gizmoMode === 'rotate' ? 'Rotate in' : store.gizmoMode === 'scale' ? 'Scale in' : 'Move in';
+
   // Transform tool for selections with an actual orientation / footprint. Point-only selections deliberately
   // remain Move: rotating or scaling one point around itself has no visible meaning — except a lone point on a
   // free path, which carries a frame (its direction and roll) that Rotate turns; it still has nothing to scale.
@@ -123,7 +143,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     v => {
       store.gizmoMode = v;
       viewport.setGizmoMode(v);
-      framePillLabel.textContent = v === 'rotate' ? 'Rotate in' : v === 'scale' ? 'Scale in' : 'Move in';
+      framePillLabel.textContent = frameLabel();
+      syncPropFrameRow();
       updateCmdSheet();
       if (viewport.edgeExtrusionStaged) rebuildTools();
     },
@@ -139,7 +160,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const transformSectionTitle = document.createElement('div');
   transformSectionTitle.className = 'sp-tool-section-title';
   transformSectionTitle.textContent = 'Transform';
-  transformSection.append(transformSectionTitle, transformPillRow, framePillRow);
+  transformSection.append(transformSectionTitle, transformPillRow, framePillRow, propFramePillRow);
   rightGui.$children.prepend(transformSection);
   viewport.setGizmoMode(store.gizmoMode);
 
@@ -170,6 +191,25 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     && (store.selectedProp !== null || store.multiSel.length > 0);
   const editLightSelected = () => store.currentMode === 'edit' && !store.modelEditId && !mixedEditSelection()
     && !editPropsSelected() && store.selectedLight !== null;
+  /** The shared gizmo is on something the prop World / Surface pill frames: placed props, or one of the points Props
+   *  mode places — a free light, a rail or prop-line point, a gem, a free-standing screen. A Bézier handle has the
+   *  gizmo off its point, and a screen fitted to a board moves with the board, so neither takes the pill. */
+  const surfaceGizmoSelected = (): boolean => {
+    if (deps.propDeform.active || store.pathHandle !== null) return false;
+    if (editPropsSelected() || editLightSelected()) return true;
+    if (store.currentMode !== 'props' && store.currentMode !== 'effects') return false;
+    if (store.selectedProp !== null || store.multiSel.length > 0 || store.selectedLight !== null || store.selectedGem !== null) return true;
+    if (store.selectedRail !== null && store.selectedNode !== null && !store.railDrawing) return true;
+    if (store.selectedLine !== null && store.selectedLineNode !== null && !store.lineDrawing) return true;
+    const screen = store.selectedScreen === null ? undefined : store.mdoc.screens?.find(entry => entry.id === store.selectedScreen);
+    return !!screen && !screenProp(screen, store.mdoc.props);
+  };
+  /** The prop pill shows for the selection's Move and Scale; it has nothing to say about a turn. */
+  function syncPropFrameRow() {
+    propFramePillLabel.textContent = frameLabel();
+    propFramePillRow.style.display = surfaceGizmoSelected() && store.gizmoMode !== 'rotate' ? 'flex' : 'none';
+    propFramePill.refresh();
+  }
   const editSelection = (): { kind: 'control points' | 'edges' | 'patches' | 'props' | 'light' | 'mixed selection'; readOnly: boolean } | null => {
     const counts = editSelectionCounts().filter(selection => selection.count > 0);
     if (counts.length > 1) return { kind: 'mixed selection', readOnly: counts.every(selection => selection.readOnly) };
@@ -341,13 +381,14 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     transformPill.setEnabled('scale', !freePoint);
     if (freePoint && store.gizmoMode === 'scale') { store.gizmoMode = 'move'; viewport.setGizmoMode('move'); }
     transformPill.refresh();
-    framePillLabel.textContent = store.gizmoMode === 'rotate' ? 'Rotate in' : store.gizmoMode === 'scale' ? 'Scale in' : 'Move in';
+    framePillLabel.textContent = frameLabel();
     // A selected trail transforms in World only: its own gizmo, not the mesh's Surface slide (docs/023).
     const frameVisible = store.currentMode === 'edit' && cageActive() && hasMeshTransformSelection()
       && !mixedEditSelection() && !viewport.edgeExtrusionStaged && !edit.selectedTrail();
     framePillRow.style.display = frameVisible ? 'flex' : 'none';
     framePill.refresh();
-    transformSection.style.display = canRotate || frameVisible ? '' : 'none';
+    syncPropFrameRow();
+    transformSection.style.display = canRotate || frameVisible || propFramePillRow.style.display !== 'none' ? '' : 'none';
     // Users mode owns the whole dock while it is on: it is about the server, so neither the Scene block nor
     // the current mode's toolbox belongs under it (docs/038).
     if (deps.usersActive()) {

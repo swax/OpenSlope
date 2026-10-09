@@ -65,6 +65,7 @@ export function createPropLinesLayer(stage: Stage) {
         placeHandle(node);
         moveHandle.visible = true;
         if (stage.gizmoKind !== 'linenode') stage.attachGizmo(moveHandle, 'linenode', selNode!);
+        else stage.reframeGizmo(); // a Surface frame re-reads the slope the point now stands on
       }
     } else if (stage.gizmoKind === 'linenode') {
       moveHandle.visible = false;
