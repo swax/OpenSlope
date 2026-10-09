@@ -117,7 +117,8 @@ installs the keyboard map. Subsystems by feature:
   fixed 60 Hz, over `physics-tuning` for the constants and their provenance and
   `physics-math` for the stateless surface/contact arithmetic — the tick itself stays in
   `physics`, because its evaluation order is what the retail traces pin down), `camera`,
-  `hud`, `input`, `rider` (board + figure), and `play` (setup/launch).
+  `hud`, `input`, `rider` (board + figure), and `play` (setup/launch). `trail-speed` and
+  `mountain-speed` are the editor's predicted-speed diagnostics (docs/023), sharing one rider.
 - **`reference/`** — `session` owns reference-world loading, lighting study, layer toggles, and the async
   `Effects.json`/legacy-graph handoff to Effects mode.
 - **`ui/`** — DOM chrome grouped as `chrome/` (top bar, tools/scene panels, command sheet,

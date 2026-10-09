@@ -4,12 +4,12 @@ import type { SharedViewOptions } from './session/screen-share';
 export const VIEW_MODES = ['scene', 'edit', 'sculpt', 'paint', 'props', 'effects', 'test'] as const;
 export type ViewMode = typeof VIEW_MODES[number];
 export const VIEW_FLAGS = {
-  cage: 'cage', grid: 'viewGrid', orientation: 'orientation', course: 'courseGuide', normals: 'normals',
+  cage: 'cage', grid: 'viewGrid', orientation: 'orientation', speed: 'speed', course: 'courseGuide', normals: 'normals',
   ai: 'aiPaths', props: 'props', tricks: 'tricks', effects: 'effects', sources: 'sources',
   lights: 'propLights', sun: 'sun', skybox: 'skybox',
 } as const;
 export const CLEAN_VIEW: SharedViewOptions = {
-  shadeMode: 'textured', cage: false, viewGrid: false, orientation: false, courseGuide: false,
+  shadeMode: 'textured', cage: false, viewGrid: false, orientation: false, speed: false, courseGuide: false,
   normals: false, aiPaths: false, props: true, tricks: true, effects: true, sources: false,
   propLights: true, sun: true, skybox: true,
 };

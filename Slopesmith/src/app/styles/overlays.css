@@ -70,6 +70,8 @@
 .ll-row b { color: #eaf6ff; font-weight: 600; }
 .ll-swatch { flex: none; border-radius: 1px; }
 .ll-sep { height: 1px; background: rgba(255,255,255,0.09); margin: 4px 0; }
+/* a caution under a key's rows: wraps, unlike the rows, and reads as a warning */
+.ll-note { max-width: 260px; margin-top: 4px; color: #ffd27a; white-space: normal; }
 #toast {
   position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(18px);
   background: #14283a; color: #eaf6ff; border: 1px solid #34506b; border-radius: 8px;

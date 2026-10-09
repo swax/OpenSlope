@@ -27,6 +27,8 @@ export interface SharedViewOptions {
   cage: boolean;
   viewGrid: boolean;
   orientation: boolean;
+  /** The mountain shaded by its predicted ride (docs/023 · Predicted speed). */
+  speed: boolean;
   courseGuide: boolean;
   normals: boolean;
   aiPaths: boolean;
@@ -88,6 +90,8 @@ export function sanitizeSharedScreenState(value: unknown): SharedScreenState | n
   const shadeMode = options.shadeMode;
   // Frames from before the global Skybox view existed imply its default-on state during a rolling update.
   const skybox = options.skybox ?? true;
+  // ...and frames from before the speed shading existed, its default-off state.
+  const speed = options.speed ?? false;
   const booleanKeys = [
     'cage', 'viewGrid', 'orientation', 'courseGuide', 'normals', 'aiPaths', 'props', 'tricks',
     'effects', 'sources', 'propLights', 'sun',
@@ -97,7 +101,8 @@ export function sanitizeSharedScreenState(value: unknown): SharedScreenState | n
     || zoom === null || orthoHalfH === null || fov === null || near === null
     || typeof view.ortho !== 'boolean'
     || (shadeMode !== 'textured' && shadeMode !== 'surface' && shadeMode !== 'none')
-    || booleanKeys.some(key => typeof options[key] !== 'boolean') || typeof skybox !== 'boolean') return null;
+    || booleanKeys.some(key => typeof options[key] !== 'boolean') || typeof skybox !== 'boolean'
+    || typeof speed !== 'boolean') return null;
   return {
     cursor,
     view: { pos, target, up, ortho: view.ortho, zoom, orthoHalfH, fov, near },
@@ -106,6 +111,7 @@ export function sanitizeSharedScreenState(value: unknown): SharedScreenState | n
       cage: options.cage as boolean,
       viewGrid: options.viewGrid as boolean,
       orientation: options.orientation as boolean,
+      speed,
       courseGuide: options.courseGuide as boolean,
       normals: options.normals as boolean,
       aiPaths: options.aiPaths as boolean,

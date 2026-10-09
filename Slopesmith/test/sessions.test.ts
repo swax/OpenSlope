@@ -352,7 +352,7 @@ try {
       ortho: false, zoom: 1, orthoHalfH: 200, fov: 78.145, near: 0.03,
     },
     options: {
-      shadeMode: 'textured', cage: false, viewGrid: true, orientation: false,
+      shadeMode: 'textured', cage: false, viewGrid: true, orientation: false, speed: false,
       courseGuide: true, normals: true, aiPaths: false, props: true, tricks: true,
       effects: true, sources: false, propLights: true, sun: true, skybox: true,
     },

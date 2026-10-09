@@ -31,11 +31,107 @@ import { surfaceFor } from './physics-math';
 
 /** Sample spacing along a path's spline, in metres. */
 const SAMPLE_M = 0.5;
-const H = 1 / RIDE_SIMULATION_HZ;
+/** The ride's fixed tick, seconds. */
+export const RIDE_TICK = 1 / RIDE_SIMULATION_HZ;
+const H = RIDE_TICK;
 /** Ten minutes of riding: a path not finished by then is reported where the rider got to. */
 const MAX_TICKS = RIDE_SIMULATION_HZ * 600;
 /** A rider this slow that the slope still pushes back has stalled: it cannot climb on. */
-const STALL_SPEED = 0.05;
+export const STALL_SPEED = 0.05;
+
+// ---- the rider, tick by tick: shared with the mountain-wide prediction (mountain-speed.ts) --------------------
+
+/** A surface row as the prediction rides it: its world-down load, the soft pull above it, and the grounded redirect
+ *  — none on the two powders, whose deep give is a stable spring on its own; the ride exempts them. */
+export interface RideSurface { row: RideContractSurfaceRow; g: number; pull: number; redirect: number }
+
+export function rideSurface(row: RideContractSurfaceRow): RideSurface {
+  return {
+    row, g: row.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE, pull: row.A / RESPONSE.CONTACT_ABOVE_LENGTH_CM,
+    redirect: row.type === 3 || row.type === 4 ? 0 : RIDE_CONTACT_REDIRECT,
+  };
+}
+
+/** The rider on the ground: its speed along the surface and off it, the clearance opened under it, and the shared
+ *  speed cap. */
+export interface GroundRider { v: number; vn: number; gap: number; cap: number }
+
+/** The rider in the air: plan position along the travel and height, plan and vertical velocity. */
+export interface Flight { x: number; y: number; vx: number; vy: number }
+
+/** [Trailmap: 360] The shared cap eases back down on the ground, and holds the speed under it. */
+export function easeCap(r: GroundRider, h = H): void {
+  r.cap = Math.max(RIDE_MAX_SPEED, r.cap - RIDE_BOOST_CAP_DECAY * h);
+  r.v = Math.min(r.v, r.cap);
+}
+
+/**
+ * One ground tick of `h` seconds on a surface climbing at `theta`, velocity and clearance only — the caller has moved
+ * the rider with the tick's opening velocity. Returns the acceleration along the surface it applied.
+ */
+export function groundTick(surface: RideSurface, r: GroundRider, theta: number, h = H): number {
+  const { row, g, pull, redirect } = surface;
+  // [Trailmap: 320-redirect] 40% of the normal velocity goes, and the speed is scaled back: a rotation, not a loss.
+  if (redirect > 0 && r.vn !== 0) {
+    const before = Math.hypot(r.v, r.vn);
+    r.vn *= h === H ? 1 - redirect : Math.pow(1 - redirect, h / H);
+    if (r.v > 0) { const keep = before / Math.hypot(r.v, r.vn); r.v *= keep; r.vn *= keep; }
+  }
+  // [Trailmap: 330] along the surface: the row's world-down load, forward resistance, and the cruise drive.
+  let a = -g * Math.sin(theta) + forwardResistance(row, r.v, 0, row.budget, 0, 0);
+  const deficit = Math.min(row.target - Math.hypot(r.v, r.vn), RIDE_CRUISE_DEFICIT_MAX);
+  if (deficit > 0) a += RIDE_RIDER_DRIVE * row.mult * deficit;
+  // Along the normal: gravity's share, and above the surface its soft pull, damped only while separating.
+  const an = -g * Math.cos(theta) - (r.gap > 0 ? pull * r.gap + (r.vn > 0 ? row.P * r.vn : 0) : 0);
+  r.gap += r.vn * h;
+  r.v += a * h;
+  r.vn += an * h;
+  return a;
+}
+
+/**
+ * The travel goes straight on while the surface under it turns down by `turn` radians: the velocity is the same,
+ * seen from the new surface frame — on a crest, some of it now points off the surface. Pressed into the surface,
+ * the pushout takes the normal speed out.
+ */
+export function turnSurface(r: GroundRider, turn: number): void {
+  const c = Math.cos(turn), sn = Math.sin(turn), v = r.v * c - r.vn * sn;
+  r.vn = r.vn * c + r.v * sn;
+  r.v = v;
+  if (r.gap <= 0) { r.gap = 0; r.vn = Math.max(0, r.vn); }
+}
+
+/** The probe past the ground band (docs/016 · Air + lips): the rider at plan `x` over the surface at height `y`,
+ *  climbing at `theta`, leaves it with its velocity, and the cap snaps up to the air's. */
+export function takeoff(r: GroundRider, theta: number, x: number, y: number): Flight {
+  const c = Math.cos(theta), sn = Math.sin(theta);
+  r.cap = RIDE_BOOST_MAX_SPEED;
+  return { x, y: y + r.gap, vx: r.v * c - r.vn * sn, vy: r.v * sn + r.vn * c };
+}
+
+/** [Trailmap: 340] One air tick: position first, then velocity — two-stage gravity, horizontal damping, under the air
+ *  speed tier. */
+export function airTick(f: Flight, h = H): void {
+  const sp = Math.hypot(f.vx, f.vy);
+  if (sp > RIDE_BOOST_MAX_SPEED) { f.vx *= RIDE_BOOST_MAX_SPEED / sp; f.vy *= RIDE_BOOST_MAX_SPEED / sp; }
+  f.x += f.vx * h;
+  f.y += f.vy * h;
+  f.vx -= RIDE_AIR_HORIZONTAL_DRAG * f.vx * h;
+  f.vy -= (f.vy > 0 ? RIDE_AIR_GRAVITY_RISING : RIDE_AIR_GRAVITY_FALLING) * h;
+}
+
+/**
+ * [Trailmap: 340] Touchdown on a surface climbing at `theta`: the first grounded tick's redirect turns 40% of the
+ * arrival's normal speed into the surface, keeping its magnitude, and the pushout takes out what normal speed is left
+ * — so a steep landing on a steep face carries more than the arrival's share along it. Assumed square: no orientation
+ * bands. Returns the speed kept along the surface.
+ */
+export function touchdown(f: Flight, theta: number, redirect: number): number {
+  const c = Math.cos(theta), sn = Math.sin(theta);
+  const along = f.vx * c + f.vy * sn, off = f.vy * c - f.vx * sn;
+  const kept = Math.hypot(along, (1 - redirect) * off);
+  return along > 0 && kept > 1e-9 ? along * Math.hypot(f.vx, f.vy) / kept : 0;
+}
 
 /** One path's centre spline, densely sampled: positions, 3-D and plan arc length, height and climb angle. */
 interface Profile {
@@ -143,38 +239,36 @@ function ridePath(p: Profile, row: RideContractSurfaceRow, entry: RiderArrival, 
   const { n } = p;
   const speed = new Float32Array(n).fill(NaN), air = new Uint8Array(n);
   const arrivals: (RiderArrival | null)[] = p.knots.map(() => null);
-  const g = row.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE;
-  const pull = row.A / RESPONSE.CONTACT_ABOVE_LENGTH_CM;
-  // The two powders' deep give is a stable spring on its own; the ride exempts them from the redirect.
-  const redirect = row.type === 3 || row.type === 4 ? 0 : RIDE_CONTACT_REDIRECT;
+  const surface = rideSurface(row);
   const y = (i: number) => p.pos[i * 3 + 1];
   const pitchAt = (i: number, t: number) => i + 1 < n ? p.pitch[i] + (p.pitch[i + 1] - p.pitch[i]) * t : p.pitch[n - 1];
 
-  let i = 0, v = entry.speed, s = 0, gap = 0, vn = 0, cap = RIDE_MAX_SPEED;
-  let flight: { x: number; y: number; vx: number; vy: number } | null = null;
-  if (entry.air) { flight = { x: 0, y: y(0) + entry.air.height, vx: entry.air.vx, vy: entry.air.vy }; cap = RIDE_BOOST_MAX_SPEED; }
-  let nextKnot = 1, topSpeed = flight ? 0 : v, jumps = 0, airborneM = 0, stalled = false;
-  speed[0] = flight ? Math.hypot(flight.vx, flight.vy) : v;
+  let i = 0, s = 0;
+  const r: GroundRider = { v: entry.speed, vn: 0, gap: 0, cap: RIDE_MAX_SPEED };
+  let flight: Flight | null = null;
+  if (entry.air) { flight = { x: 0, y: y(0) + entry.air.height, vx: entry.air.vx, vy: entry.air.vy }; r.cap = RIDE_BOOST_MAX_SPEED; }
+  let nextKnot = 1, topSpeed = flight ? 0 : r.v, jumps = 0, airborneM = 0, stalled = false;
+  speed[0] = flight ? Math.hypot(flight.vx, flight.vy) : r.v;
   air[0] = flight ? 1 : 0;
 
   /** The rider as it is now, for a knot it passes. */
   const arrival = (): RiderArrival => {
-    if (!flight) return { speed: v, air: null };
+    if (!flight) return { speed: r.v, air: null };
     const t = i + 1 < n ? fraction(p.x, i, flight.x) : 0;
-    const surface = i + 1 < n ? y(i) + (y(i + 1) - y(i)) * t : y(i);
-    return { speed: Math.hypot(flight.vx, flight.vy), air: { vx: flight.vx, vy: flight.vy, height: flight.y - surface } };
+    const under = i + 1 < n ? y(i) + (y(i + 1) - y(i)) * t : y(i);
+    return { speed: Math.hypot(flight.vx, flight.vy), air: { vx: flight.vx, vy: flight.vy, height: flight.y - under } };
   };
   /** Stamp the samples up to `last` as passed now, settling each knot passed. */
   const pass = (last: number) => {
     while (i < last) {
       i++;
       const flying = flight !== null;
-      speed[i] = flying ? Math.hypot(flight!.vx, flight!.vy) : v;
+      speed[i] = flying ? Math.hypot(flight!.vx, flight!.vy) : r.v;
       air[i] = flying ? 1 : 0;
       if (flying) airborneM += p.s[i] - p.s[i - 1];
-      else topSpeed = Math.max(topSpeed, v);
+      else topSpeed = Math.max(topSpeed, r.v);
       while (nextKnot < p.knots.length && p.knots[nextKnot] <= i) {
-        if (!flying) v = Math.max(v, inflow(nextKnot));
+        if (!flying) r.v = Math.max(r.v, inflow(nextKnot));
         arrivals[nextKnot++] = arrival();
       }
     }
@@ -182,73 +276,36 @@ function ridePath(p: Profile, row: RideContractSurfaceRow, entry: RiderArrival, 
 
   for (let tick = 0; tick < MAX_TICKS && i < n - 1; tick++) {
     if (flight) {
-      // [Trailmap: 340] position first, then velocity: two-stage gravity, horizontal damping, the air speed tier.
-      const sp = Math.hypot(flight.vx, flight.vy);
-      if (sp > RIDE_BOOST_MAX_SPEED) { flight.vx *= RIDE_BOOST_MAX_SPEED / sp; flight.vy *= RIDE_BOOST_MAX_SPEED / sp; }
-      flight.x += flight.vx * H;
-      flight.y += flight.vy * H;
-      flight.vx -= RIDE_AIR_HORIZONTAL_DRAG * flight.vx * H;
-      flight.vy -= (flight.vy > 0 ? RIDE_AIR_GRAVITY_RISING : RIDE_AIR_GRAVITY_FALLING) * H;
+      airTick(flight);
       let j = i;
       while (j + 1 < n && p.x[j + 1] <= flight.x) j++;
       if (j + 1 >= n) { pass(n - 1); break; } // flown off the path's end
       const t = fraction(p.x, j, flight.x);
-      const surface = y(j) + (y(j + 1) - y(j)) * t;
-      if (flight.y > surface) { pass(j); continue; }
-      // [Trailmap: 340] Touchdown: the first grounded tick's redirect turns 40% of the arrival's normal speed into the
-      // surface, keeping its magnitude, and the pushout takes out what normal speed is left — so a steep landing on a
-      // steep face carries more than the arrival's share along it. Assumed square: no orientation bands.
-      const theta = pitchAt(j, t), c = Math.cos(theta), sn = Math.sin(theta);
-      const along = flight.vx * c + flight.vy * sn, off = flight.vy * c - flight.vx * sn;
-      const kept = Math.hypot(along, (1 - redirect) * off);
-      v = along > 0 && kept > 1e-9 ? along * Math.hypot(flight.vx, flight.vy) / kept : 0;
+      if (flight.y > y(j) + (y(j + 1) - y(j)) * t) { pass(j); continue; }
+      r.v = touchdown(flight, pitchAt(j, t), surface.redirect);
       s = p.s[j] + (p.s[j + 1] - p.s[j]) * t;
       pass(j);
       flight = null;
-      gap = 0; vn = 0;
+      r.gap = 0; r.vn = 0;
       continue;
     }
-    // [Trailmap: 360] the shared cap snaps up in the air and eases back down on the ground.
-    cap = Math.max(RIDE_MAX_SPEED, cap - RIDE_BOOST_CAP_DECAY * H);
-    v = Math.min(v, cap);
+    easeCap(r);
     const t0 = fraction(p.s, i, s), theta = pitchAt(i, t0);
     // The probe: past the ground band, this tick is an air tick (docs/016 · Air + lips).
-    if (gap > row.thresh) {
-      const c = Math.cos(theta), sn = Math.sin(theta);
-      flight = { x: p.x[i] + (p.x[i + 1] - p.x[i]) * t0, y: y(i) + (y(i + 1) - y(i)) * t0 + gap, vx: v * c - vn * sn, vy: v * sn + vn * c };
-      cap = RIDE_BOOST_MAX_SPEED;
+    if (r.gap > row.thresh) {
+      flight = takeoff(r, theta, p.x[i] + (p.x[i + 1] - p.x[i]) * t0, y(i) + (y(i + 1) - y(i)) * t0);
       jumps++;
       continue;
     }
-    // [Trailmap: 320-redirect] 40% of the normal velocity goes, and the speed is scaled back: a rotation, not a loss.
-    if (redirect > 0 && vn !== 0) {
-      const before = Math.hypot(v, vn);
-      vn *= 1 - redirect;
-      if (v > 0) { const keep = before / Math.hypot(v, vn); v *= keep; vn *= keep; }
-    }
-    // [Trailmap: 330] along the surface: the row's world-down load, forward resistance, and the cruise drive.
-    let a = -g * Math.sin(theta) + forwardResistance(row, v, 0, row.budget, 0, 0);
-    const deficit = Math.min(row.target - Math.hypot(v, vn), RIDE_CRUISE_DEFICIT_MAX);
-    if (deficit > 0) a += RIDE_RIDER_DRIVE * row.mult * deficit;
-    // Along the normal: gravity's share, and above the surface its soft pull, damped only while separating.
-    const an = -g * Math.cos(theta) - (gap > 0 ? pull * gap + (vn > 0 ? row.P * vn : 0) : 0);
     // Position first, with the tick's opening velocity; then velocity.
-    const s1 = Math.min(p.s[n - 1], s + v * H);
-    gap += vn * H;
-    v += a * H;
-    vn += an * H;
+    const s1 = Math.min(p.s[n - 1], s + r.v * H);
+    const a = groundTick(surface, r, theta);
     let j = i;
     while (j + 1 < n && p.s[j + 1] <= s1) j++;
-    // The travel goes straight on while the surface under it turns: the velocity is the same, seen from the new
-    // surface frame — on a crest, some of it now points off the surface.
-    const turn = theta - (j + 1 < n ? pitchAt(j, fraction(p.s, j, s1)) : p.pitch[n - 1]);
-    const c = Math.cos(turn), sn = Math.sin(turn);
-    [v, vn] = [v * c - vn * sn, vn * c + v * sn];
-    // Pressed into the surface: the pushout takes the normal speed out.
-    if (gap <= 0) { gap = 0; vn = Math.max(0, vn); }
+    turnSurface(r, theta - (j + 1 < n ? pitchAt(j, fraction(p.s, j, s1)) : p.pitch[n - 1]));
     s = s1;
-    if (v <= STALL_SPEED && a <= 0) { v = 0; stalled = true; pass(j); break; }
-    v = Math.min(cap, Math.max(0, v));
+    if (r.v <= STALL_SPEED && a <= 0) { r.v = 0; stalled = true; pass(j); break; }
+    r.v = Math.min(r.cap, Math.max(0, r.v));
     pass(j);
   }
   return { n, pos: p.pos, speed, air, arrivals, topSpeed, jumps, airborneM, stalled };
