@@ -58,6 +58,8 @@ practical size.
 | `Splines.json` | SSB splines (type 8) | Rails only; see below. |
 | `Instances.json`, `Models.json`, `Meshes/`, `Materials.json` | SSB instances, models, materials (types 3, 2, 0) | Models and materials may come from any section. |
 | `Collision/` | SSB collision (type 12) | Shared by placements of a model within each section. |
+| `Lights.json` | SSB lights and halos (types 6, 7) | Spot and point lights, and the halos as glint-only rows; suns and ambients left out (below). |
+| `ParticleModels.json`, `ParticleInstances.json` | SSB particle models and placements (types 4, 5) | Tricky's fog-bank layout. |
 | `Effects.json` | | Empty: no effect slots, graphs or functions, with `target.game` `ssx-3`. |
 | `Skybox/` | The selection's sky section | Rebuilt as Tricky's sky ring, then measured by the Tricky skybox exporter. |
 | `Origin.json` | | `retail`, with `Course` set to `SSX3_<selection>`. |
@@ -138,6 +140,21 @@ cutscene's fences only during the cutscene.
 the flat quads Tricky's ring is made of, at their own azimuths and band heights, and the floor is flattened into
 the ground slot; the cap has no slot and is left out.
 
+**Lights.** Only the spot and point lights are written. An SSX 3 light keeps its colour and intensity apart
+where Tricky's `Colour` holds their product, so the importer writes the product; a negative intensity then gives
+the negative colour Slopesmith reads as a subtractive light. The spot's outer cone cosine goes to `UnknownFloat2`,
+the one cone field Slopesmith reads. Suns and ambients are left out because nearly all of them are one horizontal
+placeholder, and Slopesmith seeds a reference's sun from the first sun it finds rather than fitting it to the
+lightmaps. SSX 3 lights have no names, so each is named `<section>_light_<id>`.
+
+**Halos.** Tricky has no halo record; it draws the same sparkle from a light whose `SpriteRes` is a small class.
+Each halo is written as a point light with its sprite size as `SpriteRes` and an empty influence box at its
+position, so Slopesmith draws its glint and it lights nothing. Halos are named `<section>_halo_<id>`.
+
+**Fog.** The particle models and placements are read with chapter 515's offsets and written in the Tricky
+import's `ParticlePrefabs` and `Particles` shapes. A placement pairs with its model by section and resource id,
+and points at that model's index in `ParticleModels.json`. Both are named `<section>_particle_<id>`.
+
 **Effects.** SSX 3 has no SSF; its world logic is compiled scripts that nothing decodes yet
 ([chapter 510](../../Trailmap/specs/510-series-ssx-3.md)). The importer writes an
 empty `Effects.json` because Slopesmith loads one for every reference. The document's `header` holds the SSF
@@ -145,5 +162,5 @@ header's three fields, written as zero here.
 
 ## Not yet carried
 
-Lights, halos, fog, and baked prop lighting; sounds, the per-event mode props' visibility, and the world scripts behind effects.
+Baked prop lighting; sounds, the per-event mode props' visibility, and the world scripts behind effects.
 `ssx3-raw` dumps the library's own per-section JSON/OBJ/PNG extraction for further research.

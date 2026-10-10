@@ -30,6 +30,7 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
     // Resource types in the SSB stream (SSBHandler's table).
     // [Trailmap: 510-bins]
     private const int TypeMaterial = 0, TypePatch = 1, TypeModel = 2, TypeInstance = 3;
+    private const int TypeParticleModel = 4, TypeParticle = 5, TypeLight = 6, TypeHalo = 7;
     private const int TypeSpline = 8, TypeTexture = 9, TypeLightmap = 10, TypeCollision = 12, TypeAip = 14;
 
     // PHM/PSM name arrays, by resource family.
@@ -94,6 +95,10 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         var splines = new List<(SSBResource res, WorldSpline spline)>();
         var aips = new List<(SSBResource res, WorldAIP aip)>();
         var collisions = new List<(string name, WorldCollision collision)>();
+        var fx = new Dictionary<int, List<SSBResource>>
+        {
+            [TypeParticleModel] = [], [TypeParticle] = [], [TypeLight] = [], [TypeHalo] = [],
+        };
         var models = new Dictionary<(int, int), byte[]>();
         var materials = new Dictionary<(int, int), WorldBin0>();
         (int, int)? skyModel = null;
@@ -152,6 +157,9 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
                     aip.LoadData(r.Data);
                     aips.Add((r, aip));
                     break;
+                case TypeParticleModel or TypeParticle or TypeLight or TypeHalo:
+                    fx[r.Type].Add(r);
+                    break;
             }
         }
         if (patches.Count == 0) throw new InvalidOperationException($"'{selection}' has no terrain patches.");
@@ -173,6 +181,8 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         var patchRows = BuildPatches(patches, pages, lightmaps);
         int rails = WriteSplines(mapDir, splines);
         WriteAip(mapDir, aips, races, world);
+        var (lightCount, haloCount) = WriteLights(mapDir, fx[TypeLight], fx[TypeHalo], world);
+        int fogCount = WriteParticles(mapDir, fx[TypeParticleModel], fx[TypeParticle], world);
         string? bootExecutable;
         using (var isoStream = File.OpenRead(isoPath)) bootExecutable = iso.ReadBootExecutableName(isoStream);
         WriteJson(Path.Combine(mapDir, "Effects.json"), EffectsDocumentService.Empty("ssx-3", course, bootExecutable));
@@ -241,6 +251,7 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
 
         Log.Info($"  sky: {(sky ? world.Sections[skyTrack] : "none")}");
         Log.Info($"  {patches.Count} patches, {texCount}/{pages.Count} textures, {lmCount}/{lightmaps.Count} lightmaps, {rails} rails, {propCount} props");
+        Log.Info($"  {lightCount} lights, {haloCount} halos, {fogCount} particle volumes");
         Log.Info("Done.");
         return 0;
     }
@@ -456,6 +467,156 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         paths.AddRange(others.SelectMany(o => o.Aip.aiPaths.Select(p => (o.Section, p)))
             .OrderByDescending(n => n.p.PathPos.Z));
         return (paths, coursePaths);
+    }
+
+    // ---------------------------------------------------------------- lights, halos and fog
+
+    /// <summary>
+    /// Lights.json, in the Tricky import's field names, from the selection's lights (type 6) and halos (type 7). SSX 3
+    /// lights carry no names, so each is named after its section and resource id. Only spot and point lights are
+    /// written. Every section also carries a sun and a sky ambient, but all except four connector suns and hub B's
+    /// ambient are the same white, horizontal placeholder, and Slopesmith would seed the level's sun from the first
+    /// one instead of fitting it to the lightmaps. A halo is a glow sprite with no light of its own, so it becomes a
+    /// glint-only row (<see cref="HaloRow"/>).
+    /// [Trailmap: 515-light-slots, 515-placeholder]
+    /// </summary>
+    private static (int lights, int halos) WriteLights(string mapDir, List<SSBResource> lights, List<SSBResource> halos, World world)
+    {
+        var rows = new List<object>();
+        foreach (var r in lights)
+            if (LightRow($"{world.Sections[r.Track]}_light_{r.Rid}", r.Data) is { } row) rows.Add(row);
+        int lightRows = rows.Count;
+        rows.AddRange(halos.Select(r => HaloRow($"{world.Sections[r.Track]}_halo_{r.Rid}", r.Data)));
+        WriteJson(Path.Combine(mapDir, "Lights.json"), new { Lights = rows });
+        return (lightRows, halos.Count);
+    }
+
+    /// <summary>
+    /// One SSX 3 light record (112 bytes) as a Lights.json row, or null for a sun (type 0) or sky ambient (type 3).
+    /// Words: 4 the type, numbered as Tricky's (1 spot, 2 point); 5 the intensity; 6 the colour's luminance; 7 the
+    /// range; 8-10 the colour, 0 to 1; 11-13 the direction; 14-16 the position; 17-22 the influence box; 23 and 24
+    /// the spot's inner and outer cone cosines, zero on a point light. Tricky's record stores the colour already
+    /// multiplied by the intensity, so the row does too; a negative intensity makes the subtractive shadow light
+    /// Tricky writes as a negative colour.
+    /// [Trailmap: 515-light-record, 515-light-colour, 515-light-cone, 515-light-negative]
+    /// </summary>
+    internal static object? LightRow(string name, byte[] data)
+    {
+        int type = BitConverter.ToInt32(data, 16);
+        if (type is not (1 or 2)) return null;
+        float W(int word) => BitConverter.ToSingle(data, word * 4);
+        float[] V(int word) => [W(word), W(word + 1), W(word + 2)];
+        float intensity = W(5);
+        return new
+        {
+            LightName = name,
+            Type = type,
+            SpriteRes = 0,
+            Colour = new[] { W(8) * intensity, W(9) * intensity, W(10) * intensity },
+            Direction = V(11),
+            Position = V(14),
+            LowestXYZ = V(17),
+            HighestXYZ = V(20),
+            UnknownFloat2 = W(24),
+        };
+    }
+
+    /// <summary>
+    /// One SSX 3 halo record (80 bytes) as a Lights.json row that only glints. Words: 3 the sprite size, 16 or 32;
+    /// 4-6 the colour; 7-9 the position; 10-15 the sprite's box. The size goes to SpriteRes, the field a Tricky light's
+    /// glint is gated on. The influence box is left empty at the position, so the halo lights nothing.
+    /// [Trailmap: 515-halo-record, 515-halo-size]
+    /// </summary>
+    internal static object HaloRow(string name, byte[] data)
+    {
+        float W(int word) => BitConverter.ToSingle(data, word * 4);
+        float[] position = [W(7), W(8), W(9)];
+        return new
+        {
+            LightName = name,
+            Type = 2,
+            SpriteRes = BitConverter.ToInt32(data, 12),
+            Colour = new[] { W(4), W(5), W(6) },
+            Direction = new[] { 1f, 0f, 0f },
+            Position = position,
+            LowestXYZ = position,
+            HighestXYZ = position,
+            UnknownFloat2 = 0f,
+        };
+    }
+
+    /// <summary>
+    /// ParticleModels.json and ParticleInstances.json from the selection's particle models (type 4) and placements
+    /// (type 5). These are the fog banks of Tricky's PBD: the same model layout (<see cref="ParticleModelRow"/>),
+    /// and a placement with a world transform and a world box. Each model has exactly one placement, sharing its
+    /// section and resource id.
+    /// [Trailmap: 515-fog-placement]
+    /// </summary>
+    private static int WriteParticles(string mapDir, List<SSBResource> models, List<SSBResource> placements, World world)
+    {
+        var index = new Dictionary<(int, int), int>();
+        var prefabs = new List<object>();
+        foreach (var r in models)
+        {
+            index[(r.Track, r.Rid)] = prefabs.Count;
+            prefabs.Add(ParticleModelRow($"{world.Sections[r.Track]}_particle_{r.Rid}", r.Data));
+        }
+        var particles = new List<object>();
+        foreach (var r in placements)
+        {
+            if (!index.TryGetValue((r.Track, r.Rid), out int model)) continue;
+            var placement = new WorldParticleInstance();
+            placement.LoadData(new MemoryStream(r.Data));
+            var (pos, rot, scale) = Decompose(placement.Transform);
+            particles.Add(new
+            {
+                ParticleName = $"{world.Sections[r.Track]}_particle_{r.Rid}",
+                Location = pos,
+                Rotation = rot,
+                Scale = scale,
+                ParticleModelIndex = model,
+                LowestXYZ = Vec(placement.AABBMin),
+                HighestXYZ = Vec(placement.AABBMax),
+            });
+        }
+        WriteJson(Path.Combine(mapDir, "ParticleModels.json"), new { ParticlePrefabs = prefabs });
+        WriteJson(Path.Combine(mapDir, "ParticleInstances.json"), new { Particles = particles });
+        return particles.Count;
+    }
+
+    /// <summary>
+    /// One SSX 3 particle model as a ParticleModels.json row. It opens like Tricky's: an id in place of Tricky's byte
+    /// size, the object count, and the offset of the object table. The second word of each table entry is the offset
+    /// of its object from the record's start. The object holds its box, a word, the frame count and the offset of
+    /// its frames from the object's start. Each frame is 28 bytes: a position, three floats and a radius.
+    /// [Trailmap: 515-fog-model, 515-fog-puffs]
+    /// </summary>
+    internal static object ParticleModelRow(string name, byte[] data)
+    {
+        int I(int offset) => BitConverter.ToInt32(data, offset);
+        float F(int offset) => BitConverter.ToSingle(data, offset);
+        float[] V(int offset) => [F(offset), F(offset + 4), F(offset + 8)];
+        var headers = new List<object>();
+        for (int h = 0; h < I(4); h++)
+        {
+            int obj = I(I(8) + h * 16 + 4), frames = obj + I(obj + 32);
+            headers.Add(new
+            {
+                ParticleObject = new
+                {
+                    LowestXYZ = V(obj),
+                    HighestXYZ = V(obj + 12),
+                    U1 = I(obj + 24),
+                    AnimationFrames = Enumerable.Range(0, I(obj + 28)).Select(f => new
+                    {
+                        Position = V(frames + f * 28),
+                        Rotation = V(frames + f * 28 + 12),
+                        Unknown = F(frames + f * 28 + 24),
+                    }).ToList(),
+                },
+            });
+        }
+        return new { ParticleModelName = name, ParticleObjectHeaders = headers };
     }
 
     // ---------------------------------------------------------------- props
