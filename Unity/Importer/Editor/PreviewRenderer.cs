@@ -2,6 +2,7 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace OpenSlope.Importer
 {
@@ -16,6 +17,15 @@ namespace OpenSlope.Importer
 
         public void Render()
         {
+            // Headless (-nographics, as the importer smoke test runs) there is no device to capture from, and
+            // Camera.Render on Unity's null device crashes natively once a level is large enough to dynamic-batch
+            // (a retail course such as ALASKA does; the small autotest fixture does not).
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+            {
+                Debug.Log("OpenSlope: no graphics device, preview skipped.");
+                return;
+            }
+
             var root = GameObject.Find(_cfg.RootName);
             if (root == null) { Debug.LogError("OpenSlope: import first."); return; }
 
