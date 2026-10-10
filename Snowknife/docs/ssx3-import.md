@@ -56,7 +56,7 @@ practical size.
 | `Lightmaps/` | SSB lightmaps (type 10) | Re-encoded onto Tricky's scale and resampled to Tricky's cell addressing (below), at 128 px. |
 | `AIP.json` | SSB AIP (type 14) | Every AI path of the selected sections; the course's race lines (type-1 track paths) and start grid. |
 | `Splines.json` | SSB splines (type 8) | Rails only; see below. |
-| `Instances.json`, `Models.json`, `Meshes/`, `Materials.json` | SSB instances, models, materials (types 3, 2, 0) | Models and materials may come from any section. |
+| `Instances.json`, `Models.json`, `Meshes/`, `Materials.json` | SSB instances, models, materials (types 3, 2, 0) | Models and materials may come from any section. Meshes keep the game's vertex order, and each instance carries its baked lighting (below). |
 | `Collision/` | SSB collision (type 12) | Shared by placements of a model within each section. |
 | `Lights.json` | SSB lights and halos (types 6, 7) | Spot and point lights, and the halos as glint-only rows; suns and ambients left out (below). |
 | `ParticleModels.json`, `ParticleInstances.json` | SSB particle models and placements (types 4, 5) | Tricky's fog-bank layout. |
@@ -136,6 +136,16 @@ instance, about two-thirds of the rocks and many trees had no collision. Among t
 volumes would be plain walls without their effects, the start- and end-mode gates close only during an event, and a
 cutscene's fences only during the cutscene.
 
+**Prop lighting.** SSX 3 has no per-instance light record like Tricky's. Each instance instead carries one
+ABGR1555 colour per vertex of its model, already lit, in the order the model's vertex records stream to the console
+([chapter 513](../../Trailmap/specs/513-ssx3-props-and-collision.md)). Each part's mesh is written in that order,
+one OBJ vertex per streamed vertex, and its `MeshData` entry records where the part starts in the stream
+(`VertexLightingBase`). The instance's colours go into `Instances.json` as `VertexLighting`, the base64 of the raw
+little-endian halfwords. An instance whose colours do not cover its model exactly is written without them, and
+Slopesmith then draws it at the texture's own brightness. On the whole mountain that is one instance, the jumbotron
+on CBA2's start building. Slopesmith multiplies each texel by its vertex's colour the way the GS does, with 16 of
+31 drawing the texture as stored.
+
 **Sky.** Each sky dome is a cap, a floor, and eight upper and eight lower wall panels. The walls are rebuilt as
 the flat quads Tricky's ring is made of, at their own azimuths and band heights, and the floor is flattened into
 the ground slot; the cap has no slot and is left out.
@@ -162,5 +172,5 @@ header's three fields, written as zero here.
 
 ## Not yet carried
 
-Baked prop lighting; sounds, the per-event mode props' visibility, and the world scripts behind effects.
+Sounds, the per-event mode props' visibility, and the world scripts behind effects.
 `ssx3-raw` dumps the library's own per-section JSON/OBJ/PNG extraction for further research.

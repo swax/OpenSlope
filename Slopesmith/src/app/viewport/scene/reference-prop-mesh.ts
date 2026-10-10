@@ -34,6 +34,7 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
   private readonly uvAttr: THREE.BufferAttribute;
   private readonly colorAttr: THREE.BufferAttribute;
   private readonly sliceAttr: THREE.BufferAttribute;
+  private readonly lightIndexAttr: THREE.BufferAttribute;
   private readonly indexAttr: THREE.BufferAttribute;
   private vertexCursor = 0;
   private indexCursor = 0;
@@ -51,6 +52,9 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
     // which page any given triangle came from. Zero-filled, so a batch on an ordinary per-page material
     // simply never reads it.
     const slice = new THREE.BufferAttribute(new Uint16Array(maxVertexCount), 1);
+    // Each vertex's place in its placement's baked light (SSX 3), for the same reason: per source vertex, and
+    // read only by a vertex-lit material.
+    const lightIndex = new THREE.BufferAttribute(new Float32Array(maxVertexCount), 1);
     const indices = new THREE.BufferAttribute(new Uint32Array(maxIndexCount), 1);
     geometry.setAttribute('position', position);
     geometry.setAttribute('normal', normal);
@@ -58,6 +62,7 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
     geometry.setAttribute('uv', uv);
     geometry.setAttribute('color', color);
     geometry.setAttribute('texArraySlice', slice);
+    geometry.setAttribute('ps2LightIndex', lightIndex);
     geometry.setIndex(indices);
     geometry.setDrawRange(0, 0);
     super(geometry, material);
@@ -67,6 +72,7 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
     this.uvAttr = uv;
     this.colorAttr = color;
     this.sliceAttr = slice;
+    this.lightIndexAttr = lightIndex;
     this.indexAttr = indices;
   }
 
@@ -82,6 +88,7 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
     const sourceStoredNormal = geometry.getAttribute('ps2StoredNormal') ?? geometry.getAttribute('normal');
     const sourceUv = geometry.getAttribute('uv');
     const sourceSlice = geometry.getAttribute('texArraySlice');
+    const sourceLightIndex = geometry.getAttribute('ps2LightIndex');
     const sourceIndex = geometry.getIndex();
     if (!sourcePosition || !sourceIndex) throw new Error('MergedStaticPropMesh: indexed positions required');
     const vertexStart = this.vertexCursor;
@@ -89,6 +96,7 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
     for (let i = 0; i < sourcePosition.count; i++) {
       if (sourceUv) this.uvAttr.setXY(vertexStart + i, sourceUv.getX(i), sourceUv.getY(i));
       if (sourceSlice) this.sliceAttr.setX(vertexStart + i, sourceSlice.getX(i));
+      if (sourceLightIndex) this.lightIndexAttr.setX(vertexStart + i, sourceLightIndex.getX(i));
       if (sourceStoredNormal) this.storedNormalAttr.setXYZ(vertexStart + i,
         sourceStoredNormal.getX(i), sourceStoredNormal.getY(i), sourceStoredNormal.getZ(i));
     }
@@ -158,6 +166,7 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
     this.uvAttr.needsUpdate = true;
     this.colorAttr.needsUpdate = true;
     this.sliceAttr.needsUpdate = true;
+    this.lightIndexAttr.needsUpdate = true;
     this.indexAttr.needsUpdate = true;
     this.computeBoundingSphere();
     this.geometry.computeBoundingBox();

@@ -293,6 +293,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     if (replacingLevel) { runtimeVisibility.clear(); runtimeMatrices.clear(); runtimePieceMotions.clear(); }
     refPropData = props;
     assets.propTex.setNativeLighting(props?.instances ?? null);
+    assets.propTex.setVertexLighting(props?.instances ?? null);
     rebuildSoundMarkers();
     rebuildHiddenPropMarkers();
     if (!props) return;
@@ -428,6 +429,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           // model space; MergedStaticPropMesh transforms `normal` for display but deliberately preserves this
           // one so the native instance record still dots two values expressed in the same local frame.
           g.setAttribute('ps2StoredNormal', g.getAttribute('normal'));
+          // SSX 3's baked light is per vertex: each vertex names its colour in the placement's run. Only on a
+          // vertex-lit draw, because a batch requires every geometry it holds to carry the same attributes.
+          if (sub.light && assets.propTex.isVertexLit(material))
+            g.setAttribute('ps2LightIndex', new THREE.BufferAttribute(sub.light, 1));
           // Which layer of the packed page bank this submesh samples — Unity's `UV0.z`, and the reason props
           // wearing different pages can share one draw at all. Constant across the submesh: a submesh IS one
           // material. Only array-material draws carry it, and a batch never mixes the two because the array
@@ -526,6 +531,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
             && !(model.animation ?? model.rotation)
             && bucket.controlSourceIndex === null;
           const native = !!bucket.instances[0]?.lighting;
+          // SSX 3 lights by colours baked per vertex rather than by a record. A placement missing them (its
+          // run did not cover the model) draws at texture brightness inside the same draw.
+          const vertexLit = !native && !!sub.light && bucket.instances.some(inst => !!inst.vertexLight);
           // The packed bank, when this submesh can use one: a static draw on a plain page. A scroller or a
           // flipbook owns its Texture's offset and Source, neither of which means anything for one slice of a
           // shared array, so those keep the per-page material `material()` builds for them.
@@ -533,14 +541,14 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
             ? assets.propTex.propArraySlot(texFile) : undefined;
           const materialOpts = { blend: materialData?.blend, priority: materialData?.prio,
             pixelAlpha: !!bucket.effect?.crowd || materialData?.pixelAlpha,
-            alphaMode: materialData?.alphaMode, sheet, native };
+            alphaMode: materialData?.alphaMode, sheet, native, vertexLit };
           const arrayMaterial = packed
             ? assets.propTex.propArrayMaterial(packed.array, props.level, texFile!, materialOpts)
             : null;
           const baseMaterial = arrayMaterial ?? assets.propTex.material(props.level, texFile, bucket.effect,
             frames, runtimeMaterialKey, materialOpts);
           const drawMaterial = arrayMaterial ? arrayMaterial
-            : native ? assets.propTex.native(baseMaterial) : baseMaterial;
+            : native || vertexLit ? assets.propTex.native(baseMaterial, vertexLit) : baseMaterial;
           if (bucket.effect) for (const inst of bucket.instances) {
             const animated = refEffectMaterials.get(inst.sourceIndex);
             if (animated) animated.add(drawMaterial);
