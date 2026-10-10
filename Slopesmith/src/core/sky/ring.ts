@@ -132,9 +132,15 @@ export function tileSizes(tier: SkyTileSizes, ring: SkyRing): { w: number; h: nu
 /** The rect of a panorama (unit coordinates, y down) sampled by one wall panel. */
 export interface PanelRect { x0: number; x1: number; y0: number; y1: number }
 
+/** How close to the seam, in panorama widths (about 0.0004°), a panel edge counts as on it. A ring measured
+ *  from float geometry can put a seam corner a hair past it: SSX 3's measures −179.999995°, which would read
+ *  as the panorama's far end and turn its panel into an empty, backwards span. */
+const SEAM_TOLERANCE = 1e-6;
+
 export function panelRect(p: SkyPanel, ring: SkyRing): PanelRect {
-  const x0 = panoramaX(p.azFrom);
-  const x1 = panoramaX(p.azTo) || 1;
+  const from = panoramaX(p.azFrom), to = panoramaX(p.azTo);
+  const x0 = from > 1 - SEAM_TOLERANCE ? 0 : from;
+  const x1 = to < SEAM_TOLERANCE ? 1 : to;
   const [zTop, zBot] = p.band === 'upper' ? [ring.topZ, ring.midZ] : [ring.midZ, ring.bottomZ];
   return { x0, x1, y0: panoramaY(zTop, ring), y1: panoramaY(zBot, ring) };
 }
