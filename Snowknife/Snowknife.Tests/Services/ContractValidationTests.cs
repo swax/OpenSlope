@@ -268,6 +268,16 @@ public class ContractValidationTests
     }
 
     [Fact]
+    public void TheEmptyEffectsDocumentAnSsx3ImportWritesSatisfiesTheSchema()
+    {
+        var document = EffectsDocumentService.Empty("ssx-3", "SSX3_ARA1", null);
+
+        Contracts.RequireJson(document.ToString(), ContractKind.EffectsV1, "EffectsDocumentService.Empty");
+        Assert.Equal("ssx-3", (string?)document["target"]?["game"]);
+        Assert.Equal("SSX3_ARA1", (string?)document["target"]?["level"]);
+    }
+
+    [Fact]
     public void AGlareRequiresBothRecoveredIntensityFields()
     {
         Contracts.RequireJson(PopulatedWorld, ContractKind.WorldV1, "complete glare");

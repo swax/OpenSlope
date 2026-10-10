@@ -8,6 +8,7 @@ Gaps are intentional, and other components may reuse the same identifiers in the
 
 - [001 — CLI export pipeline](001-cli-export-pipeline.md)
 - [Import a course for browser play](browser-play.md) — checkout, build, import, and select a course in Slopesmith.
+- [Import the SSX 3 mountain](ssx3-import.md) — sections, peaks and events of the SSX 3 world as Slopesmith references.
 - [015 — Audio extraction](015-audio-extraction.md)
 - [018 — Board assets](018-board-assets.md)
 - [034 — Bundle pipeline](034-bundle-pipeline.md)

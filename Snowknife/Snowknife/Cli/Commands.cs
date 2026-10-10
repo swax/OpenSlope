@@ -41,6 +41,7 @@ internal static class Commands
         var effects   = new EffectsDocumentService(contracts);
         var level     = new LevelPipelineService(iso, audio, particles, effects, contracts, elf);
         var shared    = new SharedBootstrapService(models, audio, particles);
+        var ssx3      = new Ssx3Service(iso, contracts);
 
         return
         [
@@ -262,6 +263,54 @@ internal static class Commands
                     level.GltfInfo)
                 {
                     Params = [new("<file.glb>", "Any glTF binary - terrain.glb, props.glb, collision.glb.")],
+                },
+            ]),
+
+            new CliGroup("SSX 3",
+            [
+                new CliCommand("ssx3-import",
+                    "Import sections of the SSX 3 mountain into the Maps intermediate",
+                    """
+                    SSX 3 has one streamed mountain (DATA\WORLDS\BAM.BIG) instead of a file per course. This picks
+                    sections of it and writes them as one ordinary map folder - Patches.json, Textures/, Lightmaps/,
+                    AIP.json, Splines.json and the prop files - that Slopesmith opens as a Reference, like a Tricky
+                    import. Every section shares one world space, so any selection lines up.
+
+                    The course line comes from the event's own race when one event is chosen, and from the peak
+                    races, chained top to bottom, for a peak or the whole mountain. Rails are told apart from
+                    animation paths by name, and surface types are mapped from SSX 3's patch flags by inference,
+                    so treat both as approximate. Props use shared collision proxies where available. The world is cached under
+                    %TEMP%/snowknife_ssx3_* for later runs.
+                    """,
+                    ssx3.Import)
+                {
+                    Params =
+                    [
+                        new("<iso>", "Your own SSX 3 disc image. Read only."),
+                        new("<selection>", "A section (ARA1), a comma list (A,A_ARA1,ARA1), PEAK1, PEAK2, PEAK3 or ALL. `ssx3-sections` lists them; an event brings its connectors."),
+                        new("<mapDir>", @"Where to write the map, e.g. Maps\SSX3_PEAK1. The folder name may use only letters, digits, _ and -."),
+                    ],
+                    Flags = [new("--no-props", "Terrain, rails and course only: skip the instances and their meshes.")],
+                },
+
+                new CliCommand("ssx3-sections",
+                    "List the SSX 3 mountain's sections",
+                    "Each section's track number, name, patch and prop counts, and the selection presets `ssx3-import` takes.",
+                    ssx3.Sections)
+                {
+                    Params = [new("<iso>", "Your own SSX 3 disc image. Read only.")],
+                },
+
+                new CliCommand("ssx3-raw",
+                    "Dump the SSX 3 world with the library's own extractor",
+                    "A diagnostic: SSX-Library's per-section JSON, OBJ and PNG dump, written under <outDir>/raw.",
+                    ssx3.Raw)
+                {
+                    Params =
+                    [
+                        new("<iso>", "Your own SSX 3 disc image. Read only."),
+                        new("<outDir>", "Where to write the dump."),
+                    ],
                 },
             ]),
 

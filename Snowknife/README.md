@@ -37,7 +37,8 @@ use your local disc-derived fixtures. See [Testing Snowknife](docs/testing.md).
 
 For **browser play**, Slopesmith reads the `import` output directly; `gltf` and `unity` are unnecessary.
 See the [import-to-browser guide](docs/browser-play.md) for commands that work without adding Snowknife
-to `PATH`, plus the steps to select and ride the course.
+to `PATH`, plus the steps to select and ride the course. The *SSX 3* mountain imports the same way with
+`ssx3-import`; see [Import the SSX 3 mountain](docs/ssx3-import.md).
 
 For **glTF or Unity**, a retail course follows three explicit stages:
 
@@ -76,6 +77,7 @@ Command groups, as the CLI's own index lists them:
 |---|---|
 | A course, end to end | `import`, `world`, `gltf`, `unity`, `shared` |
 | Re-run one stage against an imported map | `props`, `billboards`, `overrides`, `skybox`, `lightmaps`, `particles`, `gltf-info` |
+| SSX 3 | `ssx3-import`, `ssx3-sections`, `ssx3-raw` |
 | Riders and boards | `rider`, `board`, `skis` |
 | Audio | `intro-music`, `race-music`, `sfx`, `sound-index`, `board-sound-index`, `speech`, `bnk`, `bnk-rebuild`, `audio-file`, `music-inject`, `music-linearize`, `bank-verify` |
 | Build a custom disc | `repack`, `repack-many`, `texture-plan`, `pbd-from-json`, `ltg-stats`, `ltg-find` |

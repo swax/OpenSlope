@@ -235,6 +235,8 @@ export function createReference(deps: ReferenceDeps) {
     if (!map) return '(not in the library listing — reload to refresh)';
     if (map.origin === 'retail') {
       if (map.reasons.includes(UNIDENTIFIED_FOLDER_REASON)) return 'unidentified folder · read as retail';
+      // `snowknife ssx3-import` names its selection of the one SSX 3 mountain with this prefix.
+      if (map.course?.startsWith('SSX3_')) return `SSX 3 extract · ${map.course.slice('SSX3_'.length)}`;
       if (map.course) return `SSX Tricky extract · ${map.course}`;
       return map.reasons.length === 1 && map.reasons[0] === RETAIL_EXTRACT_REASON
         ? 'SSX Tricky extract'
@@ -252,7 +254,8 @@ export function createReference(deps: ReferenceDeps) {
     originCtl = controller;
     tip(controller,
       'Where this map folder came from, read from its producer’s Origin.json.',
-      '“SSX Tricky extract” is a course `snowknife import` read off a disc, named by its slot. “Authored in '
+      '“SSX Tricky extract” is a course `snowknife import` read off a disc, named by its slot; “SSX 3 extract” is '
+      + 'the sections of the SSX 3 mountain `snowknife ssx3-import` read. “Authored in '
       + 'Slopesmith” is an export, followed by whether its classification found borrowed retail art and in '
       + 'which channels. A folder nothing identifies is read as retail rather than as clean.');
   }

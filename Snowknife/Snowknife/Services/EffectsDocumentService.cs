@@ -141,9 +141,9 @@ internal sealed class EffectsDocumentService
     /// the disc's own (SYSTEM.CNF), supplied by callers that have the user's image open; a bare
     /// <c>effects-export</c> over a loose SSF has no disc to ask, and says so rather than guessing a region.
     /// </summary>
-    private static JObject TargetBlock(string level, string? bootExecutable)
+    private static JObject TargetBlock(string level, string? bootExecutable, string game = "ssx-tricky")
     {
-        var target = new JObject { ["game"] = "ssx-tricky", ["platform"] = "ps2" };
+        var target = new JObject { ["game"] = game, ["platform"] = "ps2" };
         // SLxx_nnn.nn on disc -> SLxx-nnnnn, the disc-serial spelling.
         string? serial = bootExecutable is null
             ? null
@@ -161,6 +161,29 @@ internal sealed class EffectsDocumentService
         target["level"] = level;
         return target;
     }
+
+    /// <summary>
+    /// A document with no effects, for a level whose game keeps none in an SSF, such as an SSX 3 import. Slopesmith
+    /// reads an Effects.json beside every Reference, and an empty one reads as a level with no effect slots. The
+    /// header holds the SSF header's fields, so with no SSF they are zero, and there is no source file to describe.
+    /// </summary>
+    internal static JObject Empty(string game, string level, string? bootExecutable) => new()
+    {
+        ["$schema"] = "openslope-effects-v1.schema.json",
+        ["kind"] = Kind,
+        ["version"] = Version,
+        ["target"] = TargetBlock(level, bootExecutable, game),
+        ["header"] = new JObject { ["U1"] = 0, ["U2"] = 0, ["U3"] = 0.0 },
+        ["slots"] = new JArray(),
+        ["graphs"] = new JArray(),
+        ["functions"] = new JArray(),
+        ["objectProperties"] = new JArray(),
+        ["instances"] = new JArray(),
+        ["physics"] = new JArray(),
+        ["collisionModels"] = new JArray(),
+        ["splines"] = new JArray(),
+        ["extensions"] = new JObject(),
+    };
 
     private static JObject FromSsf(SSFHandler h, string sourcePath, string level, string? bootExecutable)
     {
