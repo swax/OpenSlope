@@ -49,6 +49,7 @@ chapters. The corresponding conclusions belong in the [specification](../specs/R
 
 - [Noclip/fly-mode patch](noclip-fly-mode.md)
 - [Series comparison](series-comparison.md) — SSX (2000), SSX 3, and On Tour against the Tricky baseline.
+- [SSX 3 world data](ssx3-world-data.md) — terrain, lightmap, texture, material, collision, baked prop lighting, path, light, halo and fog measurements behind chapters 511–515.
 
 Bulk analysis artifacts remain local and gitignored. See the parent [Trailmap README](../README.md#local-only-inputs)
 and [`ResearchData/README.md`](../../ResearchData/README.md) for storage and regeneration boundaries.

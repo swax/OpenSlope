@@ -30,9 +30,9 @@ Snowknife that embeds those schemas is conveyed as a whole under GPL-3.0-only.
 
 The grant does NOT extend to, and this repository does not redistribute:
 
-  * SSX Tricky — or any other SSX title this program can read, such as SSX on
-    Tour — including its executables, disc contents, level data, textures,
-    audio, or any other retail game asset.
+  * SSX Tricky and SSX 3 — or any other SSX title this program can read, such
+    as SSX on Tour — including their executables, disc contents, level data,
+    textures, audio, or any other retail game asset.
   * Any trademark of Electronic Arts Inc.
 
 Files derived from retail game data are generated locally by the user from a
@@ -63,7 +63,12 @@ requires them. Beyond that interface, individual measured engine constants and
 per-asset measurements appear in the source and tests where a behaviour had to
 be matched -- a selector remap table, the event ids an engine routine compares
 against, a course bank's slot sizes, a staging-formation centroid -- each cited
-to the Trailmap chapter that establishes it. No retail asset, disc image, or
+to the Trailmap chapter that establishes it. The SSX 3 importer,
+Services/Ssx3Service.cs, carries the same classes for that title: the stream's
+resource type numbers, record layouts and field offsets, the material
+render-state bits, the debug page's texture id, and the authored names by which
+it tells collision, trigger and reset geometry from visible props -- each cited
+to Trailmap chapters 510 to 515. No retail asset, disc image, or
 executable accompanies any of this, and everything else is generated locally
 from a user-supplied disc image and stays out of version control.
 
@@ -82,8 +87,8 @@ by its magic number, and it is not a reproduction of the routine it locates.
 --------------------------------------------------------------------------------
 TRADEMARKS
 
-SSX and SSX Tricky are trademarks of Electronic Arts Inc. This project is not
-affiliated with, sponsored by, or endorsed by Electronic Arts. All other
+SSX, SSX Tricky and SSX 3 are trademarks of Electronic Arts Inc. This project is
+not affiliated with, sponsored by, or endorsed by Electronic Arts. All other
 trademarks are the property of their respective owners.
 
 --------------------------------------------------------------------------------

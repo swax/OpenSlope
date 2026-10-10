@@ -2,7 +2,8 @@ Trailmap
 Copyright 2026 swax
 
 This product includes software and documentation developed as an independent,
-unofficial interoperability specification for SSX Tricky.
+unofficial interoperability specification for SSX Tricky, with an addendum on
+SSX 3 (specs/510 to 515).
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use
 these files except in compliance with the License. You may obtain a copy of the
@@ -19,8 +20,8 @@ tools/, and the accompanying prose and data.
 
 It does NOT extend to, and this repository does not redistribute:
 
-  * SSX Tricky, its executables, disc contents, level data, textures, audio, or
-    any other retail game asset.
+  * SSX Tricky, SSX 3, their executables, disc contents, level data, textures,
+    audio, or any other retail game asset.
   * Any trademark of Electronic Arts Inc.
 
 Files derived from retail game data are generated locally by the user from
@@ -68,8 +69,8 @@ copy of the game and stays out of version control.
 --------------------------------------------------------------------------------
 TRADEMARKS
 
-SSX and SSX Tricky are trademarks of Electronic Arts Inc. This project is not
-affiliated with, sponsored by, or endorsed by Electronic Arts. All other
+SSX, SSX Tricky and SSX 3 are trademarks of Electronic Arts Inc. This project is
+not affiliated with, sponsored by, or endorsed by Electronic Arts. All other
 trademarks are the property of their respective owners.
 
 --------------------------------------------------------------------------------

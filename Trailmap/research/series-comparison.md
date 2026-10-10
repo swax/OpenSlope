@@ -36,7 +36,13 @@ comparison is a true A/B on the same course rather than a cross-course guess.
   119/131 exact on Merqury City. The 12 stragglers were not chased.
 - **Chunk walk (SSX 3).** Length-prefixed chunks, each RefPack; accumulate
   until a `CEND` chunk, then read the group as `id u8 | size u24 | track u8 |
-  rid u24 | body`. RefPack decoder ported from `Refpack.cs`.
+  rid u24 | body`. RefPack decoder ported from `Refpack.cs`. **Correction:**
+  records can have size 0, and this walk ended a group at its first empty
+  record, which dropped the trailing records of most locations from bins 14,
+  16, 18 and 20–22 (and its chunk count left out the `CEND` chunks). The
+  corrected census and the reproduction of the old figures are in
+  [SSX 3 world data](ssx3-world-data.md#bin-census-reconciliation).
+  (spec:510-bins spec:510-empty)
 - **Block walk (On Tour).** Fixed 32,768-byte blocks, 12-byte header
   (`CBXS`/`CEND`, u32 block size, then a type byte + u24). 5,247 + 532 blocks
   tile the file exactly. Type 3 = payload starts with `10 FB`; type 11 =

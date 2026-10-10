@@ -27,8 +27,8 @@ processes and links no part of them.
 
 The grant does NOT extend to, and this repository does not redistribute:
 
-  * SSX Tricky, its executables, disc contents, level data, textures, audio, or any other retail
-    game asset.
+  * SSX Tricky, SSX 3, their executables, disc contents, level data, textures, audio, or any other
+    retail game asset.
   * Any trademark of Electronic Arts Inc.
 
 Retail files and assets are generated locally by the user from their own copy of the game. The editor
@@ -69,7 +69,7 @@ that a fresh clone does not need Blender installed to run the editor.
 --------------------------------------------------------------------------------
 TRADEMARKS
 
-SSX and SSX Tricky are trademarks of Electronic Arts Inc. This project is not affiliated with,
+SSX, SSX Tricky and SSX 3 are trademarks of Electronic Arts Inc. This project is not affiliated with,
 sponsored by, or endorsed by Electronic Arts. Where this repository refers to SSX, it does so to
 describe what the tool interoperates with. Blender is a trademark of the Blender Foundation. Unity
 is a trademark of Unity Technologies. Mixamo is a trademark of Adobe Inc. All other trademarks are

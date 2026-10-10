@@ -31,10 +31,11 @@ Two of those deserve emphasis because they are the spec's hardest-won
 results and they transfer **verbatim**:
 
 **Paths.** The path record parses under the baseline's layout with its
-leading constant tuple holding on all 1,149 paths of the mountain, and all
-28,917 of their points satisfy the horizontal-unit rule — the two
-ground-plane components form a unit vector, the third is an unbounded slope,
-and the fourth is the step's horizontal length. Only the file magic differs.
+leading constant tuple holding on all 1,214 AI paths of the mountain, and all
+36,398 points of those paths and of the 166 race lines satisfy the
+horizontal-unit rule — the two ground-plane components form a unit vector,
+the third is an unbounded slope, and the fourth is the step's horizontal
+length. Only the file magic differs.
 This simultaneously confirms that SSX 3 is centimeters and Z-up.
 [measured] [[510-paths]]()
 
@@ -47,15 +48,31 @@ the same instruction set, the same ten surface sections. [measured]
 > read as BIGF; per-subsystem evidence cited individually below.
 
 > [[510-paths]]() doc:../research/series-comparison.md; spec:250-patha;
-> spec:250-accumulation; spec:002-axes. Measured over all 29 path bins:
-> header constants `(2, 100, 4, 101, 4)` on 1,149/1,149 paths; 28,917/28,917
-> points unit in the ground-plane pair (the alternative pairings match on
-> 0.6%); median step 685 units; magic is four ASCII `i` bytes where the
-> baseline has four `\x0a`.
+> spec:250-accumulation; spec:002-axes. Measured over all 50 non-empty path
+> records: header constants `(2, 100, 4, 101, 4)` on 1,214/1,214 AI paths;
+> 36,398/36,398 points unit in the ground-plane pair (30,207 on AI paths,
+> 6,191 on race lines). The first census covered the AI paths of the 29 hub
+> and event records only (1,149 paths, 28,917 points; see spec:510-bins);
+> its alternative-pairing figure (0.6%) and median step (685 units) are from
+> that subset. Magic is four ASCII `i` bytes where the baseline has four
+> `\x0a`; doc:../research/ssx3-world-data.md "Bin census reconciliation".
 
 > [[510-snow]]() doc:../research/series-comparison.md;
 > spec:420-ride. Byte-for-byte diff against the baseline's file:
 > zero differences.
+
+## Detail chapters
+
+This chapter is the overview. Five detail chapters specify what an
+implementation needs to show and ride the mountain faithfully:
+
+| Chapter | Covers |
+|---|---|
+| [`511-ssx3-terrain-and-lightmaps.md`](511-ssx3-terrain-and-lightmaps.md) | locations and peaks in one world space; the patch's secondary page and surface readings; lightmap pages, slots, edge addressing and the full-range base |
+| [`512-ssx3-textures-and-materials.md`](512-ssx3-textures-and-materials.md) | mountain-wide texture ids; full-range colour; padded interleaved palettes; the material render-state word; terrain alpha as a mask; the debug page |
+| [`513-ssx3-props-and-collision.md`](513-ssx3-props-and-collision.md) | models per location; collision proxies by kind, in model space, shared per (location, model); helper geometry; per-vertex baked lighting |
+| [`514-ssx3-paths-rails-and-sky.md`](514-ssx3-paths-rails-and-sky.md) | three path slots per location; the race line's horizontal distance to the finish; rails mixed with animation paths; the sky dome |
+| [`515-ssx3-lights-halos-and-fog.md`](515-ssx3-lights-halos-and-fog.md) | the light record's colour, intensity, range and cones; placeholder suns; halos as their own glow-sprite records; the fog bank's model and one-to-one placement |
 
 ## One mountain, streamed
 
@@ -71,10 +88,11 @@ members: the world data, a streaming database, and two resource-name maps.
 | `<world>.psm` | the matching name strings |
 
 The world file is a flat sequence of length-prefixed chunks, each
-individually compressed with the baseline's compression scheme. Chunks
-accumulate into a group; a chunk tagged `CEND` closes the group, and the
-group's concatenated payload is then a sequence of typed records. The
-mountain contains 3,169 chunks forming **159 groups**, which is exactly the
+individually compressed with the baseline's compression scheme and each
+exactly 32,768 bytes long. Chunks accumulate into a group; a chunk tagged
+`CEND` closes the group and carries payload like the rest, and the group's
+concatenated payload is then a sequence of typed records. The mountain
+contains 3,328 chunks forming **159 groups**, which is exactly the
 sub-chunk count the streaming database declares — the grouping *is* the
 streaming granularity. The database names **49 locations**. [measured]
 [[510-ssb]]()
@@ -84,6 +102,14 @@ then a **track** byte and a three-byte **resource id**. Every reference in
 the world — a patch to its texture, an instance to its model — is that
 (track, resource) pair rather than an array index, resolved through the two
 name-map members. [measured] [[510-ids]]()
+
+A record may be **empty**, with a size of zero. Each location ends with a
+run of per-location records, among them three path slots and two sound-bank
+slots, and a slot the location does not use is present but empty: 193
+records on the mountain are empty. An empty record is not the end
+of its group. The records after it still belong to the group, and the
+streaming database's per-location counts include them. [measured]
+[[510-empty]]()
 
 | Bin | Records | Bytes | Contents |
 |---:|---:|---:|---|
@@ -100,12 +126,14 @@ name-map members. [measured] [[510-ids]]()
 | 11 | 167 | 34,736 | visibility curtains |
 | 12 | 4,616 | 6,392,492 | collision proxies |
 | 13 | 49 | 737,007 | sound-trigger tables |
-| 14 | 29 | 737,680 | paths |
+| 14 | 147 | 777,992 | paths — three slots per location, 50 filled |
 | 15 | 49 | 295,568 | terrain-paint data |
-| 16 | 2 | 28,668 | scripts |
+| 16 | 49 | 1,511,536 | scripts |
 | 17 | 20 | 117,448 | camera triggers |
-| 18 | 2 | 144 | sequence table |
-| 20 | 44 | 3,982,688 | sound banks |
+| 18 | 49 | 3,528 | sequence tables, 72 bytes each |
+| 20 | 98 | 3,982,688 | sound banks — two per location, 44 filled |
+| 21 | 11 | 65,884 | not identified |
+| 22 | 49 | 169,844 | not identified — 7 filled |
 
 [measured] [[510-bins]]()
 
@@ -115,18 +143,36 @@ name-map members. [measured] [[510-ids]]()
 > `PSMHandler.cs`.
 
 > [[510-ssb]]() doc:../research/series-comparison.md; reader written against
-> SSBHandler.cs; measured 3,169 chunks / 159 groups against the database
-> header's 49 locations, 183 chunks, 159 sub-chunks.
+> SSBHandler.cs; measured 3,328 chunks (3,169 `CBXS` + 159 `CEND`, all
+> 32,768 bytes, tiling the 109,051,904-byte file exactly) / 159 groups
+> against the database header's 49 locations, 183 chunks, 159 sub-chunks.
+> The first census reported 3,169, the `CBXS` chunks alone.
 
 > [[510-ids]]()
-> doc:../../Snowknife/SSX-Library/SSX-Library/FileHandlers/LevelFiles/SSX3PS2/SSBData/WorldCommon.cs;
+> doc:../../Snowknife/SSX-Library/SSX-Library/FileHandlers/LevelFiles/SSX3PS2/SSB3Data/WorldCommon.cs;
 > cross-check: patch lightmap references span 0..622 = the 623 lightmap
 > records exactly.
 
 > [[510-bins]]() doc:../research/series-comparison.md; full census over the
 > mountain; bin numbering per the SSBHandler.cs comment, names corrected
 > against the measured contents (bin 15 by its authored names, bin 13 by its
-> record layout).
+> record layout). Records counted including empty ones; bins 0–13, 15 and
+> 17 unchanged from the first census. Bins 14, 16, 18 and 20–22 corrected:
+> the first census stopped each group at its first empty record, and that
+> rule reproduces its figures exactly (14: 29 / 737,680; 16: 2 / 28,668;
+> 18: 2 / 144; 20: 44; 21 and 22: none). The corrected counts equal the
+> per-location totals the streaming database declares for every bin 13–22.
+> The decoder labels bins 21 and 22 radar and avalanche animation,
+> unverified. doc:../research/ssx3-world-data.md "Bin census
+> reconciliation";
+> doc:../../Snowknife/SSX-Library/SSX-Library/FileHandlers/LevelFiles/SSX3PS2/SDBHandler.cs
+> (per-location counts).
+
+> [[510-empty]]() doc:../research/ssx3-world-data.md "Bin census
+> reconciliation": empty records bin 14 × 97, bin 20 × 54, bin 22 × 42;
+> each location's trailing records run 13, 15, (17), 20, 20, 14 × 3, 16,
+> 18, (21), 22, after all of its types 0–12 (159 / 159 groups); a
+> whole-group walk and the database-counted walk agree.
 
 ## The world carries its authoring names
 
@@ -140,7 +186,10 @@ code is a peak letter, a two-letter discipline and an index; seventeen track
 codes appear. Collision proxies are named for the object they belong to with
 a suffix naming their generation mode — a convex hull, a progressive mesh or
 a sphere tree — and **every one of the 4,616 base names matches an instance
-name exactly**, so the pairing was by name. [measured] [[510-name-scheme]]()
+name exactly**. The name is not the binding, however. A proxy is named after
+the first placement of its model in its location, and every placement of that
+model there shares it (`513-ssx3-props-and-collision.md`). [measured]
+[[510-name-scheme]]()
 
 Behavior is visible in the names: objects are called out as rails, reset
 volumes, breakables, triggers, crowd volumes, teetering logs and scrolling
@@ -155,7 +204,8 @@ conveyors, and two of those words are also engine node-kind names.
 > ABA1 ABC1 ARA1 ASS1 BHP1 BRA2 CBA2 CHP2 CRA3 DBC2 DRA4 DSS2 EBA3 EBC3 EHP3
 > ERA5 ESS3; collision suffix census ProgMesh 3,415, ConvexHull 1,104,
 > SphereTree 97; base-name match 4,616/4,616 against instances, 4,227/4,616
-> against models.
+> against models. Binding per (location, model), not per name:
+> doc:../research/ssx3-world-data.md "Models, instances and collision".
 
 > [[510-name-behaviour]]() doc:../research/series-comparison.md; word census
 > over all 89,676 names: rail 5,639, collide 4,666, reset 2,657, light
@@ -190,7 +240,7 @@ eight-by-eight repeat on 9,473, with two- and three-tile spans making up most
 of the rest. Nothing carries the fractional inset. [measured] [[510-uv]]()
 
 > [[510-patch]]()
-> doc:../../Snowknife/SSX-Library/SSX-Library/FileHandlers/LevelFiles/SSX3PS2/SSBData/WorldPatch.cs;
+> doc:../../Snowknife/SSX-Library/SSX-Library/FileHandlers/LevelFiles/SSX3PS2/SSB3Data/WorldPatch.cs;
 > size confirmed by division: 13,238,208 bytes over 30,644 records = 432.0.
 
 > [[510-surface]]() doc:../research/series-comparison.md;
@@ -228,8 +278,12 @@ The consequence for the data model is structural: an instance in SSX 3 is a
 placed, pre-baked draw, not a placed object with attached behavior.
 [inferred] [[510-instance-tail]]()
 
+What the chain uploads is the placement's own lighting, a colour for every
+vertex of its model (`513-ssx3-props-and-collision.md`). [measured]
+[[510-instance-light]]()
+
 > [[510-instance]]()
-> doc:../../Snowknife/SSX-Library/SSX-Library/FileHandlers/LevelFiles/SSX3PS2/SSBData/WorldInstance.cs
+> doc:../../Snowknife/SSX-Library/SSX-Library/FileHandlers/LevelFiles/SSX3PS2/SSB3Data/WorldInstance.cs
 > read order; census over all 41,113 records: leading four words 0; scale
 > 12,019 distinct with 1.0 dominant; the −1 field 41,113/41,113; the tail
 > offset field 160 on every record; model references resolve to 1,083
@@ -242,6 +296,8 @@ placed, pre-baked draw, not a placed object with attached behavior.
 > sentinel. Derivation and the alternative readings considered:
 > doc:../research/series-comparison.md.
 
+> [[510-instance-light]]() spec:513-vertex-light.
+
 ## No authored logic graph
 
 The baseline's logic model — an instance reaching a shared effect slot, the
@@ -251,7 +307,7 @@ slot naming chains by circumstance, chains built from typed nodes
 
 Every logic-shaped bin is keyed by track with a zero resource id, one record
 per track: 49 sound-trigger tables, 49 terrain-paint records, 20 camera-trigger
-records and 2 script records, the largest around 60 KB. Nothing inside them is
+records and 49 script records, the largest about 125 KB. Nothing inside them is
 individually addressable from outside, and no instance references them.
 Against the baseline's same-course figures — 391 effect slots, 918 chains,
 1,990 nodes and 4,445 instance bindings, roughly five placements sharing each
@@ -332,7 +388,9 @@ edited and written back. [inferred] [[510-authoring]]()
 - How a trigger reaches an instance, given the instance carries no
   back-reference. [open]
 - The surface-type labels for this title. The value space is shared with the
-  baseline; the mapping is not. [open]
+  baseline; the mapping is not. The authored patch names give readings for
+  five values (`511-ssx3-terrain-and-lightmaps.md`); the rest, and how any
+  value rides, remain open. [open]
 - Whether the model container's section layout differs beyond its format id,
   which `240-models-mpf.md` records for this title. [open]
 - Everything in the runtime and presentation parts. SSX 3 rebuilt the
