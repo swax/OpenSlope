@@ -161,6 +161,77 @@ public class Ssx3WorldTests
     }
 
     /// <summary>Slopesmith's sampleTile along one axis: the cell's first texel centre to its last.</summary>
+    static byte[] Words(params object[] words) =>
+        words.SelectMany(w => w is float f ? BitConverter.GetBytes(f) : BitConverter.GetBytes((int)w)).ToArray();
+
+    static JObject Row(object? row) => JObject.FromObject(row!);
+
+    static float[] Floats(JToken? token) => token!.ToObject<float[]>()!;
+
+    // [Trailmap: 515-light-record, 515-light-colour, 515-placeholder]
+    [Fact]
+    public void ALightRowCarriesItsIntensityInItsColourAndSunsAndAmbientsAreLeftOut()
+    {
+        static byte[] Light(int type, float intensity) => Words(
+            0, 16, 0, 0, type, intensity, 0.5f, 1200f, 0.5f, 0.25f, 1f, 0f, 0f, -1f,
+            100f, 200f, 300f, -1100f, -1000f, -900f, 1300f, 1400f, 1500f, 0.9f, 0.8f, 2.9f, 0, 16);
+
+        var spot = Row(Ssx3Service.LightRow("ARA1_light_4", Light(1, 4)));
+
+        Assert.Equal(1, (int)spot["Type"]!);
+        Assert.Equal([2f, 1f, 4f], Floats(spot["Colour"]));
+        Assert.Equal([0f, 0f, -1f], Floats(spot["Direction"]));
+        Assert.Equal([100f, 200f, 300f], Floats(spot["Position"]));
+        Assert.Equal([-1100f, -1000f, -900f], Floats(spot["LowestXYZ"]));
+        Assert.Equal([1300f, 1400f, 1500f], Floats(spot["HighestXYZ"]));
+        Assert.Equal(0.8f, (float)spot["UnknownFloat2"]!);
+        Assert.Equal(0, (int)spot["SpriteRes"]!);
+        Assert.All(Floats(Row(Ssx3Service.LightRow("shadow", Light(2, -3)))["Colour"]), c => Assert.True(c < 0));
+        Assert.Null(Ssx3Service.LightRow("sun", Light(0, 0.6f)));
+        Assert.Null(Ssx3Service.LightRow("ambient", Light(3, 0.6f)));
+    }
+
+    // [Trailmap: 515-halo-record, 515-halo-size]
+    [Fact]
+    public void AHaloGlintsAtItsSpriteSizeAndLightsNothing()
+    {
+        byte[] halo = Words(0, 0, -0.31246f, 32, 0.4f, 0.4f, 1f, 10f, 20f, 30f,
+            -90f, -80f, -70f, 110f, 120f, 130f, 33, 0, 0, 33);
+
+        var row = Row(Ssx3Service.HaloRow("ARA1_halo_0", halo));
+
+        Assert.Equal(32, (int)row["SpriteRes"]!);
+        Assert.Equal([0.4f, 0.4f, 1f], Floats(row["Colour"]));
+        Assert.Equal([10f, 20f, 30f], Floats(row["Position"]));
+        Assert.True(JToken.DeepEquals(row["Position"], row["LowestXYZ"]));
+        Assert.True(JToken.DeepEquals(row["Position"], row["HighestXYZ"]));
+    }
+
+    // [Trailmap: 515-fog-model, 515-fog-puffs]
+    [Fact]
+    public void AParticleModelReadsAsTrickysFogBank()
+    {
+        // Header (id, one object, table at 32), the table entry (object at 48), then the object: box, a word, two
+        // frames 36 bytes in.
+        byte[] model = Words(
+            1286, 1, 32, 0, 0, 0, 0, 0,
+            -1, 48, 0, -1,
+            -10f, -20f, -30f, 10f, 20f, 30f, 0, 2, 36,
+            1f, 2f, 3f, 0.9f, 0.9f, 0.9f, 400f,
+            4f, 5f, 6f, 1f, 0.96f, 0.93f, 500f);
+
+        var row = Row(Ssx3Service.ParticleModelRow("ABC1_particle_5", model));
+
+        var obj = row["ParticleObjectHeaders"]!.Single()["ParticleObject"]!;
+        Assert.Equal([-10f, -20f, -30f], Floats(obj["LowestXYZ"]));
+        Assert.Equal([10f, 20f, 30f], Floats(obj["HighestXYZ"]));
+        var frames = obj["AnimationFrames"]!.ToArray();
+        Assert.Equal(2, frames.Length);
+        Assert.Equal([4f, 5f, 6f], Floats(frames[1]["Position"]));
+        Assert.Equal([1f, 0.96f, 0.93f], Floats(frames[1]["Rotation"]));
+        Assert.Equal(500f, (float)frames[1]["Unknown"]!);
+    }
+
     static float CentreLookup(Image<Rgba32> page, float start, float width, float u)
     {
         int bx = (int)MathF.Round(start * 128), tw = Math.Max(1, (int)MathF.Round(width * 128) - 1);
