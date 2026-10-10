@@ -340,6 +340,72 @@ public class Ssx3WorldTests
         Assert.False(shared.ContainsKey((1, 30, 9)));   // a model with no collision stays without
     }
 
+    static WorldMDR.ModelData Record(int vertices, int[] strips) => new()
+    {
+        modelVandUVData = new WorldMDR.ModelVandUVData
+        {
+            VerticesCount = vertices,
+            Tristrip = strips.ToList(),
+            Vertices = Enumerable.Range(0, vertices).Select(i => new Vector3(i, i * i, 1)).ToList(),
+            UV = Enumerable.Range(0, vertices).Select(i => new Vector2(i / 8f, 0.25f)).ToList(),
+        },
+    };
+
+    static WorldMDR.ModelData Normals(int count) => new()
+    {
+        modelNormalData = new WorldMDR.ModelNormalData
+        {
+            Normals = count == 0 ? null! : Enumerable.Range(0, count).Select(_ => Vector3.UnitX).ToList(),
+        },
+    };
+
+    // [Trailmap: 513-vertex-light]
+    [Fact]
+    public void APartsMeshKeepsTheGamesVertexStreamAndCutsItsStripsLikeTheDecoder()
+    {
+        // Three vertex records: one strip of five, a record whose normal record is missing, and two strips of three.
+        var header = new WorldMDR.ModelDataHeaderStruct
+        {
+            ModelOffsetHeaders = [Record(5, [5]), Normals(5), Record(4, [4]), Normals(0),
+                Record(6, [3, 3]), Normals(6), default],
+        };
+
+        var (obj, vertices, faces) = Ssx3Service.StreamMesh(header);
+
+        var lines = obj.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var positions = lines.Where(l => l.StartsWith("v ")).Select(l => l.Split(' ')[1..].Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray())
+            .Select(p => new Vector3(p[0], p[1], p[2])).ToList();
+        var corners = lines.Where(l => l.StartsWith("f ")).Select(l => l.Split(' ')[1..]
+            .Select(c => c.Split('/')).ToArray()).ToList();
+        Assert.Equal(15, vertices);                      // the missing-normal record still holds its four places
+        Assert.Equal(15, positions.Count);
+        Assert.Equal(5, faces);
+        Assert.All(corners.SelectMany(c => c), c => Assert.True(c[0] == c[1] && c[1] == c[2]));
+
+        // The strips cut and wind as the decoder's own faces do, the last record's indices offset by the nine before.
+        var decoder = new WorldMDR();
+        var expected = new[] { (0, header.ModelOffsetHeaders[0], header.ModelOffsetHeaders[1]),
+                (9, header.ModelOffsetHeaders[4], header.ModelOffsetHeaders[5]) }
+            .SelectMany(r => decoder.GenerateFaces(r.Item2.modelVandUVData, r.Item3.modelNormalData)
+                .Select(f => (r.Item1, f))).ToList();
+        Assert.Equal(expected.Count, corners.Count);
+        for (int i = 0; i < corners.Count; i++)
+        {
+            var at = corners[i].Select(c => int.Parse(c[0]) - 1).ToArray();
+            Assert.All(at, index => Assert.True(index >= expected[i].Item1));
+            Assert.Equal([expected[i].f.V1, expected[i].f.V2, expected[i].f.V3], at.Select(index => positions[index]));
+        }
+    }
+
+    // [Trailmap: 513-vertex-light]
+    [Fact]
+    public void AnInstancesVertexLightingIsItsRawHalfwordsOnlyWhenTheyCoverItsModel()
+    {
+        Assert.Equal(Convert.ToBase64String([0x10, 0x82, 0xFF, 0x7F]), Ssx3Service.VertexLighting([0x8210, 0x7FFF], 2));
+        Assert.Null(Ssx3Service.VertexLighting([0x8210], 2));
+        Assert.Null(Ssx3Service.VertexLighting([], 0));
+    }
+
     // [Trailmap: 512-render-state]
     [Theory]
     [InlineData(1, 0)]

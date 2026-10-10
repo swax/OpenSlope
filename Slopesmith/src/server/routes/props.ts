@@ -140,6 +140,9 @@ export interface ModelSub {
   uvs: number[];
   /** Complete native normal stream when every contributing OBJ corner supplied one. */
   normals?: number[];
+  /** Each vertex's place in its model's baked vertex-lighting stream (SSX 3), when every contributing mesh
+   *  declared one: the mesh's `VertexLightingBase` plus its OBJ vertex index. */
+  light?: number[];
   indices: number[];
   piece?: number;
   piecePivot?: V3;
@@ -150,7 +153,7 @@ export interface ModelGeom { name: string; subs: ModelSub[]; rotation?: PropMode
 
 /** Weld a mesh's (vIdx, tIdx, nIdx) corners into `sub`, baking its model-object rest transform before several objects
  *  sharing a material are merged. This is load-bearing for multi-object models such as the LCD's broken shards. */
-function addMeshToSub(sub: ModelSub, mesh: RawMesh, transform: THREE.Matrix4) {
+function addMeshToSub(sub: ModelSub, mesh: RawMesh, transform: THREE.Matrix4, lightBase?: number) {
   const map = new Map<string, number>(); // "vIdx/tIdx/nIdx" → new vertex index within the submesh
   const c = mesh.corners;
   const point = new THREE.Vector3();
@@ -160,6 +163,8 @@ function addMeshToSub(sub: ModelSub, mesh: RawMesh, transform: THREE.Matrix4) {
   const hadVertices = sub.positions.length > 0;
   if (!hadVertices) sub.normals = meshHasNormals ? [] : undefined;
   else if (!meshHasNormals) sub.normals = undefined;
+  if (!hadVertices) sub.light = lightBase === undefined ? undefined : [];
+  else if (lightBase === undefined) sub.light = undefined;
   for (let k = 0; k < c.length; k += 3) {
     const vi = c[k], ti = c[k + 1], ni = c[k + 2];
     const key = `${vi}/${ti}/${ni}`;
@@ -173,6 +178,7 @@ function addMeshToSub(sub: ModelSub, mesh: RawMesh, transform: THREE.Matrix4) {
         normal.fromArray(mesh.vn, ni * 3).applyMatrix3(normalMatrix).normalize();
         sub.normals.push(normal.x, normal.y, normal.z);
       }
+      sub.light?.push(lightBase! + vi);
       map.set(key, idx);
     }
     sub.indices.push(idx);
@@ -192,7 +198,9 @@ interface ModelsJsonModelObject {
   Position?: number[] | null;
   Rotation?: number[] | null;
   Scale?: number[] | null;
-  MeshData: ({ MeshPath: string; MaterialID?: number } | null)[] | null;
+  /** `VertexLightingBase` (SSX 3): where this mesh's OBJ vertex 0 sits in the model's baked vertex-lighting
+   *  stream, which every placement's `VertexLighting` covers one colour per vertex [Trailmap: 513-vertex-light]. */
+  MeshData: ({ MeshPath: string; MaterialID?: number; VertexLightingBase?: number } | null)[] | null;
   Animation?: ModelAnimation | null;
 }
 interface ModelsJsonModel { ModelName: string; AnimTime?: number; ModelObjects: (ModelsJsonModelObject | null)[] | null }
@@ -241,6 +249,10 @@ interface InstancesJson {
     /** Rigid-body record in the level's physics pool (-1 none): the sphere-tree body the sim shoves when a
      *  MOVABLE prop is hit — the piece custom props lack [Trailmap: 130-collision-data]. */
     PhysicsIndex?: number;
+    /** SSX 3's baked vertex lighting: base64 of one little-endian ABGR1555 halfword per vertex of the model's
+     *  stream (`MeshData.VertexLightingBase`), 16 of 31 being the texture as drawn. Tricky lights by the
+     *  record above instead and never writes it. [Trailmap: 513-vertex-light, 513-vertex-light-scale] */
+    VertexLighting?: string;
   }[];
 }
 /** A level material record — only the fields props need: textures and the alpha-blend flag word. */
@@ -631,7 +643,9 @@ export async function readModelGeometries(level: string, ids: Set<number>,
         if (!sub) byMat.set(key, (sub = { mat, positions: [], uvs: [], indices: [],
           ...(splitPieces ? { piece: objectIndex } : {}),
           ...(animation ? { object: objectIndex } : {}) }));
-        addMeshToSub(sub, g, objectMatrices[objectIndex] ?? new THREE.Matrix4());
+        const lightBase = Number.isInteger(md.VertexLightingBase) && md.VertexLightingBase! >= 0
+          ? md.VertexLightingBase : undefined;
+        addMeshToSub(sub, g, objectMatrices[objectIndex] ?? new THREE.Matrix4(), lightBase);
       }
     }
     const subs = [...byMat.values()].filter(s => s.indices.length);
@@ -660,6 +674,12 @@ export async function readModelGeometries(level: string, ids: Set<number>,
   return out;
 }
 
+/** Whether a placement's baked vertex lighting holds a colour for every vertex its model draws. A short one would
+ *  have the shader read the next placement's colours, so it is dropped and the placement lights as unlit art. */
+function coversModel(vertexLighting: unknown, needed: number | undefined): vertexLighting is string {
+  return typeof vertexLighting === 'string' && !!needed && Buffer.from(vertexLighting, 'base64').length >= needed * 2;
+}
+
 /** The prop bake itself, on whichever thread calls it. The worker pool's entry point calls this directly;
  *  ordinary server code goes through `readLevelPropsWithCacheInfo`, which routes it off the main thread. */
 export async function buildLevelPropsUncached(level: string): Promise<PropsPayload> {
@@ -686,6 +706,14 @@ export async function buildLevelPropsUncached(level: string): Promise<PropsPaylo
     readLevelMaterials(lvl),
   ]);
 
+  // How many baked vertex-lighting colours a placement of each model must carry to light every vertex it draws.
+  const lightNeeded = new Map<number, number>();
+  for (const [id, g] of geoms) {
+    let needed = 0;
+    for (const s of g.subs) for (const index of s.light ?? []) needed = Math.max(needed, index + 1);
+    if (needed) lightNeeded.set(id, needed);
+  }
+
   const modelEffect = (id: number) => {
     const effect = effectDefaults.byModel.get(id);
     return effect ? { fx: { t: effect.template, n: effect.matching, of: effect.total } } : {};
@@ -703,6 +731,8 @@ export async function buildLevelPropsUncached(level: string): Promise<PropsPaylo
       ...(s.normals?.length === s.positions.length
         ? { nor: Buffer.from(new Float32Array(s.normals).buffer).toString('base64') } : {}),
       idx: Buffer.from(new Uint32Array(s.indices).buffer).toString('base64'),
+      ...(s.light?.length === s.positions.length / 3
+        ? { li: Buffer.from(new Float32Array(s.light).buffer).toString('base64') } : {}),
       ...(s.piece === undefined ? {} : { piece: s.piece }),
       ...(s.piecePivot ? { piecePivot: s.piecePivot } : {}),
       ...(s.object === undefined ? {} : { object: s.object }),
@@ -828,6 +858,8 @@ export async function buildLevelPropsUncached(level: string): Promise<PropsPaylo
           lv: [instance.LightVector1, instance.LightVector2, instance.LightVector3]
             .flatMap(value => value?.slice(0, 3) ?? [0, 0, 0]),
         } : {}),
+        ...(coversModel(instance.VertexLighting, lightNeeded.get(instance.ModelID))
+          ? { vl: instance.VertexLighting } : {}),
         pc: instance.PlayerCollision !== false, pb: instance.PlayerBounce !== false,
         // the instance's ADL collision-sound event id (the prop-hit one-shot), omitted when none ships
         ...(instance.IncludeSound !== false && instance.Sounds && Number.isInteger(instance.Sounds.CollisonSound)
