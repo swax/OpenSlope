@@ -310,6 +310,16 @@ internal sealed class EffectsDocumentService
             payload.Remove("Offset");
             payload.Remove("ByteSize");
             payload.Remove("MainType");
+            // Effects.json owns the flat HUD payload used by the editor and bundlers. The library
+            // exposes the same data through its grouped HUD API.
+            payload.Remove("hudTextEffect");
+            if (effect.MainType == 12 && effect.hudTextEffect is { } hud)
+            {
+                payload["HudText"] = hud.HudText;
+                payload["HudRed"] = hud.HudRed;
+                payload["HudGreen"] = hud.HudGreen;
+                payload["HudBlue"] = hud.HudBlue;
+            }
             var references = new JObject();
 
             if (effect.MainType == 7 && payload["Instance"] is JObject instance)
@@ -492,6 +502,21 @@ internal sealed class EffectsDocumentService
             JObject refs = node["references"] as JObject ?? new JObject();
             payload["MainType"] = mainType;
 
+            if (mainType == 12)
+                payload["hudTextEffect"] = new JObject
+                {
+                    ["HudText"] = payload.Value<string>("HudText") ?? "",
+                    ["HudRed"] = payload.Value<float?>("HudRed") ?? 1f,
+                    ["HudGreen"] = payload.Value<float?>("HudGreen") ?? 1f,
+                    ["HudBlue"] = payload.Value<float?>("HudBlue") ?? 1f,
+                };
+            // Older exports included these union fields on every opcode. They belong only to
+            // HUD messages, and must be removed before the library's strict payload decoding.
+            payload.Remove("HudText");
+            payload.Remove("HudRed");
+            payload.Remove("HudGreen");
+            payload.Remove("HudBlue");
+
             if (mainType == 7)
             {
                 JObject instance = payload["Instance"] as JObject ?? new JObject();
@@ -637,6 +662,7 @@ internal sealed class EffectsDocumentService
                 4 => "wait",
                 7 => "instance.state",
                 8 => "audio.play",
+                12 => "hud.message",
                 13 => "rider.reset",
                 14 => "score.multiplier",
                 16 => "time.bonus",
