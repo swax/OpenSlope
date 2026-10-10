@@ -634,6 +634,7 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         var materials = new List<object>();
         var rows = new List<object>();
         var helperModels = new HashSet<int>();
+        var lightingStreams = new Dictionary<int, int>(); // model id -> vertices in its vertex-lighting stream
 
         int Material((int track, int rid) key)
         {
@@ -671,20 +672,23 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
             finally { Console.SetOut(stdout); }
 
             var objects = new List<object>();
-            int part = 0;
+            int part = 0, stream = 0;
             for (int o = 0; o < mdr.ModelObjects.Count; o++)
             {
                 var obj = mdr.ModelObjects[o];
                 var meshData = new List<object>();
                 foreach (var header in obj.unknownS2.ModelHeaderOffset ?? [])
                 {
-                    if (header.modelFaces is not { Count: > 0 }) continue;
+                    var (mesh, vertices, faces) = StreamMesh(header);
+                    int lightingBase = stream;
+                    stream += vertices;
+                    if (faces == 0) continue;
                     string meshPath = $"m{key.track}_{key.rid}_{part++}.obj";
-                    WriteMesh(Path.Combine(meshDir, meshPath), header.modelFaces);
+                    File.WriteAllText(Path.Combine(meshDir, meshPath), mesh);
                     int materialId = header.MaterialID >= 0 && header.MaterialID < mdr.MaterialList.Count
                         ? Material((mdr.MaterialList[header.MaterialID].TrackID, mdr.MaterialList[header.MaterialID].RID))
                         : -1;
-                    meshData.Add(new { MeshPath = meshPath, MaterialID = materialId });
+                    meshData.Add(new { MeshPath = meshPath, MaterialID = materialId, VertexLightingBase = lightingBase });
                 }
                 bool hasMatrix = obj.MatrixOffset > 0;
                 var (pos, rot, scale) = hasMatrix ? Decompose(obj.matrix4X4) : (null, null, null);
@@ -706,6 +710,7 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
             if (mdr.MaterialList.Count > 0 && mdr.MaterialList.All(material =>
                     materialData.TryGetValue((material.TrackID, material.RID), out var m) && m.TextureID == HelperTexture))
                 helperModels.Add(models.Count);
+            lightingStreams[models.Count] = stream;
             modelIds[key] = models.Count;
             models.Add(new
             {
@@ -743,6 +748,7 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
                 CollsionModelPaths = collide != null ? new[] { collide } : null,
                 PhysicsIndex = -1,
                 EffectSlotIndex = -1,
+                VertexLighting = VertexLighting(inst.VertexColors, lightingStreams[model.Value]),
             });
         }
 
@@ -864,31 +870,73 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         return (Vec(translation), [rotation.X, rotation.Y, rotation.Z, rotation.W], Vec(scale));
     }
 
-    private static void WriteMesh(string path, List<WorldMDR.ModelFace> faces)
+    /// <summary>
+    /// One model part as OBJ text, with its vertices in the game's own vertex stream: every vertex/UV record of the
+    /// part, in order, one `v`, `vt` and `vn` per stream vertex. An instance's baked lighting holds one colour per
+    /// stream vertex across all of the model's parts, so OBJ vertex <c>i</c> of a part lights from colour
+    /// <c>VertexLightingBase + i</c>. Faces are the records' triangle strips, cut and wound exactly as
+    /// <see cref="WorldMDR.GenerateFaces"/> cuts them. A record whose normal record is missing still holds its
+    /// place in the stream but draws nothing, as in the decoder.
+    /// [Trailmap: 513-vertex-light]
+    /// </summary>
+    internal static (string Obj, int Vertices, int Faces) StreamMesh(WorldMDR.ModelDataHeaderStruct header)
     {
-        var v = new Dictionary<Vector3, int>();
-        var t = new Dictionary<Vector2, int>();
-        var n = new Dictionary<Vector3, int>();
-        var f = new StringBuilder();
-        static int Index<T>(Dictionary<T, int> table, T key) where T : notnull
-        {
-            if (!table.TryGetValue(key, out int i)) table[key] = i = table.Count + 1;
-            return i;
-        }
-        foreach (var face in faces)
-        {
-            f.Append("f ")
-             .Append(Index(v, face.V1)).Append('/').Append(Index(t, face.UV1)).Append('/').Append(Index(n, face.Normal1)).Append(' ')
-             .Append(Index(v, face.V2)).Append('/').Append(Index(t, face.UV2)).Append('/').Append(Index(n, face.Normal2)).Append(' ')
-             .Append(Index(v, face.V3)).Append('/').Append(Index(t, face.UV3)).Append('/').Append(Index(n, face.Normal3)).Append('\n');
-        }
         var inv = CultureInfo.InvariantCulture;
-        var sb = new StringBuilder();
-        foreach (var p in v.Keys) sb.Append(inv, $"v {p.X} {p.Y} {p.Z}\n");
-        foreach (var uv in t.Keys) sb.Append(inv, $"vt {uv.X} {1 - uv.Y}\n"); // OBJ's V runs up
-        foreach (var nn in n.Keys) sb.Append(inv, $"vn {nn.X} {nn.Y} {nn.Z}\n");
-        sb.Append(f);
-        File.WriteAllText(path, sb.ToString());
+        var head = new StringBuilder();
+        var f = new StringBuilder();
+        int based = 0, faces = 0;
+        var records = header.ModelOffsetHeaders ?? [];
+        for (int b = 0; b + 1 < records.Count; b += 2)
+        {
+            var data = records[b].modelVandUVData;
+            if (data.Vertices is not { } vertices || data.UV is not { } uvs) continue;
+            var normals = records[b + 1].modelNormalData.Normals;
+            bool drawn = normals is { Count: > 0 } && data.Tristrip != null;
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                var p = vertices[i];
+                var uv = i < uvs.Count ? uvs[i] : Vector2.Zero;
+                var nn = drawn ? normals![Math.Min(i, normals.Count - 1)] : Vector3.UnitZ;
+                head.Append(inv, $"v {p.X} {p.Y} {p.Z}\n");
+                head.Append(inv, $"vt {uv.X} {1 - uv.Y}\n"); // OBJ's V runs up
+                head.Append(inv, $"vn {nn.X} {nn.Y} {nn.Z}\n");
+            }
+            if (drawn)
+            {
+                var cuts = new HashSet<int> { 0 };
+                int run = 0;
+                foreach (int length in data.Tristrip!) cuts.Add(run += length);
+                int local = 0;
+                bool flip = false;
+                for (int i = 0; i < vertices.Count; i++)
+                {
+                    if (cuts.Contains(i)) { flip = false; local = 1; continue; }
+                    if (local < 2) { local++; continue; }
+                    var (a, c) = flip ? (i, i - 2) : (i - 2, i);
+                    int A = based + a + 1, B = based + i, C = based + c + 1; // B is i - 1, 1-based
+                    f.Append(inv, $"f {A}/{A}/{A} {B}/{B}/{B} {C}/{C}/{C}\n");
+                    faces++;
+                    flip = !flip;
+                    local++;
+                }
+            }
+            based += vertices.Count;
+        }
+        return (head.Append(f).ToString(), based, faces);
+    }
+
+    /// <summary>
+    /// An instance's baked vertex lighting as the base64 of its raw ABGR1555 halfwords, little-endian, one per vertex
+    /// of its model's stream (<see cref="StreamMesh"/>); null when the tail does not cover the model exactly.
+    /// [Trailmap: 513-vertex-light, 513-vertex-light-placement]
+    /// </summary>
+    internal static string? VertexLighting(IReadOnlyList<int> colours, int streamVertices)
+    {
+        if (streamVertices == 0 || colours.Count != streamVertices) return null;
+        var bytes = new byte[colours.Count * 2];
+        for (int i = 0; i < colours.Count; i++)
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(i * 2), (ushort)colours[i]);
+        return Convert.ToBase64String(bytes);
     }
 
     /// <summary>

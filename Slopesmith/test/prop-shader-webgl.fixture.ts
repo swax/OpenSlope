@@ -20,6 +20,7 @@ interface ShaderSmokeResult {
   customPixel?: number[];
   nativePixel?: number[];
   batchedNativePixel?: number[];
+  bakedPixels?: number[][];
   clayLitPixel?: number[];
   clayDarkPixel?: number[];
   clayNoSunPixel?: number[];
@@ -245,6 +246,73 @@ async function run(): Promise<void> {
   if (batchedNativePixel[0] < nativePixel[0] + 80)
     throw new Error(`Batched native prop sampled the wrong light record: instanced record 0 ${nativePixel}, `
       + `batched record 1 ${batchedNativePixel}`);
+
+  // SSX 3 bakes its light into a colour per vertex per placement, and the GS multiplies the texel by it in the
+  // texel's own byte domain, saturating the product: 16 of 31 is the texture as drawn, 8 half of it, 31 nearly
+  // twice. Draw the neutral clay (sRGB c2 bb aa) at each through the real instanced and batched programs. The
+  // placement index rides the instance colour, so a lost index reads another placement's run.
+  const abgr = (r: number, g: number, b: number, a = 1) => (a << 15) | (b << 10) | (g << 5) | r;
+  textures.setVertexLighting([
+    { sourceIndex: 0, vertexLight: new Uint16Array(4).fill(abgr(8, 8, 8)) },
+    { sourceIndex: 1, vertexLight: new Uint16Array(4).fill(abgr(16, 16, 16)) },
+    { sourceIndex: 2, vertexLight: new Uint16Array(4).fill(abgr(31, 31, 31)) },
+    { sourceIndex: 3 },                                                     // a run that did not cover its model
+    { sourceIndex: 4, vertexLight: new Uint16Array(4).fill(abgr(16, 16, 16, 0)) },
+  ]);
+  const bakedGeometry = new THREE.PlaneGeometry(1, 1);
+  bakedGeometry.setAttribute('ps2StoredNormal', bakedGeometry.getAttribute('normal').clone());
+  bakedGeometry.setAttribute('ps2LightIndex', new THREE.BufferAttribute(new Float32Array([0, 1, 2, 3]), 1));
+  const baked = textures.native(textures.neutral, true);
+  if (!textures.isVertexLit(baked) || !textures.isNative(baked)) throw new Error('Vertex-lit variant lost its mode');
+  const drawBaked = (material: THREE.Material, sourceIndex: number): number[] => {
+    const mesh = new THREE.InstancedMesh(bakedGeometry, material, 1);
+    mesh.setMatrixAt(0, new THREE.Matrix4());
+    mesh.setColorAt(0, propLightIndexColor(sourceIndex));
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor!.needsUpdate = true;
+    scene.add(mesh);
+    renderer.render(scene, camera);
+    const pixel = centrePixel(renderer);
+    scene.remove(mesh);
+    mesh.dispose();
+    return pixel;
+  };
+  const near = (pixel: number[], want: number[], tolerance = 8) =>
+    want.every((value, channel) => Math.abs(pixel[channel] - value) <= tolerance);
+  const bakedHalfPixel = drawBaked(baked, 0);
+  const bakedTruePixel = drawBaked(baked, 1);
+  const bakedOverPixel = drawBaked(baked, 2);
+  const bakedNonePixel = drawBaked(baked, 3);
+  if (!near(bakedTruePixel, [0xc2, 0xbb, 0xaa]))
+    throw new Error(`Vertex colour 16 did not draw the texel as stored: ${bakedTruePixel}`);
+  if (!near(bakedHalfPixel, [0xc2 / 2, 0xbb / 2, 0xaa / 2]))
+    throw new Error(`Vertex colour 8 did not halve the texel in its byte domain: ${bakedHalfPixel}`);
+  if (!near(bakedOverPixel, [255, 255, 255], 2))
+    throw new Error(`Vertex colour 31 did not saturate the brightened texel: ${bakedOverPixel}`);
+  if (!near(bakedNonePixel, bakedTruePixel, 2))
+    throw new Error(`A placement without colours did not draw at texture brightness: ${bakedNonePixel}`);
+
+  const bakedBatch = new THREE.BatchedMesh(1, 4, 6, baked);
+  bakedBatch.setMatrixAt(bakedBatch.addInstance(bakedBatch.addGeometry(bakedGeometry)), new THREE.Matrix4());
+  bakedBatch.setColorAt(0, propLightIndexColor(0));
+  scene.add(bakedBatch);
+  renderer.render(scene, camera);
+  const bakedBatchedPixel = centrePixel(renderer);
+  scene.remove(bakedBatch);
+  bakedBatch.dispose();
+  if (!near(bakedBatchedPixel, bakedHalfPixel, 2))
+    throw new Error(`Batched vertex-lit prop read the wrong run: ${bakedBatchedPixel} vs ${bakedHalfPixel}`);
+
+  // The colour's top bit is coverage. A blended sheet whose vertices clear it must vanish over the clear colour.
+  const bakedFade = textures.variant(baked);
+  bakedFade.transparent = true;
+  renderer.setClearColor(0x0000ff, 1);
+  const bakedFadePixel = drawBaked(bakedFade, 4);
+  renderer.setClearColor(0x000000, 1);
+  bakedFade.dispose();
+  if (!near(bakedFadePixel, [0, 0, 255], 2))
+    throw new Error(`Vertex alpha 0 did not clear a blended vertex-lit sheet: ${bakedFadePixel}`);
+  textures.setVertexLighting(null);
 
   // Runtime frame selection happens AFTER every intact pane has already uploaded the same loader Source.
   // Exercise that exact WebGL-cache boundary: cracking A must allocate a new map/source/GPU texture and B must
@@ -472,6 +540,7 @@ async function run(): Promise<void> {
     customPixel,
     nativePixel,
     batchedNativePixel,
+    bakedPixels: [bakedHalfPixel, bakedTruePixel, bakedOverPixel, bakedNonePixel, bakedBatchedPixel, bakedFadePixel],
     clayLitPixel,
     clayDarkPixel,
     clayNoSunPixel,
@@ -491,6 +560,7 @@ async function run(): Promise<void> {
   nativeGeometry.dispose();
   batchedGeometry.dispose();
   batched.dispose();
+  bakedGeometry.dispose();
   sheetGeometry.dispose();
   instancedGeometry.dispose();
   flipGeometry.dispose();

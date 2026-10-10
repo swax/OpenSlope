@@ -49,6 +49,9 @@ export interface PropSub {
   normals?: Float32Array;
   /** Triangle indices into positions / uvs. */
   indices: Uint32Array;
+  /** Each vertex's place in its model's baked vertex-lighting stream (SSX 3): the colour a placement's
+   *  `vertexLight` holds for it. */
+  light?: Float32Array;
   /** Native model-object index when this submesh is an independently throwable piece. */
   piece?: number;
   /** Native model-local rotation pivot shared by every material submesh belonging to this piece. */
@@ -228,6 +231,10 @@ export interface PropInstance {
     ambient: V3;
     keys: { color: V3; direction: V3 }[];
   };
+  /** SSX 3's baked vertex lighting: one ABGR1555 colour per vertex of the model's stream (`PropSub.light`),
+   *  16 of 31 per channel being the texture as drawn and the top bit the vertex's alpha
+   *  [Trailmap: 513-vertex-light, 513-vertex-light-scale, 513-vertex-alpha]. */
+  vertexLight?: Uint16Array;
 }
 
 export interface PropMaterial {
@@ -290,6 +297,7 @@ export interface PropsPayload {
   /** Snowknife's map-local, user-generated audio resolver sidecar. */
   soundIndex?: CollisionSoundIndex;
   models: { id: number; name: string; subs: { mat: number; pos: string; uv: string; nor?: string; idx: string;
+    /** vertex-lighting stream index per vertex, Float32 */ li?: string;
     piece?: number; piecePivot?: number[]; object?: number }[];
     rotation?: PropModelRotation; animation?: PropModelAnimation;
     /** Emitters the SOURCE MODEL declared (an imported GLB's glTF `extras`, docs/032). */
@@ -319,6 +327,7 @@ export interface PropsPayload {
     /** Native LTG list state; omitted for the common state 0. */ ls?: number;
     /** Native ambient RGB plus three flattened key RGB / direction vectors. */
     la?: number[]; lk?: number[]; lv?: number[];
+    /** baked vertex lighting, ABGR1555 halfwords (SSX 3); omitted when it does not cover the model */ vl?: string;
     /** exact PlayerCollision / PlayerBounce gates */ pc?: boolean; pb?: boolean;
     /** collision-sound event id; omitted when the instance ships no sound record */ hs?: number;
     /** contact class: 0 ghost, 1 ride-through touch, 2 solid; 3 is accepted from older cached payloads */ c?: number;
@@ -340,6 +349,13 @@ function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Little-endian halfwords, whatever the bytes' alignment. */
+function halfwords(bytes: Uint8Array): Uint16Array {
+  const out = new Uint16Array(bytes.byteLength >> 1);
+  for (let i = 0; i < out.length; i++) out[i] = bytes[i * 2] | (bytes[i * 2 + 1] << 8);
   return out;
 }
 
@@ -411,12 +427,14 @@ export function decodeProps(payload: PropsPayload): LevelProps {
       const ub = b64ToBytes(s.uv);
       const nb = s.nor ? b64ToBytes(s.nor) : null;
       const ib = b64ToBytes(s.idx);
+      const lb = s.li ? b64ToBytes(s.li) : null;
       return {
         mat: s.mat,
         positions: new Float32Array(pb.buffer, 0, pb.byteLength / 4),
         uvs: new Float32Array(ub.buffer, 0, ub.byteLength / 4),
         ...(nb ? { normals: new Float32Array(nb.buffer, 0, nb.byteLength / 4) } : {}),
         indices: new Uint32Array(ib.buffer, 0, ib.byteLength / 4),
+        ...(lb ? { light: new Float32Array(lb.buffer, 0, lb.byteLength / 4) } : {}),
         ...(Number.isInteger(s.piece) ? { piece: s.piece } : {}),
         ...(s.piecePivot?.length === 3
           ? { piecePivot: [s.piecePivot[0], s.piecePivot[1], s.piecePivot[2]] as V3 } : {}),
@@ -464,6 +482,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
         }),
       },
     } : {}),
+    ...(i.vl ? { vertexLight: halfwords(b64ToBytes(i.vl)) } : {}),
   }));
   const materials = new Map<number, PropMaterial>(payload.materials.map(x => {
     const alphaMode = propAlphaMode(x.alphaMode);

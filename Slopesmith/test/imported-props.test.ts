@@ -46,7 +46,8 @@ import { preflightFor } from '../src/server/routes/preflight';
 import { createPropAssets } from '../src/app/viewport/scene/prop-assets';
 import { createPropsLayer } from '../src/app/viewport/scene/props';
 import { ps2ColorModulationShaderApplies, ps2NormalShaderApplies, ps2ObjectNormalVertexShaderApplies,
-  propKeyScaleShader, propKeyScaleShaderApplies, propLightIndexColor } from '../src/app/props/textures';
+  ps2VertexLightVertexShaderApplies, propKeyScaleShader, propKeyScaleShaderApplies,
+  propLightIndexColor } from '../src/app/props/textures';
 import { PROP_FULL_BRIGHT_FACTOR, PROP_FULL_BRIGHT_RECORD, PROP_LAMBERT_IRRADIANCE,
   propPreviewIntensity, propRecordScreenFactor, rawSunVector } from '../src/core/lighting/prop-lights';
 import { groundLightSampler } from '../src/core/lighting/ground-light';
@@ -1199,6 +1200,8 @@ try {
     'the in-game prop shading rewrite still matches three.js\'s shader source');
   check(ps2ObjectNormalVertexShaderApplies(),
     'the native-light shader still receives each model-local stored normal');
+  check(ps2VertexLightVertexShaderApplies(),
+    'the SSX 3 baked-light lookup still lands after the vertex colour three.js computes');
 
   // The preview's per-prop key rides the same kind of anchor. A three.js upgrade that renamed it would
   // flatten every prop back to one uniform key — which looks entirely plausible on screen, and is exactly

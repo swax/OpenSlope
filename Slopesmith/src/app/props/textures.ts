@@ -48,6 +48,19 @@ function emptyNativeLightTexture(): THREE.DataTexture {
   return texture;
 }
 
+/** A square nearest-sampled lookup texture holding `texels` entries in row order. */
+function lookupTexture<T extends Float32Array | Uint8Array>(texels: number, channels: 1 | 4,
+  make: (length: number) => T, fill?: number): { texture: THREE.DataTexture; data: T } {
+  const size = Math.max(1, Math.ceil(Math.sqrt(texels)));
+  const data = make(size * size * channels);
+  if (fill !== undefined) data.fill(fill);
+  const texture = new THREE.DataTexture(data, size, size, channels === 1 ? THREE.RedFormat : THREE.RGBAFormat,
+    data instanceof Float32Array ? THREE.FloatType : THREE.UnsignedByteType);
+  texture.minFilter = texture.magFilter = THREE.NearestFilter;
+  texture.needsUpdate = true;
+  return { texture, data };
+}
+
 /**
  * Rewrite a Lambert fragment shader so the back-face normal flip becomes switchable at `uPs2Normals`
  * (0 = three.js's flip, 1 = the hardware's: use the normal as stored). Exported for the check below.
@@ -115,6 +128,49 @@ export function ps2ObjectNormalVertexShaderApplies(): boolean {
     && patched.includes('vPs2ObjectNormal = normalize( ps2StoredNormal );');
 }
 
+/**
+ * Fetch one vertex's BAKED light, SSX 3's per-placement vertex colour, into `vPs2VertexLight`.
+ *
+ * SSX 3 ships no light record on its placements. Each one carries a colour for every vertex of its model,
+ * already lit (`PropInstance.vertexLight`), and the hardware multiplies the texel by it, interpolated across
+ * the triangle. So the lookup is per vertex: the placement's index rides the same instance-colour channel as
+ * the native record lookup, `uVertexLightBases` turns it into that placement's first colour, and `ps2LightIndex`
+ * is the vertex's place in the model's stream. Colours are stored as the GS reads them, five bits widened to
+ * eight, so 128 of 255 is the texture as drawn and 248 nearly twice it. A placement with no colours (base −1)
+ * draws at the texture's own brightness. [Trailmap: 513-vertex-light, 513-vertex-light-scale]
+ */
+export function ps2VertexLightVertexShader(vertexShader: string): string {
+  const declarations = `attribute float ps2LightIndex;
+uniform float uVertexLight;
+uniform sampler2D uVertexLightTable;
+uniform sampler2D uVertexLightBases;
+varying vec4 vPs2VertexLight;`;
+  const lookup = `#include <color_vertex>
+	vPs2VertexLight = vec4( 1.0 );
+#if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA ) || defined( USE_INSTANCING_COLOR ) || defined( USE_BATCHING_COLOR )
+	if ( uVertexLight > 0.5 ) {
+		int placement = int( dot( floor( vColor.rgb * 255.0 + 0.5 ), vec3( 1.0, 256.0, 65536.0 ) ) );
+		int baseSize = textureSize( uVertexLightBases, 0 ).x;
+		float base = texelFetch( uVertexLightBases, ivec2( placement % baseSize, placement / baseSize ), 0 ).r;
+		if ( base >= 0.0 ) {
+			int texel = int( base ) + int( ps2LightIndex + 0.5 );
+			int size = textureSize( uVertexLightTable, 0 ).x;
+			vec4 colour = texelFetch( uVertexLightTable, ivec2( texel % size, texel / size ), 0 );
+			vPs2VertexLight = vec4( colour.rgb * ( 255.0 / 128.0 ), colour.a );
+		}
+	}
+#endif`;
+  return vertexShader
+    .replace('void main() {', `${declarations}\nvoid main() {`)
+    .replace('#include <color_vertex>', lookup);
+}
+
+/** As above: a Three upgrade renaming `color_vertex` would leave every SSX 3 prop at texture brightness. */
+export function ps2VertexLightVertexShaderApplies(): boolean {
+  const patched = ps2VertexLightVertexShader('void main() {\n#include <color_vertex>\n}');
+  return patched.includes('attribute float ps2LightIndex;') && patched.includes('vPs2VertexLight = vec4( colour.rgb');
+}
+
 /** As above: a three upgrade that renames the anchor would silently flatten every prop back to one uniform
  *  key, which looks plausible and is exactly the bug this preview exists to rule out. */
 export function propKeyScaleShaderApplies(): boolean {
@@ -138,7 +194,9 @@ export function ps2ColorModulationShader(fragmentShader: string): string {
 
 	if ( uPs2Normals > 0.5 && max( max( diffuseColor.r, diffuseColor.g ), diffuseColor.b ) > 0.000001 ) {
 		vec3 ps2Light;
-		if ( uNativeRecords > 0.5 ) {
+		if ( uVertexLight > 0.5 ) {
+			ps2Light = vPs2VertexLight.rgb;
+		} else if ( uNativeRecords > 0.5 ) {
 			float instanceIndex = ps2NativeInstanceIndex();
 			vec3 objectNormal = normalize( vPs2ObjectNormal );
 			ps2Light = ps2NativeLightTexel( instanceIndex, 0 ).rgb;
@@ -152,15 +210,22 @@ export function ps2ColorModulationShader(fragmentShader: string): string {
 				/ max( diffuseColor.rgb, vec3( 0.000001 ) );
 		}
 		vec3 ps2Srgb = sRGBTransferOETF( vec4( diffuseColor.rgb, 1.0 ) ).rgb;
-		ps2Srgb *= clamp( ps2Light, vec3( 0.0 ), vec3( 1.0 ) );
+		// The GS saturates the PRODUCT. A Tricky record already tops out at texture-true, so clamping the light
+		// first changes nothing there; an SSX 3 vertex colour reaches 31/16 and must survive to the multiply.
+		ps2Srgb = min( ps2Srgb * clamp( ps2Light, vec3( 0.0 ), vec3( mix( 1.0, 2.0, uVertexLight ) ) ), vec3( 1.0 ) );
 		outgoingLight = sRGBTransferEOTF( vec4( ps2Srgb, 1.0 ) ).rgb + totalEmissiveRadiance;
 	}`;
+  // SSX 3's vertex alpha (the colour's top bit) is coverage, not light [Trailmap: 513-vertex-alpha]: it fades a
+  // snow stream's edges whether or not the preview is lit, and it has to land before the alpha test reads it.
   const color = THREE.ShaderChunk.color_fragment
     .replace('diffuseColor *= vColor;', 'diffuseColor *= mix( vColor, vec4( 1.0 ), uNativeRecords );')
-    .replace('diffuseColor.rgb *= vColor;', 'diffuseColor.rgb *= mix( vColor, vec3( 1.0 ), uNativeRecords );');
+    .replace('diffuseColor.rgb *= vColor;', 'diffuseColor.rgb *= mix( vColor, vec3( 1.0 ), uNativeRecords );')
+    + '\ndiffuseColor.a *= mix( 1.0, vPs2VertexLight.a, uVertexLight );';
   const declarations = `uniform float uNativeRecords;
+uniform float uVertexLight;
 uniform sampler2D uNativeLightTable;
 varying vec3 vPs2ObjectNormal;
+varying vec4 vPs2VertexLight;
 float ps2NativeInstanceIndex() {
 #if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )
 	// r185 classifies BatchedMesh's vec4 batching colour as USE_COLOR_ALPHA. RGB still carries the index.
@@ -366,6 +431,9 @@ export class PropTextureCache {
   private readonly fillScales = new WeakMap<THREE.Material, { value: number }>();
   private readonly nativeRecords = new WeakMap<THREE.Material, { value: number }>();
   private readonly nativeLightTable = { value: emptyNativeLightTexture() };
+  private readonly vertexLights = new WeakMap<THREE.Material, { value: number }>();
+  private readonly vertexLightTable = { value: lookupTexture(1, 4, n => new Uint8Array(n)).texture };
+  private readonly vertexLightBases = { value: lookupTexture(1, 1, n => new Float32Array(n), -1).texture };
   private readonly groundLitMats = new Map<string, THREE.Material>();
   private readonly nativeMats = new Map<string, THREE.Material>();
   private readonly fullBrightMats = new Map<string, THREE.Material>();
@@ -422,13 +490,17 @@ export class PropTextureCache {
     const keyScale = this.keyScaleUniform(m);
     const fillScale = this.fillScaleUniform(m);
     const nativeRecords = this.nativeRecordUniform(m);
+    const vertexLight = this.vertexLightUniform(m);
     m.onBeforeCompile = shader => {
       shader.uniforms.uPs2Normals = this.ps2Normals;   // shared: the flip is a global mode
       shader.uniforms.uKeyScale = keyScale;            // per material: the ground under THIS prop
       shader.uniforms.uFillScale = fillScale;          // per material: native ambient / authored ambient
       shader.uniforms.uNativeRecords = nativeRecords;
       shader.uniforms.uNativeLightTable = this.nativeLightTable;
-      shader.vertexShader = ps2ObjectNormalVertexShader(shader.vertexShader);
+      shader.uniforms.uVertexLight = vertexLight;      // per material: lit by SSX 3's baked vertex colours
+      shader.uniforms.uVertexLightTable = this.vertexLightTable;
+      shader.uniforms.uVertexLightBases = this.vertexLightBases;
+      shader.vertexShader = ps2VertexLightVertexShader(ps2ObjectNormalVertexShader(shader.vertexShader));
       shader.fragmentShader = ps2ColorModulationShader(propKeyScaleShader(ps2NormalShader(shader.fragmentShader)));
     };
     return m;
@@ -452,6 +524,41 @@ export class PropTextureCache {
     let u = this.nativeRecords.get(m);
     if (!u) this.nativeRecords.set(m, u = { value: 0 });
     return u;
+  }
+
+  private vertexLightUniform(m: THREE.Material): { value: number } {
+    let u = this.vertexLights.get(m);
+    if (!u) this.vertexLights.set(m, u = { value: 0 });
+    return u;
+  }
+
+  /**
+   * Install the active reference level's baked vertex lighting (SSX 3): every placement's colours, end to end,
+   * and where each placement's run starts. A level lit by records instead (Tricky) installs an empty table.
+   */
+  setVertexLighting(instances: readonly Pick<PropInstance, 'sourceIndex' | 'vertexLight'>[] | null): void {
+    const lit = (instances ?? []).filter(instance => instance.vertexLight?.length && instance.sourceIndex >= 0);
+    // Every placement gets a base, so one drawn with a vertex-lit material but carrying no colours reads −1.
+    const placements = (instances ?? []).reduce((value, instance) => Math.max(value, instance.sourceIndex + 1), 1);
+    const colours = lit.reduce((sum, instance) => sum + instance.vertexLight!.length, 0);
+    const bases = lookupTexture(placements, 1, n => new Float32Array(n), -1);
+    const table = lookupTexture(colours, 4, n => new Uint8Array(n));
+    let cursor = 0;
+    for (const instance of lit) {
+      bases.data[instance.sourceIndex] = cursor;
+      for (const colour of instance.vertexLight!) {
+        // ABGR1555 widened as the console's unpack widens it: five bits to the top of a byte.
+        const at = cursor++ * 4;
+        table.data[at] = (colour & 31) << 3;
+        table.data[at + 1] = ((colour >> 5) & 31) << 3;
+        table.data[at + 2] = ((colour >> 10) & 31) << 3;
+        table.data[at + 3] = colour & 0x8000 ? 255 : 0;
+      }
+    }
+    this.vertexLightTable.value.dispose();
+    this.vertexLightTable.value = table.texture;
+    this.vertexLightBases.value.dispose();
+    this.vertexLightBases.value = bases.texture;
   }
 
   /** Install the active reference level's exact per-instance ambient and three directional records. Colours
@@ -483,9 +590,11 @@ export class PropTextureCache {
     this.nativeLightTable.value = texture;
   }
 
-  /** Native retail material: same tile/animation, but the exact instance record supplies the PS2 light. */
-  native<T extends THREE.MeshLambertMaterial>(base: T): T {
-    let material = this.nativeMats.get(base.uuid) as T | undefined;
+  /** Native retail material: same tile/animation, but the exact instance record supplies the PS2 light — or,
+   *  with `vertexLit`, SSX 3's baked per-vertex colours do (`setVertexLighting`). */
+  native<T extends THREE.MeshLambertMaterial>(base: T, vertexLit = false): T {
+    const key = vertexLit ? `vertex:${base.uuid}` : base.uuid;
+    let material = this.nativeMats.get(key) as T | undefined;
     if (!material) {
       material = this.variant(base);
       const animated = this.animatedByMaterial.get(base);
@@ -511,16 +620,20 @@ export class PropTextureCache {
           ownsTextureSource: false,
           bound: new Set<THREE.Material>([material]),
         };
-        this.animatedMats.set(`native-runtime:${base.uuid}`, owned);
+        this.animatedMats.set(`native-runtime:${key}`, owned);
         this.animatedByMaterial.set(material, owned);
       }
       this.nativeRecordUniform(material).value = 1;
-      this.nativeMats.set(base.uuid, material);
+      this.vertexLightUniform(material).value = vertexLit ? 1 : 0;
+      this.nativeMats.set(key, material);
     }
     return material;
   }
 
   isNative(material: THREE.Material): boolean { return this.nativeRecordUniform(material).value > 0.5; }
+
+  /** Lit by SSX 3's baked vertex colours, so its geometry must carry `ps2LightIndex`. */
+  isVertexLit(material: THREE.Material): boolean { return this.vertexLightUniform(material).value > 0.5; }
 
   /**
    * The material for a prop standing on ground lit to `groundLight` (0 dark .. 1 full sun) — the preview
@@ -559,6 +672,7 @@ export class PropTextureCache {
     const array = materialTextureArray(m);
     if (array) useTextureArray(clone as unknown as THREE.MeshLambertMaterial, array, `variant:${m.uuid}`);
     this.nativeRecordUniform(clone).value = this.nativeRecordUniform(m).value;
+    this.vertexLightUniform(clone).value = this.vertexLightUniform(m).value;
     const animated = this.animatedByMaterial.get(m);
     // A variant draws the same animation, so it joins the bound set: scrolling reaches it through the shared
     // Texture, and a frame change reaches it because the fork rebinds everything in here. The set holds a
@@ -721,17 +835,18 @@ export class PropTextureCache {
    * `onBeforeCompile` — and with it the array sampling this material exists for.
    */
   propArrayMaterial(array: number, level: string, file: string,
-    opts: PropMaterialOpts & { native?: boolean }): THREE.MeshLambertMaterial | null {
+    opts: PropMaterialOpts & { native?: boolean; vertexLit?: boolean }): THREE.MeshLambertMaterial | null {
     const texture = this.arrayBank?.textures[array];
     if (!texture) return null;
     const mode = this.alphaMode({ level, file, frames: [], opts });
-    const k = `${array}|${mode}|${opts.sheet ? 1 : 0}${opts.native ? 1 : 0}`;
+    const k = `${array}|${mode}|${opts.sheet ? 1 : 0}${opts.native ? 1 : 0}${opts.vertexLit ? 1 : 0}`;
     let material = this.arrayMats.get(k);
     if (!material) {
       material = this.lit(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }));
       applyTextureAlphaMode(material, mode, !!opts.sheet);
       useTextureArray(material, texture, `prop:${k}`);
-      if (opts.native) this.nativeRecordUniform(material).value = 1;
+      if (opts.native || opts.vertexLit) this.nativeRecordUniform(material).value = 1;
+      if (opts.vertexLit) this.vertexLightUniform(material).value = 1;
       this.arrayMats.set(k, material);
     }
     return material;
