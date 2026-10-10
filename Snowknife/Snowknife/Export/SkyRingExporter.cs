@@ -150,7 +150,17 @@ internal static class SkyRingExporter
 
     private static double Parse(string value) => double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
 
-    private static double Azimuth(Vertex vertex) => Math.Atan2(vertex.Y, vertex.X) * 180.0 / Math.PI;
+    /// <summary>
+    /// A corner's bearing in degrees, on (−180, 180] with the seam itself at 180, where Slopesmith's panorama starts.
+    /// A seam corner rebuilt from float geometry can sit a hair below the axis (sin π is not zero) and measure as
+    /// −179.99999; read as is, its panel would run backwards from the panorama's far end.
+    /// </summary>
+    private static double Azimuth(Vertex vertex)
+    {
+        const double seamTolerance = 1e-3;
+        double degrees = Math.Atan2(vertex.Y, vertex.X) * 180.0 / Math.PI;
+        return 180 - Math.Abs(degrees) <= seamTolerance ? 180 : degrees;
+    }
 
     private static List<double> Cluster(IEnumerable<double> values, double tolerance)
     {

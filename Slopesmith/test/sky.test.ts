@@ -34,6 +34,16 @@ check(levels.length > 0, `levels shipping a sky: ${levels.join(', ') || '(none)'
 check(skyColorToHex(skyColorFromHex('#ff5500')) === '#ff5500', 'explicit TopColor survives the viewport colour-space round trip');
 check(skyColorToHex(skyColorFromBytes(255, 85, 0)) === '#ff5500', 'panorama-derived TopColor survives the viewport colour-space round trip');
 
+// A ring measured from float geometry can put a seam corner a hair past 180°: SSX 3's measures -179.999995°.
+// Read literally that is the panorama's far end, and the panel became an empty backwards span (a black column).
+{
+  const geometry = { radius: 1, topZ: 1, midZ: 0, bottomZ: -1, groundUvRadius: 0.5, groundIndex: 2, panels: [], tiles: [] };
+  const seam = panelRect({ index: 0, band: 'upper', azFrom: -179.9999949910438, azTo: 135 }, geometry);
+  const end = panelRect({ index: 1, band: 'upper', azFrom: -135, azTo: 179.99999 }, geometry);
+  check(seam.x0 === 0 && Math.abs(seam.x1 - 0.125) < 1e-9, `a panel starting a hair past the seam starts the panorama (${seam.x0}..${seam.x1})`);
+  check(end.x1 === 1 && Math.abs(end.x0 - 0.875) < 1e-9, `a panel ending a hair short of the seam ends the panorama (${end.x0}..${end.x1})`);
+}
+
 for (const level of levels) {
   const ring = await readSkyRing(level);
   const upper = ring.panels.filter(p => p.band === 'upper');
