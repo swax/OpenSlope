@@ -143,7 +143,8 @@ mount and hands off. Routes live one module per area in `api/` (workspace, chara
 export, levels, textures, props, skybox, blender) over the readers and writers in `routes/` (levels,
 textures, props, groups, export, preflight, png, blender). `api/common.ts` holds what every route
 module needs: body reading, JSON replies, the cache lifetime the user-asset byte routes send, and the two
-cache-invalidation scopes `api/maps-watch.ts` calls when the map library changes. `safe-name` owns the
+cache-invalidation scopes `api/maps-watch.ts` calls when the map library changes. `watch-tree` is the
+directory-only tree watch under both that and the projects watch. `safe-name` owns the
 extracted-data path-segment normalization used by every reader, plus `storeUnderFreeName` — the one place
 an uploaded asset picks the name it lands under, so no upload path can overwrite a name that is taken — and
 `retireName`, which every delete goes through so a freed name is never issued to a second asset.

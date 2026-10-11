@@ -1,4 +1,3 @@
-import { watch } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
@@ -8,7 +7,7 @@ import { migrateMountain } from '../core/doc/mountain';
 import { serializeMountain } from '../core/doc/serialize';
 import { ensureWorkspace } from './workspace-config';
 import {
-  canonicalDir, ensureDir, listSubdirectories, mapLimit, pathExists, readJson, readJsonOr, writeFileAtomic,
+  ensureDir, listSubdirectories, mapLimit, pathExists, readJson, readJsonOr, writeFileAtomic,
   writeJsonAtomic, READ_CONCURRENCY,
 } from './fs-async';
 import {
@@ -18,6 +17,7 @@ import {
 } from './project-checkpoints';
 import { retireName, safeDataName, storeUnderFreeName } from './routes/safe-name';
 import { serialize } from './serialize';
+import { watchTree } from './watch-tree';
 import { runInWorker, WorkerTaskError } from './worker-pool';
 import { holds, type Role } from './accounts/policy';
 import { createLogger } from './log';
@@ -389,23 +389,24 @@ export async function watchProjectWrites(): Promise<() => void> {
     }
   };
 
-  // Canonical, because a recursive watch opened on an 8.3 short path aborts the process — see `canonicalDir`.
-  // Only the handle needs it: what comes back is relative to the watched directory either way, so the folder
-  // this reconciles stays the one the rest of the store names.
-  const watcher = watch(await canonicalDir(root), { recursive: true }, (_event, filename) => {
+  // What comes back is relative to the watched directory, so the folder this reconciles stays the one the rest
+  // of the store names.
+  const tree = await watchTree(root, filename => {
     if (filename === null) return;
-    const parts = filename.toString().split(/[\\/]/);
+    const parts = filename.split(/[\\/]/);
     if (parts.length !== 2 || basename(parts[1]) !== 'project.json') return;
     const dir = join(root, parts[0]);
     // Debounced per project: an atomic write is a temp file plus a rename, and several events for one save.
     clearTimeout(pending.get(dir));
     pending.set(dir, setTimeout(() => { void reconcile(dir); }, 150));
+  }, {
+    onError: error => log.warn('projects watch incomplete; outside writes there reach rooms only at their next snapshot',
+      { error }),
   });
-  watcher.on('error', error => log.warn('the projects watch stopped', { error }));
   return () => {
     for (const timer of pending.values()) clearTimeout(timer);
     pending.clear();
-    watcher.close();
+    tree.close();
   };
 }
 

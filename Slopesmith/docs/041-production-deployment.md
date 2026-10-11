@@ -121,6 +121,19 @@ sudo chown -R slopesmith:slopesmith /srv/slopesmith
 Copy the extracted reference library into `/srv/slopesmith/maps`. It must already exist when the API starts;
 Slopesmith refuses a misspelled map path rather than silently presenting an empty library.
 
+The service watches the maps library and the workspace's projects folder with one inotify watch per
+**directory**, never per file (`src/server/watch-tree.ts`), so a library of about 58,000 files costs about 500
+watches against the kernel's per-user `fs.inotify.max_user_watches`, which defaults to roughly 30,000 on a 4-GiB
+host. Node's own `recursive: true` watch on Linux opens a watch per file and ran out on that library, without
+saying so at startup. If the journal shows `maps watch incomplete` or `projects watch incomplete`, raise the limit
+and restart:
+
+```sh
+echo fs.inotify.max_user_watches=262144 | sudo tee /etc/sysctl.d/60-slopesmith-inotify.conf
+sudo sysctl --system
+sudo systemctl restart slopesmith
+```
+
 ## Bootstrap the first immutable release
 
 The repository pins Node 24 in `.nvmrc` and `package.json`. The build produces two independent artifacts:
