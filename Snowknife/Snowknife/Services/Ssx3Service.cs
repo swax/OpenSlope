@@ -728,7 +728,7 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         {
             int? model = Model((inst.ModelID.TrackID, inst.ModelID.RID));
             if (model is null) continue;
-            var (pos, rot, scale) = Decompose(inst.matrix4X4);
+            var (pos, rot, scale) = Placement(inst);
             var (visible, solid) = Classify(inst.Name, helperModels.Contains(model.Value));
             string? collide = solid
                 ? collisionFiles.GetValueOrDefault(inst.Name)
@@ -855,6 +855,19 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         foreach (var (section, name, modelTrack, modelRid) in instances)
             if (byOwner.TryGetValue(name, out string? file)) shared.TryAdd((section, modelTrack, modelRid), file);
         return shared;
+    }
+
+    /// <summary>
+    /// An instance's placement. Its matrix holds only rotation and position; its uniform scale is the float that
+    /// follows the model id (<see cref="WorldInstance.Scale"/>), applied before the matrix and negative on a few
+    /// mirrored props. The game's world box agrees with it, and so do the collision proxies, which are in the
+    /// unscaled model's space.
+    /// [Trailmap: 513-scale]
+    /// </summary>
+    internal static (float[] pos, float[] rot, float[] scale) Placement(WorldInstance inst)
+    {
+        var (pos, rot, scale) = Decompose(inst.matrix4X4);
+        return (pos, rot, [scale[0] * inst.Scale, scale[1] * inst.Scale, scale[2] * inst.Scale]);
     }
 
     private static (float[] pos, float[] rot, float[] scale) Decompose(Matrix4x4 m)
