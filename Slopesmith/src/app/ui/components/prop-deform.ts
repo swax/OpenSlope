@@ -22,13 +22,16 @@ export function addPropDeformTools(gui: GUI, deform: PropDeformOps) {
   tip(gui.add(controls, 'slices', { Original: 1, Low: 8, Smooth: 16, Fine: 32 }).name('bend detail')
     .onChange((n: number) => deform.setSlices(Number(n))), 'Adds cuts along the length so a sparse prop can bend. Texture coordinates are interpolated.');
   note(gui, `${state.triangles.toLocaleString()} triangles · Apply saves a new library variant for this placement. Other placements keep their shape.`);
-  note(gui, 'Collidable props use the deformed mesh. Escape cancels; Ctrl+Z undoes a cage edit.');
+  note(gui, 'Collidable props use the deformed mesh. Ctrl+Z undoes a cage edit. Escape closes the editor; an unapplied draft is kept and comes back the next time you deform this prop.');
   if (state.folded) note(gui, 'The cage folds over or collapses. Spread its controls apart before applying.');
   const undo = gui.add(deform, 'undo').name('undo cage edit'); if (!state.canUndo) undo.disable();
   const redo = gui.add(deform, 'redo').name('redo cage edit'); if (!state.canRedo) redo.disable();
   gui.add(deform, 'reset').name('reset cage');
   const apply = gui.add({ apply: () => void deform.apply() }, 'apply').name(state.busy ? 'saving…' : 'apply as new variant');
   if (state.folded || state.busy) apply.disable();
-  gui.add(deform, 'cancel').name('cancel (Esc)');
+  gui.add(deform, 'close').name('close (Esc)');
+  const discard = tip(gui.add(deform, 'discard').name('discard draft'),
+    'Throw this cage draft away and close. Closing instead keeps it for the next time you deform this prop.');
+  if (!state.changed) discard.disable();
   if (state.busy) gui.controllersRecursive().forEach(c => c.disable());
 }
