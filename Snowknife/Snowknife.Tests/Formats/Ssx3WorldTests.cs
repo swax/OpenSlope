@@ -340,6 +340,28 @@ public class Ssx3WorldTests
         Assert.False(shared.ContainsKey((1, 30, 9)));   // a model with no collision stays without
     }
 
+    // [Trailmap: 513-scale]
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(0.4641f)]   // a boulder placed at under half size
+    [InlineData(-1.311f)]   // a mirrored pipe
+    public void AnInstancesScaleIsTheFloatAfterItsModelAppliedBeforeItsMatrix(float instanceScale)
+    {
+        var matrix = Matrix4x4.CreateFromYawPitchRoll(0.3f, -1.1f, 2.0f) * Matrix4x4.CreateTranslation(-6986, -93180, 87348);
+        var inst = new WorldInstance { matrix4X4 = matrix, Scale = instanceScale };
+
+        var (pos, rot, scale) = Ssx3Service.Placement(inst);
+
+        var placed = Matrix4x4.CreateScale(scale[0], scale[1], scale[2])
+            * Matrix4x4.CreateFromQuaternion(new Quaternion(rot[0], rot[1], rot[2], rot[3]))
+            * Matrix4x4.CreateTranslation(pos[0], pos[1], pos[2]);
+        foreach (var corner in new[] { new Vector3(-3038, -2089, -19), new Vector3(2252, 1498, 3475) })
+        {
+            var expected = Vector3.Transform(corner, Matrix4x4.CreateScale(instanceScale) * matrix);
+            Assert.InRange((Vector3.Transform(corner, placed) - expected).Length(), 0, 0.5f);
+        }
+    }
+
     static WorldMDR.ModelData Record(int vertices, int[] strips) => new()
     {
         modelVandUVData = new WorldMDR.ModelVandUVData
