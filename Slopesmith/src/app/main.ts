@@ -78,6 +78,7 @@ import { createRegisterSync } from './net/register-sync';
 import { createAwareness } from './net/awareness';
 import { createSyncStatus } from './state/sync-status';
 import { loadSettings, saveSettings } from './state/settings';
+import { confirmUnloadWithUnsavedWork, holdUnsavedWork } from './state/unsaved-work';
 import type { PeerMarks } from './viewport/scene/peers';
 import { emptyJukeboxState, jukeboxPosition, type JukeboxState } from '../core/session/jukebox';
 import type {
@@ -1160,7 +1161,7 @@ const propOps = createPropOps({
   updateCmdSheet: () => updateCmdSheet(),
 });
 const propDeform = createPropDeformOps({
-  store, viewport, isWritable: () => projectSync.isWritable(),
+  store, viewport, projectId: () => projectSync.current()?.id ?? '', isWritable: () => projectSync.isWritable(),
   ensureModels: () => propOps.ensurePropLevel(IMPORTED_PROP_LEVEL),
   reloadModels: () => propOps.reloadImportedProps(), commit,
   rebuild: scheduleRebuild, tools: () => { rebuildTools(); histBar.refresh(); },
@@ -1980,7 +1981,7 @@ function goToEffects(target?: { sourceIndex: number; called: true }): void {
 }
 
 function setMode(m: Mode) {
-  propDeform.cancel();
+  if (m !== 'props') propDeform.leave(); // a changed cage draft parks until Props shows its prop again
   propOps.cancelPropReplacement();
   usersMode.setActive(false); // Users is its own mode: picking a numbered one leaves it (docs/038)
   usersBar.refresh();
@@ -1994,11 +1995,13 @@ function setMode(m: Mode) {
   if (m !== 'edit') cancelPastePlacement(false);
   if (m !== 'edit') cancelBridge(false, false);
   if (m !== 'edit') exitRegion(); // box-select is an Edit-only tool
+  if (m !== 'edit' && store.surgeryTool === 'trail') edit.finishCreateTrail(); // leaving the trail tool finishes it, as Enter / Esc do
   if (m !== 'edit' && store.surgeryTool) { store.surgeryTool = null; viewport.setSurgeryTool(null); } // surgery is Edit-only
   if (m !== 'edit' && store.weldTool) { store.weldTool = null; store.weldSource = []; store.weldEdgeSource = []; viewport.setWeldTool(false); } // the weld gesture is Edit-only too
   if (m !== 'edit') clearCreateEdge();
   if (m !== 'edit' && store.modelEditId) exitModelEdit(false); // model editing is an Edit-mode session; other modes see the mountain
   if (m !== 'props') { // the trick tools (rails + gems), prop lines and the screens live in Props mode
+    trickTools.discardUnfinishedRail(); // a rail left with under two points could never be finished or reached again
     store.railDrawing = false; viewport.setRailArmed(false); store.selectedRail = null; store.selectedNode = null;
     store.lineDrawing = false; viewport.setLineDrawing(false); store.selectedLine = null; store.selectedLineNode = null;
     store.gemArmed = false; viewport.setGemArmed(false); store.selectedGem = null; store.trickTool = null;
@@ -2023,6 +2026,7 @@ function setMode(m: Mode) {
     if (carriedProp !== null) effects.selectAuthoredPropEffect(carriedProp);
     else if (carriedRefSource !== undefined) selectRefEffectWhenReady(carriedRefSource);
   } else pendingRefEffectSelect = null; // a pick pending on the fetch dies with the mode
+  if (m === 'props') propDeform.sync(); // …and resumes when it does
   applyCage(); // Edit implicitly shows the cage; leaving it restores the saved cage toggle.
   if (m === 'play') { // entering Play leaves mountain visibility alone and shows the target's editable start marker
     if (store.playTarget === 'reference' && !viewport.canRideReference) store.playTarget = 'authored';
@@ -3103,3 +3107,8 @@ window.addEventListener('beforeunload', persistView);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistView(); });
 window.addEventListener('pagehide', () => { void projectSync.flush(true); });
 window.addEventListener('beforeunload', () => { void projectSync.flush(true); });
+// Drafts held outside the document are not in any of those flushes: ask before a reload or close drops them.
+holdUnsavedWork(() => propDeform.unsaved);
+holdUnsavedWork(() => viewport.courseDrawing && viewport.courseDrawPoints.length > 1 ? 'a course being redrawn' : null);
+holdUnsavedWork(() => (store.bridgeRails?.length ?? 0) > 1 ? 'a bridge being built' : null);
+window.addEventListener('beforeunload', confirmUnloadWithUnsavedWork);

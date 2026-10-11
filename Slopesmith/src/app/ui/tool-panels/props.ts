@@ -1594,8 +1594,11 @@ export function createPropTools(ctx: ToolsContext) {
         actionRows.push(editAction.domElement);
       }
       if (prop.level === IMPORTED_PROP_LEVEL && !prop.group && !prop.line) {
-        const deform = tip(gui.add({ deform: () => modelEdit.deform(store.selectedProp!) }, 'deform').name('deform with cage'),
-          'Bend, stretch, twist or taper this prop with a Bézier box. Apply saves a new variant for this placement.');
+        const draft = ctx.propDeform.hasStoredDraft(prop.model);
+        const deform = tip(gui.add({ deform: () => modelEdit.deform(store.selectedProp!) }, 'deform')
+          .name(draft ? 'deform with cage · resume draft' : 'deform with cage'),
+          'Bend, stretch, twist or taper this prop with a Bézier box. Apply saves a new variant for this placement.'
+          + (draft ? ' Opens with the unapplied cage you left; Ctrl+Z there returns to the current shape.' : ''));
         actionRows.push(deform.domElement);
       }
       // The escape hatch, on the prop itself rather than only in the library's right-click menu — this is

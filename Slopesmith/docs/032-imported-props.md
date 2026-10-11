@@ -75,8 +75,17 @@ shows a Bézier box with four sections along its longest local axis.
   section. Rotation and scaling allow twisting and tapering. **Corners** exposes all sixteen points.
 - **Bend detail** adds cuts along the length, interpolating texture coordinates within each material.
   Original adds no cuts; Low, Smooth and Fine use 8, 16 and 32 slices. The 50,000-triangle limit still applies.
-- **Ctrl+Z / Ctrl+Y** undo and redo cage edits. **Escape** cancels the draft. Changing **length axis** or
-  using **reset cage** restores the straight source; these actions can also be undone.
+- **Ctrl+Z / Ctrl+Y** undo and redo cage edits. Changing **length axis** or using **reset cage** restores the
+  straight source; these actions can also be undone.
+- An unapplied draft is not lost by looking elsewhere. Switching mode or selecting something else parks a
+  changed draft, and the editor resumes, with its undo history, when Props shows that placement again. If a
+  collaborator moves the placement, the editor re-opens around its new pose. The editor session ends on
+  **Escape** / **close**, a project switch, or when the placement is deleted or no longer shows that record.
+- Ending the session keeps the draft. Every changed draft is kept in the browser, newest per library record
+  (eight at most), and **deform with cage** (reading *resume draft*) reopens with it restored, even after a
+  reload. Restoring is one undoable step: Ctrl+Z returns to the prop's current shape, and undoing all the way
+  back forgets the draft. **Discard draft** throws it away; applying clears it. While a draft is open or
+  parked, the browser asks before a reload or close.
 - **Apply as new variant** saves a new mountain-library record and repoints only this placement. Its
   stable ID, transform and attachments remain. Document Undo restores the previous model. Other placements
   and the source library record retain their shape.
@@ -93,7 +102,9 @@ rejects collapsed or inverted cages, but does not detect every possible self-int
 to the surface, so stretching a shape also stretches its texture.
 
 Implementation: `core/props/deform.ts` owns the shared deformation and subdivision math;
-`app/props/deform.ts` owns the draft and save lifecycle; `viewport/scene/prop-deform.ts` draws the handles
+`app/props/deform.ts` owns the draft and save lifecycle (park, resume, the stored drafts under
+`slopesmith-deform-drafts-v1`); `app/state/unsaved-work.ts` is the shared unload guard that drafts outside the
+document register with; `viewport/scene/prop-deform.ts` draws the handles
 and preview. Editor-only `GET /api/custom-prop-record` reads the source and cage metadata, and
 `POST /api/custom-prop-deform` validates and bakes a new asset on the server. The ordinary prop catalogue
 contains only baked geometry, without the retained source.

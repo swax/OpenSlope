@@ -126,7 +126,7 @@ export function installShortcuts(deps: ShortcutDeps) {
         if (key === 'y' || e.shiftKey) deps.propDeform.redo(); else deps.propDeform.undo();
         return;
       }
-      if (e.key === 'Escape') { e.preventDefault(); deps.propDeform.cancel(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); deps.propDeform.close(); return; }
       if (!mod && !e.altKey && ['w', 'e', 'r'].includes(key)) {
         e.preventDefault(); deps.propDeform.transform(key === 'w' ? 'move' : key === 'e' ? 'rotate' : 'scale'); return;
       }
