@@ -9,7 +9,7 @@ consumes that contract.
 
 ## Generated contract
 
-`Trailmap/specs/data/ride-v1.json` is the shared machine-readable source for
+`Contracts/ride-v1.json` is the shared machine-readable source for
 the measured constants. `Slopesmith/tools/generate_ride_contract.py` generates:
 
 - `Unity/VRC/Riding/Board/RideableBoard.Contract.Generated.cs` for the Udon board;

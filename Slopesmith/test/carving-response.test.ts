@@ -10,7 +10,7 @@ interface ResponseCase {
   u: number; w: number; error: number; budget: number; lean: number; charge: number; boost: number;
   tuning: GroundResponseTuning; forwardAcceleration: number; lateralAcceleration: number;
 }
-const fixture = JSON.parse(readFileSync('../Trailmap/specs/data/carving-response-cases-v1.json', 'utf8')) as {
+const fixture = JSON.parse(readFileSync('../Contracts/carving-response-cases-v1.json', 'utf8')) as {
   cases: ResponseCase[];
 };
 const near = (actual: number, expected: number, label: string) =>

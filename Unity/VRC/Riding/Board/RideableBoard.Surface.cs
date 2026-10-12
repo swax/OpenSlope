@@ -18,7 +18,7 @@ namespace OpenSlope.VrcPlugin
         // `A` is the surface's CONTACT-response scale in engine units/s^2; it is not the independently measured
         // grounded-pull scalar. `P` is contact damping. `bog` is the soft give; `budget` is the depth past which the
         // capped pushout intervenes; `thresh` is the clearance at which grounded state ends; `lift` raises only the
-        // drawn deck. Runtime values are generated from Trailmap/specs/data/ride-v1.json into the `_rideSurf*`
+        // drawn deck. Runtime values are generated from Contracts/ride-v1.json into the `_rideSurf*`
         // arrays on RideableBoard.Contract.Generated.cs, so Unity and Slopesmith cannot silently diverge.
         //
         // Every type gets its own row - folding families together by their level-authoring names (7 and 11 onto ice,

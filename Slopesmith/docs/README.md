@@ -3,7 +3,7 @@
 The top-level [Slopesmith README](../README.md) covers installation and the normal editor workflow.
 This index collects design decisions, implementation contracts, and specialist runbooks.
 Original SSX formats, behavior, measured constants, and presentation rules are
-defined only in [Trailmap](../../Trailmap/specs/README.md). A Slopesmith document
+defined only in Trailmap (`../../Trailmap/specs/README.md` in the local Trailmap workspace). A Slopesmith document
 may explain which chapter its code implements, but owns only editor data flow,
 UI, project-authored behavior, deliberate divergences, and verification.
 
@@ -106,7 +106,7 @@ Start with the [authoring index](authoring/README.md) for the editor prerequisit
 - [`ideas/`](ideas/README.md) — staged proposals and superseded assessments that are not product contracts; its
   index says where each one stands.
 
-Retail-game behavior belongs in [Trailmap](../../Trailmap/specs/README.md); conversion contracts belong in
+Retail-game behavior belongs in Trailmap (`../../Trailmap/specs/README.md` in the local Trailmap workspace); conversion contracts belong in
 [Snowknife](../../Snowknife/docs/README.md); Unity realization belongs in
 [Unity](../../Unity/docs/README.md). If an implementation investigation changes
 what is known about SSX, promote the finding to Trailmap first and keep only the

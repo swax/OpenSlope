@@ -130,7 +130,6 @@ interoperability, and alternate runtimes at different maturity levels:
 | Author, collaborate, and ride | [Slopesmith](Slopesmith/README.md) | Primary runtime; Node.js 24 and a modern browser |
 | Import, inspect, convert, or repack a course | [Snowknife](Snowknife/README.md) | Maintained CLI; .NET 10, the `SSX-Library` submodule, and a user-supplied disc image for retail workflows |
 | Repack an authored course for PCSX2 or PS2 | [Repacking guide](Snowknife/REPACK.md) | Maintained workflow; a user-supplied disc image |
-| Understand the formats and behavior | [Trailmap](Trailmap/README.md) | Drafted specification; no game binary or assets |
 | Ride a map in Unity or VRChat | [Unity](Unity/README.md) | Source integration; Unity 2022.3.22f1, plus the VRChat SDK and UdonSharp for VRChat |
 | Try the Unity 6 runtime | [Basis](Unity/Basis/README.md) | Experimental runtime; matching Basis client/server checkouts |
 | Inspect or remodel content in Blender | [Blender](Blender/README.md) | Exploratory tools; tested versions vary by workflow |
@@ -160,8 +159,9 @@ Users are responsible for determining whether making or using an image is permit
 law and contractual terms. Do not distribute builds containing retail-derived content.
 
 Authored courses made from material you created or may redistribute can be shared independently of
-private disc-backed data. Trailmap keeps behavioral specifications separate from their research
-provenance, and each component's `NOTICE` describes its scope and third-party attributions.
+private disc-backed data. `Trailmap/` is an optional local research workspace, excluded from Git.
+Shared runtime inputs live in [Contracts](Contracts/README.md), and each component's `NOTICE`
+describes its scope and third-party attributions.
 [`LEGAL.md`](LEGAL.md) states the full scope and the trademark position.
 
 ## Documentation and contributing
@@ -179,7 +179,7 @@ indexes and background include:
 
 - [Slopesmith authoring and design docs](Slopesmith/docs/README.md)
 - [Snowknife extraction and bundle docs](Snowknife/docs/README.md)
-- [Trailmap specifications](Trailmap/specs/README.md)
+- [Shared interoperability contracts](Contracts/README.md)
 - [Development history](DEVELOPMENT_HISTORY.md)
 
 The repository is designed to work well with Codex and Claude Code: its documentation describes

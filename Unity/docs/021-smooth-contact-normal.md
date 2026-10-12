@@ -104,7 +104,7 @@ This is orientation-free, so the same call serves the down probe (`rayDir` = dow
 contact probe (`rayDir` = −contactNormal). Both the point and the normal are analytic, so **ride quality is
 decoupled from tessellation** — the board doesn't ride the triangles at all.
 
-The four-iteration and 1 mm bounds live in `Trailmap/specs/data/ride-v1.json` and are generated into both ports. Unity
+The four-iteration and 1 mm bounds live in `Contracts/ride-v1.json` and are generated into both ports. Unity
 profiling is still required after the C# is imported: if this bounded solver misses the Quest budget, optimize the
 same equations rather than silently restoring the geometrically incorrect tangent-plane shortcut.
 

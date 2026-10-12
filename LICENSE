@@ -36,8 +36,8 @@ THE PROJECTS
   Unity/                   Apache-2.0      LICENSE · NOTICE
       The Unity editor importer and the VRChat and Basis runtimes.
 
-  Trailmap/                Apache-2.0      LICENSE · NOTICE
-      The interoperability specification and its research tooling.
+  Contracts/               Apache-2.0      LICENSE · NOTICE
+      Shared runtime facts and cross-platform verification fixtures.
 
 Except for the canonical standard-license texts under LICENSES/, everything else
 tracked in this repository is Apache-2.0. That is a rule, not an inventory: any

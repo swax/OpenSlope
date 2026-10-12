@@ -42,7 +42,7 @@ RETAIL-DERIVED FACTS
 
 A bounded class of retail-derived facts is carried in the source itself: format and asset
 identifiers, enumeration, sprite and bank names, and measured functional constants. The authoritative data copies are
-Trailmap/specs/data/external-sound-banks-v1.json and Trailmap/specs/data/ride-v1.json, plus the per-course race timing
+Contracts/external-sound-banks-v1.json and Contracts/ride-v1.json, plus the per-course race timing
 constants (lap counts and showoff clock lengths read from the executable's own tables) in src/core/doc/race.ts. These
 are the functional interface the editor interoperates through, retained because interoperating requires them. Beyond
 that interface, individual measured values appear in tests and design notes as the evidence a behaviour was checked
@@ -235,10 +235,10 @@ packing. That program sits beside this one in the OpenSlope repository under its
     neither program is a derivative work of the other.
 
 The documentation here cites original-game behavior using location-independent tags of the form
-[Trailmap: NNN-topic]. Those resolve into a separate specification, also carrying its own licence:
+[Trailmap: NNN-topic]. Those identify an optional local specification workspace, excluded from Git:
 
     Trailmap — an independent, unofficial interoperability specification.
-    Licensed Apache-2.0. ../Trailmap
+    Local workspace; not included in this repository. ../Trailmap
 
 Behavioral descriptions in this repository state what the game does. They are not derived from, and
 do not reproduce, Electronic Arts' source code.

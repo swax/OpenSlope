@@ -1,6 +1,6 @@
 # Carving response implementation
 
-The ride consumes the recovered response laws in [Trailmap 330](../../Trailmap/specs/330-carving.md)
+The ride consumes the recovered response laws in Trailmap 330 (`../../Trailmap/specs/330-carving.md` in the local Trailmap workspace)
 and the shared surface contract. `ride-response.ts` owns the scalar forward resistance,
 lateral resistance, heading closure and banked normal response. `physics.ts` applies
 resistance in the opening contact frame, integrates acceleration, then updates heading.
@@ -9,7 +9,7 @@ applied as an additional reduced gravity after restoring the resistance.
 
 ## Where the numbers live
 
-The `response` section of [ride-v1.json](../../Trailmap/specs/data/ride-v1.json)
+The `response` section of [ride-v1.json](../../Contracts/ride-v1.json)
 names the resistance, heading, lean, bank and contact coefficients. Each group
 records its spec reference, provenance and units. Surface-dependent values remain
 in `surfaces`; these coefficients are shared across surfaces or selected by mode.

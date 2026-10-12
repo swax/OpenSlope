@@ -9,7 +9,7 @@ specific answer, and we will act on it. That address is read by a person; you do
 formal notice to get our attention, and we would much rather have the conversation.
 
 This page is the summary. The binding scope statements are the `NOTICE` file in each component —
-[Slopesmith](Slopesmith/NOTICE), [Snowknife](Snowknife/NOTICE), [Trailmap](Trailmap/NOTICE),
+[Slopesmith](Slopesmith/NOTICE), [Snowknife](Snowknife/NOTICE), [Contracts](Contracts/NOTICE),
 [Unity](Unity/NOTICE) — and [`LICENSE`](LICENSE), which maps every path to its terms. Where this page
 and a `NOTICE` differ, the `NOTICE` governs.
 
@@ -32,18 +32,15 @@ yours and can be shared independently of any disc-derived data.
 
 ## What this repository does contain
 
-**An interoperability specification.** [Trailmap](Trailmap/) describes what the original game does —
-its data formats, its observable behavior, its measured constants — so that independent programs can
-read and write compatible data. Its chapter bodies describe behavior rather than how the original
-code was organized, and a checked gate enforces that separation on every commit. The citation
-definitions and research notes beside them record the evidence those claims rest on — including the
-addresses, symbol names, and structure of the routines that were read — as compact provenance, not as
-an implementation; see [reverse-engineering hygiene](CONTRIBUTING.md#reverse-engineering-hygiene).
+**Local research.** `Trailmap/` holds the maintainer's optional interoperability specification,
+provenance, and research tools. It is ignored, is absent from fresh clones, and is not part of the
+published repository. Existing `[Trailmap: ...]` citations identify that local evidence. The
+public implementation and its required checks use the shared [Contracts](Contracts/README.md).
 
 **A bounded set of retail-derived facts.** Format and asset identifiers, enumeration and bank names,
 and measured functional constants are carried in the tree, because interoperating requires them. The
-authoritative copies are [`Trailmap/specs/data/ride-v1.json`](Trailmap/specs/data/ride-v1.json) and
-[`Trailmap/specs/data/external-sound-banks-v1.json`](Trailmap/specs/data/external-sound-banks-v1.json),
+authoritative copies are [`Contracts/ride-v1.json`](Contracts/ride-v1.json) and
+[`Contracts/external-sound-banks-v1.json`](Contracts/external-sound-banks-v1.json),
 together about 12 KB, and each component's `NOTICE` describes the further facts its own source and
 tests carry — today, the per-course lap counts and showoff clock lengths; the register-relative shape
 of the compiled switch that Snowknife's sound-index reader searches a user-supplied executable for, described
@@ -62,7 +59,7 @@ from that file.
 image supplied by the user. They do not reproduce the bytes they replace: each region names only a
 SHA-256 of what it expects to find, and where a hook must re-execute a displaced instruction, the
 definition names where to copy that instruction from in the same file rather than carrying it. No
-patch definition in this repository contains a retail instruction word. The generators that produce
+patch definition in this repository contains a retail instruction word. The local Trailmap generators that produce
 those definitions name each displaced instruction by mnemonic and source address — the same short
 quotation the research notes carry — and emit the copy directive in its place, and the research probes
 that hook a running emulator follow the digest rule throughout: they name a site by digest and read

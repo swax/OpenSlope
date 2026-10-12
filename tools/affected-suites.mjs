@@ -19,12 +19,12 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 
 /** A path is in when any listed prefix or exact name matches it. */
 const SNOWKNIFE = {
-  prefixes: ['Snowknife/Snowknife/', 'Snowknife/Snowknife.Tests/', 'Snowknife/tools/', '.github/workflows/'],
+  prefixes: ['Snowknife/Snowknife/', 'Snowknife/Snowknife.Tests/', 'Snowknife/tools/', 'Contracts/', '.github/workflows/'],
   exact: ['Snowknife/SSX-Library', '.gitmodules', 'package.json', 'package-lock.json',
     'tools/snowknife-tests.mjs', 'tools/affected-suites.mjs'],
 };
 const SLOPESMITH = {
-  prefixes: ['Slopesmith/', '.github/workflows/'],
+  prefixes: ['Slopesmith/', 'Contracts/', '.github/workflows/'],
   exact: ['tools/affected-suites.mjs'],
 };
 /** Prose and licences under Slopesmith/ are nothing the suite can fail on. */

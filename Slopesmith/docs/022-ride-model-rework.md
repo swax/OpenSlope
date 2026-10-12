@@ -7,7 +7,7 @@ shared `ride-v1.json` constants contract.
 ## Implementation
 
 `src/app/ride/session.ts` owns the browser simulation and consumes the generated
-TypeScript view of `Trailmap/specs/data/ride-v1.json`. It does not define a
+TypeScript view of `Contracts/ride-v1.json`. It does not define a
 second set of surface constants or contact rules. Analytic terrain queries,
 fixed-step integration, Slopesmith input mapping, and editor/Test-mode state are
 the implementation concerns recorded here and in [016 — Test ride](016-ride.md).

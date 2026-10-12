@@ -55,7 +55,7 @@ RETAIL-DERIVED FACTS
 A bounded class of retail-derived facts is carried in the source itself:
 format and asset identifiers, enumeration names, the executable's audio
 bank-name catalog (whose authoritative copy is
-../Trailmap/specs/data/external-sound-banks-v1.json), and the per-course race
+../Contracts/external-sound-banks-v1.json), and the per-course race
 timing constants -- lap counts and showoff clock lengths read from the
 executable's own tables -- in Bundle/RaceBundle.cs. These are the functional
 interface the extractor interoperates through, retained because interoperating

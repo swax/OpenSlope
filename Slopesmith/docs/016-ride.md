@@ -5,7 +5,7 @@ It answers the questions a static top-down can't — does the line flow, are the
 does the terrain read at speed, is that ice patch a trap — without leaving Slopesmith or exporting anything.
 
 The board physics implement the **SSX functional specification**. Slopesmith consumes a generated view
-of the same versioned profile prepared for the main Unity board, `Trailmap/specs/data/ride-v1.json`, backed by
+of the same versioned profile prepared for the main Unity board, `Contracts/ride-v1.json`, backed by
 [Trailmap: 130-collision-data / 310-surface-response / 320-ground-contact / 330-carving /
 360-speed-and-boost / 370-world-interaction]. Those chapters are normative for the port and carry the
 reverse-engineering provenance for each rule. The relative per-surface values and the carve math are the specified ones; the model is
