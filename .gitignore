@@ -70,12 +70,11 @@ discs/
 # Optional local integration fixtures.
 ice-cream-social/
 
-# Generic local/generated data directories. These two reviewed interoperability
-# contracts are source inputs and must remain available in a fresh checkout.
+# Generic local/generated data directories. Shared inputs live in Contracts/.
 data/
-!Trailmap/specs/data/
-!Trailmap/specs/data/ride-v1.json
-!Trailmap/specs/data/external-sound-banks-v1.json
+
+# Private research workspace; preserve it locally without tracking its contents.
+/Trailmap/
 
 # Prop-recipe scratch: generated atlas pages, preview renders, and upscales. Recipes rebuild these
 # outputs, and tracked GLBs embed their required atlases.

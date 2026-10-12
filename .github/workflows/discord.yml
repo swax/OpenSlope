@@ -22,7 +22,8 @@ jobs:
   notify:
     # GitHub withholds secrets on Dependabot-triggered PR events. A maintainer
     # merging or closing a dependency PR still generates a notification.
-    if: github.actor != 'dependabot[bot]'
+    # Notifications stay off unless a maintainer explicitly enables the repository variable.
+    if: vars.DISCORD_NOTIFICATIONS_ENABLED == 'true' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

@@ -288,7 +288,7 @@ Obstacle bounce reads imported `PlayerBounceAmmount` metadata from `PropsCollisi
 `TrickOnlyPatch` scoring window is still a stub hook (see open questions).
 
 Runtime constants and all 20 surface rows come from
-`Trailmap/specs/data/ride-v1.json`, generated into `RideableBoard.Contract.Generated.cs` and Slopesmith's
+`Contracts/ride-v1.json`, generated into `RideableBoard.Contract.Generated.cs` and Slopesmith's
 matching TypeScript view. Surface rows, contact transitions and speed caps use those
 generated values. The generated response methods expose normalized rider inputs in
 the inspector for controlled comparisons; their defaults are project choices, not

@@ -21,4 +21,4 @@ Gaps are intentional, and other components may reuse the same identifiers in the
 Unity import and runtime behavior are documented in
 [Unity](../../Unity/docs/README.md); interactive authoring behavior is documented in
 [Slopesmith](../../Slopesmith/docs/). Facts about the retail game belong to
-[Trailmap](../../Trailmap/specs/README.md), cited here with `[Trailmap: ...]` tags.
+Trailmap (`../../Trailmap/specs/README.md` in the local Trailmap workspace), cited here with `[Trailmap: ...]` tags.

@@ -1,12 +1,12 @@
 # Carving response implementation
 
-Both Unity ride layers consume [Trailmap 330](../../../Trailmap/specs/330-carving.md).
+Both Unity ride layers consume Trailmap 330 (`../../../Trailmap/specs/330-carving.md` in the local Trailmap workspace).
 `Slopesmith/tools/generate_ride_contract.py --unity` generates their surface columns
 and scalar response methods. The C# methods share `ride_response.cs.txt`; changes to
 that template must be regenerated for both layers.
 
 Named response constants come from the `response` section of
-[ride-v1.json](../../../Trailmap/specs/data/ride-v1.json), alongside the surface
+[ride-v1.json](../../../Contracts/ride-v1.json), alongside the surface
 table. Each group states its spec reference and units, and distinguishes recovered
 coefficients from project defaults, numerical guards and unit conversions. The
 generator places these constants directly in each board's response partial for

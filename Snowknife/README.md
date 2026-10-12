@@ -111,7 +111,7 @@ Documentation by boundary:
 - [Portable schemas](Snowknife/schemas/README.md) — versioned contracts shared with other tools.
 - [Slopesmith](../Slopesmith/README.md) — interactive authoring.
 - [Unity](../Unity/README.md) — Unity import and runtime behavior.
-- [Trailmap](../Trailmap/specs/README.md) — observed retail behavior cited by the implementation.
+- Trailmap (`../Trailmap/specs/README.md` in the local Trailmap workspace) — observed retail behavior cited by the implementation.
 
 Snowknife-specific diagnostics live in [`tools/`](tools/). Authoring studies stay with Slopesmith;
 Unity bundle diagnostics stay under `Unity/tools/`.

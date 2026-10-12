@@ -64,11 +64,6 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-          cache: pip
-          cache-dependency-path: Trailmap/tools/requirements.txt
-
-      - name: Install Trailmap tool dependencies
-        run: python -m pip install --requirement Trailmap/tools/requirements.txt
 
       - name: Repository hygiene gate
         run: python tools/hygiene.py
@@ -78,7 +73,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p TestResults
-          python Trailmap/tools/specs/repo_hygiene.py report > TestResults/repo-hygiene.txt
+          python tools/hygiene/repo_hygiene.py report > TestResults/repo-hygiene.txt
 
       - name: Upload the repository hygiene report after a failure
         if: failure()

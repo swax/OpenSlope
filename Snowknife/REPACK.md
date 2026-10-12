@@ -264,7 +264,7 @@ snowknife repack ... --patches noclip
 
 Press **TRIANGLE + CIRCLE** to toggle. The left stick flies camera-relative, **SQUARE** ascends, **X** descends, and **R1** gives 4× speed. Engage it after the race-start camera settles. It affects the local player only.
 
-See [Trailmap spec 440](../Trailmap/specs/440-noclip-fly-mode.md) for the executable contract.
+See Trailmap spec 440 (`../Trailmap/specs/440-noclip-fly-mode.md` in the local Trailmap workspace) for the executable contract.
 
 ### Sky colour
 
@@ -279,13 +279,13 @@ snowknife skycolor <iso> --revert
 
 `repack` applies the export's `TopColor` automatically unless `--no-skycolor` is present. Reapplying the command changes only the selected course entry.
 
-See [Trailmap spec 442](../Trailmap/specs/442-sky-color.md).
+See Trailmap spec 442 (`../Trailmap/specs/442-sky-color.md` in the local Trailmap workspace).
 
 ### Authored HUD messages
 
 `repack --patches hud-text` keeps Show message effect nodes and installs the dispatcher support that renders them. Without that selection, repack removes these otherwise inert nodes. Combine features in one comma-separated value, for example `--patches noclip,hud-text`.
 
-See [Trailmap spec 443](../Trailmap/specs/443-debug-text.md).
+See Trailmap spec 443 (`../Trailmap/specs/443-debug-text.md` in the local Trailmap workspace).
 
 ### Supported disc releases
 

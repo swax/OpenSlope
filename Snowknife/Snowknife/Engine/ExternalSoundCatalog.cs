@@ -15,7 +15,7 @@ namespace Snowknife.Engine;
 /// per-character or generic chant bank from the local rider's race position) stays genuinely dynamic and
 /// is excluded here. [Trailmap: 420-traffic, 420-chant-select]
 ///
-/// The fixed bank names are generated from Trailmap/specs/data/external-sound-banks-v1.json. That catalog
+/// The fixed bank names are generated from Contracts/external-sound-banks-v1.json. That catalog
 /// contains short executable/file identifiers only, not player-facing prose. The RETAIL-DERIVED FACTS
 /// section of Snowknife/NOTICE states the interoperability scope.
 /// </summary>

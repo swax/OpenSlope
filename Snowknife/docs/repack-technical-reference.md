@@ -114,7 +114,7 @@ If the set still exceeds the budget at the retail terrain size of 128, Snowknife
 
 Loose material PNG names are encoded and installed like other authored pages. A cloned material resolves from the imported level's `Textures/`; prop-bake art resolves from the export's `Textures/`. An unresolved name falls back to slot `0000` with a warning, so the PBD never carries an out-of-range page index.
 
-Every `TextureFlipbook` frame is resolved separately and protected separately. An authored `TextureFlip` graph node can advance only through pages that were actually installed; an empty flipbook leaves the material on its resting page. See [Trailmap 410](../../Trailmap/specs/410-texture-animation.md).
+Every `TextureFlipbook` frame is resolved separately and protected separately. An authored `TextureFlip` graph node can advance only through pages that were actually installed; an empty flipbook leaves the material on its resting page. See Trailmap 410 (`../../Trailmap/specs/410-texture-animation.md` in the local Trailmap workspace).
 
 ## Placed props
 
@@ -128,7 +128,7 @@ Materials append to the target table. Target textures reuse bare slots, cross-co
 
 Static props are lit from instance fields, not terrain lightmaps: ambient plus up to three directional colors/vectors. Slopesmith bakes shadow and ambient-occlusion results into those canonical fields, using the game's half-bright convention. Snowknife preserves them into the PBD.
 
-The collision contract comes from [Trailmap 130](../../Trailmap/specs/130-collision-data.md), [150](../../Trailmap/specs/150-logic.md), and [370](../../Trailmap/specs/370-world-interaction.md). Slopesmith resolves mode, `PlayerCollision`, response mass, bounce settings, optional native physics-body donor, transform, and rideable surface into each instance row before repacking.
+The collision contract comes from Trailmap 130 (`../../Trailmap/specs/130-collision-data.md` in the local Trailmap workspace), 150 (`../../Trailmap/specs/150-logic.md` in the local Trailmap workspace), and 370 (`../../Trailmap/specs/370-world-interaction.md` in the local Trailmap workspace). Slopesmith resolves mode, `PlayerCollision`, response mass, bounce settings, optional native physics-body donor, transform, and rideable surface into each instance row before repacking.
 
 - Mode 1 uses a generated local proxy.
 - Mode 2 uses packed instance bounds.
@@ -159,7 +159,7 @@ Function bodies run on a new thread carrying the caller's owner. Instance wiring
 
 MainType 7 targets another placement. Its packed instance index is not known while graphs are first compiled, so Snowknife emits -1 and records a backpatch. After prop rows are appended, `ResolveHops` converts the placement name to the corresponding `Instances.json` row index, which is also the SSF instance-table index.
 
-An unresolved target remains -1 and produces a warning. The runtime bounds-check makes -1 inert; guessing an in-range index would act on an unrelated object. A graph referenced only by a hop is still pulled into the build. See [Trailmap 230](../../Trailmap/specs/230-level-ssf.md).
+An unresolved target remains -1 and produces a warning. The runtime bounds-check makes -1 inert; guessing an in-range index would act on an unrelated object. A graph referenced only by a hop is still pulled into the build. See Trailmap 230 (`../../Trailmap/specs/230-level-ssf.md` in the local Trailmap workspace).
 
 Vector payloads are normalized between the document's `{X,Y,Z}` objects and the library's float arrays during compilation.
 
@@ -170,7 +170,7 @@ Two Type5 gate fields are declared differently from how the engine reads them. A
 - the selector is a float carrying integer bits; selector 1 is represented by the float printed near `1e-45`, not `1.0`;
 - the threshold is an integer carrying IEEE-754 float bits; `1056964608` represents 0.5 and `1106247680` represents 30.0.
 
-A conventionally typed value can pack successfully yet change or disable the gate. The evidence and runtime semantics live in [Trailmap 150](../../Trailmap/specs/150-logic.md).
+A conventionally typed value can pack successfully yet change or disable the gate. The evidence and runtime semantics live in Trailmap 150 (`../../Trailmap/specs/150-logic.md` in the local Trailmap workspace).
 
 ## Authored model clips
 
@@ -186,7 +186,7 @@ The PS2 safety warning is 27 final `ModelObjects`, including object 0 and genuin
 
 Each object's mesh is written in its own local frame by undoing the accumulated parent rest pose. Otherwise the engine applies that pose a second time. Collision proxies remain one merged instance-local static shape.
 
-Playing the clip is separate graph work, normally an `AnimObject` node. Its window fields select the frame range; the conventional negative value selects the entire clip, while a zero-length `(0, 0)` window plays nothing. See [Trailmap 120](../../Trailmap/specs/120-objects.md).
+Playing the clip is separate graph work, normally an `AnimObject` node. Its window fields select the frame range; the conventional negative value selects the entire clip, while a zero-length `(0, 0)` window plays nothing. See Trailmap 120 (`../../Trailmap/specs/120-objects.md` in the local Trailmap workspace).
 
 ## Dependent-member validation
 

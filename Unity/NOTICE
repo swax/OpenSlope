@@ -43,7 +43,7 @@ A bounded class of retail-derived facts is carried in the source itself:
 format and asset identifiers, enumeration names, and measured functional
 constants — notably the per-surface response table generated into
 VRC/Riding/Board/RideableBoard.Contract.Generated.cs and
-Basis/Riding/BasisBoard.Contract.Generated.cs (Trailmap/specs/data/ride-v1.json is
+Basis/Riding/BasisBoard.Contract.Generated.cs (Contracts/ride-v1.json is
 the authoritative copy). These are the functional interface the ride
 interoperates through, retained because a course cannot be ridden correctly
 without them. They are unaccompanied by any retail code, asset, or executable,
@@ -119,11 +119,11 @@ which sits beside this one in the OpenSlope repository under its own licence:
     interchange contracts freely. ../Snowknife
 
 The documentation here cites original-game behavior using location-independent
-tags of the form [Trailmap: NNN-topic]. Those resolve into a separate
-specification, also carrying its own licence:
+tags of the form [Trailmap: NNN-topic]. Those identify an optional local
+specification workspace, excluded from Git:
 
     Trailmap — an independent, unofficial interoperability specification.
-    Licensed Apache-2.0. ../Trailmap
+    Local workspace; not included in this repository. ../Trailmap
 
 Behavioral descriptions in this repository state what the game does. They are
 not derived from, and do not reproduce, Electronic Arts' source code.

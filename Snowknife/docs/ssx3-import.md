@@ -16,12 +16,12 @@ dotnet $snowknife ssx3-import $iso ARA1  Maps/SSX3_ARA1    # one event
 Reload Slopesmith after importing; the folders appear in the Reference picker as "SSX 3 extract".
 
 The SSX 3 formats and measurements this command relies on are specified in Trailmap's SSX 3 addendum,
-[chapter 510](../../Trailmap/specs/510-series-ssx-3.md), and its detail chapters
-[511](../../Trailmap/specs/511-ssx3-terrain-and-lightmaps.md) (terrain and lightmaps),
-[512](../../Trailmap/specs/512-ssx3-textures-and-materials.md) (textures and materials),
-[513](../../Trailmap/specs/513-ssx3-props-and-collision.md) (props and collision),
-[514](../../Trailmap/specs/514-ssx3-paths-rails-and-sky.md) (paths, rails and sky) and
-[515](../../Trailmap/specs/515-ssx3-lights-halos-and-fog.md) (lights, halos and fog). This page covers how the
+chapter 510 (`../../Trailmap/specs/510-series-ssx-3.md` in the local Trailmap workspace), and its detail chapters
+511 (`../../Trailmap/specs/511-ssx3-terrain-and-lightmaps.md` in the local Trailmap workspace) (terrain and lightmaps),
+512 (`../../Trailmap/specs/512-ssx3-textures-and-materials.md` in the local Trailmap workspace) (textures and materials),
+513 (`../../Trailmap/specs/513-ssx3-props-and-collision.md` in the local Trailmap workspace) (props and collision),
+514 (`../../Trailmap/specs/514-ssx3-paths-rails-and-sky.md` in the local Trailmap workspace) (paths, rails and sky) and
+515 (`../../Trailmap/specs/515-ssx3-lights-halos-and-fog.md` in the local Trailmap workspace) (lights, halos and fog). This page covers how the
 importer converts them for Slopesmith.
 
 ## The mountain and its sections
@@ -138,7 +138,7 @@ cutscene's fences only during the cutscene.
 
 **Prop lighting.** SSX 3 has no per-instance light record like Tricky's. Each instance instead carries one
 ABGR1555 colour per vertex of its model, already lit, in the order the model's vertex records stream to the console
-([chapter 513](../../Trailmap/specs/513-ssx3-props-and-collision.md)). Each part's mesh is written in that order,
+(chapter 513 (`../../Trailmap/specs/513-ssx3-props-and-collision.md` in the local Trailmap workspace)). Each part's mesh is written in that order,
 one OBJ vertex per streamed vertex, and its `MeshData` entry records where the part starts in the stream
 (`VertexLightingBase`). The instance's colours go into `Instances.json` as `VertexLighting`, the base64 of the raw
 little-endian halfwords. An instance whose colours do not cover its model exactly is written without them, and
@@ -166,7 +166,7 @@ import's `ParticlePrefabs` and `Particles` shapes. A placement pairs with its mo
 and points at that model's index in `ParticleModels.json`. Both are named `<section>_particle_<id>`.
 
 **Effects.** SSX 3 has no SSF; its world logic is compiled scripts that nothing decodes yet
-([chapter 510](../../Trailmap/specs/510-series-ssx-3.md)). The importer writes an
+(chapter 510 (`../../Trailmap/specs/510-series-ssx-3.md` in the local Trailmap workspace)). The importer writes an
 empty `Effects.json` because Slopesmith loads one for every reference. The document's `header` holds the SSF
 header's three fields, written as zero here.
 

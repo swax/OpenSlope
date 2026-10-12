@@ -13,7 +13,7 @@ namespace Snowknife.Tests
         public void ResistanceMatchesInstructionReference(Type implementation)
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(CrossRepoContractTests.Root,
-                "Trailmap/specs/data/carving-response-cases-v1.json")));
+                "Contracts/carving-response-cases-v1.json")));
             foreach (var row in doc.RootElement.GetProperty("cases").EnumerateArray())
             {
                 var board = Activator.CreateInstance(implementation)!;

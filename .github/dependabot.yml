@@ -1,5 +1,5 @@
 # Keeps the pinned toolchain from going stale silently: the workflows pin actions by commit SHA, and
-# Slopesmith, Snowknife and the Trailmap tools each lock their dependencies. Monthly and grouped, so a
+# Slopesmith and Snowknife lock their dependencies. Monthly and grouped, so a
 # month's updates arrive as one pull request per ecosystem and cost one CI run each.
 version: 2
 updates:
@@ -28,12 +28,4 @@ updates:
       interval: monthly
     groups:
       snowknife:
-        patterns: ["*"]
-
-  - package-ecosystem: pip
-    directory: /Trailmap/tools
-    schedule:
-      interval: monthly
-    groups:
-      trailmap-tools:
         patterns: ["*"]

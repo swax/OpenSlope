@@ -78,12 +78,11 @@ terms, and that it contains none of the material this section excludes. No sign-
 
 The gate requires the .NET 10 SDK, Node 24, and Python 3 on `PATH` (CI uses Python 3.13).
 
-Initialize the format-library submodule, install the Trailmap tool dependencies the hygiene checks
-import, and install Slopesmith's locked dependencies once:
+Initialize the format-library submodule and install Slopesmith's locked dependencies once.
+The required hygiene checks use only Python's standard library:
 
 ```text
 git submodule update --init
-python -m pip install -r Trailmap/tools/requirements.txt
 npm ci --prefix Slopesmith
 ```
 
@@ -95,7 +94,8 @@ npm run verify
 
 The gate stops at the first failure and runs:
 
-1. The Trailmap hygiene scanner tests, clean-spec separation check, and repository-wide hygiene baseline.
+1. Repository and patch-manifest scanner tests, structural checks, and the repository-wide hygiene baseline.
+   Disc-backed manifest reproduction additionally runs when the local research generators are available.
 2. `Snowknife.Tests` — synthetic .NET tests, including byte-format round trips and cross-repository contracts.
 3. Slopesmith's strict TypeScript check and its ESLint pass (`npm --prefix Slopesmith run lint`, zero findings).
 4. Slopesmith's deterministic full suite — every check under `Slopesmith/test/` is discovered, including those
@@ -136,7 +136,11 @@ useful without making that higher-overhead workflow mandatory for a solo-maintai
 
 ## Reverse-engineering hygiene
 
-Reverse-engineering evidence has a one-way path through the repository:
+`Trailmap/` is an ignored local research workspace, absent from fresh clones. Shared runtime data and
+verification fixtures ship under `Contracts/`. `[Trailmap: ...]` citations retain local evidence identifiers.
+Research and specification validation are local workflows; repository publication checks live in `tools/hygiene/`.
+
+Reverse-engineering evidence has a one-way path from that workspace into the implementations:
 
 ```text
 Trailmap/research -> Trailmap/specs -> component docs and source
@@ -162,7 +166,7 @@ they were duplicated in four places once, and twice a new check reached some ent
 not others.
 
 The report shows every current finding with a file, line, rule, and suggested migration. Existing cleanup debt is
-recorded in `Trailmap/tools/specs/repo_hygiene_baseline.json`: CI fails on any new finding, and it also fails when a
+recorded in `tools/hygiene/repo_hygiene_baseline.json`: CI fails on any new finding, and it also fails when a
 fixed finding leaves a stale baseline entry. After cleaning findings, review the complete report and deliberately
 shrink the baseline with:
 
@@ -173,7 +177,8 @@ npm run hygiene
 
 `Snowknife/Snowknife/Patches/*.json` is a narrow operational exception: target names, offsets, hashes, and patch bytes are
 allowed payload, while each manifest's prose notes must cite a Trailmap spec and are still scanned for leaked derivation.
-Governance documents and `Trailmap/specs` are owned by their specialized checks.
+Governance documents and the hygiene scanners are owned by their specialized checks.
+Local specification checks can be run separately with `python Trailmap/tools/specs/spec_trace.py check`.
 
 For a rare legitimate token, a same-line exception is available, but it must identify one rule and explain why the
 value is not RE evidence:

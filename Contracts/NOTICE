@@ -1,0 +1,10 @@
+OpenSlope shared interoperability contracts
+Copyright 2026 swax
+Licensed under the Apache License, Version 2.0; see LICENSE.
+
+These files contain measured functional constants, short format and bank identifiers,
+and independent verification cases used by Slopesmith, Snowknife, and Unity.
+They originated in the local Trailmap research workspace. No retail executable,
+disc image, extracted asset, or bulk disassembly is included or licensed here.
+SSX and related names are trademarks of Electronic Arts Inc. This project is
+independent and unofficial, with no affiliation or endorsement.

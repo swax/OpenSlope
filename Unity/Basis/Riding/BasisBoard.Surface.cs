@@ -10,7 +10,7 @@ namespace OpenSlope.BasisPlugin
     // board already used when no patch data was present).
     //
     // Surface rows are generated into BasisBoard.Contract.Generated.cs from the one authoritative contract at
-    // Trailmap/specs/data/ride-v1.json. This file keeps only the independently implemented runtime algorithm.
+    // Contracts/ride-v1.json. This file keeps only the independently implemented runtime algorithm.
     public partial class BasisBoard
     {
         // ---- Surface table (relative feel) --------------------------------------------------------------
