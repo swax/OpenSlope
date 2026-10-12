@@ -29,7 +29,7 @@
 
   <ItemGroup>
     <PackageReference Include="DiscUtils.Iso9660" Version="0.16.13" />
-    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+    <PackageReference Include="JsonSchema.Net" Version="9.4.1" />
     <!-- Used directly by two dozen files; named here instead of borrowed through SSX-Library's reference so a
          submodule bump cannot silently change the version this project compiles against. Same version as there. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
