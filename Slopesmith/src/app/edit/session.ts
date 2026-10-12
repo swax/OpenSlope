@@ -32,6 +32,10 @@ import {
   controlPointIsLocked, edgeIsLocked, lockedEdgeSet, lockedVertexSet, quadIsLocked, setQuadsLocked,
 } from '../../core/mesh/locks';
 import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
+import { detachEffectFromProp } from '../../core/effects/authoring';
+import { dropOrphanedAssemblyLights } from '../../core/props/assembly';
+import { clonePlacementTables } from '../../core/props/clipboard';
+import { dropScreensForProp } from '../props/screens';
 import {
   coincidentVertexIndices, controlPointIndex, controlPointIndices, controlPointName, directedEdgeIndex, edgeCrossingIndex, edgeIndex, edgeIndices,
   namedCoincidentVertices, namedEdge, namedEdgeCrossing, namedEdges, quadIndex, quadIndices, quadName,
@@ -1651,20 +1655,41 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function deleteSelectedMesh() {
-    if (store.currentMode !== 'edit' || !cageActive() || mixedEditSelection()) return;
+    if (store.currentMode !== 'edit' || !cageActive()) return;
+    const selectedProps = store.modelEditId ? [] : selectedEditPropIndices();
+    const hasMesh = selectedAuthoredVertexIds().length > 0 || store.edgeSel.length > 0 || store.cellSel.length > 0;
+    if (!hasMesh && !selectedProps.length) return;
     const locked = meshLockReason('delete');
     if (locked) { toast(locked, 'err'); return; }
     const selectedPoints = new Set(selectedAuthoredVertexIds()).size;
     const selectedFreeEdges = selectedFreeEdgeCount();
-    const result = applyMeshDelete(mdoc(), selectedMeshDeleteInput());
-    if (!result.ok) { toast(result.error, 'err'); return; }
-    commitEditMesh(store, result.doc);
-    dropCornerSel(); exitRegion(); scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    // Placement cleanup mutates props, screens, lights, and effect attachments. Work on an isolated
+    // document so the old state stays intact for history and for a failed mesh operation.
+    const source = selectedProps.length ? clonePlacementTables(mdoc()) : mdoc();
+    const result = hasMesh ? applyMeshDelete(source, selectedMeshDeleteInput()) : null;
+    if (result && !result.ok) { toast(result.error, 'err'); return; }
+    const doc = result?.doc ?? source;
+    if (selectedProps.length && doc.props) {
+      const groups = new Set(selectedProps.map(index => doc.props?.[index]?.assembly).filter((id): id is string => !!id));
+      const lights = new Set(selectedSetLights(store));
+      if (lights.size) doc.lights = (doc.lights ?? []).filter(light => !light.id || !lights.has(light.id));
+      for (const index of [...selectedProps].sort((a, b) => b - a)) {
+        const id = doc.props[index]?.id;
+        if (id && doc.effects) detachEffectFromProp(doc.effects, id);
+        dropScreensForProp(doc, id);
+        doc.props.splice(index, 1);
+      }
+      dropOrphanedAssemblyLights(doc, groups);
+    }
+    commitEditMesh(store, doc);
+    dropCornerSel(); exitRegion(); dropPlacementSelection();
+    scheduleRebuild(); rebuildTools(); updateCmdSheet();
     const parts: string[] = [];
     if (selectedPoints) parts.push(`deleted ${selectedPoints} ${selectedPoints === 1 ? 'point' : 'points'}`);
     if (selectedFreeEdges) parts.push(`deleted ${selectedFreeEdges} free ${selectedFreeEdges === 1 ? 'edge' : 'edges'}`);
-    if (result.quads) parts.push(`${result.quads} ${result.quads === 1 ? 'patch' : 'patches'}`);
-    const cleanup = Math.max(0, result.vertices - selectedPoints);
+    if (result?.quads) parts.push(`${result.quads} ${result.quads === 1 ? 'patch' : 'patches'}`);
+    if (selectedProps.length) parts.push(`deleted ${selectedProps.length} ${selectedProps.length === 1 ? 'prop' : 'props'}`);
+    const cleanup = Math.max(0, (result?.vertices ?? 0) - selectedPoints);
     if (cleanup) parts.push(`${cleanup} ${selectedPoints ? 'other ' : ''}unused ${cleanup === 1 ? 'vertex' : 'vertices'}`);
     toast(parts.join(' · '), 'ok');
   }
@@ -1715,6 +1740,7 @@ export function createEditSession(deps: EditSessionDeps) {
     rebuildTools,
     updateCmdSheet,
     deleteSelectedMesh,
+    refreshMixedSelection: renderEditMarqueeSelection,
   });
 
   function slidePlanPreviewChange(plan: SlidePlan) {

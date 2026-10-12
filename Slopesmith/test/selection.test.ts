@@ -24,7 +24,8 @@ import { setMeshControlPoints, meshControlPoints, controlPointKey, type MeshCont
 import {
   INDEX_NAMING, meshCageSegmentsBetween, meshControlPointBlock, resolveCellSelection, resolveEdgeSelection, resolveVertexSelection,
 } from '../src/core/mesh/selection';
-import { copyMeshVertices } from '../src/core/mesh/clipboard';
+import { copyMeshVertices, type MeshVertexClipboard } from '../src/core/mesh/clipboard';
+import { EFFECT_TRIGGER_LEVEL } from '../src/core/effects/trigger-volume';
 import { liveQuadEdges } from '../src/core/mesh/primitives';
 import { setQuadsLocked } from '../src/core/mesh/locks';
 import { TRAIL_SETTINGS_DEFAULTS } from '../src/core/mesh/trail-object';
@@ -687,6 +688,85 @@ for (const reverse of [false, true]) {
   session.viewportCallbacks.onSelectControlPoints?.([floating.id], 'toggle');
   check(!store.controlSel.length && store.cellSel.length === 1 && store.multiSel.length === 1,
     'Ctrl-click: toggling a floating cage point off leaves the other families intact');
+}
+
+// ---- mixed clipboard and deletion keep every selected family together -------------------------------------
+{
+  const { store, session, viewport } = editor();
+  store.mdoc.props = [0, 1].map(index => ({
+    id: `prop:mix${index}`, level: 'DONOR', model: index, name: `prop ${index}`,
+    pos: [index * 10, 2, 3] as V3, yaw: 0, scale: 1,
+  }));
+  const previews: MeshVertexClipboard[] = [];
+  viewport.setPasteTool = clip => { if (clip) previews.push(clip); };
+  session.viewportCallbacks.onSelectEditMarquee?.({
+    points: [{ kind: 'vertex', vertex: vertexName(store.mdoc, 4)! }],
+    edges: [[0, 1]], patches: [5], props: [0, 1],
+  }, 'replace');
+  const patch = store.mdoc.quads[5];
+  const expectedVertices = new Set([4, 0, 1, ...patch]).size;
+  const beforeVertices = store.mdoc.vertices.length / 3;
+  const beforeQuads = store.mdoc.quads.length;
+  const beforeDoc = store.mdoc;
+  session.copySelectedVertices();
+  check(store.clipboardKind === 'mixed' && session.canPasteVertices(),
+    'mixed clipboard: selected mesh types and props have one paste owner');
+  session.pasteSelectedVertices();
+  const preview = previews.at(-1);
+  check(preview?.vertices.length === expectedVertices * 3 && preview.quads.length === 1
+    && preview.freeEdges?.length === 1,
+    'mixed clipboard: the preview contains the union of point, edge, and patch selections exactly once');
+  session.viewportCallbacks.onPasteVertices?.([30, 0, 40]);
+  flushFrames();
+  check(store.mdoc.vertices.length / 3 === beforeVertices + expectedVertices
+    && store.mdoc.quads.length === beforeQuads + 1 && store.mdoc.props?.length === 4,
+    'mixed paste: one click appends the selected geometry and both props');
+  check(beforeDoc.props?.length === 2 && beforeDoc.quads.length === beforeQuads,
+    'mixed paste: the previous document stays unchanged for history');
+  check(near(store.mdoc.props![2].pos, [30, 2, 43]) && near(store.mdoc.props![3].pos, [40, 2, 43])
+    && store.multiSel.join() === '2,3' && store.controlSel.length === 1
+    && store.edgeSel.length === 1 && store.cellSel.length === 1,
+    'mixed paste: props keep their offset and each pasted mesh family stays selected as its original type');
+}
+{
+  const { store, session } = editor();
+  store.mdoc.props = [0, 1].map(index => ({
+    id: `prop:cut${index}`, level: index ? EFFECT_TRIGGER_LEVEL : 'DONOR', model: index,
+    name: `prop ${index}`, pos: [index, 0, 0] as V3, yaw: 0, scale: 1,
+    ...(index ? { effectTrigger: { size: [2, 2, 2] as V3 } } : {}),
+  }));
+  session.viewportCallbacks.onSelectEditMarquee?.({ points: [], edges: [], patches: [5], props: [0, 1] }, 'replace');
+  const beforeQuads = store.mdoc.quads.length;
+  const beforeDoc = store.mdoc;
+  session.cutSelectedVertices();
+  check(store.mdoc.quads.length === beforeQuads - 1 && store.mdoc.props?.length === 1
+    && store.mdoc.props[0].level === EFFECT_TRIGGER_LEVEL && store.clipboardKind === 'mixed',
+    'mixed cut: copied geometry and normal props are removed while uncopied trigger volumes stay');
+  check(beforeDoc.props?.length === 2 && beforeDoc.quads.length === beforeQuads,
+    'mixed cut: the previous document stays unchanged for history');
+}
+{
+  const { store, session } = editor();
+  store.mdoc.props = [{ id: 'prop:locked', level: 'DONOR', model: 0, name: 'locked partner',
+    pos: [0, 0, 0], yaw: 0, scale: 1 }];
+  setQuadsLocked(store.mdoc, [0], true);
+  session.viewportCallbacks.onSelectEditMarquee?.({ points: [], edges: [], patches: [0], props: [0] }, 'replace');
+  const before = store.mdoc;
+  session.deleteSelectedMesh();
+  check(store.mdoc === before && store.mdoc.props.length === 1 && toastEl.textContent.includes('locked'),
+    'mixed delete: a locked patch prevents deleting either the mesh or its selected prop');
+}
+{
+  const doc = freshGrid(), { mesh, edgeHandle } = meshContext(doc);
+  const [a, b] = liveQuadEdges(doc.quads[0])[0];
+  const clip = copyMeshVertices({
+    mesh, edgeHandle, naming: vertexNaming(doc), quadNaming: quadNaming(doc),
+    selectedVertices: vertexNames(doc, doc.quads[0]),
+    selectedQuads: [quadName(doc, 0)!],
+    selectedEdges: [[vertexName(doc, a)!, vertexName(doc, b)!]],
+  });
+  check(clip?.quads.length === 1 && !clip.freeEdges?.length,
+    'mixed clipboard: an edge already in a copied patch does not become a duplicate free edge');
 }
 
 // ---- 8. the reference families still work on indices -------------------------------------------------------

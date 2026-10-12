@@ -2929,8 +2929,8 @@ export class Viewport {
   removeLastCourseDrawPoint() { this.courseDraw.removeLast(); }
 
   /** Host-facing facade; the placement layer owns the ghost and hit policy. */
-  setPasteTool(clip: MeshVertexClipboard | null) {
-    if (!this.clipboardPlacement.setClip(clip)) return;
+  setPasteTool(clip: MeshVertexClipboard | null, propOrigins?: readonly V3[]) {
+    if (!this.clipboardPlacement.setClip(clip, propOrigins)) return;
     this.detachGizmo();
     this.selection.placeCornerMarker(null);
     this.showHandles(null, []);

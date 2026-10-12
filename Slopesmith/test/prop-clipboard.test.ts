@@ -289,10 +289,20 @@ function sourceDoc(): Doc {
   session.copy(); // the multi-prop panel's Copy action
   check(session.canPaste() && !meshClipboard.canPasteVertices(), 'the panel’s prop Copy action also takes paste ownership');
 
-  // Selection safety and async mode changes must not silently replace the clipboard or enter another mode.
+  // A prop-only Edit selection still uses the prop clipboard. Add a mesh point to exercise the mixed route.
   mixed = true;
-  check(!press('c') && !press('x') && doc.props!.length === 4, 'mixed selections are neither partially copied nor cut');
+  check(!press('c') && !press('x') && doc.props!.length === 4,
+    'a mixed selection with no mesh component cannot copy or cut only its props');
+  store.regionSel = [vertexName(doc, 1)!];
+  store.multiSel = [2, 3];
+  check(press('c') && store.clipboardKind === 'mixed' && meshClipboard.canPasteVertices() && !session.canPaste(),
+    'Ctrl+C on a mixed mesh and prop selection gives the combined clipboard paste ownership');
+  check(press('v') && calls.includes('mesh-paste'), 'Ctrl+V routes the mixed clipboard to one Edit placement');
+  store.regionSel = [vertexName(doc, 1)!];
+  store.multiSel = [2, 3];
+  check(press('x'), 'Ctrl+X routes a mixed selection through the combined cut action');
   mixed = false;
+  // Selection safety and async mode changes must not silently replace the clipboard or enter another mode.
   selectedText = 'prop:0000';
   check(!press('c') && !press('x'), 'selected panel text keeps native copy/cut');
   selectedText = '';

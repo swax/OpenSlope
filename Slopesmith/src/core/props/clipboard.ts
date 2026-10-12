@@ -54,6 +54,18 @@ type PropDoc = Pick<QuadMeshDoc, 'name' | 'props' | 'lights' | 'screens' | 'effe
 /** The authored terrain's height under a data-space (x, z), searched down from about `nearY`; null off it. */
 type GroundAt = (x: number, z: number, nearY: number) => number | null;
 
+/** Mesh rewrites replace their arrays but may retain placement tables by reference. Isolate the tables that
+ * prop paste/delete mutates so the prior document remains intact for undo without cloning the whole mesh. */
+export function clonePlacementTables(doc: QuadMeshDoc): QuadMeshDoc {
+  return {
+    ...doc,
+    ...(doc.props ? { props: [...doc.props] } : {}),
+    ...(doc.lights ? { lights: [...doc.lights] } : {}),
+    ...(doc.screens ? { screens: [...doc.screens] } : {}),
+    ...(doc.effects ? { effects: structuredClone(doc.effects) } : {}),
+  };
+}
+
 /** Snapshot the placements at `indices`, with the free lights `lightIds` selected beside them. Null when none of
  *  the placements can be copied. */
 export function copyPlacements(doc: PropDoc, indices: readonly number[], groundAt?: GroundAt,

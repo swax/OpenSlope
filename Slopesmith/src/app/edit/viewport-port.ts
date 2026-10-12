@@ -49,7 +49,7 @@ export interface EditViewportPort {
   setTrailKnots(knots: readonly V3[], knot: number | null, pivot?: V3 | null, shape?: TrailShape): void;
   setCreateTrailSurfaceLift(value: number): void;
   projectedVerticesInsidePatches(quads: readonly number[]): number[];
-  setPasteTool(clip: MeshVertexClipboard | null): void;
+  setPasteTool(clip: MeshVertexClipboard | null, propOrigins?: readonly V3[]): void;
   readonly pastePlacing: boolean;
   /** Alt held on the live pointer: a drag moves only what it grabbed (creases allowed) instead of staying smooth. */
   readonly independentDrag?: boolean;

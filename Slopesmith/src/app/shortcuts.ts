@@ -215,8 +215,8 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (mod && !e.altKey && key === 'a' && canSelectConnected()) {
       e.preventDefault(); selectConnected(); return;
     }
-    if (mod && e.key.toLowerCase() === 'c' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); copySelectedVertices(); return; }
-    if (mod && e.key.toLowerCase() === 'x' && !mixedEditSelection() && canCopyVertices()) { e.preventDefault(); cutSelectedVertices(); return; }
+    if (mod && e.key.toLowerCase() === 'c' && canCopyVertices()) { e.preventDefault(); copySelectedVertices(); return; }
+    if (mod && e.key.toLowerCase() === 'x' && canCopyVertices()) { e.preventDefault(); cutSelectedVertices(); return; }
     if (mod && e.key.toLowerCase() === 'v' && canPasteVertices()) { e.preventDefault(); pasteSelectedVertices(); return; }
     // Prop selections in Props or Edit (docs/012).
     if (mod && !e.altKey && (key === 'c' || key === 'x') && propClipboard.canCopy()) {
@@ -331,9 +331,10 @@ export function installShortcuts(deps: ShortcutDeps) {
       else if (store.currentMode === 'props' && store.selectedLight !== null) deleteSelectedLight();
       else if (store.currentMode === 'props' && store.selectedProp !== null) propOps.deleteSelectedProp();
       else if (store.currentMode === 'props' && store.selectedRefProp) { /* the reference is read-only */ }
-      else if (store.currentMode === 'edit' && (store.selectedCorner !== null || store.regionSel.length || store.edgeSel.length || store.cellSel.length)) { e.preventDefault(); deleteSelectedMesh(); }
+      else if (store.currentMode === 'edit' && (store.selectedCorner !== null || store.regionSel.length || store.edgeSel.length || store.cellSel.length
+        || mixedEditSelection() && (store.selectedProp !== null || store.multiSel.length))) { e.preventDefault(); deleteSelectedMesh(); }
       // Edit selects placements and free lights too (its click picks them as Props mode does); Delete removes them
-      // the same way. A mixed mesh + prop marquee stays dormant until narrowed, as deleteSelectedMesh does.
+      // the same way. Mixed Edit selections are handled above as one geometry/placement action.
       else if (store.currentMode === 'edit' && store.multiSel.length && !mixedEditSelection()) { e.preventDefault(); propOps.deleteMultiSelProps(); }
       else if (store.currentMode === 'edit' && store.selectedProp !== null && !mixedEditSelection()) { e.preventDefault(); propOps.deleteSelectedProp(); }
       else if (store.currentMode === 'edit' && store.selectedLight !== null) { e.preventDefault(); deleteSelectedLight(); }
