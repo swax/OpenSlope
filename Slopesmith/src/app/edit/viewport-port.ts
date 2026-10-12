@@ -4,6 +4,8 @@ import type { MeshControlPointId } from '../../core/mesh/control-point-types';
 import type { Store } from '../state/store';
 import type { TrailShape, TrailTransform } from '../viewport/tools/create-trail';
 import type { CellSpeedTint } from '../viewport/types';
+import type { PlacementEndpoint } from '../viewport/input/placement-constraint';
+import type { GridCorners } from '../../core/mesh/ops/grid';
 
 export type { CellSpeedTint, TrailShape, TrailTransform };
 
@@ -36,7 +38,7 @@ export interface EditViewportPort {
   refreshControlCages(): void;
   setBridgeRails(rails: readonly (readonly number[])[] | null): void;
   setLoftPreview(quads: readonly (readonly number[])[] | null, source?: readonly number[] | QuadMeshDoc | null): void;
-  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'trail' | null): void;
+  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | null): void;
   setCreatePatchSides(sides: 3 | 4): void;
   setWeldTool(source: readonly number[] | false): void;
   setEdgeWeldTool(edges: readonly [number, number][] | null): void;
@@ -44,6 +46,16 @@ export interface EditViewportPort {
   setCreateEdgeStart(start: V3 | null): void;
   setCreateEdgePath(points: readonly V3[]): void;
   readonly createTubePoints: readonly V3[];
+  /** Create Grid's placed clicks, its draft's four corners once the third is down, the cursor's candidate for the
+   *  next click, and the camera it is drawn from. */
+  readonly createGridPoints: readonly PlacementEndpoint[];
+  readonly createGridCorners: GridCorners | null;
+  /** Whether the gizmo holds a whole Create Grid draft — a selection Move, Rotate and Scale all apply to. */
+  readonly createGridWholeSelected: boolean;
+  setCreateGridCorners(corners: GridCorners): void;
+  readonly createGridHover: PlacementEndpoint | null;
+  readonly createGridEye: V3;
+  setCreateGridLattice(plan: { points: readonly V3[]; columns: number; rows: number } | null): void;
   /** Show a trail's points (none hides them), `knot` carrying the move gizmo — or, with a `pivot`, the selected
    *  paths carrying it — and the paths through them (docs/023). */
   setTrailKnots(knots: readonly V3[], knot: number | null, pivot?: V3 | null, shape?: TrailShape): void;

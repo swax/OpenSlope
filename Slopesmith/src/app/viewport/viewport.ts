@@ -91,6 +91,8 @@ import { createSurgeryLayer, type SurgeryLayer } from './tools/surgery';
 import { createCageLayer, type CageLayer } from './mesh/cage';
 import { createMeshPicking, type MeshPicking } from './input/mesh-picking';
 import { createScenePicking, type ScenePicking } from './input/scene-picking';
+import type { PlacementEndpoint } from './input/placement-constraint';
+import type { GridCorners } from '../../core/mesh/ops/grid';
 import { createSelectionLayer, type SelectionLayer } from './mesh/selection';
 import { createPaintLayer, type PaintLayer } from './mesh/paint';
 import { createCameraController, type CameraController } from './camera/controller';
@@ -121,6 +123,7 @@ import { createGizmoReadout, type GizmoReadout } from './gizmo/readout';
 import { createBridgePreviewLayer, type BridgePreviewLayer } from './tools/bridge-preview';
 import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch';
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
+import { createGridToolLayer, type GridToolLayer } from './tools/create-grid';
 import { createTrailToolLayer, type TrailShape, type TrailToolLayer } from './tools/create-trail';
 import { createPathHandlesLayer, type PathHandleSide, type PathHandlesLayer, type ShownPath } from './scene/path-handles';
 import { createPropDeformLayer, type PropDeformLayer } from './scene/prop-deform';
@@ -227,6 +230,8 @@ export class Viewport {
   readonly patchTool: PatchToolLayer;
   readonly tubeTool: TubeToolLayer;
   private createTubePreviewListener: (() => void) | null = null;
+  readonly gridTool: GridToolLayer;
+  private createGridPreviewListener: (() => void) | null = null;
   readonly trailTool: TrailToolLayer;
   readonly pathHandles: PathHandlesLayer;
   readonly propDeform: PropDeformLayer;
@@ -566,6 +571,11 @@ export class Viewport {
         else this.gizmoReadout.end();
         return;
       }
+      if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') { // a Create Grid draft, not the mesh
+        this.gridTool.gizmoDragging(dragging);
+        if (dragging) this.gizmoReadout.begin(this.transforms.mode); else this.gizmoReadout.end();
+        return;
+      }
       if (this.gizmoKind === 'trail') { // the whole trail: the knot layer transforms it, not the mesh transforms
         this.trailTool.wholeDragging(dragging);
         if (dragging) this.gizmoReadout.begin(this.transforms.mode); else this.gizmoReadout.end();
@@ -659,6 +669,15 @@ export class Viewport {
       this.cb.onCreateTubeAxisChange?.();
       this.createTubePreviewListener?.();
     });
+    this.gridTool = createGridToolLayer(this.stage, () => this.placementSurface, () => {
+      const vertex = this.picking.pickCorner();
+      const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
+      return pos ? { vertex, pos } : null;
+    });
+    this.gridTool.setListener(() => {
+      this.cb.onCreateGridChange?.();
+      this.createGridPreviewListener?.();
+    });
     this.trailTool = createTrailToolLayer(this.stage, () => this.placementSurface, () => {
       const vertex = this.picking.pickCorner();
       const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
@@ -688,7 +707,7 @@ export class Viewport {
       canBegin: () => {
         const onSelectionGizmo = (this.gizmoKind === 'corners' || this.gizmoKind === 'cagehandle') && !!this.gizmo.axis;
         return this._mode === 'edit' && this.isMountain && this.cageLayer.cage && !!this.meshDoc && this.sel.edgeSel.length > 0
-          && !this.clipboardPlacement.active && !this.patchTool.active && !this.tubeTool.active && !this.trailTool.active && !this.surgery.tool && !this.weldTool.active
+          && !this.clipboardPlacement.active && !this.patchTool.active && !this.tubeTool.active && !this.gridTool.active && !this.trailTool.active && !this.surgery.tool && !this.weldTool.active
           && !this.bridgePreview.active && !this.createEdge.armed && (onSelectionGizmo || this.picking.selectedEdgeAtPointer());
       },
       selectedEdges: () => this.sel.edgeSel,
@@ -1162,7 +1181,7 @@ export class Viewport {
       selection: this.selection, picking: this.picking, scenePicking: this.scenePicking,
       cage: this.cageLayer, transforms: this.transforms,
       cameraCtl: this.cameraCtl, rideCtl: this.rideCtl, surgery: this.surgery, patchTool: this.patchTool,
-      tubeTool: this.tubeTool, trailTool: this.trailTool, pathHandles: this.pathHandles, propDeform: this.propDeform, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
+      tubeTool: this.tubeTool, gridTool: this.gridTool, trailTool: this.trailTool, pathHandles: this.pathHandles, propDeform: this.propDeform, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
       courseDraw: this.courseDraw, edgeExtrusion: this.edgeExtrusion, createEdge: this.createEdge, bridgePreview: this.bridgePreview,
       gems: this.gems, screens: this.screens, props: this.props, lights: this.lights, rails: this.rails,
       propLines: this.propLines,
@@ -1294,6 +1313,7 @@ export class Viewport {
       this.createEdge.scaleMarkers(); // ...and the drawing tools' point dots
       this.patchTool.scaleMarkers();
       this.tubeTool.scaleMarkers();
+      this.gridTool.scaleMarkers();
       this.trailTool.scaleMarkers(); // ...and the trail's point bulbs and snap rings
       this.dropLines.sync(); // the selection's plumb lines follow a drag, a re-select and a terrain edit
       sceneMs += performance.now() - phaseStarted;
@@ -1920,6 +1940,7 @@ export class Viewport {
     }
     if (this.patchTool?.active) this.patchTool.refresh();
     if (this.tubeTool?.active) this.tubeTool.refresh();
+    if (this.gridTool?.active) this.gridTool.refresh();
     if (this.trailTool?.active) this.trailTool.refresh();
     if (this.clipboardPlacement?.active) this.clipboardPlacement.refresh();
     if (this.props?.propArm) this.props.seatPropGhost();
@@ -1962,7 +1983,7 @@ export class Viewport {
       this.selection.placeCornerMarker(null); this.showHandles(null, []); this.selection.clearCageHandle(); this.selection.clearRefLoops();
     }
     if (m !== 'effects') { this.effectHandle.visible = false; if (this.gizmoKind === 'effect') this.detachGizmo(); }
-    if (m !== 'edit' && (this.surgery.tool || this.patchTool.active || this.tubeTool.active || this.trailTool.active)) this.setSurgeryTool(null); // surgery is Edit-only
+    if (m !== 'edit' && (this.surgery.tool || this.patchTool.active || this.tubeTool.active || this.gridTool.active || this.trailTool.active)) this.setSurgeryTool(null); // surgery is Edit-only
     if (m !== 'edit') this.trailTool.setKnots([], null); // trail knots are Edit's handles
     if (m !== 'edit' && this.clipboardPlacement.active) this.setPasteTool(null); // clipboard placement is Edit-only too
     if (m !== 'edit' && this.weldTool.active) this.setWeldTool(false); // the target-weld gesture is Edit-only too
@@ -2715,6 +2736,7 @@ export class Viewport {
     if (this.heldGizmo) { this.holdGizmo(); return; }
     if (this.gizmoKind === 'edgeextrusion') { this.edgeExtrusion.onGizmoChange(); this.gizmoReadout.update(); return; }
     if (this.gizmoKind === 'trail') { this.trailTool.wholeChanged(); this.gizmoReadout.update(); return; }
+    if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') { this.gridTool.gizmoChanged(); this.gizmoReadout.update(); return; }
     if (this.transforms.rotationActive()) { this.transforms.rotateSelection(); this.gizmoReadout.update(); return; }
     if (this.transforms.scaleActive()) { this.transforms.scaleSelection(); this.gizmoReadout.update(); return; }
     if (this.transforms.slideRecut(obj)) { this.gizmoReadout.update(); return; } // Slide, arrow or tangent pad: an exact de Casteljau re-cut owns the frame
@@ -2872,13 +2894,15 @@ export class Viewport {
 
   // ---- topology surgery (docs/017): the armed tool + ghost overlay live in SurgeryLayer (this.surgery) ----
 
-  /** Arm/disarm the mutually-exclusive loop-cut, create-patch, create-tube, or create-trail tool. */
-  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'trail' | null) {
+  /** Arm/disarm the mutually-exclusive loop-cut, create-patch, create-tube, create-grid, or create-trail tool. */
+  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | null) {
     const leavingGeneratedPreview = (this.tubeTool.active && tool !== 'tube')
+      || (this.gridTool.active && tool !== 'grid')
       || (this.trailTool.active && tool !== 'trail');
     this.surgery.setTool(tool === 'loopcut' ? 'loopcut' : null);
     this.patchTool.setActive(tool === 'patch');
     this.tubeTool.setActive(tool === 'tube');
+    this.gridTool.setActive(tool === 'grid');
     this.trailTool.setActive(tool === 'trail');
     if (leavingGeneratedPreview) this.setLoftPreview(null);
     if (tool) { this.detachGizmo(); this.selection.placeCornerMarker(null); this.showHandles(null, []); }
@@ -2889,6 +2913,15 @@ export class Viewport {
   get createTubePoints(): readonly V3[] { return this.tubeTool.points; }
   get createTubePreviewPoint(): V3 | null { return this.tubeTool.hover; }
   setCreateTubePreviewListener(listener: (() => void) | null) { this.createTubePreviewListener = listener; listener?.(); }
+
+  get createGridPoints(): readonly PlacementEndpoint[] { return this.gridTool.points; }
+  get createGridCorners(): GridCorners | null { return this.gridTool.corners; }
+  get createGridWholeSelected(): boolean { return this.gridTool.active && this.gridTool.wholeSelected; }
+  setCreateGridCorners(corners: GridCorners) { this.gridTool.setCorners(corners); }
+  get createGridHover(): PlacementEndpoint | null { return this.gridTool.hover; }
+  get createGridEye(): V3 { return this.gridTool.eye; }
+  setCreateGridPreviewListener(listener: (() => void) | null) { this.createGridPreviewListener = listener; listener?.(); }
+  setCreateGridLattice(plan: { points: readonly V3[]; columns: number; rows: number } | null) { this.gridTool.setLattice(plan); }
 
   get createTrailPreviewPoint(): V3 | null { return this.trailTool.hover; }
   /** Show the selected path's Bézier handles (null hides them), `handle` carrying the gizmo (docs/014). */

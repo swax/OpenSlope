@@ -173,6 +173,9 @@ export function createCommandSheet(deps: CommandSheetDeps) {
           ? helpPanel('Edit Mode — create edge', [['LMB', 'start on a vertex, edge or surface'], ['LMB', 'next point: snaps to a vertex, free edge or a patch edge it can cut to, else at the chain depth'], ['Ctrl+LMB', 'stick to any surface edge or the surface'], ['⇧LMB', 'axis-lock free edge'], ['Esc', 'new strand (again to finish)'], ['Enter', 'finish']])
         : store.currentMode === 'edit' && store.surgeryTool === 'tube'
           ? helpPanel('Edit Mode — create tube', [['LMB', 'place axis endpoint'], ['Ctrl+LMB', 'second end on the surface'], ['⇧LMB', 'lock world axis'], ['Enter', 'create + select patches'], ['Esc', 'cancel']])
+        : store.currentMode === 'edit' && store.surgeryTool === 'grid'
+          ? helpPanel('Edit Mode — create grid', [['LMB', 'first side’s two ends, then the width'], ['LMB on points', 'attach along their edge'], ['Ctrl+LMB', 'corner on the surface'], ['⇧LMB', 'lock world axis'],
+            ...(canRotateSelection() ? [['W / E / R', 'move / rotate / scale'] as [string, string]] : []), ['Enter', 'create + select patches'], ['Esc', 'cancel']])
         : store.currentMode === 'edit' && store.surgeryTool === 'trail'
           ? helpPanel('Edit Mode — create trail', [['LMB', 'add spline knot'], ['LMB knot', 'pick it up to move'], ['⇧LMB', 'lock world axis'], ['Backspace', 'remove selected / last knot'], ['Enter / Esc', 'finish']])
         : store.currentMode === 'edit' && cageActive()

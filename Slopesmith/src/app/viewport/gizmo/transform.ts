@@ -264,6 +264,7 @@ export function createTransformLayer(
     if (gizmoMode !== 'rotate') return false;
     if (stage.gizmoKind === 'propdeform') return stage.gizmo.object?.userData.deformSection === true;
     if (stage.gizmoKind === 'trail') return true; // the trail turns itself (viewport/tools/create-trail.ts)
+    if (stage.gizmoKind === 'grid') return true; // …and so does a whole Create Grid draft (viewport/tools/create-grid.ts)
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
     if (stage.gizmoKind === 'corner') return selectedFreePoint() !== null;
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
@@ -280,7 +281,7 @@ export function createTransformLayer(
   function scaleActive(): boolean {
     if (gizmoMode !== 'scale') return false;
     if (stage.gizmoKind === 'propdeform') return stage.gizmo.object?.userData.deformSection === true;
-    if (stage.gizmoKind === 'trail') return true;
+    if (stage.gizmoKind === 'trail' || stage.gizmoKind === 'grid') return true;
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
     if (stage.gizmoKind === 'controlpoints') return sel.controlPointSel().length > 1;
