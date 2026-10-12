@@ -169,7 +169,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const movableControlPointCount = () => {
     return store.controlSel.length;
   };
-  const canRotateSelection = () => deps.propDeform.active ? deps.propDeform.state?.mode === 'section' && !deps.propDeform.state.busy
+  const canRotateSelection = () => store.currentMode === 'edit' && store.surgeryTool === 'grid' ? viewport.createGridWholeSelected
+    : deps.propDeform.active ? deps.propDeform.state?.mode === 'section' && !deps.propDeform.state.busy
     : viewport.edgeExtrusionStaged && viewport.edgeExtrusionMode === 'path' ? false : store.currentMode === 'props'
     ? store.selectedProp !== null || store.multiSel.length > 0
     : editPropsSelected() || viewport.edgeExtrusionStaged || store.currentMode === 'edit' && !mixedEditSelection()
@@ -449,6 +450,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if (store.bridgeRails !== null) { buildBridgeTools(ctx); return; }
     if (store.createEdgeTool) { createTools.buildCreateEdgeTools(); return; }
     if (store.surgeryTool === 'tube') { createTools.buildCreateTubeTools(); return; }
+    if (store.surgeryTool === 'grid') { createTools.buildCreateGridTools(); return; }
     if (store.surgeryTool === 'trail') { createTools.buildTrailTools(); return; }
     if (store.surgeryTool === 'patch' || store.surgeryTool === 'loopcut') { createTools.buildCreateEdgeTools(); return; }
     if (store.weldTool === 'weld') { buildPointWeldTools(ctx); return; }
@@ -540,6 +542,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   viewport.setCreateEdgePreviewListener(createTools.refreshCreateEdgeSummary);
   viewport.setCreatePatchPreviewListener(createTools.refreshCreatePatchSummary);
   viewport.setCreateTubePreviewListener(createTools.refreshCreateTubeSummary);
+  viewport.setCreateGridPreviewListener(createTools.refreshCreateGridSummary);
   viewport.setCreateTrailPreviewListener(createTools.refreshCreateTrailSummary);
   return { rebuildTools, updatePaintUi, updateCmdSheet };
 }

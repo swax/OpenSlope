@@ -1,7 +1,8 @@
 import type { QuadMeshDoc, V3 } from '../../core/doc/types';
 import {
-  appendFreeEdge, appendTube, applySurfaceCut, autoWeldCreatedEdgeCrossings, ekey, routeSurfaceCutPath, validateSurfaceCutPath,
-  fillSelectedEdgeHoles, type SurfaceCutPoint,
+  appendFreeEdge, appendGrid, appendTube, applySurfaceCut, autoWeldCreatedEdgeCrossings, ekey, gridCornersFromClicks, planGrid,
+  resizeGridLength, resizeGridWidth, routeSurfaceCutPath, validateSurfaceCutPath, fillSelectedEdgeHoles,
+  type GridPlanResult, type SurfaceCutPoint,
 } from '../../core/mesh/ops';
 import { applyLoft, railFromEdges, type RailResult } from '../../core/mesh/loft';
 import { getVertex } from '../../core/doc/doc-edit';
@@ -310,6 +311,70 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     rebuildTools(); updateCmdSheet();
   }
 
+  /** Create Grid's latest plan, kept so the panel's read-outs follow the cursor without planning twice a move. */
+  let gridPlan: GridPlanResult | null = null;
+
+  function armCreateGrid() {
+    if (!store.cageOn) { store.cageOn = true; applyCage(); persistUi(); }
+    exitRegion();
+    store.selectedCorner = null; store.selected = null;
+    store.surgeryTool = 'grid'; store.createPatchQuads = [];
+    store.weldTool = null; store.weldSource = []; store.weldEdgeSource = [];
+    view().setWeldTool(false); view().setSurgeryTool('grid');
+    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    toast('click both ends of the first side, then its width — snap to an edge’s points to attach — then press Enter', 'info');
+  }
+
+  /** Plan the grid from its draft corners — or, while the third is being placed, from the cursor standing in for
+   *  it — and show the lattice in the teal preview. */
+  function previewCreateGrid() {
+    const points = view().createGridPoints, hover = view().createGridHover;
+    const corners = view().createGridCorners
+      ?? (points.length === 2 && hover ? gridCornersFromClicks(points[0], points[1], hover) : null);
+    gridPlan = corners ? planGrid(mdoc(), corners, {
+      columns: store.gridColumns, rows: store.gridRows,
+      patchSize: store.gridSizing === 'size' ? store.gridPatchSize : null, eye: view().createGridEye,
+    }) : null;
+    if (gridPlan?.ok) view().setLoftPreview(gridPlan.plan.quads, gridPlan.plan.points.flat());
+    else view().setLoftPreview(null);
+    view().setCreateGridLattice(gridPlan?.ok ? gridPlan.plan : null);
+    return gridPlan;
+  }
+
+  function finishCreateGrid() {
+    if (store.surgeryTool !== 'grid') return;
+    if (!view().createGridCorners) { toast('Place all three grid corners before creating it.', 'err'); return; }
+    const planned = previewCreateGrid();
+    if (!planned?.ok) { if (planned) toast(planned.error, 'err'); return; }
+    const result = appendGrid(mdoc(), planned.plan);
+    if (!result.ok) { toast(result.error, 'err'); return; }
+    commitEditMesh(store, result.doc);
+    store.surgeryTool = null; gridPlan = null;
+    view().setSurgeryTool(null); view().setLoftPreview(null);
+    clearEdgeSelection(); dropCornerSelection(); clearCellSelection();
+    store.cellSel = quadNames(mdoc(), result.quads); store.anchorCell = store.cellSel[0] ?? null;
+    resetGizmoMode(); scheduleRebuild();
+    refreshCreatedCellSelection();
+    toast(`grid created · ${planned.plan.columns} × ${planned.plan.rows} · ${result.quads.length} patches`, 'ok');
+  }
+
+  /** A typed size for the draft: the first side's length (B and C move along it) or the width (C and D move). */
+  function setCreateGridLength(length: number) {
+    const corners = view().createGridCorners;
+    if (corners) view().setCreateGridCorners(resizeGridLength(corners, length));
+  }
+  function setCreateGridWidth(width: number) {
+    const corners = view().createGridCorners;
+    if (corners) view().setCreateGridCorners(resizeGridWidth(corners, width));
+  }
+
+  function cancelCreateGrid() {
+    if (store.surgeryTool !== 'grid') return;
+    store.surgeryTool = null; gridPlan = null;
+    view().setSurgeryTool(null); view().setLoftPreview(null);
+    rebuildTools(); updateCmdSheet();
+  }
+
   function finishCreatePatch(selectCreated: boolean) {
     if (store.surgeryTool !== 'patch') return;
     const created = [...store.createPatchQuads];
@@ -503,6 +568,8 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   return {
     bridgeCandidate, startBridge, addBridgeRail, reverseBridgeRail, removeBridgeRail, moveBridgeRail, cancelBridge, completeBridge,
     createPatchesFromEdges, armCreateEdge, armCreatePatch, armLoopCut, armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube,
+    armCreateGrid, previewCreateGrid, finishCreateGrid, cancelCreateGrid, setCreateGridLength, setCreateGridWidth,
+    createGridPlan: () => gridPlan,
     finishCreatePatch, addCreateEdgePoint, createEdgeCuts, endCreateEdgeChain, finishCreateEdge, clearCreateEdge,
   };
 }

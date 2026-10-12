@@ -45,7 +45,7 @@ const layers = {
   },
   cage, transforms: { mode: 'move' },
   clipboardPlacement: { active: false }, surgery: { tool: null, onCommit: () => false },
-  tubeTool: { active: false }, trailTool: { active: false, pickKnot: () => false }, pathHandles: { pickHandle: () => false }, propDeform: { active: false }, patchTool: { active: false }, weldTool: { active: false },
+  tubeTool: { active: false }, gridTool: { active: false }, trailTool: { active: false, pickKnot: () => false }, pathHandles: { pickHandle: () => false }, propDeform: { active: false }, patchTool: { active: false }, weldTool: { active: false },
   createEdge: { armed: false, pickCoincidentVertices: () => null, pickEdgeCrossing: () => null },
   gems: { gemLine: null },
 } as unknown as Parameters<typeof createPointerRouter>[2];
@@ -133,7 +133,7 @@ Object.assign(layers.picking, {
   curveScreenClosest: () => ({ d2: 0, t: 0.5, pos: [4, 4, 4] }),
 });
 Object.assign(access, { snapPoint: (p: number[]) => p, terrain: () => null, net: () => ({}), createEdgePreviewChanged() {} });
-for (const tool of ['clipboardPlacement', 'patchTool', 'tubeTool', 'trailTool', 'weldTool', 'surgery'] as const) {
+for (const tool of ['clipboardPlacement', 'patchTool', 'tubeTool', 'gridTool', 'trailTool', 'weldTool', 'surgery'] as const) {
   Object.assign(layers[tool], { onHover: () => false });
 }
 const edgeLayer = Object.assign(layers.createEdge, {

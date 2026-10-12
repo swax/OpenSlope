@@ -90,7 +90,7 @@ export function installShortcuts(deps: ShortcutDeps) {
     hideSelectedMesh, showAllHidden, canHideSelection, toggleSelectedControlCages, canEditCurvature,
     selectConnected, canSelectConnected,
     startBridge, addBridgeRail, cancelBridge, completeBridge,
-    endCreateEdgeChain, finishCreateEdge, clearCreateEdge, finishCreateTube, cancelCreateTube,
+    endCreateEdgeChain, finishCreateEdge, clearCreateEdge, finishCreateTube, cancelCreateTube, finishCreateGrid, cancelCreateGrid,
     finishCreateTrail, cancelCreateTrail, undoCreateTrailPoint,
     beginEdgeExtrusion, flipEdgeExtrusionSide, commitEdgeExtrusion, ripEdges,
     creaseVertices, smoothVertices,
@@ -239,6 +239,7 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (e.key === 'Enter' && store.weldTool === 'edge-weld') { e.preventDefault(); commitEdgeWeld(); return; }
     if (e.key === 'Enter' && store.createEdgeTool) { e.preventDefault(); finishCreateEdge(); return; }
     if (e.key === 'Enter' && store.surgeryTool === 'tube') { e.preventDefault(); finishCreateTube(); return; }
+    if (e.key === 'Enter' && store.surgeryTool === 'grid') { e.preventDefault(); finishCreateGrid(); return; }
     if (e.key === 'Enter' && store.surgeryTool === 'trail') { e.preventDefault(); finishCreateTrail(); return; }
     if (e.key === 'Enter' && store.surgeryTool === 'patch') { e.preventDefault(); edit.finishCreatePatch(true); return; }
     // A trail (docs/023): Delete takes the picked point, else — while drawing — the newest one, else the paths.
@@ -355,6 +356,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       // The first Esc ends the strand being drawn and keeps the tool; the next leaves it.
       if (store.createEdgeTool) { if (!endCreateEdgeChain()) finishCreateEdge(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'tube') { cancelCreateTube(); return; }
+      if (store.currentMode === 'edit' && store.surgeryTool === 'grid') { cancelCreateGrid(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'trail') { cancelCreateTrail(); return; }
       if (store.currentMode === 'edit' && store.surgeryTool === 'patch') { edit.finishCreatePatch(false); return; }
       // first Esc cancels placement mode (puts the held prop / brush / surgery / weld tool down); the next clears the selection

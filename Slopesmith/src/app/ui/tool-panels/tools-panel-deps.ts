@@ -41,6 +41,8 @@ export type ToolsPanelDeps = {
     | 'startBridge' | 'addBridgeRail' | 'reverseBridgeRail' | 'removeBridgeRail' | 'moveBridgeRail'
     | 'completeBridge' | 'cancelBridge' | 'bridgeCandidate' | 'armCreateEdge' | 'armCreatePatch' | 'finishCreatePatch' | 'finishCreateEdge'
     | 'armCreateTube' | 'previewCreateTube' | 'finishCreateTube' | 'cancelCreateTube' | 'armLoopCut'
+    | 'armCreateGrid' | 'previewCreateGrid' | 'finishCreateGrid' | 'cancelCreateGrid' | 'createGridPlan'
+    | 'setCreateGridLength' | 'setCreateGridWidth'
     | 'armCreateTrail' | 'undoCreateTrailPoint' | 'finishCreateTrail' | 'cancelCreateTrail'
     | 'selectedTrail' | 'trailStatus' | 'trailError' | 'trailRide' | 'syncTrailView' | 'resumeTrail' | 'setTrailSetting'
     | 'deleteSelectedTrailKnot' | 'disconnectSelectedPoint' | 'splitSelectedPoint' | 'deleteSelectedTrail' | 'dissolveSelectedTrail'

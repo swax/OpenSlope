@@ -22,6 +22,7 @@ import type { RideLayer } from '../scene/ride';
 import type { SurgeryLayer } from '../tools/surgery';
 import type { PatchToolLayer } from '../tools/create-patch';
 import type { TubeToolLayer } from '../tools/create-tube';
+import type { GridToolLayer } from '../tools/create-grid';
 import type { TrailToolLayer } from '../tools/create-trail';
 import type { PathHandlesLayer } from '../scene/path-handles';
 import type { PropDeformLayer } from '../scene/prop-deform';
@@ -58,6 +59,7 @@ export interface RouterLayers {
   surgery: SurgeryLayer;
   patchTool: PatchToolLayer;
   tubeTool: TubeToolLayer;
+  gridTool: GridToolLayer;
   trailTool: TrailToolLayer;
   pathHandles: PathHandlesLayer;
   weldTool: WeldToolLayer;
@@ -1134,6 +1136,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.surgery.onCommit()) return;
     // Create Tube: collect its two axis endpoints; the panel controls derive a live quad shell from them.
     if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
+    // Create Grid: collect its three corners; the panel's counts and the cursor shape the live lattice.
+    if (access.mode() === 'edit' && layers.gridTool.active) { layers.gridTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
     // Trail drawing (docs/023): a click on a knot picks it up to move; anywhere else extends the centre spline.
     if (access.mode() === 'edit' && layers.trailTool.active) {
       if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(e.shiftKey);
@@ -1173,6 +1177,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(shift, ctrl); return; }
     // Create Tube touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(shift, ctrl); return; }
+    // Create Grid touch tap (mouse is handled in pointerDown).
+    if (access.mode() === 'edit' && layers.gridTool.active) { layers.gridTool.onCommit(shift, ctrl); return; }
     // Trail drawing touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.trailTool.active) {
       if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(shift);
@@ -1665,6 +1671,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.patchTool.onHover(e)) return;
     // Create Tube: its next axis endpoint follows terrain or the free-space construction plane.
     if (access.mode() === 'edit' && layers.tubeTool.onHover(e)) return;
+    // Create Grid: its next corner follows the level plane, the surface (Ctrl) or a snapped vertex.
+    if (access.mode() === 'edit' && layers.gridTool.onHover(e)) return;
     // Create Trail: the next centre-spline knot follows terrain or the construction plane.
     if (access.mode() === 'edit' && layers.trailTool.onHover(e)) return;
     // Create Edge: preview the next endpoint and segment, reusing the exact host vertex under a snap.

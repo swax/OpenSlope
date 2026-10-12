@@ -131,6 +131,45 @@ Data-model additions this op owns:
 - Selection/BVH: a wedge tessellates as a triangle fan; `cellLoop`/face-loop walks treat the collapsed
   side as a wall (loops end there).
 
+### Create grid
+
+**Edit → ▦ create grid** lays a flat lattice of patches from three clicks: both ends of its first side, then a
+point that sets the width across it (`planGrid` / `appendGrid`, `core/mesh/ops/grid.ts`). A free third point is
+squared off against the first side, so the draft starts as a rectangle in the plane the clicks span; a snapped one is
+kept exactly (`gridCornersFromClicks`). The teal preview and its lattice lines follow the cursor until the third
+click; Enter commits and selects the patches, Esc discards them. There is no construction history: after the commit
+a grid is ordinary patches, and Loop Cut is how it gains rows.
+
+The Dimensions panel divides the grid by **columns × rows**, or by one **patch size**: each side then takes the whole
+count whose patches come closest to it (`gridDivisionsForSize`), measured as the average of the side and the one
+opposite. Either can be set before or after the clicks.
+
+Until Enter the draft stays editable on the canvas. Its four corners are handles: a click on a free one seats the
+move gizmo on it, and moving it bends the lattice bilinearly toward it — the translational lattice plus a correction
+that vanishes along both attached sides, so a rim the grid follows stays exact. A draft with no snapped corner comes
+up with the gizmo at its centre and moves, turns or scales whole: while the gizmo holds the whole draft the toolbox
+shows the Transform selector (W / E / R), which drops back to Move on a corner. A click on the grid takes it whole
+again, a click off it lets go. A snapped corner pins the draft to what it attaches to, so it offers only its free
+corners. Typed
+**length** moves the first side's far end with the side across from it, and **width** moves both far corners
+(`resizeGridLength` / `resizeGridWidth`); a size a snapped corner would have to move is greyed. Corners dragged across
+the grid, so its outline folds over, are refused in the panel.
+
+Snapped onto existing geometry, the grid **attaches** instead of overlapping. When its first two corners are points
+joined by an open run of edges — a patch rim, or free construction edges — that run becomes the first side: its
+vertices are reused, its curves kept, and its edge count sets the columns (the field shows it, greyed), so the new
+patches meet the old ones point for point with no T-junctions. A third corner joined to the second the same way
+sets the rows, which fills a notch between two rims. Every row is the first side carried across the width, so a
+curved rim grows a band that follows it. A run counts only while it runs nearly straight between the two points (no
+longer than 1.3× their distance), so a rim that turns a corner or goes the long way round a hole is not taken for
+the side; the grid then spans the two points with a new straight side and still reuses them as corners. Free edges
+the grid builds on are consumed as patch sides, and reused points pin their tangents first, as every append op does.
+
+Winding follows the op contract: a seam shared with an existing patch runs opposite to it, which decides the whole
+grid; with no shared seam the front faces the camera the grid was drawn from (captured at the third click, so
+orbiting before Enter never turns it over). Edges the grid would share with two patches already, or attached runs
+that disagree about which way is up, are refused in the panel before the commit.
+
 ### Bridge (fill a hole / join two rims)
 
 Pick two open boundary chains of equal edge count (or one chain to cap): append the connecting quad
@@ -182,11 +221,13 @@ The cage overlay auto-enables while a surgery gesture is armed. Pole dots (3 ora
 the reference view) render whenever the cage is on, so the consequences of a cut are visible
 immediately.
 
-The drawing tools (create edge / patch / tube) put a chain's **first** point on the vertex, edge or surface under
-the cursor — a click has no other depth to go on — and every later point on the screen-facing plane through the
-previous one, so terrain behind the cursor never pulls a free-standing wall or overhang off to it. **Ctrl** drops
+The drawing tools (create edge / patch / tube / grid) put a chain's **first** point on the vertex, edge or surface
+under the cursor — a click has no other depth to go on — and every later point on the screen-facing plane through
+the previous one, so terrain behind the cursor never pulls a free-standing wall or overhang off to it. Create grid
+uses the level plane through the previous point instead (`levelPlane`), so a grid drawn in open space is flat; a ray
+that grazes that plane falls back to the screen-facing one. **Ctrl** drops
 a later point onto the surface; **Shift** locks it to a world axis (`resolvePlacementEndpoint`,
-`placementTakesSurface`). Create patch, tube and edge all snap a later point to a vertex under the cursor without
+`placementTakesSurface`). Create patch, tube, grid and edge all snap a later point to a vertex under the cursor without
 Ctrl. Create edge also snaps it onto a free (construction) edge, which is split there at the exact curve point
 (`appendFreeEdge`), so the strands of a wire web share their meeting points and **Create Patches** can fill its
 three- and four-sided cells. A surface edge also takes a later point without Ctrl where the chain can cut to it

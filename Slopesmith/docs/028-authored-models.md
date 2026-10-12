@@ -40,14 +40,14 @@ flat shape reproduces — the model self-heals to polygons. Bakes ship two trian
   layer) as a read-only context surface — patch/tube endpoint clicks land on it, but its points and
   patches are not editable — so a model is built fitted against the real terrain; use Hide if it is in
   the way. All mesh tools
-  (create edge/patch/tube, loop cut, slide, weld, delete, clipboard) route at the model's mesh through
+  (create edge/patch/tube/grid, loop cut, slide, weld, delete, clipboard) route at the model's mesh through
   the one `editMesh`/`commitEditMesh` seam. The curvature tools — the control-cage pin (G), crease/smooth
   (C/S), and reset shape — are mountain-only: a model's flat cage derives every handle, so there is no
   curvature to expose or edit (`canEditCurvature` in the edit session).
 - The banner carries the **name**, the **tiled prop** kind row, the **texture** swatch and its **tile turn**
   controls, **deselect**, and **🔒 lock** (pin the session —
   while locked, clicks off the model stay in it and the button becomes **✔ done editing**, the way out).
-  The empty-selection toolbox splits creation into **Create Terrain** (edge / tube / patch) and **Create
+  The empty-selection toolbox splits creation into **Create Terrain** (edge / tube / grid / patch) and **Create
   Prop** (model) panels; inside a session the geometry tools retitle to **Add to Model** — they grow the
   model, never the mountain. There is no save/commit gate: edits are the document — undo/redo,
   persistence and `.slope` save cover models with no extra machinery.

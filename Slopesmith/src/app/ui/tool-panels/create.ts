@@ -3,7 +3,7 @@ import { edgeIndices } from '../../state/mesh-names';
 import { meshFromDoc } from '../../../core/mesh/topology';
 import { measureEdges } from '../../../core/mesh/measure';
 import {
-  detail, errorBanner, note, texturePreview, tileSetDropdown, tip, type SetTile, type TileSetArt, type TileSetOption,
+  detail, errorBanner, note, texturePreview, tileSetDropdown, tip, typedRange, type SetTile, type TileSetArt, type TileSetOption,
 } from '../components/gui';
 import { tileSetBuilder, type BuilderSquare } from '../components/tile-set-builder';
 import { toast } from '../components/toast';
@@ -16,6 +16,7 @@ import { fmtM, pathHandleActions, type ToolsContext } from './widgets';
 import type { TrailKnotSettings, TrailSettings, TrailTileRow, TrailTileSet } from '../../../core/doc/types';
 import { TRAIL_SETTINGS_DEFAULTS } from '../../../core/mesh/trail-object';
 import { MAX_TRAIL_LANES } from '../../../core/mesh/trail';
+import { gridLengthFixed, gridWidthFixed, MAX_GRID_DIVISIONS } from '../../../core/mesh/ops/grid';
 import {
   findTrailTileSet, isBuiltInTrailTileSet, TRAIL_TILE_ROW_WORDS, TRAIL_TILE_ROWS, trailSettingsTiles, trailTileRowLanes, trailTileRowView,
   trailTileSetFits, trailTileSetId, trailTileSetLiteral, trailTileSetRow, trailTileViewOrient, withTrailTileRowView, type TrailTileRowKey,
@@ -25,15 +26,17 @@ import { mphText } from '../../../core/math/units';
 
 /**
  * The Edit-mode creation tools: Create Edge (mesh-native drawing and surface cuts), Create Patch, the armed
- * Loop Cut panel, and the two-endpoint elliptical tube draft. Owns the cached live-measurement rows (total /
- * next / step read-outs) that the viewport's preview listeners refresh on pointer moves without rebuilding
- * lil-gui; the coordinator calls reset() at the top of every toolbox rebuild so a stale row is never touched.
+ * Loop Cut panel, the two-endpoint elliptical tube draft, and the three-corner grid draft. Owns the cached
+ * live-measurement rows (total / next / step read-outs) that the viewport's preview listeners refresh on pointer
+ * moves without rebuilding lil-gui; the coordinator calls reset() at the top of every toolbox rebuild so a stale
+ * row is never touched.
  */
 export function createCreateTools(ctx: ToolsContext) {
   const { store, viewport, editSection, edit, cageActive, rebuildTools, updateCmdSheet, modelEdit, library, persistUi } = ctx;
   const {
     armCreateEdge, armCreatePatch, finishCreatePatch, finishCreateEdge,
     armCreateTube, previewCreateTube, finishCreateTube, cancelCreateTube, armLoopCut,
+    armCreateGrid, previewCreateGrid, finishCreateGrid, cancelCreateGrid, createGridPlan, setCreateGridLength, setCreateGridWidth,
     armCreateTrail, undoCreateTrailPoint, finishCreateTrail,
     trailStatus, trailError, trailRide, syncTrailView, resumeTrail, setTrailSetting,
     deleteSelectedTrailKnot, disconnectSelectedPoint, splitSelectedPoint, deleteSelectedTrail, dissolveSelectedTrail,
@@ -51,6 +54,13 @@ export function createCreateTools(ctx: ToolsContext) {
   let createTubeLengthRow: ReturnType<typeof detail> | null = null;
   let createTubeSectionsRow: ReturnType<typeof detail> | null = null;
   let createTubePatchesRow: ReturnType<typeof detail> | null = null;
+  let createGridStepRow: ReturnType<typeof detail> | null = null;
+  let createGridSideRow: ReturnType<typeof detail> | null = null;
+  let createGridCellsRow: ReturnType<typeof detail> | null = null;
+  let createGridCellSizeRow: ReturnType<typeof detail> | null = null;
+  let createGridCounts: { updateDisplay(): void; enable(on?: boolean): void }[] = [];
+  let createGridSizes: { updateDisplay(): void }[] = [];
+  let createGridErrorBanner: HTMLElement | null = null;
   let createTrailPointsRow: ReturnType<typeof detail> | null = null;
   let createTrailNextRow: ReturnType<typeof detail> | null = null;
   let createTrailSpansRow: ReturnType<typeof detail> | null = null;
@@ -71,6 +81,13 @@ export function createCreateTools(ctx: ToolsContext) {
     createTubeLengthRow = null;
     createTubeSectionsRow = null;
     createTubePatchesRow = null;
+    createGridStepRow = null;
+    createGridSideRow = null;
+    createGridCellsRow = null;
+    createGridCellSizeRow = null;
+    createGridCounts = [];
+    createGridSizes = [];
+    createGridErrorBanner = null;
     createTrailPointsRow = null;
     createTrailNextRow = null;
     createTrailSpansRow = null;
@@ -207,6 +224,12 @@ export function createCreateTools(ctx: ToolsContext) {
         + 'untouched and shows as a red T-junction when the chain finishes.');
       tip(g.add({ tube: armCreateTube }, 'tube').name('◯ create tube'),
         'Draw two endpoints for an open elliptical tube, then shape it before committing.');
+      tip(g.add({ grid: armCreateGrid }, 'grid').name('▦ create grid'),
+        'Click both ends of a side, then a point for its width, to lay a flat grid of patches; set its divisions, adjust its corners, then press Enter.',
+        'Snap the first two corners to points on an open edge — a patch rim or drawn edges — and the grid attaches '
+        + 'along it, taking that edge’s divisions as its columns so the patches meet with no T-junctions; snap the third '
+        + 'corner the same way and the rows follow that edge too. A free corner lands on the level plane through the '
+        + 'previous one, so a grid drawn in open space is flat; Ctrl puts it on the surface.');
       if (!store.modelEditId) tip(g.add({ trail: armCreateTrail }, 'trail').name('⌁ create trail'),
         'Draw a centre spline and generate a banked trail from rules measured off the reference maps.');
       // Prop creation is its own panel: a prop is separate grouped geometry, never part of the mountain.
@@ -285,6 +308,83 @@ export function createCreateTools(ctx: ToolsContext) {
     if (!ready) commit.disable();
     tip(actions.add({ cancel: cancelCreateTube }, 'cancel').name('cancel tube (Esc)'),
       'Discard the endpoints and preview without changing the mountain.');
+  }
+
+  /** Create Grid: three corners place it, its divisions cut it, Enter commits. The divisions — counts, or one target
+   *  patch size — can be set before or after the corners; a side attached along an open run of edges shows and
+   *  keeps that run's count instead. Once placed, the draft's corners are moved on the canvas with the gizmo. */
+  function buildCreateGridTools() {
+    const placement = editSection('grid-placement', 'Placement');
+    const draft = viewport.createGridCorners;
+    createGridStepRow = detail(placement, `${viewport.createGridPoints.length} / 3`, 'corners');
+    createGridSideRow = tip(detail(placement, '—', 'first side'),
+      'Straight length from the first corner to the second (or to the cursor while placing it).');
+    note(placement, !draft
+      ? 'click both ends of the first side, then a point for the width · snap to points on an open edge to attach along it · Ctrl puts a corner on the surface · Shift locks a world axis'
+      : draft.some(corner => corner.vertex !== null)
+        ? 'click a free corner to move it with the gizmo · snapped corners stay pinned · Enter creates and selects the grid'
+        : 'drag the gizmo to move the grid · Transform above (W / E / R) turns or scales it instead · click a corner to move just that one, or the grid to take it whole again · Enter creates and selects the grid');
+    const dimensions = editSection('grid-dimensions', 'Dimensions');
+    const replan = () => { previewCreateGrid(); refreshCreateGridSummary(); };
+    const plan = () => { const result = createGridPlan(); return result?.ok ? result.plan : null; };
+    tip(dimensions.add(store, 'gridSizing', { 'columns × rows': 'count', 'patch size': 'size' }).name('divide by')
+      .onChange(() => { rebuildTools(); updateCmdSheet(); }),
+    'Set the columns and rows directly, or give one patch size and let each side take the count nearest it.',
+    'A side attached along an existing edge always keeps that edge’s divisions, whichever is chosen.');
+    if (store.gridSizing === 'size') {
+      tip(typedRange(dimensions.add(store, 'gridPatchSize', 1, 100, 0.5), { min: 0.1 }).name('patch size (m)').onChange(replan),
+        'Target width and height of each patch.',
+        'Each side takes the whole number of patches whose size comes closest to this, so the patches can come out a '
+        + 'little larger or smaller, and a side shorter than half of it still gets one.');
+      createGridCounts = [];
+    } else {
+      // An attached side's count is the edge's, not the user's: the field shows it, disabled, and the user's own
+      // count is kept for the next grid.
+      const counts = {
+        get columns() { const p = plan(); return p?.inheritedColumns ? p.columns : store.gridColumns; },
+        set columns(value: number) { store.gridColumns = value; replan(); },
+        get rows() { const p = plan(); return p?.inheritedRows ? p.rows : store.gridRows; },
+        set rows(value: number) { store.gridRows = value; replan(); },
+      };
+      createGridCounts = [
+        tip(typedRange(dimensions.add(counts, 'columns', 1, 32, 1), { min: 1, max: MAX_GRID_DIVISIONS }).name('columns'),
+          'Patches along the first side.',
+          'When the first two corners are points joined by an open edge run, the grid attaches along it and takes its divisions instead.'),
+        tip(typedRange(dimensions.add(counts, 'rows', 1, 32, 1), { min: 1, max: MAX_GRID_DIVISIONS }).name('rows'),
+          'Patches across the width.',
+          'When the third corner is a point joined to the second by an open edge run, that run sets the rows instead.'),
+      ];
+    }
+    previewCreateGrid();
+    createGridSizes = [];
+    if (draft) {
+      // Exact sizes, applied to the draft's corners: the far end of a side moves, unless a snapped corner pins it.
+      const size = {
+        get length() { return plan()?.length ?? 0; },
+        set length(value: number) { setCreateGridLength(value); },
+        get width() { return plan()?.width ?? 0; },
+        set width(value: number) { setCreateGridWidth(value); },
+      };
+      const length = tip(typedRange(dimensions.add(size, 'length', 0.5, 500, 0.5), { min: 0.5 }).name('length (m)').decimals(1),
+        gridLengthFixed(draft) ? 'A snapped corner pins the first side’s far end, so its length is fixed.'
+          : 'Length of the first side from the first corner; its far end moves, carrying the side across from it.');
+      if (gridLengthFixed(draft)) length.disable();
+      const width = tip(typedRange(dimensions.add(size, 'width', 0.5, 500, 0.5), { min: 0.5 }).name('width (m)').decimals(1),
+        gridWidthFixed(draft) ? 'A snapped corner pins the far side, so the width is fixed.'
+          : 'Width across the first side; both far corners move out to it.');
+      if (gridWidthFixed(draft)) width.disable();
+      createGridSizes = [length, width];
+    }
+    createGridCellsRow = detail(dimensions, '—', 'cells');
+    createGridCellSizeRow = tip(detail(dimensions, '—', 'cell size'), 'Average patch size along the first side × across it.');
+    createGridErrorBanner = errorBanner(dimensions, '');
+    refreshCreateGridSummary();
+    const actions = editSection('tool-actions', 'Actions');
+    const commit = tip(actions.add({ create: finishCreateGrid }, 'create').name('✔ create grid (Enter)'),
+      draft ? 'Commit the teal preview and select all of its patches.' : 'Place all three corners before creating the grid.');
+    if (!draft) commit.disable();
+    tip(actions.add({ cancel: cancelCreateGrid }, 'cancel').name('cancel grid (Esc)'),
+      'Discard the corners and preview without changing the mountain.');
   }
 
   /** The selected paths' settings as a lil-gui target: reading shows the focus path's own value (or the next new
@@ -810,6 +910,31 @@ export function createCreateTools(ctx: ToolsContext) {
     createTubeLengthRow.setValue(length === null ? '—' : fmtM(length));
   }
 
+  /** Create Grid's live rows, from the plan the host just made for the corners and the cursor. */
+  function refreshCreateGridSummary() {
+    if (!createGridStepRow || store.surgeryTool !== 'grid') return;
+    const points = viewport.createGridPoints, hover = viewport.createGridHover;
+    const result = createGridPlan(), plan = result?.ok ? result.plan : null;
+    const end = points[1]?.pos ?? (points.length === 1 ? hover?.pos : undefined);
+    const side = plan ? plan.length : points[0] && end
+      ? Math.hypot(end[0] - points[0].pos[0], end[1] - points[0].pos[1], end[2] - points[0].pos[2]) : null;
+    createGridStepRow.setValue(`${points.length} / 3`);
+    createGridSideRow?.setValue(side === null ? '—' : fmtM(side));
+    const from = plan?.inheritedColumns && plan.inheritedRows ? ' · both from edges'
+      : plan?.inheritedColumns ? ' · columns from edge' : plan?.inheritedRows ? ' · rows from edge' : '';
+    createGridCellsRow?.setValue(plan ? `${plan.columns} × ${plan.rows} = ${plan.columns * plan.rows}${from}` : '—');
+    createGridCellSizeRow?.setValue(plan ? `${plan.cellLength.toFixed(1)} × ${fmtM(plan.cellWidth)}` : '—');
+    const [columns, rows] = createGridCounts;
+    columns?.enable(!plan?.inheritedColumns);
+    rows?.enable(!plan?.inheritedRows);
+    for (const control of [...createGridCounts, ...createGridSizes]) control.updateDisplay();
+    if (createGridErrorBanner) {
+      const reason = result && !result.ok ? result.error : '';
+      createGridErrorBanner.textContent = reason;
+      createGridErrorBanner.style.display = reason ? '' : 'none';
+    }
+  }
+
   /** The trail panel's live rows: knots, the next segment while drawing, the cut's size, and why it refused. */
   function refreshCreateTrailSummary() {
     if (!createTrailPointsRow) return;
@@ -837,7 +962,7 @@ export function createCreateTools(ctx: ToolsContext) {
   }
 
   return {
-    reset, buildCreateEdgeTools, buildCreateTubeTools, buildTrailTools,
-    refreshCreateEdgeSummary, refreshCreatePatchSummary, refreshCreateTubeSummary, refreshCreateTrailSummary,
+    reset, buildCreateEdgeTools, buildCreateTubeTools, buildCreateGridTools, buildTrailTools,
+    refreshCreateEdgeSummary, refreshCreatePatchSummary, refreshCreateTubeSummary, refreshCreateGridSummary, refreshCreateTrailSummary,
   };
 }

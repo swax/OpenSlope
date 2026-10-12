@@ -60,7 +60,7 @@ type EditCallbackName =
   | 'onRotateControlPoints' | 'onRotateCorners'
   | 'onScaleControlPoints' | 'onScaleCorners' | 'onSlideCorners'
   | 'onSlideBegin' | 'onSlideRecut' | 'onSlideMergePending' | 'onSlideEnd' | 'onEditTransformBegin' | 'onEditTransformEnd'
-  | 'onCreateEdgePoint' | 'createEdgeCuts' | 'onCreateTubeAxisChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
+  | 'onCreateEdgePoint' | 'createEdgeCuts' | 'onCreateTubeAxisChange' | 'onCreateGridChange' | 'onLoopCut' | 'onCreatePatch' | 'onPasteVertices'
   | 'onAppendTrailKnot' | 'onSelectTrailKnot' | 'onMoveTrailKnot' | 'onTrailKnotDrag' | 'onTransformTrail' | 'onTrailHover'
   | 'trailInterior'
   | 'onSelectEditCell' | 'onSelectCellLoop' | 'onSelectEdge' | 'onSelectEdgeLoop'
@@ -100,6 +100,8 @@ export function createEditSession(deps: EditSessionDeps) {
   let slideBase: QuadMeshDoc | null = null;
   let slideWeld: [number, number][] = [];
   let tubePointCount = -1;
+  /** Create Grid's last click count and gizmo holder, which the toolbox is rebuilt for when either changes. */
+  let gridPanelKey = '';
   let selectedDirNb: Record<HandleDir, number> | null = null;
 
   type EditSelectionKind = 'point' | 'edge' | 'patch' | 'prop';
@@ -368,6 +370,7 @@ export function createEditSession(deps: EditSessionDeps) {
 
   function transformSelectionActive(): boolean {
     if (view().edgeExtrusionStaged) return true;
+    if (store.surgeryTool === 'grid') return view().createGridWholeSelected;
     if (store.currentMode === 'props') return store.selectedProp !== null || store.multiSel.length > 0;
     if (store.currentMode !== 'edit' || store.bridgeRails !== null || !cageActive()) return false;
     if (mixedEditSelection()) return mixedEditMoveVertices().length > 0 || mixedEditFloatingPoints().length > 0
@@ -579,6 +582,7 @@ export function createEditSession(deps: EditSessionDeps) {
 
   function rotatableSelection(): boolean {
     if (view().edgeExtrusionStaged) return true;
+    if (store.surgeryTool === 'grid') return view().createGridWholeSelected;
     if (store.currentMode === 'props') return store.selectedProp !== null || store.multiSel.length > 0;
     if (store.bridgeRails !== null) return false;
     if (mixedEditSelection()) return store.currentMode === 'edit' && cageActive() && mixedEditAnchorPositions().length > 1;
@@ -2024,6 +2028,16 @@ export function createEditSession(deps: EditSessionDeps) {
         tubePointCount = count;
         rebuildTools(); updateCmdSheet();
       } else topology.previewCreateTube();
+    },
+    onCreateGridChange() {
+      if (store.surgeryTool !== 'grid') return;
+      // A new click reshapes the panel, and so does the gizmo moving between the whole draft (Move / Rotate /
+      // Scale) and a corner (Move only); a drag or the cursor only re-plans.
+      const key = `${view().createGridPoints.length}:${view().createGridWholeSelected}`;
+      if (key !== gridPanelKey) {
+        gridPanelKey = key;
+        rebuildTools(); updateCmdSheet();
+      } else topology.previewCreateGrid();
     },
     onAppendTrailKnot(pos) { trails.appendKnot(pos); },
     onSelectTrailKnot(knot) { trails.selectKnot(knot); },

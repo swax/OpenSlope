@@ -29,6 +29,7 @@ import {
 } from '../ride/xr/config';
 import { AMOUNT_MAX, AMOUNT_PORT } from '../../core/particles/snowfall';
 import { DEFAULT_TRAIL_TILES } from '../../core/mesh/trail-textures';
+import { DEFAULT_GRID_COLUMNS, DEFAULT_GRID_PATCH_SIZE_M, DEFAULT_GRID_ROWS } from '../../core/mesh/ops/grid';
 
 /**
  * The editor's shared mutable state — the single source of truth the whole app reads and writes: the active
@@ -179,13 +180,17 @@ export type Store = {
   modelEditPlacementId: string | null; // the placement the session opened AT (rebased home) — only it hides
 
   // Topology surgery (Edit): which modal topology tool is armed (null = ordinary corner/cell editing).
-  surgeryTool: 'loopcut' | 'patch' | 'tube' | 'trail' | null;
+  surgeryTool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | null;
   createPatchQuads: QuadName[];      // patches committed during the current repeating Create Patch session
   createPatchSides: 3 | 4;           // Create Patch shape: wedge triangle or ordinary quad
   tubeWidth: number;                 // Create Tube elliptical width diameter, metres
   tubeHeight: number;                // Create Tube elliptical height diameter, metres
   tubeSectionLength: number;         // target quad length along the tube axis, metres
   tubeRingEdges: number;             // number of patch edges around each cross-section ring
+  gridSizing: 'count' | 'size';      // Create Grid divides by the counts below, or by one target patch size
+  gridColumns: number;               // Create Grid patches along its first side (an attached edge run overrides)
+  gridRows: number;                  // Create Grid patches across its width (an attached edge run overrides)
+  gridPatchSize: number;             // Create Grid target patch size, metres, when dividing by size
   // A new trail's settings (docs/023). A trail keeps its own copy; editing one also updates these, so the next
   // trail starts the way the last was tuned.
   trailWidth: number;                // Create Trail rim-to-rim width, metres
@@ -449,6 +454,10 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
     tubeHeight: 20,
     tubeSectionLength: 10,
     tubeRingEdges: 4,
+    gridSizing: 'count',
+    gridColumns: DEFAULT_GRID_COLUMNS,
+    gridRows: DEFAULT_GRID_ROWS,
+    gridPatchSize: DEFAULT_GRID_PATCH_SIZE_M,
     trailWidth: 13,
     trailLanes: 2,
     trailCenterBias: 0.5,

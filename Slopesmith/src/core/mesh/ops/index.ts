@@ -13,6 +13,11 @@ export {
   DEFAULT_STANDALONE_PATCH_SIZE_M, standalonePatchCorners, appendStandalonePatch,
   appendTube, appendPatchFromCorners, appendFreeEdge, type PatchCorners, type FreeEdgeContact,
 } from './append';
+export {
+  DEFAULT_GRID_COLUMNS, DEFAULT_GRID_ROWS, DEFAULT_GRID_PATCH_SIZE_M, MAX_GRID_DIVISIONS, planGrid, appendGrid,
+  gridSideChain, gridCornersFromClicks, gridDivisionsForSize, gridLengthFixed, gridWidthFixed, resizeGridLength,
+  resizeGridWidth, type GridCorner, type GridCorners, type GridOptions, type GridPlan, type GridPlanResult,
+} from './grid';
 export { validateSurfaceCutPath, routeSurfaceCutPath, applySurfaceCut, type SurfaceCutPoint } from './surface-cut';
 export {
   applyEdgeCrossingWeld, autoWeldCreatedEdgeCrossings, AUTO_WELD_CROSSING_TOLERANCE_M,
