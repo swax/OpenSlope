@@ -109,7 +109,7 @@ export type Store = {
 
   currentMode: Mode;
   /** The most recently copied selection owns paste, shared by the mesh and prop clipboards. Session-only. */
-  clipboardKind: 'mesh' | 'props' | null;
+  clipboardKind: 'mesh' | 'props' | 'mixed' | null;
   // Test mode (stored as `play`; docs/016): which mountain to ride and the world-space start point per target.
   playTarget: 'authored' | 'reference';
   playRiderModel: string;                // built-in/server-library character id, or the procedural debug body

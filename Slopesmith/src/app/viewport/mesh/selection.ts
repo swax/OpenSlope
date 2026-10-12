@@ -1282,16 +1282,12 @@ export function createSelectionLayer(
     return sel.refVertexSel.map(vertex => ({ vertex, valence: vertexValence(adj, vertex) }));
   }
 
-  /** Resolve the mutually-exclusive reference point/edge/surface families to unique clipboard vertices. */
+  /** Resolve every selected reference point, edge, and patch to unique clipboard vertices. */
   function referenceCopyVertexIds(): number[] {
-    if (sel.refVertexSel.length) return sel.refVertexSel;
-    const vertices = new Set<number>();
-    if (sel.refEdgeSel.length) {
-      for (const [a, b] of sel.refEdgeSel) { vertices.add(a); vertices.add(b); }
-    } else {
-      const d = access.refData();
-      if (d) for (const q of sel.refCellSel) for (const v of d.mesh.quads[q] ?? []) vertices.add(v);
-    }
+    const vertices = new Set<number>(sel.refVertexSel);
+    for (const [a, b] of sel.refEdgeSel) { vertices.add(a); vertices.add(b); }
+    const d = access.refData();
+    if (d) for (const q of sel.refCellSel) for (const v of d.mesh.quads[q] ?? []) vertices.add(v);
     return [...vertices].sort((a, b) => a - b);
   }
 
@@ -1305,7 +1301,7 @@ export function createSelectionLayer(
       mesh: data.mesh,
       selectedVertices,
       naming: INDEX_NAMING,
-      selectedQuads: sel.refEdgeSel.length ? [] : sel.refCellSel.length ? sel.refCellSel : undefined,
+      selectedQuads: sel.refCellSel.length ? sel.refCellSel : sel.refEdgeSel.length ? [] : undefined,
       selectedEdges: sel.refEdgeSel.length ? sel.refEdgeSel : sel.refCellSel.length ? [] : undefined,
       edgeHandle: data.edgeHandle,
       offset: [o.x, o.y, o.z],

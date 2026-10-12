@@ -315,6 +315,23 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       gizmoTypeRow.append(label('Gizmo'), gizmoType.el);
       section.$children.appendChild(gizmoTypeRow);
     }
+    if (edit.canCopyVertices()) {
+      tip(section.add({ copy: edit.copySelectedVertices }, 'copy').name('copy all (Ctrl+C)'),
+        'Copy every selected mesh type and placed prop together. Reference geometry can be copied too.');
+      tip(section.add({ cut: edit.cutSelectedVertices }, 'cut').name('cut all (Ctrl+X)'),
+        'Copy the selection, then remove its authored geometry and placed props. Reference geometry remains read-only.');
+    }
+    if (edit.canPasteVertices()) {
+      tip(section.add({ paste: edit.pasteSelectedVertices }, 'paste').name('paste (Ctrl+V)'),
+        'Place the copied geometry and props together with one click.');
+    }
+    if (store.selectedCorner !== null || store.regionSel.length || store.edgeSel.length || store.cellSel.length
+      || store.selectedProp !== null || store.multiSel.length) {
+      const locked = edit.meshLockReason('delete');
+      const button = tip(section.add({ del: edit.deleteSelectedMesh }, 'del').name('delete all (Del)'),
+        locked ?? 'Delete every selected authored mesh part and placed prop. Reference geometry remains read-only.');
+      if (locked) button.disable();
+    }
     detail(section, 'choose a type to narrow the selection and open its tools');
     const noun: Record<EditSelectionKind, [string, string]> = {
       point: ['point', 'points'], edge: ['edge', 'edges'], patch: ['patch', 'patches'], prop: ['prop', 'props'],

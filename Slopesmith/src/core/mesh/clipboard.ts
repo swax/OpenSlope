@@ -184,7 +184,8 @@ export function copyMeshVertices<Id>(source: MeshVertexCopySource<Id>): MeshVert
   for (const [a0, b0] of edgeSource) {
     if (!selectedSet.has(a0) || !selectedSet.has(b0) || a0 === b0) continue;
     const a = Math.min(a0, b0), b = Math.max(a0, b0), key = `${a},${b}`;
-    if (!seenEdges.has(key)) { seenEdges.add(key); sourceEdges.push([a, b]); }
+    // An edge already belonging to a copied patch is part of that patch, not a second loose edge.
+    if (!seenEdges.has(key) && !coveredEdges.has(key)) { seenEdges.add(key); sourceEdges.push([a, b]); }
   }
   sourceEdges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const freeEdges = sourceEdges.map(([a, b]) => [localOf.get(a)!, localOf.get(b)!] as [number, number]);

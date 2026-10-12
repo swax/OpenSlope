@@ -5,7 +5,7 @@ import type { MeshVertexClipboard } from '../../../core/mesh/clipboard';
 import { sub } from '../../../core/math/vec';
 import { buildMountainPreview } from '../../../core/mesh/tessellation';
 import { LOFT_PREVIEW_FILL_COLOR } from '../constants';
-import { addCageLines, addCagePoints, clearGlyphGroup } from '../shared/overlays';
+import { addCageLines, addCagePoints, addLoopDots, clearGlyphGroup } from '../shared/overlays';
 import type { Stage } from '../stage';
 import { lockedViewAxis, type ViewAxis } from '../camera/view-grid';
 
@@ -47,9 +47,10 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
     }),
   );
   const cage = new THREE.Group();
+  const props = new THREE.Group();
   fill.renderOrder = 10;
   fill.raycast = () => { /* placement preview is never a pick target */ };
-  group.add(fill, cage);
+  group.add(fill, cage, props);
   group.visible = false;
   stage.worldRoot.add(group);
 
@@ -60,10 +61,11 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
     fill.geometry.dispose();
     fill.geometry = new THREE.BufferGeometry();
     clearGlyphGroup(cage);
+    clearGlyphGroup(props);
   }
 
   /** Returns true when a usable ghost was armed. */
-  function setClip(next: MeshVertexClipboard | null): boolean {
+  function setClip(next: MeshVertexClipboard | null, propOrigins: readonly V3[] = []): boolean {
     clip = next;
     clearVisual();
     const source = deps.meshDoc();
@@ -101,6 +103,8 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
     const points = new THREE.BufferGeometry();
     points.setAttribute('position', new THREE.BufferAttribute(new Float32Array(clip.vertices), 3));
     addCagePoints(cage, points, LOFT_PREVIEW_FILL_COLOR, 6, false, 12);
+    // Prop origins travel by the same delta as the mesh. Show their locations in the shared ghost.
+    addLoopDots(props, propOrigins.flat(), 0x69dcff, 13);
     update();
     return true;
   }

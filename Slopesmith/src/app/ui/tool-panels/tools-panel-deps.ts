@@ -26,7 +26,7 @@ export type ToolsPanelDeps = {
   store: Store;
   viewport: Viewport;
   edit: Pick<EditSession,
-    | 'deselectEdit' | 'copySelectedVertices' | 'cutSelectedVertices' | 'copySelectionVertexCount'
+    | 'deselectEdit' | 'copySelectedVertices' | 'cutSelectedVertices' | 'copySelectionVertexCount' | 'canCopyVertices'
     | 'hideSelectedMesh' | 'showAllHidden' | 'hiddenMeshCount'
     | 'toggleSelectedControlCages' | 'selectedControlCagesVisible' | 'hideSubCages' | 'controlCageCount' | 'canEditCurvature'
     | 'selectedPatchLockState' | 'toggleSelectedPatchLocks'
