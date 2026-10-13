@@ -1,0 +1,59 @@
+package org.openslope.nativeplayer;
+
+import android.app.*;
+import android.content.*;
+import android.net.Uri;
+import android.os.*;
+import android.provider.DocumentsContract;
+import org.json.*;
+import java.io.*;
+import java.lang.reflect.*;
+import java.util.*;
+
+/** No test-framework dependency; run with adb shell am instrument -w <test-package>/<runner>. */
+public final class NativeImportInstrumentation extends Instrumentation {
+    private int checks;
+    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+    private void require(boolean condition, String message) { ++checks; if (!condition) throw new AssertionError(message); }
+    private Object invoke(LauncherActivity activity, String name, Class<?>[] types, Object... values) throws Exception {
+        Method method = LauncherActivity.class.getDeclaredMethod(name, types); method.setAccessible(true);
+        try { return method.invoke(activity, values); } catch (InvocationTargetException e) { throw new IOException(e.getCause().getMessage(), e.getCause()); }
+    }
+    @Override public void onStart() {
+        Bundle results = new Bundle(); LauncherActivity activity = null; File temporary = null;
+        try {
+            Intent intent = new Intent(getTargetContext(), LauncherActivity.class); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity = (LauncherActivity) startActivitySync(intent); waitForIdleSync();
+            Context context = getTargetContext(); temporary = new File(context.getCacheDir(), "instrumentation-" + UUID.randomUUID()); require(temporary.mkdir(), "Create private fixture");
+            File image = new File(temporary, "fixture.iso");
+            try (InputStream input = getContext().getAssets().open("fixture.iso"); OutputStream output = new FileOutputStream(image)) { MapLibrary.copy(input, output, MapLibrary.FILE_LIMIT, () -> {}); }
+            File extracted = new File(temporary, "extracted");
+            try (ParcelFileDescriptor descriptor = ParcelFileDescriptor.open(image, ParcelFileDescriptor.MODE_READ_ONLY)) {
+                String courses = (String) invoke(activity, "nativeCourses", new Class<?>[]{int.class, long.class}, descriptor.getFd(), image.length());
+                require(new JSONArray(courses).getString(0).equals("FIXTURE"), "JNI reads course list from seekable descriptor");
+                invoke(activity, "nativeExtract", new Class<?>[]{int.class, long.class, String.class, String.class}, descriptor.getFd(), image.length(), "FIXTURE", extracted.getAbsolutePath());
+            }
+            invoke(activity, "nativeValidate", new Class<?>[]{String.class}, extracted.getAbsolutePath());
+            require(new File(extracted, "Patches.json").isFile() && new File(extracted, "Textures/0000.png").isFile(), "JNI writes canonical map files");
+            File local = new File(temporary, "Maps"); local.mkdir();
+            MapLibrary direct = new MapLibrary(context.getContentResolver(), local, null); direct.publish("Custom course", extracted, () -> {});
+            require(direct.maps().size() == 1, "Custom maps discovered without ISO selection");
+            boolean rejected = false; try { direct.publish("Custom course", extracted, () -> {}); } catch (IOException e) { rejected = true; }
+            require(rejected && direct.maps().size() == 1, "Existing local map is preserved");
+            Uri tree = DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, "root");
+            MapLibrary documents = new MapLibrary(getContext().getContentResolver(), local, tree);
+            String name = "Authored " + UUID.randomUUID(); documents.publish(name, extracted, () -> {});
+            MapLibrary.Entry selected = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(name)) selected = row;
+            require(selected != null, "Published SAF map discovered under opaque tree URI");
+            File prepared = documents.prepare(selected, temporary, () -> {}); invoke(activity, "nativeValidate", new Class<?>[]{String.class}, prepared.getAbsolutePath());
+            rejected = false; try { documents.publish(name, extracted, () -> {}); } catch (IOException e) { rejected = true; }
+            require(rejected, "Existing SAF map is preserved");
+            final int[] probes = {0}; rejected = false; String cancelled = "Cancelled " + UUID.randomUUID();
+            try { documents.publish(cancelled, extracted, () -> { if (++probes[0] > 3) throw new IOException("cancelled"); }); } catch (IOException e) { rejected = true; }
+            require(rejected && !documents.exists(cancelled), "Cancelled SAF import is not published");
+            DocumentsContract.deleteDocument(getContext().getContentResolver(), selected.uri);
+            results.putString("stream", "PASS: " + checks + " device-side JNI, custom-library and SAF checks\n"); finish(Activity.RESULT_OK, results);
+        } catch (Throwable e) { results.putString("stream", "FAIL: " + e + "\n"); finish(Activity.RESULT_CANCELED, results); }
+        finally { if (temporary != null) MapLibrary.deleteLocal(temporary); if (activity != null) { LauncherActivity launched = activity; runOnMainSync(launched::finish); } }
+    }
+}

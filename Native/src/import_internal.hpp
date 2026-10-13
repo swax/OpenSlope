@@ -1,0 +1,21 @@
+#pragma once
+#include "openslope/import.hpp"
+#include <bit>
+#include <cmath>
+#include <stdexcept>
+
+namespace openslope::import_detail {
+struct Bytes {
+    std::span<const std::uint8_t> data;
+    void range(std::size_t offset,std::size_t length) const {if(offset>data.size()||length>data.size()-offset)throw std::runtime_error("Truncated or invalid course data");}
+    std::uint32_t le(std::size_t offset,unsigned width=4) const {range(offset,width);std::uint32_t v=0;for(unsigned i=0;i<width;++i)v|=std::uint32_t(data[offset+i])<<(8*i);return v;}
+    std::uint32_t be(std::size_t offset,unsigned width=4) const {range(offset,width);std::uint32_t v=0;for(unsigned i=0;i<width;++i)v=(v<<8)|data[offset+i];return v;}
+    int signed16(std::size_t offset) const {return static_cast<std::int16_t>(le(offset,2));}
+    float number(std::size_t offset) const {const auto v=std::bit_cast<float>(le(offset));if(!std::isfinite(v))throw std::runtime_error("Non-finite number in course data");return v;}
+    std::string text(std::size_t offset,std::size_t length) const {range(offset,length);return {reinterpret_cast<const char*>(data.data()+offset),length};}
+};
+struct Image {std::string name;unsigned width{},height{};std::vector<std::uint8_t> rgba;};
+std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes,bool lightmap,const ImportCancel& cancelled);
+void write_png(const std::filesystem::path& path,const Image& image);
+inline void check_cancel(const ImportCancel& cancelled){if(cancelled&&cancelled())throw std::runtime_error("Import cancelled");}
+}

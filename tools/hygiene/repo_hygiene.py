@@ -74,6 +74,7 @@ TEXT_EXTENSIONS = {
     ".inf",
     ".in",
     ".jg",
+    ".java",
     ".js",
     ".json",
     ".jsonc",

@@ -1,4 +1,5 @@
 #include "openslope/player.hpp"
+#include "openslope/import.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <fstream>
@@ -100,11 +101,34 @@ void clock_tests() {
         require(finite(candidate.rider().position)&&finite(candidate.rider().velocity),"Finite prototype ride");
     }
 }
+void import_tests() {
+    const auto decode=[](std::size_t size,std::initializer_list<std::uint8_t> commands){std::vector<std::uint8_t> input={0x10,0xfb,0,0,static_cast<std::uint8_t>(size)};input.insert(input.end(),commands);return decode_refpack(input);};
+    require(decode(4,{1,0,'a',0xfc})==std::vector<std::uint8_t>(4,'a'),"RefPack two-byte command and overlapping match");
+    require(decode(6,{0x81,0x40,0,'b',0xfc})==std::vector<std::uint8_t>(6,'b'),"RefPack three-byte command");
+    require(decode(8,{0xc1,0,0,2,'c',0xfc})==std::vector<std::uint8_t>(8,'c'),"RefPack four-byte command");
+    require(decode(5,{0xe0,'a','b','c','d',0xfd,'e'})==std::vector<std::uint8_t>({'a','b','c','d','e'}),"RefPack literal run and stop literals");
+    require(decode_refpack(std::vector<std::uint8_t>({0x90,0xfb,0,0,0,1,0xfd,'x'}))==std::vector<std::uint8_t>({'x'}),"RefPack long-size header");
+    for(const auto& stream:std::vector<std::vector<std::uint8_t>>{{0x10,0xfb,0,0,4,0xfc},{0x10,0xfb,0,0,4,0,0,0xfc},{0x10,0xfb,0,0,1,0xe0,'a','b','c','d'},{0x10,0xfb,0,0,4,0xe0,'a','b','c','d'},{0x11,0xfb,0,0,1,0xfc}}){bool rejected=false;try{static_cast<void>(decode_refpack(stream));}catch(const std::exception&){rejected=true;}require(rejected,"Reject corrupt RefPack without out-of-bounds access");}
+    for(const auto& name:{"../map","map/sub",".staging","bad\\map","bad:map","bad*map","map."})require(!valid_map_name(name),"Reject unsafe map name");
+    require(valid_map_name("Custom course 01"),"Allow authored map names with spaces");
+    DiscInput input{4,[](std::uint64_t,std::span<std::uint8_t> bytes){std::fill(bytes.begin(),bytes.end(),7);}};
+    require(input.read(1,3)==std::vector<std::uint8_t>(3,7),"Bounded random-access document input");
+    bool rejected=false;try{static_cast<void>(input.read(3,2));}catch(const std::exception&){rejected=true;}require(rejected,"Reject disc extent outside document");
+    const auto root=std::filesystem::temp_directory_path()/("openslope-import-unit-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    require(std::filesystem::create_directory(root),"Create isolated import fixture");
+    struct Cleanup{std::filesystem::path path;~Cleanup(){std::error_code ec;std::filesystem::remove_all(path,ec);}} cleanup{root};
+    const auto stage=root/"cancelled";rejected=false;try{extract_course(input,"TEST",stage,{},[]{return true;});}catch(const std::exception&){rejected=true;}
+    require(rejected&&!std::filesystem::exists(stage),"Cancelled extraction removes only newly created staging folder");
+    const auto custom=root/"Custom course";std::filesystem::create_directory(custom);std::ofstream(custom/"Patches.json")<<"custom";
+    std::filesystem::create_directory(root/".staging");std::ofstream(root/".staging"/"Patches.json")<<"partial";
+    require(available_maps(root)==std::vector<std::string>({"Custom course"}),"List populated custom maps without ISO and exclude staging");
+    rejected=false;try{extract_course(input,"TEST",custom);}catch(const std::exception&){rejected=true;}require(rejected&&std::filesystem::exists(custom/"Patches.json"),"Never overwrite existing authored map");
+}
 }
 int main(int argc,char** argv) {
     try {
         require(argc==2,"Supply the independent scalar fixtures");
-        terrain_tests();map_tests();response_tests(argv[1]);clock_tests();
+        terrain_tests();map_tests();response_tests(argv[1]);clock_tests();import_tests();
         std::cout<<"PASS: "<<checks<<" native conformance checks\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

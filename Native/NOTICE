@@ -4,7 +4,7 @@ Copyright 2026 swax
 Repository-authored source, shaders, build tools, tests, and documentation under Native/
 are licensed under Apache-2.0; see LICENSE. This is an independent native prototype
 implemented against OpenSlope's portable map contracts and Trailmap's behavioral
-specification. It does not link or include Snowknife or SSX-Library source.
+specification. Its dependency list is recorded in ThirdPartyNotices/README.md.
 
 The embedded shared ride contract carries the bounded tuning facts and functional
 identifiers described in ../Contracts/NOTICE. It supplies interoperability data,

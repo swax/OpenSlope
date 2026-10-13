@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OpenSlope Native</string>
+    <string name="play_course">Play %1$s</string>
+    <string name="import_scope">ISO import currently converts terrain, textures and lightmaps. Props, paths, effects and audio await later importer stages.</string>
 </resources>

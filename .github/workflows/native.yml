@@ -2,9 +2,9 @@ name: Native C++ conformance
 on:
   push:
     branches: [main]
-    paths: ['Native/**', 'Contracts/**', 'tools/native-tests.mjs', '.github/workflows/native.yml']
+    paths: ['Native/**', 'Contracts/**', 'tools/native-*.mjs', 'tools/native-*.py', '.github/workflows/native.yml']
   pull_request:
-    paths: ['Native/**', 'Contracts/**', 'tools/native-tests.mjs', '.github/workflows/native.yml']
+    paths: ['Native/**', 'Contracts/**', 'tools/native-*.mjs', 'tools/native-*.py', '.github/workflows/native.yml']
   workflow_dispatch:
 permissions:
   contents: read

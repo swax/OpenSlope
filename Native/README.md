@@ -7,9 +7,12 @@ headset behavior still needs device testing. The ARM64 Android debug APK also bu
 signature/package are verified. The Linux host still needs target build/device validation.
 This is not yet a complete Quest application or a full gameplay port.
 
-The application starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
-No retail content is packaged. It does not yet select or extract an ISO, load course textures or props,
-play audio, or implement jumping, rails, races, or multiplayer.
+The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
+The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
+ISO to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
+The importer currently converts terrain, textures, lightmaps and provenance; the player still renders
+colour-only terrain. Prop, path, effects, world and audio conversion, textured rendering, jumping,
+rails, races and multiplayer remain later stages. See [the map-library contract](docs/map-library.md).
 
 ## Build and try on Windows
 
@@ -91,16 +94,52 @@ adb install Native/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 The ARM64 Android build is verified with the isolated Windows toolchain. The debug-signed APK
-is about 3 MB and contains no retail assets. No headset was connected during local validation,
-so installation, stereo display, controller behavior and performance still need device testing.
-An in-headset ISO picker and extraction pipeline are still required to deliver the intended
-first-launch experience.
+contains no retail assets. No headset was connected during local validation, so the system pickers,
+persistent document grants, installation, stereo display, controllers and performance need device testing.
 
-After installation, find **OpenSlope Native** in the headset's sideloaded applications. Left stick
-steers, right trigger boosts, and left X resets. The initial demo begins moving once the session
-has input focus. To use a locally imported course during development, create
-`/sdcard/Android/data/org.openslope.nativeplayer/files/course/` and push its `Patches.json` there.
+After installation, find **OpenSlope Native** in the headset's sideloaded applications:
+
+1. **Choose Maps folder** selects the root that contains course subfolders. Access is remembered.
+   **Use app Maps folder** selects `/sdcard/Android/data/org.openslope.nativeplayer/files/Maps/`.
+2. Existing `Maps/<name>/Patches.json` courses appear as **Play <name>** buttons. Custom maps work
+   immediately without selecting an ISO. Use **Refresh courses** after adding files outside the app.
+3. **Import SSX Tricky ISO** opens the system file picker, discovers supported courses, and lets
+   you select which to import into the current Maps folder. Existing map names are kept. Cancel
+   stops the current course; courses already imported remain available.
+4. **Play** validates and loads the selected terrain into the immersive OpenXR activity. Left stick
+   steers, right trigger boosts, and left X resets. Returning from the game returns to the library.
+
+System document providers must support seekable ISO reads and writable/renameable folders for import.
+If the headset has no system document picker, custom maps can still be copied into the app Maps folder
+over USB/ADB. For development: `adb push Maps/GARI /sdcard/Android/data/org.openslope.nativeplayer/files/Maps/`.
 Only terrain is consumed by this prototype; no retail data belongs in the APK or a release.
+
+The same importer can be checked on desktop without a headset:
+
+```powershell
+./temp/native-core/Release/openslope_import.exe list "discs/SSX Tricky (USA).iso"
+./temp/native-core/Release/openslope_import.exe extract "discs/SSX Tricky (USA).iso" GARI temp/native-import/Maps
+python tools/native-compare-maps.py temp/native-import/Maps/GARI Maps/GARI --point-tolerance-cm 0.1 --allow-texture-difference 0083.png --allow-texture-difference 0108.png
+```
+
+The comparison checks the implemented canonical stages against an existing reference map,
+comparing decoded PNG pixels and JSON values rather than formatting or compression. It does not
+claim equivalence for the deferred import stages.
+The GARI example explicitly records a 1 mm coordinate allowance and the two documented alpha-policy
+differences; the comparator's defaults remain strict. See [source provenance](docs/source-provenance.md).
+
+Build the separate device-test APK with `Native/build-android.ps1 -Tests`. The authored synthetic
+ISO fixture is generated into ignored build assets and is included only in that test APK:
+
+```text
+adb install -r Native/android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r Native/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w org.openslope.nativeplayer.test/org.openslope.nativeplayer.NativeImportInstrumentation
+```
+
+These tests exercise the actual ARM64 JNI importer, local custom-map discovery, and folder
+publication/playback/cancellation through a test document provider. They do not exercise the
+headset's own picker UI or immersive rendering. Run them on a connected Quest before release.
 
 ## Portable checks
 
@@ -108,7 +147,7 @@ Only terrain is consumed by this prototype; no retail data belongs in the APK or
 npm run verify:native
 ```
 
-On Linux, CMake 3.24+ and a C++20 compiler are required. The core has no graphics, Android,
+On Linux, CMake 3.24+, Python 3 and a C++20 compiler are required. The core has no graphics, Android,
 OpenXR, or game-engine dependency. CI builds and tests it on Windows and Linux. With the player
 enabled, the Linux host runs OpenXR directly; it is the intended native Linux ARM64 path for
 Steam Frame, pending target compilation and device verification.
@@ -116,7 +155,9 @@ Steam Frame, pending target compilation and device verification.
 Tests cover independent carving-response fixtures, source-axis conversion, curved analytic
 contact, closest-hit selection, no-collision surfaces, spring units and damping, speed-preserving
 redirect, and fixed 60 Hz simulation at 72/90/120/144 Hz presentation rates. Tests fail in Release
-builds too; they do not rely on `assert`.
+builds too; they do not rely on `assert`. Synthetic disc tests cover ISO9660, both BIG variants,
+all RefPack commands, canonical patches, decoded RGBA PNGs, provenance, cancellation, invalid
+inputs, map discovery and protection of existing courses. They require no retail disc or assets.
 
 ## Specification alignment
 
@@ -127,8 +168,9 @@ from existing ports, and explicit prototype choices. No Trailmap installation or
 to build or run the synthetic tests. When the local Trailmap data files are present, the native
 check also requires the tracked ride contract and independent fixtures to match them exactly.
 
-The next milestone is texture/material loading and a tested headset build of one course, followed
-by on-device ISO reading and conversion. Keep platform file access behind the application host,
+The next milestone is on-headset verification and texture/material loading, followed by the
+remaining import stages. Keep platform file access behind the application host,
 so the readers and gameplay core can also be compiled for desktop tools or WebAssembly.
 
 See [NOTICE](NOTICE) and [third-party notices](ThirdPartyNotices/README.md).
+See [source provenance](docs/source-provenance.md) for the implementation and dependency boundary.

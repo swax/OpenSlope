@@ -1,4 +1,4 @@
-param([switch]$Setup)
+param([switch]$Setup, [switch]$Tests)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
 $taskTools = Join-Path $taskRoot '.openslope/native-android'
@@ -18,6 +18,13 @@ New-Item -ItemType Directory -Force -Path $taskJavaHome | Out-Null
 $taskSdkProperty = $taskSdk.Replace('\','/').Replace(':','\:')
 $taskCmakeProperty = (Join-Path $taskSdk 'cmake/3.31.6').Replace('\','/').Replace(':','\:')
 @("sdk.dir=$taskSdkProperty", "cmake.dir=$taskCmakeProperty") | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'android/local.properties') -Encoding ASCII
-& $taskGradle -p (Join-Path $PSScriptRoot 'android') --no-daemon "-Duser.home=$taskJavaHome" assembleDebug
+if ($Tests) {
+    $taskPython = (Get-Command python -ErrorAction Stop).Source
+    & $taskPython (Join-Path $PSScriptRoot 'tests/make_android_fixture.py') (Join-Path $PSScriptRoot 'android/app/build/generated/testAssets/fixture.iso')
+    if ($LASTEXITCODE -ne 0) { throw 'Android test fixture generation failed.' }
+}
+$taskGradleTargets = @('assembleDebug')
+if ($Tests) { $taskGradleTargets += 'assembleDebugAndroidTest' }
+& $taskGradle -p (Join-Path $PSScriptRoot 'android') --no-daemon "-Duser.home=$taskJavaHome" @taskGradleTargets
 if ($LASTEXITCODE -ne 0) { throw 'Android APK build failed.' }
 Write-Output 'APK: Native/android/app/build/outputs/apk/debug/app-debug.apk'

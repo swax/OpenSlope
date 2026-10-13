@@ -1,0 +1,149 @@
+package org.openslope.nativeplayer;
+
+import android.content.ContentResolver;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.DocumentsContract;
+import java.io.*;
+import java.util.*;
+
+/** Maps/<name>/Patches.json is the discovery contract for both local and SAF libraries. */
+final class MapLibrary {
+    static final long PATCH_LIMIT = 64L * 1024 * 1024;
+    static final long FILE_LIMIT = 128L * 1024 * 1024;
+    static final String DIRECTORY = DocumentsContract.Document.MIME_TYPE_DIR;
+    interface Cancel { void check() throws IOException; }
+    static final class Entry {
+        final String name;
+        final Uri uri;
+        final boolean directory;
+        Entry(String name, Uri uri, boolean directory) { this.name = name; this.uri = uri; this.directory = directory; }
+    }
+    final ContentResolver resolver;
+    final File localRoot;
+    final Uri tree;
+    final Uri root;
+    MapLibrary(ContentResolver resolver, File localRoot, Uri tree) {
+        this.resolver = resolver; this.localRoot = localRoot; this.tree = tree;
+        root = tree == null ? null : DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
+    }
+    static boolean safeName(String name) {
+        if (name == null || name.isEmpty() || name.length() > 128 || name.startsWith(".") || name.endsWith(".") || name.endsWith(" ")) return false;
+        for (char c : name.toCharArray()) if (c < 32 || c == 127 || "/\\:*?\"<>|".indexOf(c) >= 0) return false;
+        return true;
+    }
+    List<Entry> children(Uri directory) throws IOException {
+        ArrayList<Entry> result = new ArrayList<>();
+        Uri uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(directory));
+        String[] columns = {DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE};
+        try (Cursor cursor = resolver.query(uri, columns, null, null, null)) {
+            if (cursor == null) throw new IOException("The Maps folder is unavailable. Choose it again.");
+            while (cursor.moveToNext()) {
+                if (result.size() >= 65535) throw new IOException("Folder contains too many entries.");
+                result.add(new Entry(cursor.getString(1), DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0)), DIRECTORY.equals(cursor.getString(2))));
+            }
+        } catch (SecurityException e) { throw new IOException("Access to the Maps folder has expired. Choose it again.", e); }
+        return result;
+    }
+    Entry child(Uri directory, String name) throws IOException {
+        for (Entry entry : children(directory)) if (entry.name.equals(name)) return entry;
+        return null;
+    }
+    List<Entry> maps() throws IOException {
+        ArrayList<Entry> maps = new ArrayList<>();
+        if (tree == null) {
+            if (!localRoot.isDirectory() && !localRoot.mkdirs()) throw new IOException("Cannot create Maps folder.");
+            File[] directories = localRoot.listFiles();
+            if (directories == null) throw new IOException("Cannot read Maps folder.");
+            for (File directory : directories) if (safeName(directory.getName()) && directory.isDirectory() && new File(directory, "Patches.json").isFile()) maps.add(new Entry(directory.getName(), Uri.fromFile(directory), true));
+        } else {
+            for (Entry entry : children(root)) if (entry.directory && safeName(entry.name)) {
+                Entry patches = child(entry.uri, "Patches.json");
+                if (patches != null && !patches.directory) maps.add(entry);
+            }
+        }
+        maps.sort(Comparator.comparing(e -> e.name.toLowerCase(Locale.ROOT)));
+        return maps;
+    }
+    boolean exists(String name) throws IOException {
+        if (tree == null) return new File(localRoot, name).exists();
+        for (Entry entry : children(root)) if (entry.name.equalsIgnoreCase(name)) return true;
+        return false;
+    }
+    File prepare(Entry map, File cache, Cancel cancel) throws IOException {
+        if (tree == null) return new File(map.uri.getPath());
+        File output = new File(cache, "play-" + UUID.randomUUID());
+        if (!output.mkdir()) throw new IOException("Cannot prepare course.");
+        try {
+            Entry patches = child(map.uri, "Patches.json");
+            if (patches == null || patches.directory) throw new IOException("This map has no Patches.json.");
+            try (InputStream input = resolver.openInputStream(patches.uri); OutputStream file = new FileOutputStream(new File(output, "Patches.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
+            return output;
+        } catch (Exception e) { deleteLocal(output); throw e; }
+    }
+    void publish(String name, File source, Cancel cancel) throws IOException {
+        if (!safeName(name) || exists(name)) throw new IOException("A map named " + name + " already exists. Existing maps are kept.");
+        cancel.check();
+        if (tree == null) {
+            File staging = new File(localRoot, ".openslope-import-" + UUID.randomUUID());
+            if (!staging.mkdir()) throw new IOException("Cannot stage map in Maps folder.");
+            try {
+                copyLocal(source, staging, cancel);
+                cancel.check();
+                File destination = new File(localRoot, name);
+                if (destination.exists() || !staging.renameTo(destination)) throw new IOException("Cannot publish map; the destination may now exist.");
+            } finally { deleteLocal(staging); }
+            return;
+        }
+        // Keep Patches.json until last so interrupted/provider-limited copies
+        // cannot appear in the library as playable courses.
+        Uri staged = DocumentsContract.createDocument(resolver, root, DIRECTORY, ".openslope-import-" + UUID.randomUUID());
+        if (staged == null) throw new IOException("The selected Maps folder is not writable.");
+        Uri published = null;
+        try {
+            copyTree(source, staged, cancel);
+            cancel.check();
+            if (exists(name)) throw new IOException("A map with this name was created during import.");
+            published = DocumentsContract.renameDocument(resolver, staged, name);
+            if (published == null) throw new IOException("The folder provider cannot rename an imported course. Use a local Maps folder.");
+            Entry patches = child(published, "Patches.json");
+            if (patches == null) throw new IOException("Published map is missing its terrain.");
+        } catch (Exception e) {
+            try { DocumentsContract.deleteDocument(resolver, published == null ? staged : published); } catch (Exception ignored) { }
+            throw e;
+        }
+    }
+    void copyTree(File source, Uri destination, Cancel cancel) throws IOException {
+        File[] files = source.listFiles();
+        if (files == null) throw new IOException("Cannot read extracted course.");
+        Arrays.sort(files, Comparator.comparing(file -> file.getName().equals("Patches.json")));
+        for (File file : files) {
+            cancel.check();
+            if (!safeName(file.getName())) throw new IOException("Unsafe map filename.");
+            String mime = file.isDirectory() ? DIRECTORY : file.getName().endsWith(".png") ? "image/png" : "application/octet-stream";
+            Uri created = DocumentsContract.createDocument(resolver, destination, mime, file.getName());
+            if (created == null) throw new IOException("Cannot write " + file.getName() + " to Maps.");
+            if (file.isDirectory()) copyTree(file, created, cancel);
+            else try (InputStream input = new FileInputStream(file); OutputStream output = resolver.openOutputStream(created, "w")) { copy(input, output, FILE_LIMIT, cancel); }
+        }
+    }
+    static void copyLocal(File source, File destination, Cancel cancel) throws IOException {
+        File[] files = source.listFiles(); if (files == null) throw new IOException("Cannot read extracted course.");
+        for (File file : files) {
+            cancel.check(); if (!safeName(file.getName())) throw new IOException("Unsafe map filename.");
+            File target = new File(destination, file.getName());
+            if (file.isDirectory()) { if (!target.mkdir()) throw new IOException("Cannot create map directory."); copyLocal(file, target, cancel); }
+            else try (InputStream input = new FileInputStream(file); OutputStream output = new FileOutputStream(target)) { copy(input, output, FILE_LIMIT, cancel); }
+        }
+    }
+    static void copy(InputStream input, OutputStream output, long limit, Cancel cancel) throws IOException {
+        if (input == null || output == null) throw new IOException("The document provider could not open this file.");
+        byte[] buffer = new byte[128 * 1024]; long total = 0; int count;
+        while ((count = input.read(buffer)) != -1) { cancel.check(); total += count; if (total > limit) throw new IOException("Map file exceeds the import limit."); output.write(buffer, 0, count); }
+    }
+    static void deleteLocal(File directory) {
+        // Called only for freshly created application cache/staging directories.
+        File[] files = directory.listFiles(); if (files != null) for (File child : files) { if (child.isDirectory()) deleteLocal(child); else child.delete(); }
+        directory.delete();
+    }
+}

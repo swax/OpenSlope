@@ -23,7 +23,8 @@ class RepoHygieneTests(unittest.TestCase):
     def test_native_sources_and_build_inputs_are_scanned(self):
         for path in ("Native/src/player.cpp", "Native/include/math.hpp", "Native/cmake/player.cmake",
                      "Native/cmake/contract.hpp.in", "Native/shaders/terrain.vert",
-                     "Native/shaders/terrain.frag", "Native/android/app/build.gradle"):
+                     "Native/shaders/terrain.frag", "Native/android/app/build.gradle",
+                     "Native/android/app/src/main/java/LauncherActivity.java"):
             self.assertEqual("source", repo_hygiene.classify(path), path)
         findings = self.scan({"Native/src/player.cpp": "// sub_00123456\n"})
         self.assertEqual(["native-symbol"], [finding.rule for finding in findings])
