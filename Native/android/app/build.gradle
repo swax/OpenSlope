@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'org.openslope.nativeplayer'
+    compileSdk 35
+    ndkVersion '28.1.13356709'
+    defaultConfig {
+        applicationId 'org.openslope.nativeplayer'
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild {
+            cmake {
+                arguments '-DOPENSLOPE_BUILD_PLAYER=ON', '-DOPENSLOPE_BUILD_TESTS=OFF',
+                    "-DOPENSLOPE_HOST_SHADER_DIR=${rootDir}/../../temp/native/generated"
+                targets 'openslope_player'
+            }
+        }
+    }
+    externalNativeBuild { cmake { path '../../CMakeLists.txt'; version '3.31.6' } }
+    sourceSets { main { assets.srcDirs = ['../../ThirdPartyNotices', "$buildDir/generated/licenseAssets"] } }
+}
+tasks.register('prepareLicenseAssets', Copy) {
+    from '../../LICENSE', '../../NOTICE'
+    into "$buildDir/generated/licenseAssets"
+}
+tasks.named('preBuild').configure { dependsOn 'prepareLicenseAssets' }

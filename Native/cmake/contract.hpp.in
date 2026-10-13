@@ -1,0 +1,7 @@
+#pragma once
+#include <string_view>
+namespace openslope {
+inline constexpr unsigned char ride_contract_bytes[] = {@RIDE_CONTRACT_BYTES@};
+inline const std::string_view embedded_ride_contract{
+    reinterpret_cast<const char*>(ride_contract_bytes),sizeof(ride_contract_bytes)};
+}

@@ -76,7 +76,9 @@ terms, and that it contains none of the material this section excludes. No sign-
 
 ## Repository quality gate
 
-The gate requires the .NET 10 SDK, Node 24, and Python 3 on `PATH` (CI uses Python 3.13).
+The gate requires the .NET 10 SDK, Node 24, Python 3 (CI uses Python 3.13), CMake 3.24+,
+and a C++20 compiler. On Windows the native runner also discovers Visual Studio 2022 C++
+Build Tools and its bundled CMake without requiring them on `PATH`.
 
 Initialize the format-library submodule and install Slopesmith's locked dependencies once.
 The required hygiene checks use only Python's standard library:
@@ -96,13 +98,14 @@ The gate stops at the first failure and runs:
 
 1. Repository and patch-manifest scanner tests, structural checks, and the repository-wide hygiene baseline.
    Disc-backed manifest reproduction additionally runs when the local research generators are available.
-2. `Snowknife.Tests` — synthetic .NET tests, including byte-format round trips and cross-repository contracts.
-3. Slopesmith's strict TypeScript check and its ESLint pass (`npm --prefix Slopesmith run lint`, zero findings).
-4. Slopesmith's deterministic full suite — every check under `Slopesmith/test/` is discovered, including those
+2. Native C++ conformance — portable terrain/contact tests and the shared independent carving fixtures.
+3. `Snowknife.Tests` — synthetic .NET tests, including byte-format round trips and cross-repository contracts.
+4. Slopesmith's strict TypeScript check and its ESLint pass (`npm --prefix Slopesmith run lint`, zero findings).
+5. Slopesmith's deterministic full suite — every check under `Slopesmith/test/` is discovered, including those
    outside the fast edit-time tier, with an informational coverage report. The three that read extracted
    `Maps/` data are excluded; `npm --prefix Slopesmith run test:local` adds them.
-5. The Slopesmith client and server production build.
-6. The end-to-end authored-map export and real `snowknife gltf` smoke test.
+6. The Slopesmith client and server production build.
+7. The end-to-end authored-map export and real `snowknife gltf` smoke test.
 
 No retail ISO or extracted assets are needed. `verify` explicitly filters out Snowknife's `EndToEnd` category even
 on a machine that has the data, so the gate you run locally is the gate the nightly `Full Windows verification`
@@ -270,6 +273,7 @@ code. Build the library project directly when working down that backlog.
 
 ```text
 npm run coverage:snowknife
+npm run verify:native                      # portable C++ contract/terrain tests
 dotnet test Snowknife/Snowknife.Tests/Snowknife.Tests.csproj -c Debug --filter "Category!=EndToEnd"
 npm --prefix Slopesmith run typecheck
 npm --prefix Slopesmith test                 # fast edit-time tier

@@ -20,6 +20,14 @@ class RepoHygieneTests(unittest.TestCase):
     def scan(self, files: dict[str, str]):
         return repo_hygiene.scan_contents(files)
 
+    def test_native_sources_and_build_inputs_are_scanned(self):
+        for path in ("Native/src/player.cpp", "Native/include/math.hpp", "Native/cmake/player.cmake",
+                     "Native/cmake/contract.hpp.in", "Native/shaders/terrain.vert",
+                     "Native/shaders/terrain.frag", "Native/android/app/build.gradle"):
+            self.assertEqual("source", repo_hygiene.classify(path), path)
+        findings = self.scan({"Native/src/player.cpp": "// sub_00123456\n"})
+        self.assertEqual(["native-symbol"], [finding.rule for finding in findings])
+
     def test_dirty_and_spec_zones_are_owned_by_their_specialized_checks(self):
         findings = self.scan(
             {

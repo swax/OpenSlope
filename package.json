@@ -24,6 +24,7 @@
     "verify": "node tools/verify.mjs",
     "verify:full": "node tools/verify.mjs --full",
     "verify:snowknife": "node tools/snowknife-tests.mjs",
+    "verify:native": "node tools/native-tests.mjs",
     "verify:slopesmith": "node tools/verify.mjs --slopesmith",
     "hooks:install": "git config core.hooksPath .githooks",
     "hygiene": "python tools/hygiene.py",

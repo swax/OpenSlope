@@ -1,0 +1,23 @@
+name: Native C++ conformance
+on:
+  push:
+    branches: [main]
+    paths: ['Native/**', 'Contracts/**', 'tools/native-tests.mjs', '.github/workflows/native.yml']
+  pull_request:
+    paths: ['Native/**', 'Contracts/**', 'tools/native-tests.mjs', '.github/workflows/native.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+      - run: npm run verify:native

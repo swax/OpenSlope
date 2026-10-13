@@ -26,6 +26,9 @@ const snowknifeSteps = [
 const hygieneSteps = [
   ['Repository hygiene gate', pythonCommand(), ['tools/hygiene.py'], 10 * 60_000],
 ];
+const nativeSteps = [
+  ['Native C++ conformance', process.execPath, ['tools/native-tests.mjs'], 15 * 60_000],
+];
 const slopesmithSteps = [
   npmStep('Slopesmith type-check', 'typecheck'),
   npmStep('Slopesmith lint', 'lint'),
@@ -35,7 +38,7 @@ const slopesmithSteps = [
 ];
 const steps = slopesmithOnly
   ? slopesmithSteps
-  : [...hygieneSteps, ...snowknifeSteps, ...slopesmithSteps];
+  : [...hygieneSteps, ...nativeSteps, ...snowknifeSteps, ...slopesmithSteps];
 
 const started = Date.now();
 for (const [label, command, args, timeout] of steps) {

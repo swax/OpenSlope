@@ -183,6 +183,7 @@ interoperability, and alternate runtimes at different maturity levels:
 | Repack an authored course for PCSX2 or PS2 | [Repacking guide](Snowknife/REPACK.md) | Maintained workflow; a user-supplied disc image |
 | Ride a map in Unity or VRChat | [Unity](Unity/README.md) | Source integration; Unity 2022.3.22f1, plus the VRChat SDK and UdonSharp for VRChat |
 | Try the Unity 6 runtime | [Basis](Unity/Basis/README.md) | Experimental runtime; matching Basis client/server checkouts |
+| Try the native C++ player | [Native](Native/README.md) | Experimental terrain/contact prototype; C++20, CMake, and optional Vulkan/OpenXR host |
 | Inspect or remodel content in Blender | [Blender](Blender/README.md) | Exploratory tools; tested versions vary by workflow |
 
 ## How the pieces fit

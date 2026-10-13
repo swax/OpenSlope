@@ -1,0 +1,20 @@
+OpenSlope Native
+Copyright 2026 swax
+
+Repository-authored source, shaders, build tools, tests, and documentation under Native/
+are licensed under Apache-2.0; see LICENSE. This is an independent native prototype
+implemented against OpenSlope's portable map contracts and Trailmap's behavioral
+specification. It does not link or include Snowknife or SSX-Library source.
+
+The embedded shared ride contract carries the bounded tuning facts and functional
+identifiers described in ../Contracts/NOTICE. It supplies interoperability data,
+not original executable code, characters, media, or retail assets.
+
+No disc image, extracted game content, or game executable is distributed. Local map
+loading consumes content supplied by the user; generated retail-derived content
+remains local and excluded from releases. SSX and SSX Tricky are trademarks of
+Electronic Arts Inc. This project is independent and unofficial.
+
+Build dependencies retain their own terms. See ThirdPartyNotices/README.md and the
+complete upstream license texts beside it. Downloads are pinned and remain outside
+tracked source; shader binaries are generated from repository-authored GLSL.
