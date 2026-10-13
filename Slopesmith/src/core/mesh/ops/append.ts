@@ -4,6 +4,7 @@ import { add, cross, mul, norm, sub, dot, len } from '../../math/vec';
 import { buildQuadMesh, meshEdgeHandles, meshAdjacency } from '../topology';
 import { ekey, checkManifold } from './contract';
 import { edgePointAt, splitEdgeHandlesExact } from './cut-primitives';
+import { splitEdgeLock } from '../locks';
 import { quadPerimeterEdges, readVertex } from '../primitives';
 import { remapTJunctionsForEdgeSplits } from '../t-junctions';
 
@@ -310,6 +311,7 @@ export function appendFreeEdge(
     }
   }
   let freeEdges: [number, number][] = [...(doc.freeEdges ?? []), edge];
+  const edgeLocked = doc.edgeLocked ? { ...doc.edgeLocked } : undefined;
   const splits: { edge: [number, number]; vertex: number; t: number }[] = [];
   let tJunctions = [...(doc.tJunctions ?? [])];
   const seenTJunctions = new Set(tJunctions.map(node => `${node.vertex}:${ekey(node.edge[0], node.edge[1])}`));
@@ -318,6 +320,7 @@ export function appendFreeEdge(
     if (host) {
       const [x, y] = host.edge, hostKey = ekey(x, y);
       splitEdgeHandlesExact(edgeHandles, x, y, vertex, host.t, at, beforeHandle, pos);
+      splitEdgeLock(edgeLocked, x, y, vertex);
       freeEdges = freeEdges.flatMap(([p, q]): [number, number][] => ekey(p, q) !== hostKey ? [[p, q]]
         : [[Math.min(x, vertex), Math.max(x, vertex)], [Math.min(vertex, y), Math.max(vertex, y)]]);
       splits.push({ edge: [x, y], vertex, t: host.t });
@@ -341,6 +344,7 @@ export function appendFreeEdge(
       freeEdges,
       tJunctions,
       ...(Object.keys(edgeHandles).length ? { edgeHandles } : {}),
+      ...(edgeLocked ? { edgeLocked } : {}),
     },
     edge,
     appendedVertices,

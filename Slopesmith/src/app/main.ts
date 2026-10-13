@@ -2,7 +2,7 @@ import type { CoursePath, PlacedProp } from '../core/doc/types';
 import { SURFACE_TYPES } from '../core/doc/types';
 import {
   defaultMountain, migrateMountain,
-  type BrushOp, type BrushDir, type BrushFalloff, type FlattenMode, type FlattenPlaneBehavior,
+  type BrushOp, type BrushFalloff, type FlattenMode, type FlattenPlaneBehavior,
 } from '../core/doc/mountain';
 import { surfOf, texOf, orientOf, clearTex, setOrient, turnOrient, type EditDoc } from '../core/doc/doc-edit';
 import { seatRunOnTerrain } from '../core/doc/course';
@@ -133,7 +133,6 @@ document.getElementById('log-close')!.addEventListener('click', () => log(''));
 
 const brush = {
   op: 'raise' as BrushOp,
-  dir: 'vertical' as BrushDir,
   falloff: 'smooth' as BrushFalloff,
   flattenMode: 'height' as FlattenMode,
   flattenPlaneBehavior: 'locked' as FlattenPlaneBehavior,
@@ -141,7 +140,7 @@ const brush = {
   strength: 1.2,
   smoothAmount: 50,
   flattenAmount: 35,
-  pushAmount: 65,
+  nudgeAmount: 65,
 };
 
 // Edit is an application workflow, not bootstrap code. Its viewport dependency is lazy because the viewport
@@ -281,6 +280,7 @@ viewportCallbacks.onEditClickAway = () => {
 const viewport: Viewport = new Viewport(container, viewportCallbacks, store, store.playSmoothCutoutsOn); // the store IS the mesh-selection substrate the viewport reads (MeshSelectionState)
 
 viewport.brushRadius = brush.radius;
+viewport.brushFalloff = brush.falloff;
 
 // `?verifyRebuild=1`: check every incremental patch write against a full rebuild of the same document and
 // throw on any disagreement (docs/039, stage 6). A stale patch is silent — the terrain simply renders
@@ -517,6 +517,7 @@ function applyBlenderCage(
   // Channels keyed on the OLD topology cannot survive a mesh the artist rebuilt in another tool, and a stale
   // lock or T-junction is worse than none: it names quads that are now somebody else's.
   delete definition.quadLocked;
+  delete definition.edgeLocked;
   delete definition.freeEdges;
   delete definition.tJunctions;
   // Art the same push brought back. It lands in the same commit as the cage, because painting a tile and

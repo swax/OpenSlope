@@ -24,6 +24,7 @@ same register.
 |---|---|---|---|
 | Vertex position | vertex id | xyz | last write wins, arrival order |
 | Edge handle | `"from>to"` | V3 offset | last write wins |
+| Edge lock | both end ids, in id order (`e/<id>><id>`) | `true` | last write wins; removing the register unlocks |
 | Quad attributes | quad id | paint / tex / orient / twist, per field | last write wins per field |
 | Props, lights, rails, gems, screens, labels | object id | the whole object; edited a field at a time | last write wins per field (see *Objects*) |
 | Models, particle volumes, prop lines, effect rows and nodes | object id | the whole object | last write wins per object |

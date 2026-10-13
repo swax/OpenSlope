@@ -9,6 +9,7 @@ import type { TrickTools } from './tricks/operations';
 import type { Viewport } from './viewport/viewport';
 import { SCULPT_RADIUS_MIN, type BrushOp } from '../core/doc/mountain';
 import { modeForShortcut } from './mode-shortcuts';
+import { sculptToolForKey } from './sculpt-shortcuts';
 import { turnBuilderSquare } from './ui/components/tile-set-builder';
 import type { Mode } from './viewport/types';
 import type { EffectsEditor } from './effects/editor';
@@ -16,8 +17,8 @@ import type { EffectsEditor } from './effects/editor';
 /**
  * The editor's global keyboard shortcuts: one window keydown listener routing undo / redo, the Edit-mode mesh
  * operations (hide, connected-select, copy / cut / paste, bridge, weld, extrude, rip, split selected patches,
- * show control cage, crease / smooth, dissolve, flip ridable side, the modal-tool Enters), 1–6 top-level view switching, the
- * W / E / R gizmo tool picks, F to frame, Paint's ← / → tile turn and Props' held-prop turn, Props' copy / cut / paste, a prop line's Enter / Esc / Delete, a course redraw's Enter / Backspace / Esc, Delete across every mode's selection, and the layered Escape
+ * show control cage, crease / smooth, dissolve, flip ridable side, the modal-tool Enters), 1–7 top-level view switching, the
+ * W / E / R gizmo tool picks, Sculpt's tool letters and [ / ] brush size, F to frame, Paint's ← / → tile turn and Props' held-prop turn, Props' copy / cut / paste, a prop line's Enter / Esc / Delete, a course redraw's Enter / Backspace / Esc, Delete across every mode's selection, and the layered Escape
  * (first put the held tool down, then clear the selection). Installed once
  * at compose time, after every service it routes to exists — so every dependency arrives direct. A live test
  * ride owns movement / ollie / respawn / Esc-to-exit (or release first-person / RMB capture); this layer retains P so it can pause and refresh the UI.
@@ -147,6 +148,16 @@ export function installShortcuts(deps: ShortcutDeps) {
         && !viewport.pastePlacing && !viewport.edgeExtrusionStaged) edit.armLoopCut();
       return;
     }
+    // Ctrl+R / Ctrl+P in Sculpt: the opposite of R / P (Lower / Push), the same Ctrl that inverts a stroke — and
+    // swallowed like Edit's Ctrl+R, so reaching for Lower never reloads the page or opens the print dialog.
+    if (mod && !e.altKey && !e.shiftKey && store.currentMode === 'sculpt') {
+      const opposite = sculptToolForKey(e.key, false, true);
+      if (opposite) {
+        e.preventDefault();
+        if (!e.repeat && sculptBrush.op !== opposite) { sculptBrush.op = opposite; rebuildTools(); }
+        return;
+      }
+    }
     // The room (docs/038): T opens the box, / opens it on a command. From here the box holds the keyboard and
     // the guard at the top of this listener is what keeps the sentence out of the editor.
     if (!mod && !e.altKey && (key === 't' || e.key === '/')) {
@@ -168,6 +179,13 @@ export function installShortcuts(deps: ShortcutDeps) {
         sculptBrush.radius = e.key === ']' ? Math.floor(r / 5) * 5 + 5 : Math.max(SCULPT_RADIUS_MIN, Math.ceil(r / 5) * 5 - 5);
         viewport.brushRadius = sculptBrush.radius;
         rebuildTools();
+        return;
+      }
+      // R / P / S / ⇧F / G / N pick a tool (sculpt-shortcuts.ts). Ahead of F-to-frame, so ⇧F flattens.
+      const tool = sculptToolForKey(e.key, e.shiftKey);
+      if (tool) {
+        e.preventDefault();
+        if (!e.repeat && sculptBrush.op !== tool) { sculptBrush.op = tool; rebuildTools(); }
         return;
       }
     }

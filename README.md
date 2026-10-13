@@ -1,12 +1,59 @@
-# OpenSlope
+<p align="center">
+  <a href="https://slopesmith.com"><img width="160" height="160" alt="The Slopesmith mark: an anvil set into a mountain" src="Slopesmith/media/slopesmith_anvil_icon_source.png"></a>
+</p>
 
-**Build and ride *SSX Tricky*-compatible maps—including entirely original courses—together, from
-almost any device.**
+<h1 align="center">OpenSlope</h1>
+
+<p align="center">
+  <b>Build and ride <i>SSX Tricky</i>-compatible maps—including entirely original courses—together, from almost any device.</b><br>
+  Shape a mountain with friends in the browser, then ride it on a desktop, a phone, or a standalone Quest.
+</p>
+
+<p align="center">
+  <a href="https://slopesmith.com"><img alt="Website: slopesmith.com" src="https://img.shields.io/badge/website-slopesmith.com-0b7a99"></a>
+  <a href="https://github.com/swax/OpenSlope/actions/workflows/verify.yml"><img alt="Verify workflow status" src="https://img.shields.io/github/actions/workflow/status/swax/OpenSlope/verify.yml?branch=main&label=verify"></a>
+  <img alt="Play on: Quest (WebXR), desktop, mobile" src="https://img.shields.io/badge/play%20on-Quest%20(WebXR)%20%C2%B7%20desktop%20%C2%B7%20mobile-blue">
+  <img alt="Node.js 24" src="https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white">
+  <img alt="Built with Three.js" src="https://img.shields.io/badge/built%20with-Three.js-black?logo=threedotjs&logoColor=white">
+  <a href="LICENSE"><img alt="License: Apache-2.0 and GPL-3.0-only, by component" src="https://img.shields.io/badge/license-Apache--2.0%20%2F%20GPL--3.0--only-green"></a>
+  <a href="https://discord.gg/QFnt2x9vZ9"><img alt="Discord" src="https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white"></a>
+  <a href="#see-it-in-action"><img alt="YouTube: watch it ride" src="https://img.shields.io/badge/YouTube-watch%20it%20ride-FF0000?logo=youtube&logoColor=white"></a>
+</p>
+
+<p align="center"><b>Join the <a href="https://discord.gg/QFnt2x9vZ9">OpenSlope Discord</a></b> to meet other course creators, get help, share original mountains, and discuss development.</p>
+
+| Author in the browser | Test-ride without exporting |
+|---|---|
+| ![An authored course open in Slopesmith](Slopesmith/media/slopesmith-authoring.png) | ![A course being ridden in Slopesmith](Slopesmith/media/slopesmith-riding.png) |
+
+> [!NOTE]
+> **Independent and unofficial.** OpenSlope ships no retail game content, and original courses need no
+> game disc. [`LEGAL.md`](LEGAL.md) sets out what that means, and how to reach us if you hold rights in
+> something you believe this repository carries.
+
+---
+
+## Contents
+
+- **Overview:** [What is OpenSlope?](#what-is-openslope) · [See it in action](#see-it-in-action)
+- **Features:** [Create and collaborate](#create-and-collaborate) ·
+  [Play on the hardware you have](#play-on-the-hardware-you-have) ·
+  [Compatibility without being a port](#compatibility-without-being-a-port) · [Highlights](#highlights)
+- **Get started:** [Try Slopesmith locally](#try-slopesmith-locally) ·
+  [Run a private server](#run-a-private-server) · [Choose a starting point](#choose-a-starting-point)
+- **Architecture:** [How the pieces fit](#how-the-pieces-fit) · [Project boundaries](#project-boundaries)
+- **Project:** [Documentation and contributing](#documentation-and-contributing) · [Credits](#credits) ·
+  [License](#license)
+
+---
+
+## What is OpenSlope?
 
 At the center of OpenSlope is [Slopesmith](Slopesmith/README.md), a collaborative, self-hosted browser
 editor and riding space. Shape a mountain together, test-ride it, and see one another live with optional
 voice chat. It runs on desktop and mobile browsers and directly on a standalone Quest through WebXR—no
-native client or PC streaming required.
+native client or PC streaming required. The [Slopesmith handbook at slopesmith.com](https://slopesmith.com)
+has illustrated guides to the editor, shaping terrain, and taking a test ride.
 
 OpenSlope also includes the interoperability tools and research needed to move courses between runtimes.
 Author from scratch, or convert data locally from a user-supplied *SSX Tricky* disc image where making
@@ -14,16 +61,13 @@ and using that image is permitted by applicable law. Both routes produce the sam
 for use in the browser, glTF and Unity workflows, or repacking for PCSX2 and PS2 hardware. The pipeline
 is backward-compatible with *SSX Tricky* without limiting new courses to what the original game could do.
 
-OpenSlope is independent and unofficial, and ships no retail game content. [`LEGAL.md`](LEGAL.md)
-sets out what that means, and how to reach us if you hold rights in something you believe this
-repository carries.
+## See it in action
 
-[Join the OpenSlope Discord](https://discord.gg/QFnt2x9vZ9) to meet other course creators, get help,
-share original mountains, and discuss development.
+Watch on YouTube:
 
-| Author in the browser | Test-ride without exporting |
-|---|---|
-| ![An authored course open in Slopesmith](Slopesmith/media/slopesmith-authoring.png) | ![A course being ridden in Slopesmith](Slopesmith/media/slopesmith-riding.png) |
+- [VR run](https://www.youtube.com/watch?v=6Rxto7nWEC4)
+- [Another VR run](https://www.youtube.com/watch?v=3f3mVb3xIMY&t=54s)
+- [Development montage](https://www.youtube.com/watch?v=xKN78hJIUl4)
 
 ## Create and collaborate
 
@@ -102,8 +146,15 @@ Open `http://localhost:5179`. The editor starts with local, gitignored project s
 a mountain, use the mode switcher to edit it, and enter **Test** to ride. **Export map…** writes the
 portable `Maps/<NAME>/` form and includes a `Repack.md` with the next commands for that export.
 
-Slopesmith binds to your own machine by default. Its API can read and write projects and local maps,
-so do not expose the development server directly to the internet.
+> [!TIP]
+> Prefer a guided first session? On slopesmith.com,
+> [Getting started](https://slopesmith.com/guides/getting-started/) walks through running the editor and
+> riding your first line, and the [editor tour](https://slopesmith.com/guides/editor-tour/) shows where
+> each tool lives.
+
+> [!WARNING]
+> Slopesmith binds to your own machine by default. Its API can read and write projects and local maps,
+> so do not expose the development server directly to the internet.
 
 To ride a course from a user-supplied PS2 disc image, follow the
 [import-to-browser guide](Snowknife/docs/browser-play.md). It covers the Snowknife build, importing one
@@ -177,6 +228,7 @@ environment setup, reverse-engineering hygiene, coding conventions, and pull-req
 The full repository gate is `npm run verify` after installing the prerequisites listed there. Useful
 indexes and background include:
 
+- [Slopesmith handbook](https://slopesmith.com): illustrated guides to building and riding a course
 - [Slopesmith authoring and design docs](Slopesmith/docs/README.md)
 - [Snowknife extraction and bundle docs](Snowknife/docs/README.md)
 - [Shared interoperability contracts](Contracts/README.md)

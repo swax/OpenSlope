@@ -2,7 +2,6 @@ import type { PlacedProp, PropBehaviour, QuadMeshDoc } from '../../../core/doc/t
 import type { PathHandleOps } from '../../paths/handles';
 import type { ResolvedPropDefaults, StampBehaviour } from '../../../core/props/defaults';
 import type {
-  BrushDir,
   BrushFalloff,
   BrushOp,
   FlattenMode,
@@ -29,7 +28,7 @@ export type ToolsPanelDeps = {
     | 'deselectEdit' | 'copySelectedVertices' | 'cutSelectedVertices' | 'copySelectionVertexCount' | 'canCopyVertices'
     | 'hideSelectedMesh' | 'showAllHidden' | 'hiddenMeshCount'
     | 'toggleSelectedControlCages' | 'selectedControlCagesVisible' | 'hideSubCages' | 'controlCageCount' | 'canEditCurvature'
-    | 'selectedPatchLockState' | 'toggleSelectedPatchLocks'
+    | 'selectionLockState' | 'lockSelection' | 'unlockSelection'
     | 'labelsAvailable' | 'labelRows' | 'selectedLabelTargets' | 'selectedLabelState' | 'setSelectedLabel'
     | 'createLabel' | 'renameLabel' | 'deleteLabel' | 'selectLabel'
     | 'narrowEditSelection' | 'rotatableSelection' | 'selectedFreePoint' | 'setGizmoMode'
@@ -62,9 +61,9 @@ export type ToolsPanelDeps = {
   library: TextureLibrary;
   propLibToggle: HTMLElement;
   // mutable tool config, shared with the host's arm / apply code
-  brush: { op: BrushOp; dir: BrushDir; falloff: BrushFalloff; flattenMode: FlattenMode;
+  brush: { op: BrushOp; falloff: BrushFalloff; flattenMode: FlattenMode;
     flattenPlaneBehavior: FlattenPlaneBehavior; radius: number; strength: number;
-    smoothAmount: number; flattenAmount: number; pushAmount: number };
+    smoothAmount: number; flattenAmount: number; nudgeAmount: number };
   gemTool: { height: number; spacing: number; value: number };
   // the Info-mode Scene block (owned by the scene panel) shown in place of the Tools gui
   showScene: (visible: boolean) => void;

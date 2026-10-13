@@ -10,6 +10,7 @@ import {
   inheritQuadSurface, locateVertex, looseVertexIds,
 } from './contract';
 import { edgePointAt } from './cut-primitives';
+import { splitEdgeLock } from '../locks';
 import { readVertex } from '../primitives';
 import { cellsFromPerimeter } from './surface-cut';
 import { applyVertexWeld } from './weld';
@@ -41,6 +42,7 @@ export function applyEdgeCrossingWeld(doc: QuadMeshDoc, crossing: EdgeCrossing):
     (edgePoints[0][2] + edgePoints[1][2]) / 2];
   const vertices = [...doc.vertices, ...point], vertex = doc.vertices.length / 3;
   const edgeHandles: Record<string, V3> = { ...(doc.edgeHandles ?? {}) };
+  const edgeLocked = doc.edgeLocked ? { ...doc.edgeLocked } : undefined;
   for (const [edge, t] of [[first, crossing.t[0]], [second, crossing.t[1]]] as [[number, number], number][]) {
     const [a, b] = edge, p0 = pos(a), p3 = pos(b);
     const split = splitCubic(p0, add(p0, edgeHandle(a, b)), add(p3, edgeHandle(b, a)), p3, t);
@@ -49,6 +51,7 @@ export function applyEdgeCrossingWeld(doc: QuadMeshDoc, crossing: EdgeCrossing):
     edgeHandles[`${vertex}>${b}`] = [split.right[1][0] - point[0], split.right[1][1] - point[1], split.right[1][2] - point[2]];
     edgeHandles[`${b}>${vertex}`] = [split.right[2][0] - p3[0], split.right[2][1] - p3[1], split.right[2][2] - p3[2]];
     delete edgeHandles[`${a}>${b}`]; delete edgeHandles[`${b}>${a}`];
+    splitEdgeLock(edgeLocked, a, b, vertex);
   }
 
   const targets = new Set([ekey(first[0], first[1]), ekey(second[0], second[1])]);
@@ -88,7 +91,7 @@ export function applyEdgeCrossingWeld(doc: QuadMeshDoc, crossing: EdgeCrossing):
   ]);
   const { doc: out, ...identity } = finishMeshRewrite(doc, {
     vertices, quads, quadIds, keepVertices: looseVertexIds(doc), freeEdges,
-    tJunctions, edgeHandles, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
+    tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
   });
   // The weld point and the four ends it split are stated in the rewrite's own numbering; each is found again
   // by the name it carries, the freshly minted one included.

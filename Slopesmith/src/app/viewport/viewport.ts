@@ -4,6 +4,7 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { MeshBVH } from 'three-mesh-bvh';
 import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type PropLine, type V3 } from '../../core/doc/types';
 import { meshAdjacency, meshCageEdges, meshFromDoc, quadControlPoints, docEdgeHandles, INTERIOR_CP, type MeshAdjacency, type EdgeHandle } from '../../core/mesh/topology';
+import type { BrushFalloff } from '../../core/doc/mountain';
 import { meshEdgeSegments } from '../../core/mesh/selection';
 import { findTJunctions } from '../../core/mesh/t-junctions';
 import { findEdgeCrossings } from '../../core/mesh/edge-crossings';
@@ -500,6 +501,9 @@ export class Viewport {
   /** Sculpt brush footprint radius (world units); the router's ring overlay tracks it live. */
   get brushRadius() { return this.router.brushRadius; }
   set brushRadius(v: number) { this.router.brushRadius = v; }
+  /** Sculpt brush falloff; the ring overlay draws its shape as an inner half-strength circle. */
+  get brushFalloff() { return this.router.brushFalloff; }
+  set brushFalloff(v: BrushFalloff) { this.router.brushFalloff = v; }
 
   /**
    * Where this tab's pointer meets the nearest authored or reference mountain — the cursor its active
@@ -2674,7 +2678,10 @@ export class Viewport {
   setPropGizmoFrame(frame: PropGizmoFrame) { this.transforms.setPropGizmoFrame(frame); }
 
   /** Host-facing facade; the transform layer gates rotate / scale to selections with extent. */
-  setGizmoMode(mode: GizmoMode) { this.transforms.setGizmoMode(mode); }
+  setGizmoMode(mode: GizmoMode) {
+    this.transforms.setGizmoMode(mode);
+    if (this.gizmoKind === 'grid') this.gridTool.gizmoModeChanged();
+  }
 
   /** Show and seat the Effects-mode local-origin handle, or remove it when the selection is not spatial. */
   setEffectHandle(pos: V3 | null) {

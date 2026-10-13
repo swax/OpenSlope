@@ -1,10 +1,11 @@
 import type { CoursePath, Gem, PlacedProp, V3 } from '../core/doc/types';
 import {
-  applyBrush, applyGrabBrush, applyPushBrush, createFlattenBrushPlane, createGrabBrushState,
-  type BrushOp, type BrushDir, type BrushFalloff, type FlattenMode, type FlattenPlaneBehavior,
+  applyBrush, applyGrabBrush, applyNudgeBrush, stepBrushRadius, createFlattenBrushPlane, createGrabBrushState,
+  type BrushOp, type BrushFalloff, type FlattenMode, type FlattenPlaneBehavior,
   type FlattenBrushPlane, type GrabBrushState,
 } from '../core/doc/mountain';
 import { setSurf, setTex, setOrient } from '../core/doc/doc-edit';
+import { strokeBrushOp } from './sculpt-shortcuts';
 import { makeTexRef, parseTexRef } from '../core/paint/textures';
 import { alphaAnalysisLabel, analyzeTextureAlpha } from './props/texture-alpha';
 import type { Store } from './state/store';
@@ -51,9 +52,9 @@ export type ViewportWiringDeps = {
   // built before the viewport — passed directly
   store: Store;
   edit: EditSession; // its viewportCallbacks block is spread in; prop picks reset the gizmo through it
-  brush: { op: BrushOp; dir: BrushDir; falloff: BrushFalloff; flattenMode: FlattenMode;
+  brush: { op: BrushOp; falloff: BrushFalloff; flattenMode: FlattenMode;
     flattenPlaneBehavior: FlattenPlaneBehavior; radius: number; strength: number;
-    smoothAmount: number; flattenAmount: number; pushAmount: number }; // shared sculpt config
+    smoothAmount: number; flattenAmount: number; nudgeAmount: number }; // shared sculpt config
   gemTool: { height: number; spacing: number; value: number }; // gem placement defaults (float height, drag-row gap, tier)
   /** Free-light placement defaults — what the next hand-placed light drops as (main.ts owns the object). */
   lightTool: { kind: 'point' | 'spot'; color: string; intensity: number; reach: number; cone: number; glint: number };
@@ -103,7 +104,8 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
   const { resetGizmoMode } = edit;
   let grabBrush: GrabBrushState | null = null;
   let flattenPlane: FlattenBrushPlane | null = null;
-  let pushPoint: V3 | null = null;
+  let nudgePoint: V3 | null = null;
+  let smoothStroke = false; // Shift at pointer-down: the whole stroke smooths, whatever the tool
 
   /** A terrain gesture ended: the run follows the hill it reshaped. A model session reshapes the model, never
    *  the mountain under the run. */
@@ -318,29 +320,32 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         .then(msg => toast(msg, 'ok'))
         .catch(error => toast(`texture sample failed: ${error instanceof Error ? error.message : String(error)}`, 'err'));
     },
-    onBeginSculpt(point, quad, normal) {
-      pushPoint = brush.op === 'push' ? [...point] : null;
-      flattenPlane = brush.op === 'flatten' && brush.flattenPlaneBehavior === 'locked'
+    onBeginSculpt(point, quad, normal, mods) {
+      smoothStroke = mods.smooth;
+      const op = strokeBrushOp(brush.op, { invert: false, smooth: smoothStroke });
+      nudgePoint = op === 'nudge' ? [...point] : null;
+      flattenPlane = op === 'flatten' && brush.flattenPlaneBehavior === 'locked'
         ? createFlattenBrushPlane(store.mdoc, point, brush.radius, quad, brush.falloff, brush.flattenMode, normal)
         : null;
     },
-    onSculpt(point, quad, normal) {
-      if (brush.op === 'push') {
-        const previous = pushPoint;
-        pushPoint = [...point];
+    onSculpt(point, quad, normal, mods) {
+      const op = strokeBrushOp(brush.op, { invert: mods.invert, smooth: smoothStroke });
+      if (op === 'nudge') {
+        const previous = nudgePoint;
+        nudgePoint = [...point];
         if (!previous) return;
         const delta: V3 = [point[0] - previous[0], point[1] - previous[1], point[2] - previous[2]];
         if (Math.hypot(...delta) < 1e-12) return;
-        applyPushBrush(store.mdoc, point, brush.radius, quad, brush.falloff, delta, normal, brush.pushAmount / 100);
+        applyNudgeBrush(store.mdoc, point, brush.radius, quad, brush.falloff, delta, normal, brush.nudgeAmount / 100);
         scheduleRebuild();
         return;
       }
-      applyBrush(store.mdoc, brush.op, point, brush.radius, brush.strength, brush.dir, quad, brush.falloff,
+      applyBrush(store.mdoc, op, point, brush.radius, brush.strength, quad, brush.falloff,
         brush.flattenMode, normal, flattenPlane, brush.smoothAmount / 100, brush.flattenAmount / 100);
       scheduleRebuild();
     },
-    onEndSculpt() { flattenPlane = null; pushPoint = null; reseatCourse(); },
-    isGrabBrush() { return brush.op === 'grab'; },
+    onEndSculpt() { flattenPlane = null; nudgePoint = null; smoothStroke = false; reseatCourse(); },
+    isGrabBrush(mods) { return strokeBrushOp(brush.op, { invert: false, smooth: mods.smooth }) === 'grab'; },
     onBeginSculptGrab(point, quad) {
       grabBrush = createGrabBrushState(store.mdoc, point, brush.radius, quad, brush.falloff);
     },
@@ -350,6 +355,11 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       scheduleRebuild();
     },
     onEndSculptGrab() { grabBrush = null; reseatCourse(); },
+    onStepBrushRadius(steps) {
+      brush.radius = stepBrushRadius(brush.radius, steps);
+      rebuildTools();
+      return brush.radius;
+    },
     onPlaceProp(pos: V3, yaw: number, scale: number) {
       // A held paste drops its whole set about the anchor the ghost was carried by (docs/012).
       if (propClipboard().placing()) { propClipboard().place(pos, yaw, scale); return; }

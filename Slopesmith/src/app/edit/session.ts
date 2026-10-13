@@ -16,6 +16,7 @@ import {
   boundaryEdgeLoopVertices, meshDeleteTargets, applyMeshDelete,
   applyMeshDissolve, applyMeshFlip, applyEdgeCrossingWeld, ekey, type MeshDeleteSelection, type PatchCorners,
 } from '../../core/mesh/ops';
+import { liveQuadEdges } from '../../core/mesh/primitives';
 import type { EdgeCrossing } from '../../core/mesh/edge-crossings';
 import type { CoincidentVertices } from '../../core/mesh/coincident-vertices';
 import { coincidentVertexGroup } from '../../core/mesh/coincident-vertices';
@@ -29,7 +30,8 @@ import {
   restoreAround, setMeshControlPoints, type EditDirty, type MeshControlPointId, type MeshControlPointTarget,
 } from '../../core/mesh/control-points';
 import {
-  controlPointIsLocked, edgeIsLocked, lockedEdgeSet, lockedVertexSet, quadIsLocked, setQuadsLocked,
+  controlPointIsLocked, edgeIsLocked, edgeLocksTaken, lockedEdgeSet, lockedVertexSet, locksHolding, quadIsLocked,
+  setEdgesLocked, setQuadsLocked, type LockSelection,
 } from '../../core/mesh/locks';
 import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
 import { detachEffectFromProp } from '../../core/effects/authoring';
@@ -778,24 +780,91 @@ export function createEditSession(deps: EditSessionDeps) {
     return true;
   }
 
-  function selectedPatchLockState(): { total: number; locked: number } {
-    const doc = mdoc(), quads = cellSelIndices();
-    return { total: quads.length, locked: quads.filter(quad => quadIsLocked(doc, quad)).length };
+  /** The selection as the lock model reads it: every picked corner, edge and patch, plus what a picked control
+   *  point stands on — a corner, a tangent's edge, an interior point's patch. */
+  function selectedLockTargets(): Required<LockSelection> {
+    const doc = mdoc();
+    const vertices = new Set(selectedVertexIndices()), quads = new Set(cellSelIndices());
+    const edges: [number, number][] = [...edgeSelIndices()];
+    for (const point of controlPointIndices(doc, store.controlSel)) {
+      if (point.kind === 'vertex') vertices.add(point.vertex);
+      else if (point.kind === 'edge') edges.push([point.from, point.to]);
+      else quads.add(point.quad);
+    }
+    return { vertices: [...vertices], edges, quads: [...quads] };
   }
 
-  /** A mixed patch selection locks as a set; only an entirely locked selection unlocks. Locking captures the
-   * effective boundary handles before setting the flag, so the selected bicubic surfaces stay exact when
-   * neighbouring unlocked terrain later moves. */
-  function toggleSelectedPatchLocks() {
-    const doc = mdoc(), quads = cellSelIndices();
-    if (!quads.length) return;
-    const state = selectedPatchLockState(), lock = state.locked !== state.total;
-    const changed = setQuadsLocked(doc, quads, lock);
-    if (!changed) return;
-    commitEditMesh(store, doc); // model substrates persist the map through their model record too
+  /** What Lock would add: the selected patches not locked yet, and the selected edges no lock covers yet —
+   *  counting the patches this same Lock is about to add. */
+  function lockAdditions(): { quads: number[]; edges: [number, number][] } {
+    const doc = mdoc();
+    const quads = cellSelIndices().filter(quad => !quadIsLocked(doc, quad));
+    const covered = lockedEdgeSet(doc);
+    for (const quad of quads) for (const [a, b] of liveQuadEdges(doc.quads[quad])) covered.add(ekey(a, b));
+    const edges = new Map<string, [number, number]>();
+    for (const [a, b] of edgeSelIndices()) if (!covered.has(ekey(a, b))) edges.set(ekey(a, b), [a, b]);
+    return { quads, edges: [...edges.values()] };
+  }
+
+  /** What Unlock would remove: every lock holding part of the selection (`locksHolding`) except a trail's — its
+   *  patches are locked because they are the trail's, and only the trail changes them (docs/023). */
+  function unlockRemovals(): { quads: number[]; edges: [number, number][] } {
+    const held = locksHolding(mdoc(), selectedLockTargets());
+    return { quads: held.quads.filter(quad => !trails.trailAtQuad(quad)), edges: held.edges };
+  }
+
+  /** The lock commands' view of the selection: how many patches and edges Lock would add and Unlock would
+   *  remove, and how many of the selected corners, edges and patches a lock holds now (a trail's included). */
+  function selectionLockState(): {
+    lock: { patches: number; edges: number }; unlock: { patches: number; edges: number }; locked: number; total: number;
+  } {
+    const doc = mdoc(), lockedVertices = lockedVertexSet(doc), lockedEdges = lockedEdgeSet(doc);
+    const { vertices, edges, quads } = selectedLockTargets();
+    const edgeKeys = new Set(edges.map(([a, b]) => ekey(a, b)));
+    const locked = vertices.filter(vertex => lockedVertices.has(vertex)).length
+      + [...edgeKeys].filter(key => lockedEdges.has(key)).length
+      + quads.filter(quad => quadIsLocked(doc, quad)).length;
+    const add = lockAdditions(), remove = unlockRemovals();
+    return {
+      lock: { patches: add.quads.length, edges: add.edges.length },
+      unlock: { patches: remove.quads.length, edges: remove.edges.length },
+      locked, total: vertices.length + edgeKeys.size + quads.length,
+    };
+  }
+
+  /** "2 patches + 1 edge": what a lock command acted on. */
+  function lockNouns(patches: number, edges: number): string {
+    const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+    return [patches ? count(patches, 'patch', 'patches') : '', edges ? count(edges, 'edge', 'edges') : '']
+      .filter(Boolean).join(' + ');
+  }
+
+  function commitLockChange(doc: QuadMeshDoc, message: string) {
+    commitEditMesh(store, doc); // model substrates persist the maps through their model record too
     seatEditMoveGizmo();
     scheduleRebuild(); rebuildTools(); updateCmdSheet();
-    toast(`${changed} ${changed === 1 ? 'patch' : 'patches'} ${lock ? 'locked' : 'unlocked'}`, 'ok');
+    toast(message, 'ok');
+  }
+
+  /** Lock the selected patches and edges that are not locked yet; selected corners take no lock of their own.
+   * Locking captures the effective boundary handles before setting the flag (core/mesh/locks.ts), so each
+   * protected surface or curve stays exact when neighbouring unlocked terrain later moves. */
+  function lockSelection() {
+    const doc = mdoc(), add = lockAdditions();
+    const patches = add.quads.length ? setQuadsLocked(doc, add.quads, true) : 0;
+    const edges = setEdgesLocked(doc, add.edges, true);
+    if (!patches && !edges) return;
+    commitLockChange(doc, `${lockNouns(patches, edges)} locked`);
+  }
+
+  /** Free every selected corner, edge and patch by removing each lock that holds any of them. Unlocking changes
+   * editability, never shape: the captured handles stay until something reshapes them. */
+  function unlockSelection() {
+    const doc = mdoc(), remove = unlockRemovals();
+    const patches = remove.quads.length ? setQuadsLocked(doc, remove.quads, false) : 0;
+    const edges = setEdgesLocked(doc, remove.edges, false);
+    if (!patches && !edges) return;
+    commitLockChange(doc, `${lockNouns(patches, edges)} unlocked`);
   }
 
   function seatEditMoveGizmo() {
@@ -1646,14 +1715,18 @@ export function createEditSession(deps: EditSessionDeps) {
   function meshLockReason(verb: 'delete' | 'dissolve'): string | null {
     const doc = mdoc();
     const input = verb === 'delete' ? selectedMeshDeleteInput() : { vertices: selectedVertexIndices(), edges: edgeSelIndices() };
-    const locked = meshDeleteTargets(doc, input).filter(quad => quadIsLocked(doc, quad));
-    if (!locked.length) return null;
+    const targets = meshDeleteTargets(doc, input);
+    const locked = targets.filter(quad => quadIsLocked(doc, quad));
+    // A locked edge goes with whatever removes it: its own selection, a corner of it, or every patch it borders.
+    const edges = edgeLocksTaken(doc, input, verb === 'delete' ? targets : []).length;
+    if (!locked.length && !edges) return null;
     const trailed = locked.filter(quad => trails.trailAtQuad(quad)).length, plain = locked.length - trailed;
     const patches = (n: number) => `${n} ${n === 1 ? 'patch' : 'patches'}`;
     const why = [
       ...(trailed ? [`${patches(trailed)} of a trail, which only the trail changes — select its path alone to delete it, `
         + 'or dissolve the trail into patches first'] : []),
       ...(plain ? [`${patches(plain)} locked by hand — unlock ${plain === 1 ? 'it' : 'them'} under Visibility first`] : []),
+      ...(edges ? [`${edges} locked ${edges === 1 ? 'edge' : 'edges'} — unlock ${edges === 1 ? 'it' : 'them'} under Visibility first`] : []),
     ];
     return `Can’t ${verb} this: it would ${verb === 'delete' ? 'take' : 'rewrite'} ${why.join(', and ')}.`;
   }
@@ -2182,7 +2255,7 @@ export function createEditSession(deps: EditSessionDeps) {
     selectEdgeCrossing, weldSelectedEdgeCrossing, selectCoincidentVertices, weldSelectedCoincidentVertices,
     hideSelectedMesh, showAllHidden, canHideSelection, hiddenMeshCount,
     toggleSelectedControlCages, selectedControlCagesVisible, hideSubCages, controlCageCount, canEditCurvature,
-    selectedPatchLockState, toggleSelectedPatchLocks,
+    selectionLockState, lockSelection, unlockSelection,
     labelsAvailable, labelRows, selectedLabelTargets, selectedLabelState, setSelectedLabel,
     createLabel, renameLabel, deleteLabel, selectLabel,
     selectConnected, canSelectConnected, selectOverlappingVertices,

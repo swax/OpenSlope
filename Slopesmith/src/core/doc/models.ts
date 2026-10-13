@@ -55,6 +55,7 @@ export function modelEditDocFor(mdoc: QuadMeshDoc, model: AuthoredModel): QuadMe
     ...(model.freeEdges ? { freeEdges: model.freeEdges } : {}),
     ...(model.tJunctions ? { tJunctions: model.tJunctions } : {}),
     ...(model.quadLocked ? { quadLocked: model.quadLocked } : {}),
+    ...(model.edgeLocked ? { edgeLocked: model.edgeLocked } : {}),
     // the substrate WEARS the model's uniform tile AT its orientation (both derived per materialize, never
     // written back), so the edit session previews the same texture, the same way up, its placements render
     // with — including the tile-orientation F overlay, which reads the same per-quad channel the terrain does
@@ -108,6 +109,7 @@ export function commitModelEditDoc(model: AuthoredModel, doc: QuadMeshDoc): void
   if (doc.freeEdges?.length) model.freeEdges = doc.freeEdges; else delete model.freeEdges;
   if (doc.tJunctions?.length) model.tJunctions = doc.tJunctions; else delete model.tJunctions;
   if (doc.quadLocked && Object.keys(doc.quadLocked).length) model.quadLocked = doc.quadLocked; else delete model.quadLocked;
+  if (doc.edgeLocked && Object.keys(doc.edgeLocked).length) model.edgeLocked = doc.edgeLocked; else delete model.edgeLocked;
   // quadTex / quadOrient are DERIVED from model.texture + model.orient at materialize time (and curvature
   // channels are never stored) — none write back, so the model record stays the lean polygon + one-tile form.
   if (!hadGeometry && model.vertices.length) model.anchor = baseCentre(model.vertices);

@@ -1,19 +1,19 @@
 import { tip, typedRange } from '../components/gui';
 import { segmented, type SegOption } from '../components/controls';
+import { tooltip } from '../components/tooltip';
 import { svg } from '../components/icons';
 import {
   SCULPT_RADIUS_MIN, SCULPT_RADIUS_SLIDER_MAX,
-  type BrushDir, type BrushFalloff, type BrushOp, type FlattenMode, type FlattenPlaneBehavior,
+  type BrushFalloff, type BrushOp, type FlattenMode, type FlattenPlaneBehavior,
 } from '../../../core/doc/mountain';
 import type { ToolsContext } from './widgets';
+import { sculptToolShortcut } from '../../sculpt-shortcuts';
 
 const SCULPT_ICON = {
   falloffSmooth: svg('<path d="M3 19c4.5 0 5.1-13 9-13s4.5 13 9 13"/><path d="M3 19h18" opacity=".35"/>'),
   falloffLinear: svg('<path d="m3 19 9-13 9 13"/><path d="M3 19h18" opacity=".35"/>'),
   falloffSharp: svg('<path d="M3 19c6 0 6.5-13 9-13s3 13 9 13"/><path d="M3 19h18" opacity=".35"/>'),
   falloffConstant: svg('<path d="M3 19V6h18v13"/><path d="M3 19h18" opacity=".35"/>'),
-  vertical: svg('<path d="M12 21V4M7 9l5-5 5 5"/><path d="M4 21h16" opacity=".45"/>'),
-  normal: svg('<path d="m3 18 18-7"/><path d="m10 15-3-7M4 11l3-3 4 1"/>'),
   height: svg('<path d="M3 16h18M5 12h14"/><path d="M12 4v6M9 7l3 3 3-3"/>'),
   surface: svg('<path d="m3 18 18-8M5 14l14-6"/><path d="m12 11-2-5M7 8l3-2 2 2"/>'),
   area: svg('<path d="M3 17c3-6 5 2 8-4s5 2 10-5"/><path d="m4 14 16-7" stroke-dasharray="2 2"/><circle cx="6" cy="12" r="1"/><circle cx="12" cy="11" r="1"/><circle cx="18" cy="8" r="1"/>'),
@@ -23,11 +23,13 @@ const SCULPT_ICON = {
 
 function iconChoice<T extends string>(
   host: { $children: HTMLElement }, label: string, options: SegOption<T>[], get: () => T, set: (value: T) => void,
+  hint?: string,
 ) {
   const row = document.createElement('div');
   row.className = 'sp-sculpt-choice';
   const caption = document.createElement('span');
   caption.textContent = label;
+  if (hint) tooltip(caption, hint);
   const control = segmented(options, get, set);
   control.el.setAttribute('role', 'group');
   control.el.setAttribute('aria-label', label);
@@ -48,25 +50,35 @@ export function buildSculptTools(ctx: ToolsContext) {
   operations.setAttribute('aria-label', 'Sculpt operation');
   const heading = document.createElement('div'); heading.className = 'sp-sculpt-ops-title'; heading.textContent = 'Operation';
   operations.appendChild(heading);
-  const family = (name: string, options: { value: BrushOp; label: string; title: string }[]) => {
+  // `name` captions the row; a continuation row of the same family leaves it blank and names itself for screen readers.
+  const family = (name: string, options: { value: BrushOp; label: string; title: string }[], group = name) => {
     const row = document.createElement('div'); row.className = 'sp-sculpt-op-family';
     const caption = document.createElement('span'); caption.textContent = name;
-    const control = segmented<BrushOp>(options, () => brush.op, op => { brush.op = op; rebuildTools(); });
+    // A tool's key sits faintly after its label; Lower and Push have none of their own (Ctrl inverts).
+    const keyed = options.map(o => {
+      const shortcut = sculptToolShortcut(o.value);
+      return shortcut ? { ...o, shortcut, title: `${o.title} (${shortcut.label})` } : o;
+    });
+    const control = segmented<BrushOp>(keyed, () => brush.op, op => { brush.op = op; rebuildTools(); });
     control.el.setAttribute('role', 'group');
-    control.el.setAttribute('aria-label', `${name} sculpt operations`);
+    control.el.setAttribute('aria-label', `${group} sculpt operations`);
     row.append(caption, control.el); operations.appendChild(row);
   };
   family('Displace', [
-    { value: 'raise', label: 'Raise', title: 'Raise terrain vertically or along its surface normal.' },
-    { value: 'lower', label: 'Lower', title: 'Lower terrain vertically or along its surface normal.' },
+    { value: 'raise', label: 'Raise', title: 'Raise terrain straight up. Hold Ctrl to lower.' },
+    { value: 'lower', label: 'Lower', title: 'Lower terrain straight down — or hold Ctrl while raising. (Ctrl+R)' },
   ]);
+  family('', [
+    { value: 'pull', label: 'Pull', title: 'Pull terrain out of its surface along the normal — build walls, overhangs and snow pillows. Hold Ctrl to push.' },
+    { value: 'push', label: 'Push', title: 'Push terrain into its surface along the normal — dent a face or undercut an overhang — or hold Ctrl while pulling. (Ctrl+P)' },
+  ], 'Surface-normal displace');
   family('Refine', [
     { value: 'smooth', label: 'Smooth', title: 'Relax the broad corner shape and authored Bezier detail.' },
     { value: 'flatten', label: 'Flatten', title: 'Move complete Bezier cages toward a chosen plane.' },
   ]);
   family('Move', [
     { value: 'grab', label: 'Grab', title: 'Drag one captured surface-space footprint in the view plane.' },
-    { value: 'push', label: 'Push', title: 'Continuously shove newly encountered terrain along the surface.' },
+    { value: 'nudge', label: 'Nudge', title: 'Continuously shove newly encountered terrain along the surface.' },
   ]);
   gui.$children.appendChild(operations);
 
@@ -74,21 +86,18 @@ export function buildSculptTools(ctx: ToolsContext) {
   common.open();
   tip(typedRange(common.add(brush, 'radius', SCULPT_RADIUS_MIN, SCULPT_RADIUS_SLIDER_MAX, 1), { min: SCULPT_RADIUS_MIN }).name('size (m)'),
     'Radius along the connected control surface. The green ring aligns to the surface under the pointer.',
-    `The slider runs ${SCULPT_RADIUS_MIN}–${SCULPT_RADIUS_SLIDER_MAX} m; type a larger value for a bigger brush.`)
+    `The slider runs ${SCULPT_RADIUS_MIN}–${SCULPT_RADIUS_SLIDER_MAX} m; type a larger value for a bigger brush. [ / ] or Shift+scroll resize it.`)
     .onChange((r: number) => (viewport.brushRadius = r));
   iconChoice<BrushFalloff>(common, 'Falloff', [
     { value: 'smooth', label: 'Smooth falloff', icon: SCULPT_ICON.falloffSmooth, title: 'Smooth — a rounded bell that eases softly to zero at the brush edge.' },
     { value: 'linear', label: 'Linear falloff', icon: SCULPT_ICON.falloffLinear, title: 'Linear — strength fades evenly from the centre to the brush edge.' },
     { value: 'sharp', label: 'Sharp falloff', icon: SCULPT_ICON.falloffSharp, title: 'Sharp — concentrates the effect near the centre with a quick fade.' },
     { value: 'constant', label: 'Constant falloff', icon: SCULPT_ICON.falloffConstant, title: 'Constant — full strength across the footprint with a hard edge.' },
-  ], () => brush.falloff, value => { brush.falloff = value; });
+  ], () => brush.falloff, value => { brush.falloff = value; viewport.brushFalloff = value; },
+  'The brush ring\'s faint inner circle marks where the chosen falloff drops to half strength.');
 
-  if (brush.op === 'raise' || brush.op === 'lower') {
+  if (brush.op === 'raise' || brush.op === 'lower' || brush.op === 'pull' || brush.op === 'push') {
     const options = gui.addFolder('Tool options'); options.open();
-    iconChoice<BrushDir>(options, 'Direction', [
-      { value: 'vertical', label: 'Vertical direction', icon: SCULPT_ICON.vertical, title: 'Vertical — raise or lower straight along world height.' },
-      { value: 'normal', label: 'Surface-normal direction', icon: SCULPT_ICON.normal, title: 'Surface normal — push out of the slope face to build walls and overhangs.' },
-    ], () => brush.dir, value => { brush.dir = value; });
     tip(options.add(brush, 'strength', 0.1, 6, 0.1).name('step (m)'), 'How far each dab moves the terrain.');
   } else if (brush.op === 'smooth') {
     const options = gui.addFolder('Tool options'); options.open();
@@ -107,9 +116,9 @@ export function buildSculptTools(ctx: ToolsContext) {
     ], () => brush.flattenPlaneBehavior, value => { brush.flattenPlaneBehavior = value; });
     tip(options.add(brush, 'flattenAmount', 5, 100, 5).name('amount (%)'),
       'How far every affected Bezier control moves toward the target plane per dab.');
-  } else if (brush.op === 'push') {
+  } else if (brush.op === 'nudge') {
     const options = gui.addFolder('Tool options'); options.open();
-    tip(options.add(brush, 'pushAmount', 5, 100, 5).name('amount (%)'),
+    tip(options.add(brush, 'nudgeAmount', 5, 100, 5).name('amount (%)'),
       'How much of each surface-tangent pointer movement is transferred into the terrain.');
   }
 }

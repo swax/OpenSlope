@@ -232,6 +232,16 @@ sweepable run, sweeping a fall line for a doc that carries none). Branching woul
   gizmo drag live. Between two corners with no handle showing it is the corner block above. A
   Ctrl press over a point passes the selected point's gizmo by, since its neighbours sit under the arrows; a
   plain or Shift press there still drags. Reference cages range the same way, read-only.
+  **Locks (Visibility)** protect geometry from sculpt brushes, control-point drags and group transforms. A
+  **patch lock** (`quadLocked`) freezes a whole bicubic patch: its corners, boundary handles and interior. An
+  **edge lock** (`edgeLocked`) freezes one curve, both corners and both tangents, while the patches either
+  side stay editable. Both draw red in the wireframe, and locking materializes the current handles so the
+  shape does not move (`core/mesh/locks.ts`). **Lock** locks the selected patches and edges that are not
+  locked yet. A point takes no lock of its own. **Unlock** frees the whole selection, points included, by
+  removing every lock that holds any of it (`locksHolding`): a selected edge or corner is freed from the
+  locked patches and edges it touches. A trail's patches stay locked, because only the trail changes them
+  ([023](023-spline-loft-track.md)). A partly locked selection offers both. The mixed-selection toolbox has
+  the same pair as **lock … / unlock all**.
 - **Paint** — unchanged (surface = ride feel, texture = real tiles), keyed per patch.
 - **Cage** — a toggle that draws the control net (corner lattice; handles shown for the selection),
   so you can see what you are pushing. Editor-only.
@@ -289,8 +299,8 @@ corner handles must be big enough to grab and the cage cheap to redraw.
   one-shot "seat run" deforms the terrain net to the ribbon profile (banked channels / half-pipes cut
   into the hill), reusing the cross-section + spine frame. The run knot inspector carries the section
   controls. `npm run smoke` stays green.
-- **S3 — 3D terrain editing.** Sculpt raise/lower has a **vertical | surface-normal** direction (normal
-  builds wall faces / pulls overhangs) and smooth relaxes corners in full 3D; Edit **drags terrain
+- **S3 — 3D terrain editing.** Sculpt has vertical **Raise/Lower** and surface-normal **Pull/Push**
+  (Pull builds wall faces / overhangs) and smooth relaxes corners in full 3D; Edit **drags terrain
   corner control points in 3D** (cage on = handles live; planar drag, Shift = height; cyan handle marks
   the selected corner). The bake winds by geometric orientation (see Normals), so overhangs bake
   correctly with no bake change; the **mountain smoke** checks "consistent winding, no NaN" (courses

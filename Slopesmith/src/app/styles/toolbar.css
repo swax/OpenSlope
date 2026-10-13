@@ -97,6 +97,9 @@
 .sp-seg button.disabled { opacity: 0.4; cursor: not-allowed; }
 .sp-seg button.sp-seg-icon { display: inline-flex; align-items: center; padding: 5px 10px; }
 .sp-seg button.sp-seg-icon svg { display: block; width: 16px; height: 16px; }
+/* A button's keyboard shortcut, faint after its label so the label still reads first. */
+.sp-seg button .sp-seg-key { margin-left: 5px; font-size: .82em; font-weight: 600; opacity: .5; }
+.sp-seg button.on .sp-seg-key { opacity: .8; }
 /* Passive autosave state beside Undo. One stable disk: motion means work is moving, amber means the
    connection is catching up, and red is reserved for a save that needs attention. */
 .sp-save-status { position: relative; display: inline-flex; align-items: center; justify-content: center;

@@ -8,9 +8,9 @@
  * test/meshops.fixture.ts, shared with the other `meshops-*` checks.
  */
 import * as THREE from 'three';
-import { applyBrush, applyGrabBrush, applyPushBrush, brushFalloffWeight, createFlattenBrushPlane, createGrabBrushState, migrateMountain, surfaceBrushDistances } from '../src/core/doc/mountain';
-import { meshFromDoc, quadControlPoints, buildQuadMesh, meshAdjacency, meshEdgeHandles } from '../src/core/mesh/topology';
-import { cubicPoint } from '../src/core/math/bezier';
+import { applyBrush, applyGrabBrush, applyNudgeBrush, brushFalloffWeight, createFlattenBrushPlane, createGrabBrushState, migrateMountain, surfaceBrushDistances } from '../src/core/doc/mountain';
+import { meshFromDoc, quadControlPoints, buildQuadMesh, meshAdjacency, meshEdgeHandles, vertexFrame } from '../src/core/mesh/topology';
+import { cubicPoint, nearestPatchParam, patchPoint } from '../src/core/math/bezier';
 import { add, cross, dot, len, mul, norm, sub } from '../src/core/math/vec';
 import { applyEdgeRip, applyEdgeWeld, applyEdgeWeldSets, applyEdgeLoopWeld, boundaryEdgeLoopVertices, applyVertexWeld, applyVertexWeldTogether, applyEdgeCrossingWeld, autoWeldCreatedEdgeCrossings, appendStandalonePatch, appendPatchFromCorners, appendFreeEdge, appendTube, validateSurfaceCutPath, routeSurfaceCutPath, applySurfaceCut, standalonePatchCorners, DEFAULT_STANDALONE_PATCH_SIZE_M, planEdgeExtrusion, planPatchExtrusion, edgeExtrusionSegmentCount, edgeExtrusionPreviewDoc, edgeExtrusionPlacementPreviewDoc, translatedEdgeExtrusionPlacement, tangentEdgeExtrusionPlacement, applyEdgeExtrusion, applyPatchExtrusion, applyPlannedEdgeExtrusion, applyMeshDelete, applyMeshDissolve, checkManifold, ekey } from '../src/core/mesh/ops';
 import { getVertex } from '../src/core/doc/doc-edit';
@@ -177,11 +177,29 @@ import { check, failures } from './check';
     'surface brush: a wall footprint uses vertical surface distance instead of selecting every shared XZ row');
   check([...wallDistance.slice(4)].every(d => d === Infinity),
     'surface brush: a footprint seeded on one patch cannot jump to disconnected stacked geometry');
+  // Where the dab lands on a patch, and how far that surface point has moved since `before`.
+  const hitParam = (doc: QuadMeshDoc, quad: number, point: V3): [number, number] => {
+    const { mesh, edgeHandle } = meshFromDoc(doc);
+    return nearestPatchParam(quadControlPoints(mesh, edgeHandle, quad), point);
+  };
+  const hitMove = (before: QuadMeshDoc, after: QuadMeshDoc, quad: number, [u, v]: [number, number]): V3 => {
+    const at = (doc: QuadMeshDoc) => {
+      const { mesh, edgeHandle } = meshFromDoc(doc);
+      return patchPoint(quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad]), u, v);
+    };
+    return sub(at(after), at(before));
+  };
+  const near = (a: V3, b: V3, tol = 1e-3) => len(sub(a, b)) < tol;
+  const wallHit = hitParam(wall, 0, [0, 1, 5]);
   const raisedWall = structuredClone(wall);
-  applyBrush(raisedWall, 'raise', [0, 1, 5], 8, 2, 'vertical', 0);
-  check(raisedWall.vertices[1] > wall.vertices[1] && raisedWall.vertices[4] > wall.vertices[4]
-    && raisedWall.vertices[7] === wall.vertices[7] && raisedWall.vertices[13] === wall.vertices[13],
-    'surface brush: the dab deforms only corners inside its connected intrinsic radius');
+  applyBrush(raisedWall, 'raise', [0, 1, 5], 8, 2, 0);
+  const wallRise = (corner: number) => raisedWall.vertices[corner * 3 + 1] - wall.vertices[corner * 3 + 1];
+  check(wallRise(0) > wallRise(2) && wallRise(2) > 0
+    && raisedWall.vertices.slice(12).join(',') === wall.vertices.slice(12).join(','),
+    'surface brush: corners inside the radius lead, the far corners of the hit patch follow, disconnected terrain stays');
+  const wallLift = hitMove(wall, raisedWall, 0, wallHit);
+  check(Math.abs(wallLift[0]) < 1e-9 && Math.abs(wallLift[2]) < 1e-9 && wallLift[1] > 0.85 * 2 && wallLift[1] <= 2 + 1e-9,
+    'surface brush: beside a corner the surface under the dab still rises nearly the full strength the falloff fell short of');
   check(Math.abs(brushFalloffWeight('smooth', 0.5) - 0.5625) < 1e-12
     && Math.abs(brushFalloffWeight('linear', 0.5) - 0.5) < 1e-12
     && Math.abs(brushFalloffWeight('sharp', 0.5) - 0.25) < 1e-12
@@ -195,27 +213,92 @@ import { check, failures } from './check';
   const grabState = createGrabBrushState(wall, [0, 1, 5], 8, 0, 'constant');
   const grabbedWall = structuredClone(wall);
   applyGrabBrush(grabbedWall, grabState, [2, 3, 4]);
-  check(grabbedWall.vertices.slice(0, 6).join(',') === '2,3,4,2,3,14'
-    && grabbedWall.vertices.slice(6).join(',') === wall.vertices.slice(6).join(','),
-    'grab brush: a view-plane displacement moves only the captured connected footprint');
+  check(near(hitMove(wall, grabbedWall, 0, wallHit), [2, 3, 4])
+    && grabbedWall.vertices.slice(0, 6).join(',') === '2,3,4,2,3,14'
+    && grabbedWall.vertices.slice(12).join(',') === wall.vertices.slice(12).join(','),
+    'grab brush: the grabbed surface point follows the drag while disconnected terrain stays put');
+  check([...grabState.weights].every(w => w >= 0 && w <= 1),
+    'grab brush: no corner travels further than the drag itself');
   applyGrabBrush(grabbedWall, grabState, [-1, 2, -3]);
-  check(grabbedWall.vertices.slice(0, 6).join(',') === '-1,2,-3,-1,2,7',
+  const regrabbed = structuredClone(wall);
+  applyGrabBrush(regrabbed, grabState, [-1, 2, -3]);
+  check(grabbedWall.vertices.join(',') === regrabbed.vertices.join(','),
     'grab brush: each drag update evaluates from frozen press positions instead of accumulating frame deltas');
-  const pushedWall = structuredClone(wall);
-  applyPushBrush(pushedWall, [0, 1, 5], 8, 0, 'constant', [2, 3, 4], [1, 0, 0], 0.5);
-  check(pushedWall.vertices.slice(0, 6).join(',') === '0,1.5,2,0,1.5,12'
-    && pushedWall.vertices.slice(6).join(',') === wall.vertices.slice(6).join(','),
-    'push brush: each live footprint moves along the hit tangent and cannot cross to disconnected terrain');
+  const nudgedWall = structuredClone(wall);
+  applyNudgeBrush(nudgedWall, [0, 1, 5], 8, 0, 'constant', [2, 3, 4], [1, 0, 0], 0.5);
+  check(near(hitMove(wall, nudgedWall, 0, wallHit), [0, 1.5, 2])
+    && nudgedWall.vertices.slice(0, 6).join(',') === '0,1.5,2,0,1.5,12'
+    && nudgedWall.vertices.every((x, i) => i % 3 !== 0 || x === wall.vertices[i])
+    && nudgedWall.vertices.slice(12).join(',') === wall.vertices.slice(12).join(','),
+    'nudge brush: each live footprint moves along the hit tangent and cannot cross to disconnected terrain');
+  // Raise/Lower go straight up and down; Pull/Push go out of and into the face along its normal — on this
+  // vertical wall that is sideways, which is what lets a wall grow an overhang.
+  // Pull comes toward the side the stroke works from (the hit normal, which the viewport turns to the viewer),
+  // Push goes away from it — whichever face of the wall that is.
+  const wallStep = (op: 'raise' | 'pull' | 'push', facing: V3 = [1, 0, 0]) => {
+    const stepped = structuredClone(wall);
+    applyBrush(stepped, op, [0, 5, 5], 20, 2, 0, 'constant', 'height', facing);
+    return [0, 1, 2, 3].map(id => sub(getVertex(stepped, id), getVertex(wall, id)));
+  };
+  check(wallStep('raise').every(d => near(d, [0, 2, 0]))
+    && wallStep('pull').every(d => near(d, [2, 0, 0])) && wallStep('push').every(d => near(d, [-2, 0, 0]))
+    && wallStep('pull', [-1, 0, 0]).every(d => near(d, [-2, 0, 0])) && wallStep('push', [-1, 0, 0]).every(d => near(d, [2, 0, 0])),
+    'pull / push: out toward the face being sculpted and in away from it, from either side, where raise goes straight up');
+
+  // A wall that is not quite plumb: the vertex frames' skyward convention flips some corners' normals and not
+  // their neighbours' (a hair of tilt decides it), which used to pull half the wall out and push half in.
+  const WAVY = 4, wavy: QuadMeshDoc = { ...freshGrid(), vertices: [], quads: [], edgeHandles: undefined, quadTwist: undefined };
+  for (let r = 0; r < WAVY; r++) for (let c = 0; c < WAVY; c++) wavy.vertices.push(0.6 * Math.sin(r * 1.7 + c * 2.3), 10 * r, 10 * c);
+  for (let r = 0; r < WAVY - 1; r++) for (let c = 0; c < WAVY - 1; c++) {
+    const A = r * WAVY + c;
+    wavy.quads.push([A, A + 1, A + WAVY, A + WAVY + 1]);
+  }
+  const wavyAdj = meshAdjacency(buildQuadMesh(wavy.vertices, wavy.quads));
+  const frameSides = new Set(wavy.quads.flat().map(id => Math.sign(vertexFrame(wavy.vertices, wavyAdj, id).n[0])));
+  const wavyStep = (op: 'pull' | 'push') => {
+    const stepped = structuredClone(wavy);
+    applyBrush(stepped, op, [0, 15, 15], 40, 1, 4, 'constant', 'height', [1, 0, 0]);
+    return Array.from({ length: WAVY * WAVY }, (_, id) => stepped.vertices[id * 3] - wavy.vertices[id * 3]);
+  };
+  check(frameSides.has(1) && frameSides.has(-1)
+    && wavyStep('pull').every(dx => dx > 0.5) && wavyStep('push').every(dx => dx < -0.5),
+    'pull / push: on a wall whose corner frames disagree in sign, every corner still moves the same way');
+
+  // A brush narrower than the cage: dabs between corners must still move the surface under the cursor, through
+  // the hit patch's own corners, none of them further than the stroke and none outside that patch.
+  const LATTICE = 5, SPAN = 30;
+  const lattice: QuadMeshDoc = { ...freshGrid(), vertices: [], quads: [], edgeHandles: undefined, quadTwist: undefined };
+  for (let r = 0; r < LATTICE; r++) for (let c = 0; c < LATTICE; c++) lattice.vertices.push(r * SPAN, 0, c * SPAN);
+  for (let r = 0; r < LATTICE - 1; r++) for (let c = 0; c < LATTICE - 1; c++) {
+    const A = r * LATTICE + c;
+    lattice.quads.push([A, A + 1, A + LATTICE, A + LATTICE + 1]);
+  }
+  const middle = (LATTICE - 1) + 1; // quad (1,1): corners at x,z ∈ {30, 60}
+  const middleCorners = new Set(lattice.quads[middle]);
+  for (const [where, point, share] of [['an edge', [30, 0, 45], 1], ['a patch middle', [45, 0, 45], 1],
+    ['an off-centre point', [38, 0, 41], 0.85]] as [string, V3, number][]) {
+    const dabbed = structuredClone(lattice);
+    applyBrush(dabbed, 'raise', point, 5, 2, middle);
+    const moved = [...Array(dabbed.vertices.length / 3).keys()].filter(id => dabbed.vertices[id * 3 + 1] !== 0);
+    const lift = hitMove(lattice, dabbed, middle, hitParam(lattice, middle, point))[1];
+    check(lift > share * 2 - 1e-3 && lift < 2 + 1e-3
+      && moved.length > 0 && moved.every(id => middleCorners.has(id) && dabbed.vertices[id * 3 + 1] <= 2 + 1e-9),
+      `small brush: a dab on ${where} raises the surface under it ${share === 1 ? 'the full' : 'nearly the full'} strength through its own patch corners`);
+  }
+  const wide = structuredClone(lattice);
+  applyBrush(wide, 'raise', [30, 0, 30], 45, 2, middle);
+  check(wide.vertices[(LATTICE + 1) * 3 + 1] === 2 && wide.vertices[(LATTICE + 2) * 3 + 1] === 2 * brushFalloffWeight('smooth', 30 / 45),
+    'small brush: a brush that already carries the hit keeps exactly its falloff weights');
   const unevenWall = structuredClone(wall);
   unevenWall.vertices[0] = 2; unevenWall.vertices[3] = -2;
   unevenWall.vertices[6] = 2; unevenWall.vertices[9] = 4;
   const heightFlat = structuredClone(unevenWall);
-  applyBrush(heightFlat, 'flatten', [0, 5, 5], 20, 1, 'vertical', 0, 'constant', 'height', [1, 0, 0]);
+  applyBrush(heightFlat, 'flatten', [0, 5, 5], 20, 1, 0, 'constant', 'height', [1, 0, 0]);
   check(heightFlat.vertices[0] === 2 && heightFlat.vertices[1] === 1.75
     && heightFlat.vertices[7] === 8.25,
     'flatten modes: height preserves XZ and retains the original horizontal world-Y behavior');
   const surfaceFlat = structuredClone(unevenWall);
-  applyBrush(surfaceFlat, 'flatten', [0, 5, 5], 20, 1, 'vertical', 0, 'constant', 'surface', [1, 0, 0]);
+  applyBrush(surfaceFlat, 'flatten', [0, 5, 5], 20, 1, 0, 'constant', 'surface', [1, 0, 0]);
   check(Math.abs(surfaceFlat.vertices[0] - 1.3) < 1e-12
     && Math.abs(surfaceFlat.vertices[3] + 1.3) < 1e-12
     && surfaceFlat.vertices[1] === unevenWall.vertices[1] && surfaceFlat.vertices[2] === unevenWall.vertices[2],
@@ -224,19 +307,19 @@ import { check, failures } from './check';
   const centroid = (vertices: number[], axis: number) =>
     (vertices[axis] + vertices[axis + 3] + vertices[axis + 6] + vertices[axis + 9]) / 4;
   const beforeCentroid: V3 = [centroid(areaFlat.vertices, 0), centroid(areaFlat.vertices, 1), centroid(areaFlat.vertices, 2)];
-  applyBrush(areaFlat, 'flatten', [0, 5, 5], 20, 1, 'vertical', 0, 'constant', 'area', [1, 0, 0]);
+  applyBrush(areaFlat, 'flatten', [0, 5, 5], 20, 1, 0, 'constant', 'area', [1, 0, 0]);
   const afterCentroid: V3 = [centroid(areaFlat.vertices, 0), centroid(areaFlat.vertices, 1), centroid(areaFlat.vertices, 2)];
   check(areaFlat.vertices.slice(0, 12).some((v, i) => Math.abs(v - unevenWall.vertices[i]) > 1e-9)
     && afterCentroid.every((v, axis) => Math.abs(v - beforeCentroid[axis]) < 1e-9),
     'flatten modes: area fits the footprint trend while preserving its weighted centre');
   const originalPlane = createFlattenBrushPlane(wall, [0, 5, 5], 20, 0, 'constant', 'height', [0, 1, 0]);
   const lockedFlat = structuredClone(wall);
-  applyBrush(lockedFlat, 'flatten', [100, 10, 5], 20, 1, 'vertical', 1, 'constant', 'height', [0, 1, 0], originalPlane);
+  applyBrush(lockedFlat, 'flatten', [100, 10, 5], 20, 1, 1, 'constant', 'height', [0, 1, 0], originalPlane);
   check(lockedFlat.vertices[13] === 1.75 && lockedFlat.vertices[19] === 8.25
     && lockedFlat.vertices.slice(0, 12).join(',') === wall.vertices.slice(0, 12).join(','),
     'flatten plane lock: a later dab on another surface still levels toward the plane sampled on press');
   const followingFlat = structuredClone(wall);
-  applyBrush(followingFlat, 'flatten', [100, 10, 5], 20, 1, 'vertical', 1, 'constant', 'height', [0, 1, 0]);
+  applyBrush(followingFlat, 'flatten', [100, 10, 5], 20, 1, 1, 'constant', 'height', [0, 1, 0]);
   check(followingFlat.vertices[13] === 3.5 && followingFlat.vertices[19] === 10,
     'flatten plane follow: without a locked plane each dab resamples its target under the cursor');
 
@@ -251,7 +334,7 @@ import { check, failures } from './check';
     beforeDetailed.mesh, beforeDetailed.edgeHandle, 0, detailedWall.quadTwist[0],
   );
   const cageFlat = structuredClone(detailedWall);
-  applyBrush(cageFlat, 'flatten', [0, 0, 5], 20, 1, 'vertical', 0, 'constant', 'height', [0, 1, 0], null, 0.5, 0.2);
+  applyBrush(cageFlat, 'flatten', [0, 0, 5], 20, 1, 0, 'constant', 'height', [0, 1, 0], null, 0.5, 0.2);
   const afterDetailed = meshFromDoc(cageFlat);
   const afterDetailedCp = quadControlPoints(afterDetailed.mesh, afterDetailed.edgeHandle, 0, cageFlat.quadTwist?.[0]);
   check(afterDetailedCp.every((cp, i) => Math.abs(cp[1] - beforeDetailedCp[i][1] * 0.8) < 1e-9),
@@ -259,7 +342,7 @@ import { check, failures } from './check';
 
   const smoothDetail = structuredClone(detailedWall);
   const originalHandle = [...smoothDetail.edgeHandles!['0>1']] as V3;
-  applyBrush(smoothDetail, 'smooth', [0, 5, 5], 20, 1, 'vertical', 0, 'constant', 'height', [0, 1, 0], null, 0.25);
+  applyBrush(smoothDetail, 'smooth', [0, 5, 5], 20, 1, 0, 'constant', 'height', [0, 1, 0], null, 0.25);
   const smoothMesh = buildQuadMesh(smoothDetail.vertices, smoothDetail.quads, smoothDetail.freeEdges);
   const automaticHandle = meshEdgeHandles(smoothMesh)(0, 1);
   const expectedHandle = originalHandle.map((v, axis) => v * 0.75 + automaticHandle[axis] * 0.25);
@@ -271,14 +354,14 @@ import { check, failures } from './check';
 
   const raisedDetail = structuredClone(detailedWall);
   const detailBeforeRaise = JSON.stringify({ handles: raisedDetail.edgeHandles, twist: raisedDetail.quadTwist });
-  applyBrush(raisedDetail, 'raise', [0, 5, 5], 20, 2, 'vertical', 0, 'constant');
+  applyBrush(raisedDetail, 'raise', [0, 5, 5], 20, 2, 0, 'constant');
   check(JSON.stringify({ handles: raisedDetail.edgeHandles, twist: raisedDetail.quadTwist }) === detailBeforeRaise,
     'control-point-aware displacement: broad raise preserves authored handle and interior detail offsets');
-  const pushedDetail = structuredClone(detailedWall);
-  const detailBeforePush = JSON.stringify({ handles: pushedDetail.edgeHandles, twist: pushedDetail.quadTwist });
-  applyPushBrush(pushedDetail, [0, 5, 5], 20, 0, 'constant', [0, 2, 3], [1, 0, 0], 0.5);
-  check(JSON.stringify({ handles: pushedDetail.edgeHandles, twist: pushedDetail.quadTwist }) === detailBeforePush,
-    'control-point-aware push: tangent shoving preserves authored handle and interior detail offsets');
+  const nudgedDetail = structuredClone(detailedWall);
+  const detailBeforeNudge = JSON.stringify({ handles: nudgedDetail.edgeHandles, twist: nudgedDetail.quadTwist });
+  applyNudgeBrush(nudgedDetail, [0, 5, 5], 20, 0, 'constant', [0, 2, 3], [1, 0, 0], 0.5);
+  check(JSON.stringify({ handles: nudgedDetail.edgeHandles, twist: nudgedDetail.quadTwist }) === detailBeforeNudge,
+    'control-point-aware nudge: tangent shoving preserves authored handle and interior detail offsets');
 }
 
 // ---- 0b. CREATE TUBE: draw its axis and derive a manifold elliptical quad shell ---------------------------

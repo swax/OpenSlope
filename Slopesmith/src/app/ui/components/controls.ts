@@ -26,6 +26,20 @@ export interface SegOption<T extends string> {
   icon?: string;
   /** Hover tooltip; defaults to the label. Use this to carry the one-line description. */
   title?: string | (() => string);
+  /** A keyboard shortcut drawn faintly after a text label (`label`, e.g. '⇧F') and announced through
+   *  aria-keyshortcuts (`keys`, e.g. 'Shift+F') rather than read into the button's name. */
+  shortcut?: { label: string; keys: string };
+}
+
+/** A text button's content: its label, then the faint shortcut hint when it has one. */
+function writeSegLabel(button: HTMLButtonElement, label: string, shortcut?: { label: string }) {
+  button.textContent = label;
+  if (!shortcut) return;
+  const hint = document.createElement('span');
+  hint.className = 'sp-seg-key';
+  hint.setAttribute('aria-hidden', 'true');
+  hint.textContent = shortcut.label;
+  button.appendChild(hint);
 }
 
 export interface Segmented<T extends string> {
@@ -79,7 +93,7 @@ export function segmented<T extends string>(options: SegOption<T>[], get: () => 
     for (const [v, b] of btns) {
       const option = options.find(candidate => candidate.value === v)!;
       const optionLabel = typeof option.label === 'function' ? option.label() : option.label;
-      if (option.icon) b.setAttribute('aria-label', optionLabel); else b.textContent = optionLabel;
+      if (option.icon) b.setAttribute('aria-label', optionLabel); else writeSegLabel(b, optionLabel, option.shortcut);
       const active = v === cur;
       b.classList.toggle('on', active);
       b.setAttribute('aria-pressed', String(active));
@@ -89,7 +103,8 @@ export function segmented<T extends string>(options: SegOption<T>[], get: () => 
     const b = document.createElement('button');
     const optionLabel = () => typeof o.label === 'function' ? o.label() : o.label;
     if (o.icon) { b.innerHTML = o.icon; b.classList.add('sp-seg-icon'); b.setAttribute('aria-label', optionLabel()); }
-    else b.textContent = optionLabel();
+    else writeSegLabel(b, optionLabel(), o.shortcut);
+    if (o.shortcut) b.setAttribute('aria-keyshortcuts', o.shortcut.keys);
     tooltip(b, o.title ?? o.label);
     b.onclick = () => { if (!b.disabled) { set(o.value); refresh(); } };
     btns.set(o.value, b);

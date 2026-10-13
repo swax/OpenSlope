@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { V3 } from '../../../core/doc/types';
-import { gridCornersFromClicks, type GridCorner, type GridCorners } from '../../../core/mesh/ops/grid';
+import { gridCornersFromClicks, gridHinge, type GridCorner, type GridCorners } from '../../../core/mesh/ops/grid';
 import { dataToScene, sceneToData } from '../coordinates';
 import type { PlacementEndpoint } from '../input/placement-constraint';
 import { resolvePlacementEndpoint } from '../input/placement';
@@ -20,9 +20,11 @@ const CORNER_PICK_PX = 14;
  * level plane through the previous one, so a grid drawn in open space is flat, and Ctrl puts it on the surface.
  * DRAFT: the third click squares the corners off into four, which stay editable until Enter. A click on a free
  * corner seats the shared gizmo on it; a click on the grid itself seats it at the centre and moves, turns or
- * scales the whole draft — but only while no corner is snapped, since a snapped corner pins the grid to what it
- * attaches to. This layer owns the corners, the guides and the lattice lines; the host plans the lattice and
- * fills it through the shared loft preview. */
+ * scales the whole draft. A snapped corner pins the grid to what it attaches to, so a draft pinned anywhere is
+ * edited by its free corners alone — except one drawn off an edge (gridHinge), which swings on that edge like a
+ * hinge: Rotate turns it about the edge, Scale stretches it out from the edge or spreads its far corners apart
+ * along it, Move carries the far side, and the pinned side never moves. This layer owns the corners, the guides and the lattice lines; the host plans
+ * the lattice and fills it through the shared loft preview. */
 export function createGridToolLayer(
   stage: Stage,
   terrain: () => THREE.Mesh,
@@ -94,21 +96,24 @@ export function createGridToolLayer(
     listener?.();
   }
 
-  /** The draft's own frame, scene space: X along the first side, Y off its face (upward where it can be), Z across.
-   *  Scale handles always run along the anchor's own axes, so seating them here stretches the grid's length and
-   *  width rather than shearing a turned grid along the world's; Move and Rotate stay on world axes. */
-  function gridFrame(draft: GridCorners): THREE.Quaternion {
-    const [a, b, , d] = draft.map(corner => dataToScene(corner.pos));
-    const x = b.clone().sub(a).normalize();
-    const y = new THREE.Vector3().crossVectors(d.clone().sub(a), x).normalize();
+  /** The draft's own frame, scene space: X along the first side — or the side it hinges on — Y off its face
+   *  (upward where it can be), Z across toward the far side. Scale handles always run along the anchor's own
+   *  axes, so seating them here stretches the grid's length and width rather than shearing a turned grid along
+   *  the world's; a free draft's Move and Rotate stay on world axes, a hinged one's Rotate turns about this X. */
+  function gridFrame(draft: GridCorners, hinge: readonly [number, number] | null): THREE.Quaternion {
+    const at = draft.map(corner => dataToScene(corner.pos)), [i, j] = hinge ?? [0, 1];
+    const x = at[j].clone().sub(at[i]).normalize();
+    const y = new THREE.Vector3().crossVectors(at[(i + 3) % 4].clone().sub(at[i]), x).normalize();
     if (x.lengthSq() < 0.5 || y.lengthSq() < 0.5) return new THREE.Quaternion();
-    if (y.y < 0) y.negate();
+    if (y.y < 0) { x.negate(); y.negate(); } // turned together, so Z still points across to the far side
     const z = new THREE.Vector3().crossVectors(x, y);
     return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
   }
 
-  /** Keep the gizmo on the selected corner or the draft's centre, except while it is being dragged: then it owns
-   *  its own pose. */
+  /** Keep the gizmo on the selected corner or the whole draft, except while it is being dragged: then it owns its
+   *  own pose. A free draft's anchor is its centre. A hinged one moves from the middle of its far side, which is
+   *  what Move carries, and turns and scales from the hinge line level with that middle — so a stretch along the
+   *  hinge spreads the far corners evenly about it. */
   function syncGizmo() {
     if (!corners || selected === null) {
       if (ownsGizmo()) stage.detachGizmo();
@@ -116,11 +121,22 @@ export function createGridToolLayer(
     }
     if (ownsGizmo() && stage.gizmo.dragging) return;
     if (selected === 'whole') {
-      const centre = corners.reduce((sum, c) => sum.add(dataToScene(c.pos, scratch)), new THREE.Vector3()).multiplyScalar(0.25);
-      wholeHandle.position.copy(centre);
-      wholeHandle.quaternion.copy(gridFrame(corners));
-      wholeHandle.scale.setScalar(1);
+      const hinge = gridHinge(corners);
+      // Flag the hinge before seating: the attach re-frames the gizmo (gizmo/transform.ts), which reads it, and
+      // that settles the mode the anchor is placed for.
+      wholeHandle.userData.gridHinge = !!hinge;
       if (stage.gizmoKind !== 'grid' || stage.gizmo.object !== wholeHandle) stage.attachGizmo(wholeHandle, 'grid', -1);
+      const at = corners.map(corner => dataToScene(corner.pos));
+      const mean = (of: THREE.Vector3[]) => of.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(of.length);
+      if (!hinge) wholeHandle.position.copy(mean(at));
+      else {
+        const far = mean(at.filter((_, i) => !hinge.includes(i)));
+        const [from, to] = hinge.map(i => at[i]), along = to.clone().sub(from).normalize();
+        wholeHandle.position.copy(stage.gizmo.mode === 'translate' ? far
+          : from.clone().addScaledVector(along, far.clone().sub(from).dot(along)));
+      }
+      wholeHandle.quaternion.copy(gridFrame(corners, hinge));
+      wholeHandle.scale.setScalar(1);
       return;
     }
     dataToScene(corners[selected].pos, cornerHandle.position);
@@ -176,11 +192,14 @@ export function createGridToolLayer(
     return !!(ray.intersectTriangle(a, b, c, false, hit) || ray.intersectTriangle(a, c, d, false, hit));
   }
 
-  /** A draft click: pick up a free corner, or the whole draft when nothing pins it; anywhere else lets go. */
+  /** Whether the gizmo can take the draft whole: nothing pins it, or only the edge it hinges on. */
+  const wholeMovable = (draft: GridCorners) => !draft.some(pinned) || gridHinge(draft) !== null;
+
+  /** A draft click: pick up a free corner, or the whole draft when it can move whole; anywhere else lets go. */
   function pick() {
     const corner = cornerAtPointer();
     if (corner !== null) { select(corner); return; }
-    select(corners && !corners.some(pinned) && fillAtPointer() ? 'whole' : null);
+    select(corners && wholeMovable(corners) && fillAtPointer() ? 'whole' : null);
   }
 
   function onHover(event: PointerEvent): boolean {
@@ -205,8 +224,8 @@ export function createGridToolLayer(
     if (points.length === 3) {
       placedEye = liveEye();
       corners = gridCornersFromClicks(points[0], points[1], points[2]);
-      // A free draft comes up ready to move; one pinned to existing points waits for a corner to be picked.
-      selected = corners.some(pinned) ? null : 'whole';
+      // A free or hinged draft comes up held whole; one pinned any other way waits for a corner to be picked.
+      selected = wholeMovable(corners) ? 'whole' : null;
     }
     redraw();
     syncGizmo();
@@ -231,7 +250,7 @@ export function createGridToolLayer(
   }
 
   /** The gizmo moved: carry the picked corner to it, or move, turn and scale the whole draft from the drag's
-   *  start about its centre. */
+   *  start about the anchor — its centre, or the middle of the edge it hinges on, whose pinned corners stay. */
   function gizmoChanged() {
     if (!corners) return;
     if (typeof selected === 'number') {
@@ -244,7 +263,7 @@ export function createGridToolLayer(
       const stretch = wholeHandle.scale.clone().divide(drag.scale);
       stretch.set(Math.max(0.01, stretch.x), Math.max(0.01, stretch.y), Math.max(0.01, stretch.z));
       // The stretch is along the anchor's own axes (the grid's sides, gridFrame), so it is applied in that frame.
-      corners = drag.corners.map(corner => free(sceneToData(dataToScene(corner.pos).sub(drag.pivot)
+      corners = drag.corners.map(corner => pinned(corner) ? corner : free(sceneToData(dataToScene(corner.pos).sub(drag.pivot)
         .applyQuaternion(unframe).multiply(stretch).applyQuaternion(drag.quaternion)
         .applyQuaternion(turn).add(wholeHandle.position)))) as unknown as GridCorners;
     }
@@ -276,6 +295,8 @@ export function createGridToolLayer(
 
   return {
     setActive, onHover, onCommit, refresh, setLattice, setCorners, gizmoDragging, gizmoChanged,
+    /** Move / Rotate / Scale was switched: a hinged draft's anchor moves between its far side and its hinge. */
+    gizmoModeChanged: syncGizmo,
     /** Per frame: hold the corner and cursor dots at a constant size on screen. */
     scaleMarkers() {
       scaleDrawMarkers(stage, dots, corners ? CORNER_PX : undefined);
@@ -286,7 +307,8 @@ export function createGridToolLayer(
     get points(): readonly PlacementEndpoint[] { return points; },
     get hover(): PlacementEndpoint | null { return hover; },
     get corners(): GridCorners | null { return corners; },
-    /** Whether the gizmo holds the whole draft, which it can move, turn and scale; a corner only moves. */
+    /** Whether the gizmo holds the whole draft, which it can move, turn and scale (about the edge it hinges on, if
+     *  any); a corner only moves. */
     get wholeSelected() { return selected === 'whole'; },
     /** The camera, in data space: the side the grid is drawn from becomes its front. */
     get eye(): V3 { return placedEye ?? liveEye(); },

@@ -2,6 +2,7 @@ import type { QuadMeshDoc, V3 } from '../../doc/types';
 import { buildQuadMesh, meshEdgeHandles, meshAdjacency, type MeshAdjacency } from '../topology';
 import { ekey, checkManifold, finishMeshRewrite, looseVertexIds } from './contract';
 import { splitQuadLoop, edgePointAt, splitEdgeHandlesExact } from './cut-primitives';
+import { splitEdgeLock } from '../locks';
 import { normalizeTJunctions, remapTJunctionsForEdgeSplits } from '../t-junctions';
 import { quadPerimeterEdges, readVertex, writeVertex } from '../primitives';
 
@@ -95,6 +96,7 @@ export function applyCellEdgeInsert(doc: QuadMeshDoc, cells: readonly number[], 
   const vertices = doc.vertices.slice();
   const quads: (number[] | null)[] = doc.quads.map(q => q.slice());
   const edgeHandles: Record<string, V3> = { ...(doc.edgeHandles ?? {}) };
+  const edgeLocked = doc.edgeLocked ? { ...doc.edgeLocked } : undefined;
   const quadPaint = doc.quadPaint ? { ...doc.quadPaint } : undefined;
   const quadTex = doc.quadTex ? { ...doc.quadTex } : undefined;
   const quadOrient = doc.quadOrient ? { ...doc.quadOrient } : undefined;
@@ -126,6 +128,7 @@ export function applyCellEdgeInsert(doc: QuadMeshDoc, cells: readonly number[], 
       vertices.push(p[0], p[1], p[2]);
     }
     splitEdgeHandlesExact(edgeHandles, rails[j][0], rails[j][1], m[j], t, p, eh, pos, unresolvedEnds.has(j));
+    splitEdgeLock(edgeLocked, rails[j][0], rails[j][1], m[j], unresolvedEnds.has(j));
   }
 
   const inheritPaint = (src: number, dst: number) => {
@@ -157,7 +160,7 @@ export function applyCellEdgeInsert(doc: QuadMeshDoc, cells: readonly number[], 
   for (const index of unresolvedEnds) tJunctions.push({ vertex: m[index], edge: rails[index], t });
   const { doc: out } = finishMeshRewrite(doc, {
     vertices, quads, keepVertices: looseVertexIds(doc), freeEdges: doc.freeEdges,
-    tJunctions, edgeHandles, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
+    tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
   });
   return { ok: true, doc: out };
 }

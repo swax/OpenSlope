@@ -9,6 +9,7 @@ import {
 } from '../projected-overlap';
 import { directedEdgeKey, quadPerimeterEdges, readVertex, undirectedEdgeKey } from '../primitives';
 import { quadControlPoints } from '../topology';
+import { explicitLockedEdges } from '../locks';
 import { tessellateQuads, type RetopologyConstraints } from './benchmark';
 import { type PolygonMesh } from './obj';
 import { edgeCycles, polygonBoundary } from './integrate-boundary';
@@ -1738,6 +1739,18 @@ export function integrateRetopologyCandidate(
     const mappedA = sourceToNew.get(a), mappedB = sourceToNew.get(b);
     return mappedA === undefined || mappedB === undefined ? [] : [[mappedA, mappedB] as [number, number]];
   });
+  // A lock on a single edge survives where both its ends and the edge itself did; the rest went with the rebuilt
+  // region. (Only locked PATCHES are protected from the solve.)
+  const integratedEdges = new Set<string>();
+  for (const quad of quads) for (const [a, b] of quadPerimeterEdges(quad)) if (a !== b) integratedEdges.add(undirectedEdgeKey(a, b));
+  for (const [a, b] of freeEdges) integratedEdges.add(undirectedEdgeKey(a, b));
+  const edgeLocked: Record<string, true> = {};
+  for (const [a, b] of explicitLockedEdges(source)) {
+    const mappedA = sourceToNew.get(a), mappedB = sourceToNew.get(b);
+    if (mappedA === undefined || mappedB === undefined) continue;
+    const key = undirectedEdgeKey(mappedA, mappedB);
+    if (integratedEdges.has(key)) edgeLocked[key] = true;
+  }
   const tombstones = [...new Set([
     ...(source.tombstones ?? []),
     ...source.vertexIds.filter((_id, vertex) => !sourceToNew.has(vertex)),
@@ -1749,6 +1762,7 @@ export function integrateRetopologyCandidate(
     name,
     vertices, vertexIds, quads, quadIds, nextId, tombstones,
     freeEdges, tJunctions, edgeHandles, quadPaint, quadTex, quadOrient, quadLocked, quadTwist,
+    edgeLocked: Object.keys(edgeLocked).length ? edgeLocked : undefined,
     linearCage: false,
   };
 

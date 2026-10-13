@@ -2,7 +2,8 @@ import type { QuadMeshDoc, V3 } from '../../doc/types';
 import { cubicPoint, nearestCubicT } from '../../math/bezier';
 import { add } from '../../math/vec';
 import { normalizeTJunctions } from '../t-junctions';
-import { directedEdgeKey, quadPerimeterEdges, readVertex } from '../primitives';
+import { directedEdgeKey, quadPerimeterEdges, readVertex, undirectedEdgeKey } from '../primitives';
+import { explicitLockedEdges } from '../locks';
 import { ekey, checkManifold, finishMeshRewrite, looseVertexIds, meshContext, quadEdges } from './contract';
 
 /**
@@ -153,6 +154,10 @@ export function applyVertexWeld(doc: QuadMeshDoc, pairs: readonly (readonly [num
       vertex: find(node.vertex), edge: [find(node.edge[0]), find(node.edge[1])] as [number, number], t: node.t,
     })),
     edgeHandles: doc.edgeHandles ? weldEdgeHandles(doc, find) : undefined,
+    // A locked edge follows its ends onto the survivors; one whose ends weld together is gone with it.
+    edgeLocked: doc.edgeLocked ? Object.fromEntries(explicitLockedEdges(doc)
+      .map(([a, b]) => [find(a), find(b)]).filter(([a, b]) => a !== b)
+      .map(([a, b]) => [undirectedEdgeKey(a, b), true as const])) : undefined,
     quadPaint: doc.quadPaint ? { ...doc.quadPaint } : undefined,
     quadTex: doc.quadTex ? { ...doc.quadTex } : undefined,
     quadOrient: doc.quadOrient ? { ...doc.quadOrient } : undefined,

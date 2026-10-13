@@ -21,6 +21,10 @@ import { directedEdgeKey, liveQuadEdges, readVertex, undirectedEdgeKey } from '.
  *    rebuilds adjacency via `topologyFromQuads` (topology.ts) on the next preview.
  *  - New geometry is born smooth: inserted vertices carry no `edgeHandles` override, so a fresh seam is
  *    Bessel-G1 by construction. A SPLIT edge's crease (an override on the parent) is inherited by both halves.
+ *  - Edge locks ride along by default: an op works in the base document's numbering, so `finishMeshRewrite`
+ *    carries every lock whose edge survives without the op naming them. An op that SPLITS an edge hands its own
+ *    `edgeLocked` with the parent's lock moved onto both halves (`splitEdgeLock`), and a lock whose edge the op
+ *    removed goes with the edge.
  *  - Manifold guard: a rewrite that would make an edge shared by 3+ quads (or a degenerate quad) is rejected,
  *    so the mesh stays a manifold-with-boundary quad complex — what the export and the pole test assume.
  */
@@ -61,6 +65,7 @@ export interface MeshMaps {
   freeEdges?: [number, number][];
   tJunctions?: EdgeEmbeddedTJunction[];
   edgeHandles?: Record<string, V3>;
+  edgeLocked?: Record<string, true>;
   quadPaint?: Record<number, number>;
   quadTex?: Record<number, string>;
   quadOrient?: Record<number, { rot: number; mirror: boolean }>;
@@ -224,6 +229,18 @@ export function remapIds(raw: MeshRewrite):
   const liveEdges = new Set<string>();
   for (const q of quads) for (const [a, b] of liveQuadEdges(q)) liveEdges.add(ekey(a, b));
   for (const [a, b] of freeEdges) liveEdges.add(`${a},${b}`);
+  // An edge lock follows its edge: carried when both ends survive and the rewrite still has that edge.
+  let edgeLocked: Record<string, true> | undefined;
+  if (raw.edgeLocked) {
+    const kept: Record<string, true> = {};
+    for (const key in raw.edgeLocked) {
+      if (raw.edgeLocked[key] !== true) continue;
+      const cut = key.indexOf(',');
+      const a = oldToNewV.get(Number(key.slice(0, cut))), b = oldToNewV.get(Number(key.slice(cut + 1)));
+      if (cut > 0 && a !== undefined && b !== undefined && a !== b && liveEdges.has(ekey(a, b))) kept[ekey(a, b)] = true;
+    }
+    if (Object.keys(kept).length) edgeLocked = kept;
+  }
   const tJunctions: EdgeEmbeddedTJunction[] = [], seenTJunctions = new Set<string>();
   for (const node of raw.tJunctions ?? []) {
     const vertex = oldToNewV.get(node.vertex), a = oldToNewV.get(node.edge[0]), b = oldToNewV.get(node.edge[1]);
@@ -234,7 +251,7 @@ export function remapIds(raw: MeshRewrite):
     seenTJunctions.add(key); tJunctions.push({ vertex, edge: [a, b], t: node.t });
   }
   return { vertices, quads, vertexIds, quadIds, nextId, rawVertexIds, vertexMap,
-    freeEdges: freeEdges.length ? freeEdges : undefined, tJunctions, edgeHandles,
+    freeEdges: freeEdges.length ? freeEdges : undefined, tJunctions, edgeHandles, edgeLocked,
     quadPaint: remapQuadMap(raw.quadPaint), quadTex: remapQuadMap(raw.quadTex),
     quadOrient: remapQuadMap(raw.quadOrient), quadLocked: remapQuadMap(raw.quadLocked),
     quadTwist: remapQuadMap(raw.quadTwist), quadLabels: remapQuadMap(raw.quadLabels) };
@@ -250,6 +267,8 @@ export function remapIds(raw: MeshRewrite):
 export function finishMeshRewrite(base: QuadMeshDoc, raw: MeshRewrite): { doc: QuadMeshDoc } & RewriteIdentity {
   const compact = remapIds({
     ...raw,
+    // An op that does not name the locks keeps the base's: its numbering is the base's (see the contract above).
+    edgeLocked: 'edgeLocked' in raw ? raw.edgeLocked : base.edgeLocked,
     vertexIds: raw.vertexIds ?? base.vertexIds,
     quadIds: raw.quadIds ?? base.quadIds,
     nextId: raw.nextId ?? base.nextId,
@@ -259,6 +278,7 @@ export function finishMeshRewrite(base: QuadMeshDoc, raw: MeshRewrite): { doc: Q
   assignFreeEdges(doc, compact.freeEdges);
   assignTJunctions(doc, compact.tJunctions);
   assignMap(doc, 'edgeHandles', compact.edgeHandles);
+  assignMap(doc, 'edgeLocked', compact.edgeLocked);
   assignMap(doc, 'quadPaint', compact.quadPaint);
   assignMap(doc, 'quadTex', compact.quadTex);
   assignMap(doc, 'quadOrient', compact.quadOrient);
@@ -271,7 +291,7 @@ export function finishMeshRewrite(base: QuadMeshDoc, raw: MeshRewrite): { doc: Q
 }
 
 /** Set or delete an optional doc map after a rewrite (undefined ⇒ the map is now empty, so drop the key). */
-export function assignMap<K extends 'edgeHandles' | 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels'>(doc: QuadMeshDoc, key: K, value: QuadMeshDoc[K] | undefined) {
+export function assignMap<K extends 'edgeHandles' | 'edgeLocked' | 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels'>(doc: QuadMeshDoc, key: K, value: QuadMeshDoc[K] | undefined) {
   if (value) doc[key] = value; else delete doc[key];
 }
 

@@ -118,7 +118,7 @@ Every mode edits or observes the same mountain document:
 |---|---|---|
 | Info | Inspect the mountain, references, and scene settings | [Design](docs/001-design.md) |
 | Edit | Transform and restructure points, edges, patches, and Bézier controls | [Course model](docs/002-course-model.md), [topology surgery](docs/017-topology-surgery.md) |
-| Sculpt | Raise, lower, smooth, and flatten the surface | [Sculpt mode](docs/004-sculpt-mode.md) |
+| Sculpt | Raise, lower, pull, push, smooth, flatten, grab, and nudge the surface | [Sculpt mode](docs/004-sculpt-mode.md) |
 | Paint | Assign ride surfaces and terrain textures | [Texture paint](docs/005-texture-paint.md) |
 | Props | Place models, lights, rails, groups, pickups, and imported glTF assets | [Scene authoring docs](docs/README.md#scene-content) |
 | Effects | Author and inspect portable effect graphs and prop attachments | [Effects editor](docs/026-effects-editor.md) |

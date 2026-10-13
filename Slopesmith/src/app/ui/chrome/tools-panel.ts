@@ -333,6 +333,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
         locked ?? 'Delete every selected authored mesh part and placed prop. Reference geometry remains read-only.');
       if (locked) button.disable();
     }
+    meshSelect.addLockControls(section, true);
     detail(section, 'choose a type to narrow the selection and open its tools');
     const noun: Record<EditSelectionKind, [string, string]> = {
       point: ['point', 'points'], edge: ['edge', 'edges'], patch: ['patch', 'patches'], prop: ['prop', 'props'],

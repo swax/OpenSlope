@@ -4,6 +4,7 @@ import type { TexRef } from '../../core/paint/textures';
 import type { SlidePlan } from '../../core/mesh/slide';
 import type { MeshControlPointId, MeshControlPointTarget } from '../../core/mesh/control-points';
 import type { NamedEdge, QuadName, VertexName } from '../state/mesh-names';
+import type { SculptModifiers } from '../sculpt-shortcuts';
 import type { EdgeExtrusionPlacement, EdgeExtrusionPlan } from '../../core/mesh/ops';
 import type { PlacementEndpoint } from './input/placement-constraint';
 import type { EdgeCrossing } from '../../core/mesh/edge-crossings';
@@ -322,19 +323,23 @@ export interface ViewportCallbacks {
   onPaintCell(quad: number): void;
   /** Paint MMB resolved a texture on the terrain, reference, or prop to arm it (see PickResult). */
   onPick(result: PickResult): void;
-  /** Sculpt dab at a terrain hit, including its authored quad seed and data-space surface normal. */
-  onSculpt(point: V3, quad: number, normal: V3): void;
+  /** Sculpt dab at a terrain hit, including its authored quad seed, data-space surface normal and the modifiers
+   *  held for this dab (Ctrl inverts per dab; Shift smooths for the whole stroke, decided at its start). */
+  onSculpt(point: V3, quad: number, normal: V3, mods: SculptModifiers): void;
   /** Start/end a repeated-dab Sculpt stroke; Flatten uses this to capture and release an original plane. */
-  onBeginSculpt(point: V3, quad: number, normal: V3): void;
+  onBeginSculpt(point: V3, quad: number, normal: V3, mods: SculptModifiers): void;
   onEndSculpt(): void;
-  /** Whether Sculpt's current operation is the fixed-footprint press/drag Grab brush rather than a live-hit stroke. */
-  isGrabBrush(): boolean;
+  /** Whether a stroke pressed with `mods` is the fixed-footprint press/drag Grab brush rather than a live-hit stroke
+   *  (Shift turns even Grab into a smoothing stroke). */
+  isGrabBrush(mods: SculptModifiers): boolean;
   /** Capture Grab's source positions and connected surface-space footprint on pointer-down. */
   onBeginSculptGrab(point: V3, quad: number): void;
   /** Re-evaluate the captured Grab footprint at this total data-space displacement from pointer-down. */
   onSculptGrab(delta: V3): void;
   /** Release the frozen Grab footprint after pointer-up/cancel. */
   onEndSculptGrab(): void;
+  /** Shift+wheel in Sculpt: resize the brush by `steps` notches (negative = wheel up = bigger); answers the radius. */
+  onStepBrushRadius(steps: number): number;
   /** A control-net corner was selected (mountain Edit, cage on), or deselected with null. */
   onSelectCorner(index: number | null): void;
   /** A control-net corner was dragged to a new 3D position (flat corner index). */

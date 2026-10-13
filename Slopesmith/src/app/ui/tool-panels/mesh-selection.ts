@@ -31,7 +31,7 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
   const {
     deselectEdit, copySelectedVertices, cutSelectedVertices, copySelectionVertexCount,
     hideSelectedMesh, showAllHidden, hiddenMeshCount, toggleSelectedControlCages, selectedControlCagesVisible, canEditCurvature,
-    selectedPatchLockState, toggleSelectedPatchLocks,
+    selectionLockState, lockSelection, unlockSelection,
     selectConnected, selectOverlappingVertices,
     deleteSelectedMesh, dissolveSelectedMesh, flipSelectedMesh, meshDeleteTargetCount, canDeleteMeshSelection, meshLockReason,
     ripEdges, insertCellEdge, resetCellShape, creaseVertices, smoothVertices, createPatchesFromEdges,
@@ -346,24 +346,7 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
   function addSelectionVisibility() {
     const visibility = editSection('visibility', 'Visibility');
     addHideMesh(visibility);
-    if (store.cellSel.length) {
-      const state = selectedPatchLockState();
-      const unlock = state.total > 0 && state.locked === state.total;
-      if (state.locked) detail(visibility,
-        state.locked === state.total ? `${state.locked} locked` : `${state.locked} of ${state.total} locked`,
-        'protection');
-      if (unlock) {
-        tip(visibility.add({ lock: toggleSelectedPatchLocks }, 'lock')
-          .name(`unlock ${state.total === 1 ? 'patch' : 'patches'}`),
-        'Allow these patches to be sculpted and transformed again. Their captured boundary shape remains unchanged until explicitly smoothed.');
-      } else {
-        tip(visibility.add({ lock: toggleSelectedPatchLocks }, 'lock')
-          .name(`lock ${state.total === 1 ? 'patch' : 'patches'}`),
-        'Protect the selected patches’ complete surfaces from every edit.',
-        'Sculpt brushes, point/control-cage drags, and group Move/Rotate/Scale leave their corners, boundary '
-        + 'controls, and interiors fixed. Locked edges draw red in wireframe view.');
-      }
-    }
+    addLockControls(visibility);
     const referenceCageSelection = store.refEdgeSel.length > 0 || store.refCellSel.length > 0;
     if (referenceCageSelection || (store.edgeSel.length || store.cellSel.length) && canEditCurvature()) {
       const hide = selectedControlCagesVisible();
@@ -377,6 +360,41 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
     }
     if (hiddenMeshCount()) tip(visibility.add({ show: showAllHidden }, 'show').name('show all hidden (Alt+H)'),
       'Reveal every point, edge, and patch hidden with H without changing the mountain.');
+  }
+
+  /**
+   * Lock / Unlock for the current selection. Lock protects the selected patches and edges that are not locked
+   * yet (a point takes no lock of its own); Unlock frees every selected point, edge and patch by removing each
+   * lock that holds one. Both show when a selection is partly locked. `mixed` is the mixed-selection toolbox,
+   * where Unlock reaches every selected type at once.
+   */
+  function addLockControls(g: GUI, mixed = false) {
+    const state = selectionLockState();
+    if (state.locked) detail(g,
+      state.locked === state.total ? `${state.locked} locked` : `${state.locked} of ${state.total} locked`,
+      'protection');
+    const many = state.total > 1;
+    const noun = store.cellSel.length ? (many ? 'patches' : 'patch')
+      : store.edgeSel.length ? (many ? 'edges' : 'edge') : (many ? 'points' : 'point');
+    const counted = ({ patches, edges }: { patches: number; edges: number }) => [
+      patches ? `${patches} ${patches === 1 ? 'patch' : 'patches'}` : '',
+      edges ? `${edges} ${edges === 1 ? 'edge' : 'edges'}` : '',
+    ].filter(Boolean).join(' + ');
+    const { lock: adds, unlock: removes } = state;
+    const lock = adds.patches + adds.edges ? tip(g.add({ lock: lockSelection }, 'lock')
+      .name(mixed ? `lock ${counted(adds)}` : `lock ${noun}`),
+    adds.patches && adds.edges ? 'Protect the selected patches’ complete surfaces and the selected edges’ curves from every edit.'
+      : adds.patches ? 'Protect the selected patches’ complete surfaces from every edit.'
+      : 'Protect the selected edges’ curves from every edit; the patches either side stay editable.',
+    'Sculpt brushes, point/control-cage drags, and group Move/Rotate/Scale leave a locked patch’s corners, '
+    + 'boundary controls and interior fixed, and a locked edge’s two corners and both tangents. Locked edges draw '
+    + 'red in wireframe view.') : null;
+    const unlock = removes.patches + removes.edges ? tip(g.add({ unlock: unlockSelection }, 'unlock')
+      .name(mixed ? 'unlock all' : `unlock ${noun}`),
+    `Allow the selection to be sculpted and transformed again: removes the locks on ${counted(removes)} holding it.`,
+    'A selected point or edge is freed from every locked patch and edge it touches. The captured boundary shape '
+    + 'remains unchanged until explicitly smoothed, and a trail keeps its own patches locked.') : null;
+    if (lock && unlock) actionPair(lock, unlock);
   }
 
   function addPointWeld(g: GUI) {
@@ -481,5 +499,5 @@ export function createMeshSelectTools(ctx: ToolsContext, openSelectedRetopology?
     }
   }
 
-  return { buildMeshSelectionTools };
+  return { buildMeshSelectionTools, addLockControls };
 }

@@ -5,6 +5,7 @@ import { buildQuadMesh, meshEdgeHandles, meshAdjacency } from '../topology';
 import { ekey, checkManifold } from './contract';
 import { orderEdgeChain } from './edge-chains';
 import { readVertex, writeVertex } from '../primitives';
+import { edgeLockIsSet } from '../locks';
 
 /**
  * The rip: un-stitch a connected interior edge path into two boundary lips separated by a gap, the inverse of
@@ -174,6 +175,10 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
     }
   }
 
+  // A locked edge stays locked on whichever sheet it lands, and on both when it is the ripped edge itself.
+  const edgeLocked: Record<string, true> = {};
+  for (const [a, b] of surfaceEdges.values()) if (edgeLockIsSet(doc, origin(a), origin(b))) edgeLocked[ekey(a, b)] = true;
+
   const originalLip: [number, number][] = [], duplicateLip: [number, number][] = [];
   for (let i = 0; i < chain.length - 1; i++) {
     const a = chain[i], b = chain[i + 1], da = duplicate.get(a) ?? a, db = duplicate.get(b) ?? b;
@@ -184,6 +189,7 @@ export function applyEdgeRip(doc: QuadMeshDoc, edges: readonly [number, number][
     ...doc, vertices, quads, ...appendMeshIds(doc, duplicate.size, 0),
   };
   if (Object.keys(edgeHandles).length) out.edgeHandles = edgeHandles; else delete out.edgeHandles;
+  if (Object.keys(edgeLocked).length) out.edgeLocked = edgeLocked; else delete out.edgeLocked;
   return {
     ok: true,
     doc: out,

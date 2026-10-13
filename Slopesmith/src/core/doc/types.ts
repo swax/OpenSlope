@@ -410,6 +410,11 @@ export interface QuadMeshDoc extends MountainMeta {
    *  boundary controls and interior controls cannot be moved by sculpt or Edit transforms. Sparse by design;
    *  an absent entry is unlocked. Serialized by stable quad id like the other per-patch channels. */
   quadLocked?: Record<number, true>;
+  /** Protected edges on their own (undirected key `"${a},${b}"`, a < b, both vertex INDICES → true). An edge
+   *  lock freezes one curve — both corners and both directed handles — while the patches either side stay
+   *  editable. An edge of a locked patch is already locked and needs no entry here. Serialized by the stable
+   *  ids of both ends (`doc/serialize.ts`); a register of its own (`e/…`, `doc/registers.ts`). */
+  edgeLocked?: Record<string, true>;
   /** Per-quad interior twist: offsets added to the four interior control points (cp5@A, cp6@B, cp9@C,
    *  cp10@D) AFTER the zero-twist (Ferguson) construction, editor-space metres, order [A,B,C,D]. Absent
    *  (or an absent corner ⇒ zero) leaves the pure ruled interior today's output derives. Sculpts the
@@ -467,6 +472,8 @@ export interface AuthoredModel {
   /** Protected polygon patches while this model is edited. Models keep index topology, so these keys are the
    *  model's own quad indices and are remapped by the shared mesh-operation contract. */
   quadLocked?: Record<number, true>;
+  /** Protected edges while this model is edited, keyed by the model's own vertex indices (`QuadMeshDoc.edgeLocked`). */
+  edgeLocked?: Record<string, true>;
   freeEdges?: [number, number][];
   tJunctions?: EdgeEmbeddedTJunction[];
   /** The model's tile ("LEVEL/NNNN.png", the terrain quadTex convention). Every quad wears the FULL tile

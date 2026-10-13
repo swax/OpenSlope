@@ -8,7 +8,7 @@
  * test/meshops.fixture.ts, shared with the other `meshops-*` checks.
  */
 import * as THREE from 'three';
-import { applyBrush, meshCreaseVertices, meshSetTwist, meshSmoothVertices, migrateMountain } from '../src/core/doc/mountain';
+import { applyBrush, applyGrabBrush, applyNudgeBrush, createGrabBrushState, meshCreaseVertices, meshSetTwist, meshSmoothVertices, migrateMountain } from '../src/core/doc/mountain';
 import { meshAdjacency, meshFromDoc, quadControlPoints, buildQuadMesh, meshEdgeHandles, meshCageEdges } from '../src/core/mesh/topology';
 import { add, dot, len, mul, sub } from '../src/core/math/vec';
 import { appendStandalonePatch, meshDeleteTargets, applyMeshDelete, applyMeshDissolve } from '../src/core/mesh/ops';
@@ -19,7 +19,7 @@ import {
   captureAround, controlPointCageOwners, controlPointKey, meshControlPoints, moveMeshControlPoints, moveMeshVertices,
   restoreAround, setMeshControlPoints, type EditDirty,
 } from '../src/core/mesh/control-points';
-import { patchNormal } from '../src/core/math/bezier';
+import { patchNormal, patchPoint } from '../src/core/math/bezier';
 import { creasedSeams } from '../src/core/mesh/creases';
 import { measureEdges, widestSeamAngle } from '../src/core/mesh/measure';
 import { INDEX_NAMING } from '../src/core/mesh/selection';
@@ -384,9 +384,51 @@ import { check, failures } from './check';
   'patch lock: corner, tangent and interior control-point transforms are all rejected');
 
   const brushed = structuredClone(pair), outerBefore = getVertex(brushed, 4);
-  applyBrush(brushed, 'raise', [10, 0, 5], 30, 2, 'vertical', 0, 'constant');
+  applyBrush(brushed, 'raise', [10, 0, 5], 30, 2, 0, 'constant');
   check(JSON.stringify(controls(brushed)) === lockedShape && getVertex(brushed, 4)[1] > outerBefore[1],
     'patch lock: sculpting leaves the protected surface exact while deforming reachable unlocked terrain');
+
+  // A cornice: flat snow meets a locked vertical cliff along the lip x = 0, y = 0. The lip corners are the
+  // cliff's, so they stay put, but the controls they own back on the snow do not shape the cliff and must take
+  // the stroke — otherwise only the corner row 30 m behind the lip can be pulled.
+  const LIP_COLS = 4, profile: [number, number][] = [[-60, 0], [-30, 0], [0, 0], [0, -30], [0, -60]];
+  const ledge: QuadMeshDoc = { ...base, vertices: [], quads: [], edgeHandles: undefined, quadTwist: undefined,
+    quadLocked: undefined, freeEdges: undefined };
+  for (const [x, y] of profile) for (let c = 0; c < LIP_COLS; c++) ledge.vertices.push(x, y, 30 * c);
+  for (let r = 0; r < profile.length - 1; r++) for (let c = 0; c < LIP_COLS - 1; c++) {
+    const A = r * LIP_COLS + c;
+    ledge.quads.push([A, A + 1, A + LIP_COLS, A + LIP_COLS + 1]);
+  }
+  const cliffQuads = [6, 7, 8, 9, 10, 11], snowAtLip = 4; // snowAtLip: A,B 30 m back, C,D on the lip
+  setQuadsLocked(ledge, cliffQuads, true);
+  const cliffShape = (doc: QuadMeshDoc) => JSON.stringify(cliffQuads.map(q => controls(doc, q)));
+  const pulled = structuredClone(ledge);
+  applyGrabBrush(pulled, createGrabBrushState(pulled, [-5, 0, 45], 12, snowAtLip, 'smooth'), [16, 8, 0]);
+  const was = controls(ledge, snowAtLip), now = controls(pulled, snowAtLip);
+  const travel = (cp: number) => sub(now[cp], was[cp]);
+  check(cliffShape(pulled) === cliffShape(ledge),
+    'patch lock: a cornice pull beside a locked cliff leaves every cliff patch exact');
+  check([8, 9, 10, 11].every(cp => len(sub(travel(cp), [16, 8, 0])) < 1e-9),
+    'patch lock: handles and interiors the lip corners own back on the snow take the full pull although the corners are locked');
+  check(len(travel(5)) < 0.3 * len([16, 8, 0]),
+    'patch lock: the corner row behind the lip is not dragged along to make up for the locked corners');
+  const overhang = Math.max(...Array.from({ length: 21 }, (_, i) => patchPoint(now, i / 20, 0.5)[0]));
+  check(overhang > 1, 'patch lock: pulling out past the lip pillows the snow over the cliff face');
+  const lipDabs: [string, (doc: QuadMeshDoc) => void][] = [
+    ['raise', doc => applyBrush(doc, 'raise', [-2, 0, 45], 10, 3, snowAtLip)],
+    ['pull', doc => applyBrush(doc, 'pull', [-2, 0, 45], 10, 3, snowAtLip)],
+    ['push', doc => applyBrush(doc, 'push', [-2, 0, 45], 10, 3, snowAtLip)],
+    ['lower', doc => applyBrush(doc, 'lower', [-2, 0, 45], 10, 3, snowAtLip)],
+    ['smooth', doc => applyBrush(doc, 'smooth', [-2, 0, 45], 10, 3, snowAtLip, 'smooth', 'height', [0, 1, 0], null, 1)],
+    ['flatten', doc => applyBrush(doc, 'flatten', [-2, 0, 45], 10, 3, snowAtLip, 'smooth', 'surface', [1, 1, 0], null, 0.5, 1)],
+    ['nudge', doc => applyNudgeBrush(doc, [-2, 0, 45], 10, snowAtLip, 'smooth', [4, 0, 3], [0, 1, 0])],
+  ];
+  for (const [name, dab] of lipDabs) {
+    const dabbed = structuredClone(pulled);
+    dab(dabbed);
+    check(cliffShape(dabbed) === cliffShape(ledge) && JSON.stringify(controls(dabbed, snowAtLip)) !== JSON.stringify(now),
+      `patch lock: a ${name} dab on the lip reshapes the snow beside the locked cliff and never the cliff`);
+  }
 
   const stored = serializeMountain(pair);
   check(stored.quadLocked?.[pair.quadIds[0]] === true

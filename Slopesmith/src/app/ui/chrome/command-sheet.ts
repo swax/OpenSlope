@@ -1,5 +1,6 @@
 import type { Store } from '../../state/store';
 import { rideControlHelp } from '../../ride/control-help';
+import { SCULPT_TOOL_KEYS, oppositeBrushOp } from '../../sculpt-shortcuts';
 import { foldHeader, foldOnClick, refold } from '../components/fold-panel';
 
 const helpRow = ([key, description]: [string, string]) => `<div class="ll-row"><b>${key}</b> ${description}</div>`;
@@ -196,7 +197,17 @@ export function createCommandSheet(deps: CommandSheetDeps) {
         ? helpPanel('Palette', [['＋ paint', 'arm preview'], ['click cell', 'use as brush'], ['R-click', 'set ride feel'], ['drag', 'reorder'], ['⇧drag', 'copy'], ['✕', 'clear cell']])
         : helpPanel('Palette', [['＋ paint', 'arm preview'], ['click cell', 'use as brush'], ['← →', 'turn active tile'], ['⇧← →', 'mirror'], ['drag', 'reorder'], ['⇧drag', 'copy'], ['✕', 'clear cell'], ['orange', 'edges don’t align']]);
     } else if (store.currentMode === 'sculpt') {
-      toolHelp.innerHTML = helpPanel('Sculpt', [['LMB', 'raise / lower'], ['[ ]', 'brush size']]);
+      // Two tool keys per row (R / P, S / ⇧F, G / N), then the Ctrl chords that reach the opposites.
+      const toolKeys: [string, string][] = [];
+      for (let i = 0; i < SCULPT_TOOL_KEYS.length; i += 2) {
+        const a = SCULPT_TOOL_KEYS[i], b = SCULPT_TOOL_KEYS[i + 1];
+        toolKeys.push([`${a.label} / ${b.label}`, `${a.op} / ${b.op}`]);
+      }
+      const invertible = SCULPT_TOOL_KEYS.filter(t => oppositeBrushOp(t.op));
+      toolKeys.push([`Ctrl+${invertible.map(t => t.label).join(' / ')}`, invertible.map(t => oppositeBrushOp(t.op)).join(' / ')]);
+      toolHelp.innerHTML = helpPanel('Sculpt',
+        [['LMB', 'sculpt with the active tool'], ['Ctrl+LMB', 'invert: raise ↔ lower, pull ↔ push'], ['⇧LMB', 'smooth']],
+        toolKeys, [['[ ] / ⇧scroll', 'brush size']]);
     } else if (store.currentMode === 'props' && store.propLibWanted) {
       toolHelp.innerHTML = helpPanel('Prop Library', [['click', 'pick a prop'], ['search', 'filter by name'], ['level', 'choose a world']]);
     } else {

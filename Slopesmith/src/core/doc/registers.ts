@@ -1,8 +1,8 @@
 import type { CoursePath, QuadMeshDoc, V3 } from './types';
 import type { EffectsDocument } from '../effects/document';
 import { nameIndex, tombstoned } from './ids';
-import { directedEdgeEnds, directedEdgeName } from './serialize';
-import { readVertex, writeVertex } from '../mesh/primitives';
+import { directedEdgeEnds, directedEdgeName, edgeLockName } from './serialize';
+import { readVertex, undirectedEdgeKey, writeVertex } from '../mesh/primitives';
 
 /**
  * The document as independently versioned REGISTERS (docs/039).
@@ -17,6 +17,7 @@ import { readVertex, writeVertex } from '../mesh/primitives';
  * |-----------------------------------------|------------------------|--------------------|
  * | Vertex position                         | `v/<vertex id>`        | xyz                |
  * | Edge handle                             | `h/<from id>><to id>`  | offset             |
+ * | Edge lock (ends in id order)            | `e/<id>><id>`          | true               |
  * | Quad attributes, one register per field | `q/<quad id>/<field>`  | paint/tex/…        |
  * | Props, lights, rails, gems, models, volumes, screens, prop lines, trails, effects | `o/<family>/<id>` | the whole object |
  * | …one field of an existing prop, light, rail, gem, screen or label | `o/<family>.<field>/<id>` | that field |
@@ -65,6 +66,7 @@ export type ObjectFamily =
 
 const VERTEX_PREFIX = 'v/';
 const HANDLE_PREFIX = 'h/';
+const EDGE_LOCK_PREFIX = 'e/';
 const QUAD_PREFIX = 'q/';
 const OBJECT_PREFIX = 'o/';
 const GLOBAL_PREFIX = 'g/';
@@ -72,6 +74,8 @@ const GLOBAL_PREFIX = 'g/';
 export const vertexRegister = (vertex: string): RegisterKey => `${VERTEX_PREFIX}${vertex}`;
 export const handleRegister = (from: string, to: string): RegisterKey =>
   `${HANDLE_PREFIX}${directedEdgeName(from, to)}`;
+/** One edge's lock. An edge has no direction, so its ends are named in id order and either way round is one key. */
+export const edgeLockRegister = (a: string, b: string): RegisterKey => `${EDGE_LOCK_PREFIX}${edgeLockName(a, b)}`;
 export const quadRegister = (quad: string, field: QuadField): RegisterKey =>
   `${QUAD_PREFIX}${quad}/${field}`;
 export const objectRegister = (family: ObjectFamily, id: string): RegisterKey =>
@@ -242,8 +246,9 @@ export interface RegisterGeometry {
  */
 export function registerGeometry(key: RegisterKey): RegisterGeometry {
   if (key.startsWith(VERTEX_PREFIX)) return { vertices: [key.slice(VERTEX_PREFIX.length)], quads: [] };
-  if (key.startsWith(HANDLE_PREFIX)) {
-    const ends = directedEdgeEnds(key.slice(HANDLE_PREFIX.length));
+  const edge = key.startsWith(HANDLE_PREFIX) ? HANDLE_PREFIX : key.startsWith(EDGE_LOCK_PREFIX) ? EDGE_LOCK_PREFIX : null;
+  if (edge) {
+    const ends = directedEdgeEnds(key.slice(edge.length));
     return { vertices: ends ? [...ends] : [], quads: [] };
   }
   if (key.startsWith(QUAD_PREFIX)) {
@@ -262,7 +267,7 @@ const STRUCTURAL: ReadonlySet<string> = new Set([
 
 /** The fields that decompose into registers of their own rather than being held whole as one global. */
 const DECOMPOSED: ReadonlySet<string> = new Set([
-  'edgeHandles', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels',
+  'edgeHandles', 'edgeLocked', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels',
   'course', 'props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'trails', 'labels',
   'effects',
 ]);
@@ -462,6 +467,30 @@ function sameKeys(channel: Record<string, unknown>, keys: readonly string[]): bo
   return at === keys.length;
 }
 
+/**
+ * Edge locks, in register-key order, each hashed with the chunk of its lower-numbered end.
+ *
+ * Ordered by key for the reason creases are (`emitHandles`): a map enumerates in the order it was built. Locks
+ * are a handful per mountain, so they are sorted per pass rather than cached. A lock whose ends the mesh no
+ * longer names addresses nothing and is dropped, as storing the document drops it.
+ */
+function emitEdgeLocks(doc: QuadMeshDoc, emit: Emit, from = 0, to = Infinity): void {
+  const locks = doc.edgeLocked;
+  if (!locks) return;
+  const named: [RegisterKey, true][] = [];
+  for (const key in locks) {
+    if (locks[key] !== true) continue;
+    const cut = key.indexOf(',');
+    const a = Number(key.slice(0, cut)), b = Number(key.slice(cut + 1));
+    if (cut <= 0 || Math.min(a, b) < from || Math.min(a, b) >= to) continue;
+    const aId = doc.vertexIds[a], bId = doc.vertexIds[b];
+    if (aId === undefined || bId === undefined || aId === bId) continue;
+    named.push([edgeLockRegister(aId, bId), true]);
+  }
+  named.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  for (const [key, value] of named) emit(key, value);
+}
+
 function emitQuads(doc: QuadMeshDoc, emit: Emit, from = 0, to = doc.quadIds.length): void {
   const record = doc as unknown as Record<string, Record<number, unknown> | undefined>;
   const ids = doc.quadIds;
@@ -547,6 +576,7 @@ export function documentRegisters(doc: QuadMeshDoc): RegisterMap {
   const emit: Emit = (key, value) => out.set(key, value);
   emitVertices(doc, emit);
   emitHandles(doc, emit);
+  emitEdgeLocks(doc, emit);
   emitQuads(doc, emit);
   emitObjects(doc, emit);
   emitCourse(doc, emit);
@@ -597,6 +627,12 @@ export function registerSection(doc: QuadMeshDoc, key: RegisterKey): string | nu
     const at = nameIndex(doc.vertexIds).get(ends[0]);
     return at === undefined ? null : chunkSection('handles', at);
   }
+  if (key.startsWith(EDGE_LOCK_PREFIX)) {
+    const ends = directedEdgeEnds(key.slice(EDGE_LOCK_PREFIX.length));
+    if (!ends) return null;
+    const at = nameIndex(doc.vertexIds), a = at.get(ends[0]), b = at.get(ends[1]);
+    return a === undefined || b === undefined ? null : chunkSection('edge-locks', Math.min(a, b));
+  }
   if (key.startsWith(QUAD_PREFIX)) {
     const cut = key.lastIndexOf('/');
     const at = cut <= QUAD_PREFIX.length
@@ -635,6 +671,7 @@ export function sectionRegisters(doc: QuadMeshDoc, section: string): RegisterMap
   const rest = cut < 0 ? '' : section.slice(cut + 1);
   if (kind === 'vertices') emitVertices(doc, emit, ...chunkRange(section));
   else if (kind === 'handles') emitHandles(doc, emit, ...chunkRange(section));
+  else if (kind === 'edge-locks') emitEdgeLocks(doc, emit, ...chunkRange(section));
   else if (kind === 'quads') emitQuads(doc, emit, ...chunkRange(section));
   else if (kind === 'objects' && families.has(rest)) emitObjects(doc, emit, rest as ObjectFamily);
   else if (kind === 'globals') emitGlobals(doc, emit, rest);
@@ -865,6 +902,17 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
     if (to === undefined) return missing(ends[1]);
     return inChannel(doc.edgeHandles, () => (doc.edgeHandles ??= {}), directedEdgeName(from, to));
   }
+  if (key.startsWith(EDGE_LOCK_PREFIX)) {
+    const ends = directedEdgeEnds(key.slice(EDGE_LOCK_PREFIX.length));
+    if (!ends || ends[0] === ends[1]) return 'refused';
+    const at = nameIndex(doc.vertexIds);
+    const a = at.get(ends[0]), b = at.get(ends[1]);
+    if (a === undefined) return missing(ends[0]);
+    if (b === undefined) return missing(ends[1]);
+    const lock = inChannel(doc.edgeLocked, () => (doc.edgeLocked ??= {}), undirectedEdgeKey(a, b));
+    // A lock is present or absent; anything else is not a value this register can hold.
+    return { read: lock.read, write: value => (value === undefined || value === true) && lock.write(value) };
+  }
   if (key.startsWith(QUAD_PREFIX)) {
     const cut = key.lastIndexOf('/');
     if (cut <= QUAD_PREFIX.length) return 'refused';
@@ -995,7 +1043,7 @@ export function registerShell(doc: QuadMeshDoc): QuadMeshDoc {
   if (doc.freeEdges) shell.freeEdges = doc.freeEdges.map(([a, b]) => [a, b]);
   if (doc.tJunctions) shell.tJunctions = doc.tJunctions.map(node => ({ ...node, edge: [...node.edge] }));
   if (doc.tombstones) shell.tombstones = [...doc.tombstones];
-  for (const channel of ['edgeHandles', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels']) {
+  for (const channel of ['edgeHandles', 'edgeLocked', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels']) {
     if (record[channel] !== undefined) record[channel] = {};
   }
   for (const family of OBJECT_LISTS) {

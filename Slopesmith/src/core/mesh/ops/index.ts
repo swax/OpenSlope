@@ -15,7 +15,7 @@ export {
 } from './append';
 export {
   DEFAULT_GRID_COLUMNS, DEFAULT_GRID_ROWS, DEFAULT_GRID_PATCH_SIZE_M, MAX_GRID_DIVISIONS, planGrid, appendGrid,
-  gridSideChain, gridCornersFromClicks, gridDivisionsForSize, gridLengthFixed, gridWidthFixed, resizeGridLength,
+  gridSideChain, gridCornersFromClicks, gridDivisionsForSize, gridHinge, gridLengthFixed, gridWidthFixed, resizeGridLength,
   resizeGridWidth, type GridCorner, type GridCorners, type GridOptions, type GridPlan, type GridPlanResult,
 } from './grid';
 export { validateSurfaceCutPath, routeSurfaceCutPath, applySurfaceCut, type SurfaceCutPoint } from './surface-cut';

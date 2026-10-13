@@ -323,6 +323,8 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
     description: 'How a register names one independently editable piece of a mountain (docs/039). '
       + 'Vertex position: "v/<vertexId>" holds [x,y,z] — vertex ids are in the document\'s vertexIds array. '
       + 'Crease: "h/<fromId>><toId>" holds a tangent-offset V3 for one directed edge. '
+      + 'Edge lock: "e/<idA>><idB>" holds true while that edge is locked on its own (its ends in id order); '
+      + 'removing the register unlocks it. '
       + 'Face attributes: "q/<quadId>/<field>" where field is paint (SurfaceType int), tex (tile ref '
       + '"LEVEL/NNNN.png"), orient ({rot 0-3, mirror}), lock (true), twist (four V3s), labels (label-id '
       + 'array). '
@@ -337,7 +339,7 @@ const SCHEMAS: Record<string, Record<string, unknown>> = {
       + 'that is not topology. '
       + 'TOPOLOGY (which vertices/quads exist) is deliberately not addressable — change it with '
       + 'PUT …/document.',
-    pattern: '^(course|v/.+|h/.+>.+|q/.+/(paint|tex|orient|lock|twist|labels)|o/(prop|light|rail|gem|model|volume|screen|label|effect|effect-node)/.+|g/[^/]+)$',
+    pattern: '^(course|v/.+|h/.+>.+|e/.+>.+|q/.+/(paint|tex|orient|lock|twist|labels)|o/(prop|light|rail|gem|model|volume|screen|label|effect|effect-node)/.+|g/[^/]+)$',
   },
 
   MountainDocument: {

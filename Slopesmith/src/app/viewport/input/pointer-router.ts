@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
 import { railHasTube } from '../../../core/rails/rails';
+import { brushFalloffHalfRadius, type BrushFalloff } from '../../../core/doc/mountain';
 import type { MeshAdjacency } from '../../../core/mesh/topology';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import { makeTexRef, parseTexRef, resolveTerrainTexRef, type TexRef } from '../../../core/paint/textures';
@@ -9,6 +10,7 @@ import type { ReferenceMesh } from '../../../core/reference/terrain';
 import type { CreateEdgeEndpoint, MeshSelectionState, Mode, RefPropSurfaceDetails } from '../types';
 import type { Stage } from '../stage';
 import { vertexName } from '../../state/mesh-names';
+import { createWheelStepper, type SculptModifiers } from '../../sculpt-shortcuts';
 import { constrainPlacement } from './placement-constraint';
 import { placementTakesSurface } from './placement';
 import { dataToScene, sceneToData } from '../coordinates';
@@ -141,6 +143,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** Surface under the initial vertex drag, used only to break a rectangle that encloses both mountains. */
   let marqueeVertexHint: 'authored' | 'reference' | null = null;
   let brushRadius = 60;
+  let brushFalloff: BrushFalloff = 'smooth';
   /** Where the pointer is over the canvas, or nothing once it has left. Recorded rather than resolved: the
    *  only reader is awareness (docs/039), which wants a terrain point at its own rate rather than a ray cast
    *  on every move in every mode. */
@@ -293,11 +296,27 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   brushRing.renderOrder = 10;
   brushRing.visible = false;
   stage.scene.add(brushRing);
+  // The brush's shape: a faint inner ring where the falloff drops to half strength — small for a pointed
+  // profile, wide for a soft-shouldered one, absent for constant's hard edge. A child, so it rides the footprint.
+  const brushShapeRing = new THREE.LineLoop(brushRing.geometry,
+    new THREE.LineBasicMaterial({ color: 0x6ee7a8, depthTest: false, transparent: true, opacity: 0.35 }));
+  brushShapeRing.renderOrder = 10;
+  brushRing.add(brushShapeRing);
+  const showBrushShape = () => {
+    const half = brushFalloffHalfRadius(brushFalloff);
+    brushShapeRing.visible = half < 0.98;
+    brushShapeRing.scale.setScalar(half);
+  };
+  showBrushShape();
+  const radiusWheel = createWheelStepper();
   const brushUp = new THREE.Vector3(0, 1, 0);
 
+  /** The hit face's normal, turned to the viewer: the terrain is two-sided, so a wall or overhang seen from
+   *  behind reports its far side's winding. Pull / Push read "toward me / away from me" off this. */
   function sculptWorldNormal(hit: THREE.Intersection): THREE.Vector3 {
-    const normal = hit.face?.normal.clone().transformDirection(hit.object.matrixWorld) ?? brushUp;
+    const normal = hit.face?.normal.clone().transformDirection(hit.object.matrixWorld) ?? brushUp.clone();
     if (normal.lengthSq() < 1e-10) normal.copy(brushUp); else normal.normalize();
+    if (normal.dot(stage.ray.ray.direction) > 0) normal.negate();
     return normal;
   }
 
@@ -313,30 +332,55 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     return preview && hit.faceIndex != null ? Math.floor(hit.faceIndex / preview.facesPerCell) : null;
   }
 
-  function sculptAt(hit: THREE.Intersection) {
+  /** Ctrl (⌘) inverts and Shift smooths, read off the pointer event itself so a touch stroke holds neither. */
+  const sculptModifiers = (e: PointerEvent): SculptModifiers => ({ invert: e.ctrlKey || e.metaKey, smooth: e.shiftKey });
+
+  function sculptAt(hit: THREE.Intersection, e: PointerEvent) {
     const quad = sculptQuad(hit);
     if (quad == null) return;
     const normal = sculptWorldNormal(hit);
     stage.cb.onSculpt(
       [hit.point.x, hit.point.y, -hit.point.z], quad,
       [normal.x, normal.y, -normal.z], // flipped world point/vector -> data
+      sculptModifiers(e),
     );
   }
 
-  function beginSculptDab(hit: THREE.Intersection): boolean {
+  // Holding the button still keeps building, at HOLD_DAB_MS between dabs. A moving stroke dabs on every move
+  // (about one a frame), which concentrated on one spot would drive the surface ~70 m/s at the default step, so
+  // a held press builds slower and stays controllable; any move restarts the wait. Each held dab re-casts the
+  // last pointer, so it follows the surface as that surface moves.
+  const HOLD_DAB_MS = 100;
+  let holdFrame = 0, holdPointer: PointerEvent | null = null, lastDabAt = 0;
+  function holdDab(now: number) {
+    holdFrame = requestAnimationFrame(holdDab);
+    if (!holdPointer || now - lastDabAt < HOLD_DAB_MS) return;
+    lastDabAt = now;
+    stage.castAt(holdPointer);
+    const hit = stage.pickSurface(access.terrain(), false);
+    brushRing.visible = !!hit;
+    if (hit) { updateSculptRing(hit); sculptAt(hit, holdPointer); }
+  }
+
+  function beginSculptDab(hit: THREE.Intersection, e: PointerEvent): boolean {
     const quad = sculptQuad(hit);
     if (quad == null) return false;
     const normal = sculptWorldNormal(hit);
     stage.cb.onBeginSculpt(
       [hit.point.x, hit.point.y, -hit.point.z], quad,
       [normal.x, normal.y, -normal.z],
+      sculptModifiers(e),
     );
     sculptDabbing = true;
-    sculptAt(hit);
+    sculptAt(hit, e);
+    holdPointer = e; lastDabAt = performance.now();
+    holdFrame = requestAnimationFrame(holdDab);
     return true;
   }
 
   function endSculptDab() {
+    if (holdFrame) cancelAnimationFrame(holdFrame); // every pointer-up lands here; most never started a hold
+    holdFrame = 0; holdPointer = null;
     if (!sculptDabbing) return;
     sculptDabbing = false;
     stage.cb.onEndSculpt();
@@ -382,6 +426,13 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // Alt+wheel adjusts whatever is about to be committed, so holding a tool never takes the camera's zoom away.
     // Loop-cut surgery: Alt+wheel SLIDES the cut along the strip; with no live ghost the layer declines and it zooms.
     if (e.altKey && access.mode() === 'edit' && layers.surgery.onWheel(e)) return;
+    // Sculpt: Shift+wheel sizes the brush, as it sizes a held prop. Not Ctrl: a trackpad pinch arrives as
+    // Ctrl+wheel and zooms the camera, and Ctrl inverts a stroke.
+    if (e.shiftKey && !e.altKey && access.mode() === 'sculpt') {
+      const steps = radiusWheel(e);
+      if (steps) { brushRadius = stage.cb.onStepBrushRadius(steps); brushRing.scale.setScalar(brushRadius); }
+      return;
+    }
     // Props placement, over the ghost: Alt+wheel turns the held prop (← / → too, shortcuts.ts), Shift+wheel
     // resizes it. Off the terrain (no ghost) both zoom as usual.
     if ((e.altKey || e.shiftKey) && access.mode() === 'props' && layers.props.propArm && layers.props.propGhost?.visible) {
@@ -1098,8 +1149,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'sculpt') {
       const hit = stage.pickSurface(access.terrain()); // the tree is warm from the hover the press landed on
       if (hit) {
-        const grab = stage.cb.isGrabBrush();
-        sculpting = grab ? beginSculptGrab(hit) : beginSculptDab(hit);
+        const grab = stage.cb.isGrabBrush(sculptModifiers(e));
+        sculpting = grab ? beginSculptGrab(hit) : beginSculptDab(hit, e);
         if (!touch) { stage.controls.enabled = false; (e.target as Element).setPointerCapture(e.pointerId); }
         updateSculptRing(hit);
       }
@@ -1655,9 +1706,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       // false only declines to pay a COLD build inside the stroke, which the hover before it has already paid.
       const hit = stage.pickSurface(access.terrain(), !sculpting);
       brushRing.visible = !!hit;
+      if (sculptDabbing) holdPointer = e; // a held dab re-casts from here, on or off the terrain
       if (hit) {
         updateSculptRing(hit);
-        if (sculpting) sculptAt(hit);
+        if (sculpting) { sculptAt(hit, e); lastDabAt = performance.now(); }
       }
       return;
     }
@@ -1980,6 +2032,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     /** Sculpt brush footprint radius (world units); the ring overlay tracks it live. */
     get brushRadius() { return brushRadius; },
     set brushRadius(v: number) { brushRadius = v; },
+    /** Sculpt brush falloff; the ring's inner half-strength circle draws its shape. */
+    get brushFalloff() { return brushFalloff; },
+    set brushFalloff(v: BrushFalloff) { brushFalloff = v; showBrushShape(); },
   };
 }
 

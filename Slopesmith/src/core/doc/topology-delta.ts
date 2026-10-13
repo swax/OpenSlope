@@ -3,10 +3,10 @@ import { nameIndex } from './ids';
 import { textHash, topologyDigest } from './digest';
 import { directedEdgeEnds, directedEdgeName } from './serialize';
 import {
-  OBJECT_LISTS, QUAD_CHANNELS, handleRegister, quadRegister, vertexRegister,
+  OBJECT_LISTS, QUAD_CHANNELS, edgeLockRegister, handleRegister, quadRegister, vertexRegister,
   type RegisterKey,
 } from './registers';
-import { readVertex } from '../mesh/primitives';
+import { readVertex, undirectedEdgeKey } from '../mesh/primitives';
 import { isValidCell } from '../mesh/ops/contract';
 
 /**
@@ -184,6 +184,7 @@ export function detachedDocument(doc: QuadMeshDoc): QuadMeshDoc {
   const copy = { ...doc, vertices: [...doc.vertices] } as QuadMeshDoc;
   const record = copy as unknown as Record<string, unknown>;
   if (doc.edgeHandles) copy.edgeHandles = { ...doc.edgeHandles };
+  if (doc.edgeLocked) copy.edgeLocked = { ...doc.edgeLocked };
   for (const [, channel] of QUAD_CHANNELS) {
     const held = record[channel];
     if (held && typeof held === 'object') record[channel] = { ...(held as object) };
@@ -343,6 +344,22 @@ function applyOrRefuse(doc: QuadMeshDoc, input: unknown): AppliedDelta {
     // A channel the delta empties goes, as an operation's own rewrite drops it; one that was already empty
     // stays exactly as the document had it.
     if (carried || !held) next.edgeHandles = handles; else delete next.edgeHandles;
+  }
+  // Edge locks follow both their ends the same way.
+  if (doc.edgeLocked) {
+    const locks: Record<string, true> = {};
+    let carried = 0, held = 0;
+    for (const key in doc.edgeLocked) {
+      held++;
+      const cut = key.indexOf(',');
+      const a = Number(key.slice(0, cut)), b = Number(key.slice(cut + 1));
+      if (cut <= 0 || !Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0
+        || a >= oldVertexCount || b >= oldVertexCount || a === b) continue;
+      const nowA = vertexTo[a], nowB = vertexTo[b];
+      if (nowA >= 0 && nowB >= 0) { locks[undirectedEdgeKey(nowA, nowB)] = true; carried++; }
+      else cleared.push(edgeLockRegister(oldVertexIds[a], oldVertexIds[b]));
+    }
+    if (carried || !held) next.edgeLocked = locks; else delete next.edgeLocked;
   }
   for (const [field, channel] of QUAD_CHANNELS) {
     const old = doc[channel] as Record<number, unknown> | undefined;

@@ -767,7 +767,7 @@ function describeNetworkError(error: string, names: readonly string[]): string {
 function scratchDoc(doc: QuadMeshDoc): QuadMeshDoc {
   return {
     ...doc, vertices: [], vertexIds: [], quads: [], quadIds: [], nextId: 0,
-    tombstones: undefined, freeEdges: undefined, tJunctions: undefined, edgeHandles: undefined,
+    tombstones: undefined, freeEdges: undefined, tJunctions: undefined, edgeHandles: undefined, edgeLocked: undefined,
     quadPaint: undefined, quadTex: undefined, quadOrient: undefined, quadLocked: undefined,
   };
 }

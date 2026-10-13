@@ -663,6 +663,7 @@ export function edgeExtrusionPlacementPreviewDoc(source: QuadMeshDoc, plan: Edge
     quads,
     ...seedMeshIds(doc.nextId, vertices.length / 3, quads.length),
     edgeHandles,
+    edgeLocked: undefined,
     quadPaint: undefined,
     quadTex: undefined,
     quadOrient: undefined,

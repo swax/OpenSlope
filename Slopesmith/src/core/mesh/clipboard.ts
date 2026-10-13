@@ -18,6 +18,8 @@ export interface MeshVertexClipboard {
   freeEdges?: [number, number][];
   tJunctions?: EdgeEmbeddedTJunction[];
   edgeHandles?: Record<string, V3>;
+  /** Copied edges locked on their own, keyed `"${a},${b}"` over clipboard-local ids (a < b). */
+  edgeLocked?: Record<string, true>;
   quadPaint?: Record<number, number>;
   quadTex?: Record<number, string>;
   quadOrient?: Record<number, { rot: number; mirror: boolean }>;
@@ -61,6 +63,9 @@ export function meshClipboardText(clip: MeshVertexClipboard, context: MeshClipbo
   if (clip.quadTex && Object.keys(clip.quadTex).length) selection.patchTextures = clip.quadTex;
   if (clip.quadOrient && Object.keys(clip.quadOrient).length) selection.patchOrientations = clip.quadOrient;
   if (clip.quadLocked && Object.keys(clip.quadLocked).length) selection.lockedPatches = Object.keys(clip.quadLocked).map(Number);
+  if (clip.edgeLocked && Object.keys(clip.edgeLocked).length) {
+    selection.lockedEdges = Object.keys(clip.edgeLocked).map(key => key.split(',').map(Number));
+  }
   if (clip.quadTwist && Object.keys(clip.quadTwist).length) selection.patchTwist = clip.quadTwist;
   if (clip.quadLabels && Object.keys(clip.quadLabels).length) selection.patchLabels = clip.quadLabels;
   if (clip.labels?.length) selection.labels = clip.labels;
@@ -106,6 +111,8 @@ export interface MeshVertexCopySource<Id = string> {
   texture?: (quad: number) => string | undefined;
   orientation?: (quad: number) => { rot: number; mirror: boolean } | undefined;
   locked?: (quad: number) => boolean;
+  /** Whether a copied edge is locked on its own (a patch's lock travels with the patch). */
+  edgeLocked?: (a: number, b: number) => boolean;
   labels?: (quad: number) => readonly string[] | undefined;
   labelDefinitions?: readonly LabelDefinition[];
   tJunctions?: readonly EdgeEmbeddedTJunction[];
@@ -219,6 +226,14 @@ export function copyMeshVertices<Id>(source: MeshVertexCopySource<Id>): MeshVert
   });
   if (tJunctions.length) out.tJunctions = tJunctions;
   if (Object.keys(edgeHandles).length) out.edgeHandles = edgeHandles;
+  const edgeLocked: Record<string, true> = {};
+  if (source.edgeLocked) for (const key of copiedEdgeKeys) {
+    const [a, b] = key.split(',').map(Number);
+    if (!source.edgeLocked(a, b)) continue;
+    const la = localOf.get(a)!, lb = localOf.get(b)!;
+    edgeLocked[la < lb ? `${la},${lb}` : `${lb},${la}`] = true;
+  }
+  if (Object.keys(edgeLocked).length) out.edgeLocked = edgeLocked;
 
   const localMesh = buildQuadMesh(vertices, quads, freeEdges);
   const localHandle = meshEdgeHandles(localMesh, out.edgeHandles);
@@ -301,6 +316,13 @@ export function pasteMeshVertices(doc: QuadMeshDoc, clip: MeshVertexClipboard, t
     for (const [key, value] of Object.entries(clip.edgeHandles)) {
       const [from, to] = key.split('>').map(Number);
       next.edgeHandles[`${from + firstVertex}>${to + firstVertex}`] = [...value] as V3;
+    }
+  }
+  if (clip.edgeLocked && Object.keys(clip.edgeLocked).length) {
+    next.edgeLocked = { ...(doc.edgeLocked ?? {}) };
+    for (const key of Object.keys(clip.edgeLocked)) {
+      const [a, b] = key.split(',').map(Number);
+      next.edgeLocked[`${a + firstVertex},${b + firstVertex}`] = true;
     }
   }
   const copyQuadMap = <T>(source: Record<number, T> | undefined, existing: Record<number, T> | undefined, clone: (v: T) => T): Record<number, T> | undefined => {

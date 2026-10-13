@@ -7,6 +7,7 @@ import {
 } from '../topology';
 import { ekey, quadEdges, checkManifold, finishMeshRewrite, looseVertexIds } from './contract';
 import { quadCornerNeighbor, edgePointAt, inheritCrease, splitEdgeHandlesExact, splitQuadLoop } from './cut-primitives';
+import { splitEdgeLock } from '../locks';
 import { remapTJunctionsForEdgeSplits } from '../t-junctions';
 import { readVertex } from '../primitives';
 
@@ -207,6 +208,7 @@ export function applyLoopCut(doc: QuadMeshDoc, plan: LoopCutPlan, t: number): { 
   const vertices = doc.vertices.slice();
   const quads: (number[] | null)[] = doc.quads.map(q => q.slice());
   const edgeHandles: Record<string, V3> = { ...(doc.edgeHandles ?? {}) };
+  const edgeLocked = doc.edgeLocked ? { ...doc.edgeLocked } : undefined;
   const quadPaint = doc.quadPaint ? { ...doc.quadPaint } : undefined;
   const quadTex = doc.quadTex ? { ...doc.quadTex } : undefined;
   const quadOrient = doc.quadOrient ? { ...doc.quadOrient } : undefined;
@@ -225,7 +227,10 @@ export function applyLoopCut(doc: QuadMeshDoc, plan: LoopCutPlan, t: number): { 
     vertices.push(p[0], p[1], p[2]);
     cutVid.set(e.key, vid);
     if (hanging.has(e.key)) splitEdgeHandlesExact(edgeHandles, e.from, e.to, vid, tt, p, eh, pos, true);
+    // A locked curve is split exactly, so its halves trace the curve the lock froze.
+    else if (edgeLocked?.[e.key]) splitEdgeHandlesExact(edgeHandles, e.from, e.to, vid, tt, p, eh, pos);
     else inheritCrease(edgeHandles, e.from, e.to, vid, tt);
+    splitEdgeLock(edgeLocked, e.from, e.to, vid, hanging.has(e.key));
   }
 
   // 2. split each crossed quad into two along ITS two rails (a quad the strip later ran into sideways also
@@ -276,7 +281,7 @@ export function applyLoopCut(doc: QuadMeshDoc, plan: LoopCutPlan, t: number): { 
   }
   const { doc: out } = finishMeshRewrite(doc, {
     vertices, quads, keepVertices: looseVertexIds(doc), freeEdges: doc.freeEdges,
-    tJunctions, edgeHandles, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
+    tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
   });
   return { ok: true, doc: out };
 }

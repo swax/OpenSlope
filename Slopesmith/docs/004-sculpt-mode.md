@@ -93,12 +93,37 @@ which is why the default carve is 64 m wide and new lines default to `2 × spaci
 
 ## Sculpting
 
-Brushes (`raise` / `lower` / `smooth` / `flatten`, bell falloff) edit the **base** verts only;
+Brushes (`raise` / `lower` / `pull` / `push` / `smooth` / `flatten`, bell falloff) edit the **base** verts only;
 the carve re-applies on every rebuild, so sculpting can never break a carved floor. The brush
 maps the derived preview hit back to its authored quad, then measures a bounded shortest path over
 that connected control surface (patch edges + diagonals). Its radius therefore follows walls and
 folds in 3D instead of projecting through XZ, and cannot jump to a disconnected surface stacked at
-the same horizontal position. The hover ring aligns to the hit surface's tangent plane. Its falloff is
+the same horizontal position.
+
+**A brush narrower than the cage.** The brush moves corners, and a coarse cage can leave every corner of the hit
+patch outside the radius — a small brush on a 30 m patch, or any dab on an edge or patch middle. Measured by
+corner distance alone, that dab moved nothing (Maya's NURBS Sculpt Geometry Tool had the same limit: only CVs
+inside the radius move, and its manual's remedy is a bigger brush or more isoparms). So after the falloff weights
+the corners, the hit patch's own corners are topped up by the least-norm move that carries the surface point
+under the cursor the full stroke — the solve Maya's Surface Editing Tool uses to drag a point anywhere on a
+surface. Each corner's pull on that point is measured on the live cage (automatic handles re-derived, authored
+handle and twist offsets riding along), so poles, rims and linear cages need no special case. No corner moves
+further than the stroke: a corner the solve would overshoot is held at full strength and the lift it cannot take
+is dropped rather than handed to the others (right beside a corner the hit therefore rises ~85–100% of the
+stroke). A footprint whose falloff already carries the hit, as any brush that spans the patch does, keeps exactly
+its falloff weights. Every brush shares these weights, so Grab keeps the grabbed point under the cursor and
+Smooth/Flatten reach the patch under a small brush. The visible footprint is therefore at least the hit patch.
+
+**Sculpting against a lock.** Patch locks are enforced per control point, not per corner. A corner shared with a
+locked patch stays put, but it also owns controls that do not shape that patch: its handles on unlocked edges
+and its interior points in unlocked patches. Those take the stroke the corner would have taken. This is what
+makes a cornice sculptable: lock the cliff face, then Grab the snow at the lip up and out (or Pull it). The lip curve and the
+cliff stay exact while the snow's last third — the controls the lip corners own — pillows out over the face.
+Before this, every control behind the lip hung off the locked corners and only the row 30 m back could move.
+The weights ignore locks for the same reason: the locked corner's share is carried by its free controls, and
+re-solving it onto the rest of the patch would drag the far side in.
+
+The hover ring aligns to the hit surface's tangent plane. Its falloff is
 selectable: the original smooth bell, linear, sharp centre-weighted, or constant with a hard edge. Grab
 captures that connected footprint on press and drags it in the camera-facing plane; its source positions and
 weights stay frozen for the gesture so the surface does not crawl or accumulate frame-by-frame error.
@@ -109,16 +134,43 @@ The plane behavior defaults to **locked**: its position and normal are sampled o
 footprint crossed during that stroke moves toward the same original plane—even after crossing onto another
 surface. **Follow stroke** retains the locally adaptive behavior by resampling the target plane for each dab.
 Sculpt is aware of the bicubic representation rather than treating the preview triangles as editable data.
-Raise/Lower, Grab, and Push reshape the shared corner net while preserving authored handle/twist detail. Flatten
+Raise/Lower, Pull/Push, Grab, and Nudge reshape the shared corner net while preserving authored handle/twist detail. Flatten
 projects every effective boundary and interior control in the affected 16-point cages, so an apparently flat
 patch cannot retain hidden off-plane curvature. Smooth relaxes corners from a frozen snapshot and fades
 explicit handle/twist deviations back toward the automatic Ferguson cage.
-The Sculpt panel groups operations into connected **Displace** (Raise/Lower), **Refine** (Smooth/Flatten),
-and **Move** (Grab/Push) families, keeps size/falloff together, and shows only the selected tool's meaningful
-settings. Falloff, displacement direction, flatten plane, and plane sampling use compact icon rows with
-descriptive tooltips instead of dropdowns. Grab locks one connected footprint on press; Push resamples the
-footprint continuously and projects each stroke segment onto the current surface tangent before moving its
-control points. Keys `1`–`6` select Raise through Push; `[` / `]` resize the footprint.
+The Sculpt panel groups operations into connected **Displace** (Raise/Lower, and Pull/Push beneath them),
+**Refine** (Smooth/Flatten), and **Move** (Grab/Nudge) families, keeps size/falloff together, and shows only the
+selected tool's meaningful settings. Raise/Lower move straight up and down; Pull/Push move each corner out of or
+into the surface along its own normal (Maya's Pull/Push convention), which is what builds walls, overhangs and
+snow pillows — the two directions are separate tools rather than a toggle on Raise/Lower. "Out" is toward the face
+being sculpted: the viewport turns the hit normal to the viewer (the terrain is two-sided, so a wall seen from
+behind reports its far side), and each corner's normal is turned to agree with it. A vertex frame's own sign comes
+from a skyward convention that means nothing on a wall — a hair of tilt decides it — so without this a near-plumb
+wall pulled half its corners out and pushed half in. Holding the button still keeps building at ten dabs a second
+(a moving stroke dabs on every move, about one a frame, which held on one spot would be far too fast); a move
+restarts the count. Falloff, flatten plane,
+and plane sampling use compact icon rows with descriptive tooltips instead of dropdowns. Grab locks one connected
+footprint on press; Nudge (Blender's name for the same brush) resamples the footprint continuously and projects
+each stroke segment onto the current surface tangent before moving its control points. `[` / `]` resize the
+footprint.
+
+**Keys** (`src/app/sculpt-shortcuts.ts` — the handler, the legend and the panel buttons read one table): one
+letter per tool, drawn faintly after its button label — `R` Raise, `P` Pull, `S` Smooth, `⇧F` Flatten, `G` Grab,
+`N` Nudge. Lower and Push have no letter of their own: **Ctrl** is the opposite. Held through a stroke it inverts
+a displacement (Raise↔Lower, Pull↔Push; tools without an opposite ignore it) and is read on every dab, so it can
+flip mid-stroke; on the key, `Ctrl+R` selects Lower and `Ctrl+P` Push, which also keeps the browser's reload and
+print off those chords. **Shift** held smooths with whatever tool is active and is decided at pointer-down, since
+it also turns a Grab press into a smoothing stroke — the Ctrl-inverts / Shift-smooths convention Blender, Maya and
+Mudbox share. The digits stay the view switches and bare `F` stays frame, which is why Flatten is `⇧F`; ZBrush
+inverts with Alt, but Alt is the camera's fly key here.
+
+**Shift+scroll** sizes the brush, as it sizes a held prop: ~15% a notch, never less than a metre, in whole metres
+(`[` / `]` keep their 5 m steps). Not Ctrl+scroll: a trackpad pinch arrives as Ctrl+wheel (it zooms the camera
+here), and Ctrl already inverts. The first wheel event of a gesture steps at once, so every mouse notch lands, and
+later deltas gather into notch-sized steps so a trackpad swipe walks a few sizes instead of racing through dozens.
+Falloff stays a panel choice — off the wheel, where an accidental scroll would quietly change how every stroke
+lands. The brush ring shows it: a faint inner circle where the profile falls to half strength — near the centre
+for Sharp, half way for Linear, wider for Smooth, none for Constant's hard edge.
 
 ## Export
 

@@ -1,12 +1,13 @@
 import type { EdgeEmbeddedTJunction, QuadMeshDoc, V3 } from './types';
 import { nameIndex } from './ids';
+import { undirectedEdgeKey } from '../mesh/primitives';
 
 /**
  * The keying boundary (docs/039): a mountain names its geometry by STABLE ID on disk and by ARRAY INDEX in
  * memory, and this file is the only place a document's channels are converted between the two.
  *
- * `edgeHandles`, `quadPaint`, `quadTex`, `quadOrient`, `quadLocked`, `quadTwist`, `quadLabels`, `freeEdges` and `tJunctions` all key off a
- * vertex or a quad. An index is a rendering and serialization detail: topology surgery renumbers the arrays,
+ * `edgeHandles`, `edgeLocked`, `quadPaint`, `quadTex`, `quadOrient`, `quadLocked`, `quadTwist`, `quadLabels`, `freeEdges` and
+ * `tJunctions` all key off a vertex or a quad. An index is a rendering and serialization detail: topology surgery renumbers the arrays,
  * so an index stored on Monday names different terrain after Tuesday's delete, and every one of those channels
  * lands on the wrong face when the document is read back. An id does not move, so the same delete costs the
  * document nothing — which is what makes a save, a topology edit and a reload compose.
@@ -23,7 +24,8 @@ import { nameIndex } from './ids';
 
 /** The channels that key off a vertex or a quad — everything the two namings disagree about. */
 type KeyedChannel =
-  'freeEdges' | 'tJunctions' | 'edgeHandles' | 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels';
+  'freeEdges' | 'tJunctions' | 'edgeHandles' | 'edgeLocked' | 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist'
+  | 'quadLabels';
 
 /** A T-node as stored: its own vertex and the two ends of its host edge, each named by id. */
 export interface StoredTJunction {
@@ -47,6 +49,8 @@ export interface StoredMountain extends Omit<QuadMeshDoc, KeyedChannel> {
   freeEdges?: [string, string][];
   tJunctions?: StoredTJunction[];
   edgeHandles?: Record<string, V3>;
+  /** Locked edges, each named `edgeLockName` — both ends by id, in id order. */
+  edgeLocked?: Record<string, true>;
   quadPaint?: Record<string, number>;
   quadTex?: Record<string, string>;
   quadOrient?: Record<string, { rot: number; mirror: boolean }>;
@@ -64,6 +68,10 @@ const EDGE_SEPARATOR = '>';
  *  key that must not have two readers. */
 export const directedEdgeName = (from: string | number, to: string | number): string =>
   `${from}${EDGE_SEPARATOR}${to}`;
+
+/** An undirected edge's name over ids: the directed form with its ends in id order, so one edge answers to one
+ *  name however its ends are numbered today. The edge-lock channel stores, and its register is called, this. */
+export const edgeLockName = (a: string, b: string): string => a < b ? directedEdgeName(a, b) : directedEdgeName(b, a);
 
 /** The two ends of a directed-edge key, or null when the key is not one. */
 export function directedEdgeEnds(key: string): [string, string] | null {
@@ -123,10 +131,15 @@ export function serializeMountain(doc: QuadMeshDoc): StoredMountain {
     const from = vertexName(ends[0]), to = vertexName(ends[1]);
     return from !== null && to !== null ? directedEdgeName(from, to) : null;
   };
+  const lockName = (key: string): string | null => {
+    const cut = key.indexOf(',');
+    const a = cut > 0 ? vertexName(key.slice(0, cut)) : null, b = cut > 0 ? vertexName(key.slice(cut + 1)) : null;
+    return a !== null && b !== null && a !== b ? edgeLockName(a, b) : null;
+  };
 
   // Written over a copy of the document rather than assembled fresh, so the file carries every field the
   // document has — including any this file has never heard of — in the order the document has them.
-  const { freeEdges, tJunctions, edgeHandles, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels } = doc;
+  const { freeEdges, tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels } = doc;
   const stored = { ...doc } as unknown as StoredMountain;
   stored.freeEdges = freeEdges?.flatMap(([a, b]) => {
     const from = vertexName(a), to = vertexName(b);
@@ -138,6 +151,7 @@ export function serializeMountain(doc: QuadMeshDoc): StoredMountain {
     return vertex !== null && a !== null && b !== null ? [{ vertex, edge: [a, b] as [string, string], t: node.t }] : [];
   });
   stored.edgeHandles = rekeyed('edge handles', edgeHandles, handleName);
+  stored.edgeLocked = rekeyed('edge locks', edgeLocked, lockName);
   stored.quadPaint = rekeyed('quad paint', quadPaint as Record<string, number> | undefined, quadName);
   stored.quadTex = rekeyed('quad tiles', quadTex as Record<string, string> | undefined, quadName);
   stored.quadOrient = rekeyed('quad tile orientation',
@@ -185,8 +199,15 @@ export function keyMountainByIndex(doc: QuadMeshDoc): { retiredHandles: number }
     retiredHandles++;
     return null;
   };
+  // A lock whose end was deleted went with its edge; one naming an end never minted is refused like a crease.
+  const lockIndex = (key: string): string | null => {
+    const ends = directedEdgeEnds(key);
+    if (!ends) throw new Error(`This mountain carries an edge lock under a key that names no edge: ${key}`);
+    const a = vertexIndex(ends[0]), b = vertexIndex(ends[1]);
+    return a !== null && b !== null && a !== b ? undirectedEdgeKey(a, b) : null;
+  };
 
-  const { freeEdges, tJunctions, edgeHandles, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels } = stored;
+  const { freeEdges, tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels } = stored;
   doc.freeEdges = freeEdges?.flatMap(([a, b]) => {
     const from = vertexIndex(a), to = vertexIndex(b);
     return from !== null && to !== null ? [[from, to] as [number, number]] : [];
@@ -197,6 +218,7 @@ export function keyMountainByIndex(doc: QuadMeshDoc): { retiredHandles: number }
     return vertex !== null && a !== null && b !== null ? [{ vertex, edge: [a, b], t: node.t }] : [];
   });
   doc.edgeHandles = rekeyed('edge handles', edgeHandles, handleIndex);
+  doc.edgeLocked = rekeyed('edge locks', edgeLocked, lockIndex);
   doc.quadPaint = rekeyed('quad paint', quadPaint, quadIndex);
   doc.quadTex = rekeyed('quad tiles', quadTex, quadIndex);
   doc.quadOrient = rekeyed('quad tile orientation', quadOrient, quadIndex);

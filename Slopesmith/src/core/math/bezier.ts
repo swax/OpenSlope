@@ -160,6 +160,12 @@ export function pushCubicEdge(out: number[], p0: V3, p1: V3, p2: V3, p3: V3, seg
 
 /** The (un-normalised) skyward normal at (u,v): the quilt's uÃ—v cross points down, so cross(dv, du). */
 function patchCross(cp: V3[], u: number, v: number): V3 {
+  const { du, dv } = patchDerivatives(cp, u, v);
+  return cross(dv, du);
+}
+
+/** The patch's two parametric derivatives ∂P/∂u and ∂P/∂v at (u,v), rows of cp along u. */
+export function patchDerivatives(cp: V3[], u: number, v: number): { du: V3; dv: V3 } {
   const r0 = bez(cp[0], cp[1], cp[2], cp[3], v);
   const r1 = bez(cp[4], cp[5], cp[6], cp[7], v);
   const r2 = bez(cp[8], cp[9], cp[10], cp[11], v);
@@ -170,7 +176,33 @@ function patchCross(cp: V3[], u: number, v: number): V3 {
   const d2 = bezD(cp[8], cp[9], cp[10], cp[11], v);
   const d3 = bezD(cp[12], cp[13], cp[14], cp[15], v);
   const dv = bez(d0, d1, d2, d3, u);
-  return cross(dv, du);
+  return { du, dv };
+}
+
+/** The (u,v) of the patch point nearest `p`: the closest sample of a coarse parameter grid, then Gauss-Newton
+ *  on the squared distance, clamped to the unit square. A viewport hit lies on the tessellation's chords, a
+ *  little off the analytic surface, so this recovers where on the patch it actually landed. */
+export function nearestPatchParam(cp: V3[], p: V3, grid = 8): [number, number] {
+  const unit = (t: number) => Math.min(1, Math.max(0, t));
+  let u = 0.5, v = 0.5, best = Infinity;
+  for (let i = 0; i <= grid; i++) {
+    for (let j = 0; j <= grid; j++) {
+      const d = sub(patchPoint(cp, i / grid, j / grid), p), d2 = dot(d, d);
+      if (d2 < best) { best = d2; u = i / grid; v = j / grid; }
+    }
+  }
+  for (let iter = 0; iter < 8; iter++) {
+    const r = sub(patchPoint(cp, u, v), p);
+    const { du, dv } = patchDerivatives(cp, u, v);
+    const a = dot(du, du), b = dot(du, dv), c = dot(dv, dv), det = a * c - b * b;
+    if (Math.abs(det) < 1e-18) break; // a collapsed wedge apex has no frame to step in
+    const gu = dot(du, r), gv = dot(dv, r);
+    const nu = unit(u - (c * gu - b * gv) / det), nv = unit(v - (a * gv - b * gu) / det);
+    const moved = Math.abs(nu - u) + Math.abs(nv - v);
+    u = nu; v = nv;
+    if (moved < 1e-10) break;
+  }
+  return [u, v];
 }
 
 /** Skyward analytic normal at (u,v). A collapsed patch row/col â€” a WEDGE apex folds the u=1 edge to a point,

@@ -29,6 +29,11 @@ Every op is a pure document rewrite with one shared id-maintenance helper:
   are Bessel-G1 by construction ([006](006-surface-net.md)); creases survive only where the user
   authored them. Overrides on a *split* edge are re-derived: the crease state (collinear or not) of
   the parent edge is inherited by both halves.
+- **Edge locks follow their edge.** `finishMeshRewrite` carries every `edgeLocked` entry whose edge
+  survives the rewrite, without the op naming it. An op that *splits* an edge moves the parent's lock
+  onto both halves (`splitEdgeLock`) and splits a locked curve exactly, so the halves trace the curve the
+  lock froze; a lock whose edge the op removes goes with it. Delete and Dissolve refuse to take a locked
+  edge (`edgeLocksTaken`), as they refuse a locked patch.
 - **Manifold guard.** An op that would make an edge shared by 3+ quads, or a vertex whose quad fan is
   disconnected, is rejected with a toast — the mesh stays a manifold-with-boundary quad complex,
   which is what the export and `topologyFromQuads`' pole test assume.
@@ -149,8 +154,12 @@ move gizmo on it, and moving it bends the lattice bilinearly toward it — the t
 that vanishes along both attached sides, so a rim the grid follows stays exact. A draft with no snapped corner comes
 up with the gizmo at its centre and moves, turns or scales whole: while the gizmo holds the whole draft the toolbox
 shows the Transform selector (W / E / R), which drops back to Move on a corner. A click on the grid takes it whole
-again, a click off it lets go. A snapped corner pins the draft to what it attaches to, so it offers only its free
-corners. Typed
+again, a click off it lets go. A snapped corner pins the draft to what it attaches to, so a draft pinned anywhere
+offers only its free corners — except one drawn off an edge: exactly one side snapped, its far side free
+(`gridHinge`). That draft comes up held whole too, and **swings on the snapped side like a hinge**: Rotate shows
+only the ring about that edge; Scale shows the two in-plane handles, across to stretch the grid out from the edge
+and along it to spread the two far corners apart about their middle; and Move seats the gizmo on the far side and
+carries it. Every one of them leaves the snapped side where it is. Typed
 **length** moves the first side's far end with the side across from it, and **width** moves both far corners
 (`resizeGridLength` / `resizeGridWidth`); a size a snapped corner would have to move is greyed. Corners dragged across
 the grid, so its outline folds over, are refused in the panel.

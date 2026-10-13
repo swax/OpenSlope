@@ -209,6 +209,7 @@ interface NetSnapshot {
   globals: string;
   vertices: Float64Array;
   handles: Channel;
+  edgeLocks: Channel;
   quads: Record<QuadChannel, Channel>;
 }
 
@@ -219,6 +220,7 @@ const snapshotOf = (doc: QuadMeshDoc): NetSnapshot => {
     globals: wholeQuiltFieldsOf(doc),
     vertices: Float64Array.from(doc.vertices),
     handles: channelOf(doc.edgeHandles as Record<string, unknown> | undefined),
+    edgeLocks: channelOf(doc.edgeLocked as Record<string, unknown> | undefined),
     quads: Object.fromEntries(QUAD_CHANNELS.map(channel => [channel, channelOf(record[channel])])) as
       Record<QuadChannel, Channel>,
   };
@@ -265,7 +267,8 @@ export function createNetWatcher() {
     // deliberately takes the full path rather than pretending a patch-buffer refresh can change its colour.
     let locksChanged = false;
     channelDiff(was.quads.quadLocked, held.quads.quadLocked, () => { locksChanged = true; });
-    if (locksChanged) return whole('patch protection changed', false);
+    channelDiff(was.edgeLocks, held.edgeLocks, () => { locksChanged = true; });
+    if (locksChanged) return whole('patch or edge protection changed', false);
     const quads = new Set<number>();
     for (const channel of QUAD_CHANNELS) {
       if (channel === 'quadLocked') continue;

@@ -16,7 +16,7 @@ import { fmtM, pathHandleActions, type ToolsContext } from './widgets';
 import type { TrailKnotSettings, TrailSettings, TrailTileRow, TrailTileSet } from '../../../core/doc/types';
 import { TRAIL_SETTINGS_DEFAULTS } from '../../../core/mesh/trail-object';
 import { MAX_TRAIL_LANES } from '../../../core/mesh/trail';
-import { gridLengthFixed, gridWidthFixed, MAX_GRID_DIVISIONS } from '../../../core/mesh/ops/grid';
+import { gridHinge, gridLengthFixed, gridWidthFixed, MAX_GRID_DIVISIONS } from '../../../core/mesh/ops/grid';
 import {
   findTrailTileSet, isBuiltInTrailTileSet, TRAIL_TILE_ROW_WORDS, TRAIL_TILE_ROWS, trailSettingsTiles, trailTileRowLanes, trailTileRowView,
   trailTileSetFits, trailTileSetId, trailTileSetLiteral, trailTileSetRow, trailTileViewOrient, withTrailTileRowView, type TrailTileRowKey,
@@ -321,9 +321,11 @@ export function createCreateTools(ctx: ToolsContext) {
       'Straight length from the first corner to the second (or to the cursor while placing it).');
     note(placement, !draft
       ? 'click both ends of the first side, then a point for the width · snap to points on an open edge to attach along it · Ctrl puts a corner on the surface · Shift locks a world axis'
-      : draft.some(corner => corner.vertex !== null)
-        ? 'click a free corner to move it with the gizmo · snapped corners stay pinned · Enter creates and selects the grid'
-        : 'drag the gizmo to move the grid · Transform above (W / E / R) turns or scales it instead · click a corner to move just that one, or the grid to take it whole again · Enter creates and selects the grid');
+      : gridHinge(draft)
+        ? 'the grid hinges on its snapped edge · Transform above: Rotate (E) swings it about the edge, Scale (R) stretches it out from the edge or spreads its far corners, Move (W) carries the far side · click a free corner to move just that one, or the grid to take it whole again · Enter creates and selects the grid'
+        : draft.some(corner => corner.vertex !== null)
+          ? 'click a free corner to move it with the gizmo · snapped corners stay pinned · Enter creates and selects the grid'
+          : 'drag the gizmo to move the grid · Transform above (W / E / R) turns or scales it instead · click a corner to move just that one, or the grid to take it whole again · Enter creates and selects the grid');
     const dimensions = editSection('grid-dimensions', 'Dimensions');
     const replan = () => { previewCreateGrid(); refreshCreateGridSummary(); };
     const plan = () => { const result = createGridPlan(); return result?.ok ? result.plan : null; };

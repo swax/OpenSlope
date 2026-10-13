@@ -86,6 +86,8 @@ export interface ChangeSummary {
    *  which no assignment can put back (docs/039). */
   vertices: { moved: number; added: number; removed: number };
   creases: { added: number; removed: number; changed: number };
+  /** Edges locked or unlocked on their own (a patch's lock is counted with its face). */
+  edgeLocks: { added: number; removed: number };
   /** Faces: how many differ in each attribute, and how many distinct faces that is. `added` and `removed`
    *  count the faces themselves, which is topology rather than paint. */
   quads: { paint: number; tex: number; orient: number; lock: number; twist: number; labels: number; faces: number; added: number; removed: number };
@@ -128,6 +130,7 @@ export function summarizeDiff(before: QuadMeshDoc, after: QuadMeshDoc, diff: Doc
     registers: diff.size,
     vertices: { moved: 0, added: 0, removed: 0 },
     creases: { added: 0, removed: 0, changed: 0 },
+    edgeLocks: { added: 0, removed: 0 },
     quads: { paint: 0, tex: 0, orient: 0, lock: 0, twist: 0, labels: 0, faces: 0, added: 0, removed: 0 },
     objects: [],
     course: false,
@@ -140,6 +143,7 @@ export function summarizeDiff(before: QuadMeshDoc, after: QuadMeshDoc, diff: Doc
     if (key === COURSE_REGISTER) { summary.course = true; continue; }
     if (key.startsWith('v/')) { if (kind === 'changed') summary.vertices.moved++; continue; }
     if (key.startsWith('h/')) { summary.creases[kind]++; continue; }
+    if (key.startsWith('e/')) { if (kind !== 'changed') summary.edgeLocks[kind]++; continue; }
     if (key.startsWith('q/')) {
       const named = quadField(key);
       if (!named) continue;
@@ -212,6 +216,8 @@ export function describeChanges(summary: ChangeSummary): string[] {
   }
   const creaseCount = creases.added + creases.removed + creases.changed;
   if (creaseCount) said.push(`${plural(creaseCount, 'crease')} changed`);
+  if (summary.edgeLocks.added) said.push(`${plural(summary.edgeLocks.added, 'edge')} locked`);
+  if (summary.edgeLocks.removed) said.push(`${plural(summary.edgeLocks.removed, 'edge')} unlocked`);
   for (const tally of summary.objects) {
     const noun = FAMILY_NOUN[tally.family];
     if (tally.added) said.push(`${plural(tally.added, noun)} appeared`);
@@ -248,9 +254,9 @@ export interface RevertScope {
 /** Whether a key names geometry inside the selection. */
 function inSelection(key: RegisterKey, vertices: Set<string>, quads: Set<string>): boolean {
   if (key.startsWith('v/')) return vertices.has(key.slice(2));
-  if (key.startsWith('h/')) {
+  if (key.startsWith('h/') || key.startsWith('e/')) {
     const ends = directedEdgeEnds(key.slice(2));
-    // A crease belongs to the edge, so it moves with a selection only when both of its corners are in one.
+    // A crease or a lock belongs to the edge, so it moves with a selection only when both of its corners are in one.
     return !!ends && vertices.has(ends[0]) && vertices.has(ends[1]);
   }
   if (key.startsWith('q/')) {

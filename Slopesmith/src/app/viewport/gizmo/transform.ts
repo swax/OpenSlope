@@ -306,6 +306,17 @@ export function createTransformLayer(
       stage.gizmo.showZ = false;
       return;
     }
+    if (stage.gizmoKind === 'grid' && stage.gizmo.object?.userData.gridHinge) {
+      // A Create Grid draft drawn off an edge swings on it (viewport/tools/create-grid.ts). Its anchor is framed with
+      // X along that edge and Z across to the far side, so Rotate keeps only the ring about the edge, and Scale the
+      // two in-plane handles — across stretches the grid out from the edge, along spreads its far corners — with
+      // no Y, which a flat grid has no depth for. Move, which carries the far side, stays on world axes.
+      stage.gizmoRestrict = false;
+      stage.gizmo.setSpace(rotating ? 'local' : 'world');
+      if (rotating || scaling) stage.gizmo.showY = false;
+      if (rotating) stage.gizmo.showZ = false;
+      return;
+    }
     if (stage.gizmoKind === 'cagehandle') {
       // A floating tangent handle only uses the pill's orientation (no slide or restricted handles). Local
       // and Surface align to its FROM vertex's slope; World is axis-aligned. Shift forces World.

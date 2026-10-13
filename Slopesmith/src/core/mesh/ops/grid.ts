@@ -10,7 +10,8 @@ import { quadPerimeterEdges, readVertex } from '../primitives';
  * tool takes three clicks — both ends of the first side A → B, then a point setting the width — and squares a
  * free third point off against the first side, so the draft starts as a rectangle in the plane the clicks span
  * (gridCornersFromClicks). Its free corners can then be moved one at a time, which bends the lattice
- * bilinearly, and a draft with no snapped corner can be moved, turned and scaled whole.
+ * bilinearly, and a draft with no snapped corner can be moved, turned and scaled whole. One drawn off an edge —
+ * a single side snapped, its far side free — swings on that side like a hinge instead (gridHinge).
  *
  * The divisions come either as counts, or from one target patch size: each side takes the count that brings its
  * patches closest to that size (gridDivisionsForSize).
@@ -86,6 +87,15 @@ export function gridCornersFromClicks(first: GridCorner, second: GridCorner, thi
     { pos: [...first.pos], vertex: first.vertex }, { pos: [...second.pos], vertex: second.vertex },
     c, free(add(first.pos, sub(c.pos, second.pos))),
   ];
+}
+
+/** The side a draft drawn off an edge swings on: two neighbouring corners snapped to existing points while the
+ *  other two are free, as [from, to] round the rim. Null for a free draft, or one pinned any other way. */
+export function gridHinge(corners: GridCorners): [number, number] | null {
+  const pins = corners.flatMap((corner, i) => corner.vertex !== null ? [i] : []);
+  if (pins.length !== 2) return null;
+  const [i, j] = pins;
+  return j === i + 1 ? [i, j] : i === 0 && j === 3 ? [3, 0] : null;
 }
 
 /** Whether typing a length can move B (with C, its side carried along), or a width C and D. A snapped corner

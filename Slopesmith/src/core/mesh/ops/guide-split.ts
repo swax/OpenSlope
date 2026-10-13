@@ -5,6 +5,7 @@ import { cubicPoint, splitCubic } from '../../math/bezier';
 import { buildQuadMesh, meshAdjacency, meshEdgeHandles } from '../topology';
 import { readVertex } from '../primitives';
 import { ekey } from './contract';
+import { splitEdgeLock } from '../locks';
 
 /** The most a path extrusion's guide may turn inside one band of patches. A bicubic patch follows a quarter
  *  turn well; a free guide edge that turns further is cut into pieces so no band sweeps through more than this. */
@@ -60,6 +61,8 @@ export function splitGuideEdges(doc: QuadMeshDoc, splits: readonly GuideSplit[])
   }
   const cut = new Set(splits.filter(split => split.ts.length).map(split => ekey(split.from, split.to)));
   const freeEdges = (doc.freeEdges ?? []).filter(([a, b]) => !cut.has(ekey(a, b)));
+  // A locked guide stays locked piece by piece.
+  const edgeLocked = doc.edgeLocked ? { ...doc.edgeLocked } : undefined;
   let added = 0;
   for (const { from, to, ts } of splits) {
     if (!ts.length) continue;
@@ -76,11 +79,12 @@ export function splitGuideEdges(doc: QuadMeshDoc, splits: readonly GuideSplit[])
       edgeHandles[`${a}>${m}`] = sub(left[1], left[0]);
       edgeHandles[`${m}>${a}`] = sub(left[2], left[3]);
       freeEdges.push([a, m]);
+      splitEdgeLock(edgeLocked, a, to, m);
       rest = right; a = m; done = t;
     }
     edgeHandles[`${a}>${to}`] = sub(rest[1], rest[0]);
     edgeHandles[`${to}>${a}`] = sub(rest[2], rest[3]);
     freeEdges.push([a, to]);
   }
-  return { ...doc, vertices, edgeHandles, freeEdges, ...appendMeshIds(doc, added, 0) };
+  return { ...doc, vertices, edgeHandles, freeEdges, ...(edgeLocked ? { edgeLocked } : {}), ...appendMeshIds(doc, added, 0) };
 }

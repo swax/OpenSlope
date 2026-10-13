@@ -7,6 +7,7 @@ import {
   inheritQuadSurface, locateVertex, looseVertexIds,
 } from './contract';
 import { edgePointAt, splitEdgeHandlesExact } from './cut-primitives';
+import { splitEdgeLock } from '../locks';
 import { findTJunctions, remapTJunctionsForEdgeSplits, type TJunction } from '../t-junctions';
 import { readVertex, writeVertex } from '../primitives';
 
@@ -263,16 +264,19 @@ export function applySurfaceCut(doc: QuadMeshDoc, path: readonly SurfaceCutPoint
   for (let a = 0; a < beforeMesh.vertices.length; a++) for (const b of beforeAdj.neighbors[a] ?? []) {
     const h = beforeHandle(a, b); edgeHandles[`${a}>${b}`] = [h[0], h[1], h[2]];
   }
+  const edgeLocked = doc.edgeLocked ? { ...doc.edgeLocked } : undefined;
   for (const { id, edge: [a, b], t } of splitIds.values()) {
     const midpoint = readVertex(vertices, id);
     const incident = beforeAdj.edgeQuads.get(ekey(a, b)) ?? [];
     const unresolved = incident.some(cell => !plan.cells.includes(cell));
     splitEdgeHandlesExact(edgeHandles, a, b, id, t, midpoint, beforeHandle, pos, unresolved);
+    splitEdgeLock(edgeLocked, a, b, id, unresolved);
   }
   for (const { vertex, edge: [a, b], t } of resolvedJunctions.values()) {
     const midpoint = edgePointAt(a, b, t, beforeHandle, pos);
     writeVertex(vertices, vertex, midpoint);
     splitEdgeHandlesExact(edgeHandles, a, b, vertex, t, midpoint, beforeHandle, pos);
+    splitEdgeLock(edgeLocked, a, b, vertex);
   }
 
   const traversed = new Map<number, [number, number]>();
@@ -331,7 +335,7 @@ export function applySurfaceCut(doc: QuadMeshDoc, path: readonly SurfaceCutPoint
   if (!guard.ok) return { ok: false, error: guard.error! };
   const { doc: out, ...identity } = finishMeshRewrite(doc, {
     vertices, quads, quadIds, keepVertices: looseVertexIds(doc), freeEdges: doc.freeEdges,
-    tJunctions, edgeHandles, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
+    tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels,
   });
   // The cut path is stated in the rewrite's own numbering, which compaction has just moved; each point is
   // found again by the name it carries, minted ones included.

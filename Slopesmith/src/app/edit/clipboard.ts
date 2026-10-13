@@ -1,6 +1,7 @@
 import type { V3 } from '../../core/doc/types';
 import { getVertex, quadVerts } from '../../core/doc/doc-edit';
 import { meshFromDoc, quadControlPoints } from '../../core/mesh/topology';
+import { edgeLockIsSet } from '../../core/mesh/locks';
 import {
   copyMeshVertices, meshClipboardText, pasteMeshVertices, type MeshVertexClipboard,
 } from '../../core/mesh/clipboard';
@@ -86,6 +87,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
         texture: quad => doc.quadTex?.[quad],
         orientation: quad => doc.quadOrient?.[quad],
         locked: quad => doc.quadLocked?.[quad] === true,
+        edgeLocked: (a, b) => edgeLockIsSet(doc, a, b),
         labels: quad => doc.quadLabels?.[quad],
         labelDefinitions: doc.labels,
         tJunctions: doc.tJunctions,

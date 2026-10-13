@@ -80,6 +80,8 @@ export function describeRegisters(keys: readonly string[]): string {
   if (has(key => key === 'g/boardSound')) return 'Edit board sound';
   if (has(key => key === 'g/announcer')) return 'Edit announcer';
   if (has(key => key === 'course')) return 'Edit course';
+  // Locking captures the edge's current handles, so its h/ keys travel with it: name the lock first.
+  if (has(key => key.startsWith('e/') || (key.startsWith('q/') && key.endsWith('/lock')))) return 'Lock / unlock';
   if (has(key => key.startsWith('h/') || key.endsWith('/twist'))) return 'Shape / smooth terrain';
   if (has(key => key.startsWith('v/'))) return 'Move / shape terrain';
   if (has(key => key.startsWith('g/'))) return 'Edit mountain settings';

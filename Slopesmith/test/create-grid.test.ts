@@ -11,7 +11,7 @@ import { meshFromNet, starterCourse } from '../src/core/doc/mountain';
 import { seedMeshIds } from '../src/core/doc/ids';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 import {
-  appendGrid, checkManifold, gridCornersFromClicks, gridDivisionsForSize, gridLengthFixed, gridSideChain, gridWidthFixed,
+  appendGrid, checkManifold, gridCornersFromClicks, gridDivisionsForSize, gridHinge, gridLengthFixed, gridSideChain, gridWidthFixed,
   planGrid, resizeGridLength, resizeGridWidth, type GridCorner, type GridCorners, type GridOptions,
 } from '../src/core/mesh/ops';
 import { meshFromDoc, quadControlPoints } from '../src/core/mesh/topology';
@@ -179,6 +179,28 @@ const fronts = (doc: QuadMeshDoc, quads: number[]) => {
   const bent = grow(doc, [ra, rb, rc, free([-20, 0, -5])], { columns: 1, rows: 2 });
   assert.deepEqual(bent.plan.reuse.slice(0, 3), rim, 'the attached rim is still the first row');
   assert(near(bent.plan.points[2 * 3], [-20, 0, -5]), 'and the free far corner went where it was dragged');
+}
+
+// A draft drawn off an edge — one side snapped, its far side free — hinges on that side, and swung on it the grid
+// still attaches along the rim.
+{
+  const doc = quilt([[0, 0], [0, 1]]);
+  const rim = [vertexAt(doc, 0, 0), vertexAt(doc, 0, 10), vertexAt(doc, 0, 20)], c = vertexAt(doc, 10, 20);
+  const off = clicks(snapped(doc, rim[0]), snapped(doc, rim[2]), free([-12, 0, 20]));
+  assert.deepEqual(gridHinge(off), [0, 1], 'the first side snapped: it hinges there');
+  assert.deepEqual(gridHinge(clicks(free([0, 0, 30]), snapped(doc, rim[2]), snapped(doc, c))), [1, 2], 'the second side');
+  assert.deepEqual(gridHinge([off[0], free([0, 0, -9]), free([9, 0, -9]), { pos: [9, 0, 0], vertex: c }]), [3, 0],
+    'the last side, round the rim to the first corner');
+  assert.equal(gridHinge(clicks(free([0, 0, -40]), free([0, 0, -10]), free([-10, 0, -10]))), null, 'a free draft has none');
+  assert.equal(gridHinge(clicks(snapped(doc, rim[0]), free([0, 0, -20]), free([-10, 0, -20]))), null, 'nor one snapped corner');
+  assert.equal(gridHinge([off[0], free([-9, 0, 0]), { pos: [10, 0, 20], vertex: c }, free([0, 0, 20])]), null,
+    'nor two snapped across a diagonal');
+  assert.equal(gridHinge(clicks(snapped(doc, rim[0]), snapped(doc, rim[2]), snapped(doc, c))), null,
+    'nor a notch, snapped on two sides');
+  // Swung up a quarter turn about the rim, the far side stands over it.
+  const swung = grow(doc, [off[0], off[1], free([0, 12, 20]), free([0, 12, 0])], { columns: 1, rows: 2 });
+  assert.deepEqual(swung.plan.reuse.slice(0, 3), rim, 'the rim is still the first row');
+  assert(near(swung.plan.points[2 * 3], [0, 12, 0]) && near(swung.plan.points[2 * 3 + 2], [0, 12, 20]), 'over the rim');
 }
 
 // Placement: a later corner lands on the level plane through the previous one, snapped across it but never off it.

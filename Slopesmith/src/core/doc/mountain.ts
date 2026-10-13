@@ -9,7 +9,7 @@ import { frameAt, sampleSpine, spineAt, totalLength, type SpineSample } from '..
 import { add, dot, lerp, mul, norm, sub } from '../math/vec';
 import { clamp, smoothstep } from '../math/scalar';
 import { directedEdgeKey, readVertex } from '../mesh/primitives';
-import { patchNormal, type HandleDir } from '../math/bezier';
+import { nearestPatchParam, patchNormal, patchPoint, type HandleDir } from '../math/bezier';
 import {
   bilinearTwist, buildQuadMesh, docEdgeHandles, meshEdgeHandles, quadControlPoints, quadParity, meshAdjacency,
   vertexNeighbors, vertexAxes, vertexFrame, INTERIOR_CP,
@@ -245,12 +245,23 @@ export function meshFromNet(net: GridNet, meta: Omit<MountainMeta, 'kind' | 'spa
 
 // ---- sculpt brushes (surface-space dabs + stable view-plane Grab gesture) ----
 
-export type BrushOp = 'raise' | 'lower' | 'smooth' | 'flatten' | 'grab' | 'push';
+/** Raise/Lower displace straight up/down; Pull/Push displace out of/into the surface along its normal (walls,
+ *  overhangs, cornices); Nudge shoves terrain along the surface with the stroke. */
+export type BrushOp = 'raise' | 'lower' | 'pull' | 'push' | 'smooth' | 'flatten' | 'grab' | 'nudge';
 /** Brush radius bounds, metres. The size slider spans MIN–SLIDER_MAX; a typed size (or [ / ]) may go past it. */
 export const SCULPT_RADIUS_MIN = 1;
 export const SCULPT_RADIUS_SLIDER_MAX = 100;
-/** Which way raise/lower pushes: straight up, or out of the slope face (build walls / overhangs). */
-export type BrushDir = 'vertical' | 'normal';
+
+/** The radius `steps` wheel notches make (negative = wheel up = bigger): ~15% a notch, never less than a metre so a
+ *  small brush still moves, in whole metres, and never under the minimum. Like a typed size, it may pass the
+ *  slider's end. */
+export function stepBrushRadius(radius: number, steps: number): number {
+  let r = radius;
+  for (let i = 0; i < Math.abs(steps); i++) {
+    r = steps < 0 ? Math.max(Math.floor(r) + 1, Math.round(r * 1.15)) : Math.min(Math.ceil(r) - 1, Math.round(r / 1.15));
+  }
+  return Math.max(SCULPT_RADIUS_MIN, r);
+}
 /** How brush strength changes from its centre to the edge of its surface-space footprint. */
 export type BrushFalloff = 'smooth' | 'linear' | 'sharp' | 'constant';
 /** Plane used by Flatten: world-height, the exact hit tangent, or a weighted footprint-area estimate. */
@@ -270,18 +281,33 @@ export function brushFalloffWeight(falloff: BrushFalloff, normalizedDistance: nu
   return q * q; // preserve the original smooth bell
 }
 
+/** Where a profile falls to half strength, as a fraction of the radius — the inner ring that shows a brush's
+ *  shape on the surface (~1 for constant's hard edge). Read off `brushFalloffWeight` itself, so a new or
+ *  retuned profile draws right without a table to keep in step. */
+export function brushFalloffHalfRadius(falloff: BrushFalloff): number {
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (brushFalloffWeight(falloff, mid) > 0.5) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 /** Connected surface distance from a hit inside `seedQuad` to every editable corner, bounded by `radius`.
  * The control-net boundary edges plus both diagonals of each quad form a compact intrinsic-distance graph:
  * unlike the old XZ footprint it follows walls / folds in 3D and cannot jump to a disconnected surface stacked
  * over the same horizontal spot. Infinity means the corner lies outside this dab's connected radius. */
-export function surfaceBrushDistances(doc: QuadMeshDoc, center: V3, radius: number, seedQuad: number): Float64Array {
+export function surfaceBrushDistances(
+  doc: QuadMeshDoc, center: V3, radius: number, seedQuad: number, surfaceAdj?: MeshAdjacency,
+): Float64Array {
   const count = doc.vertices.length / 3;
   const distance = new Float64Array(count); distance.fill(Infinity);
   const quad = doc.quads[seedQuad];
   if (!quad?.length || radius <= 0) return distance;
 
-  const surfaceMesh = buildQuadMesh(doc.vertices, doc.quads);
-  const neighbors = meshAdjacency(surfaceMesh).neighbors.map(row => row.slice());
+  // Patch edges only: a free edge carries no surface to travel over. A caller may lend the adjacency it holds.
+  const adjacency = surfaceAdj ?? meshAdjacency(buildQuadMesh(doc.vertices, doc.quads));
+  const neighbors = adjacency.neighbors.map(row => row.slice());
   const link = (a: number, b: number) => {
     if (a === b || a < 0 || b < 0 || a >= count || b >= count) return;
     if (!neighbors[a].includes(b)) neighbors[a].push(b);
@@ -336,42 +362,172 @@ export function surfaceBrushDistances(doc: QuadMeshDoc, center: V3, radius: numb
   return distance;
 }
 
+/** The live cage one dab evaluates through: its mesh (sharing the doc's vertex array) and adjacency, built once
+ *  per dab for the hit response, vertex normals, smoothing and the area plane alike. */
+type DabMesh = { mesh: QuadMesh; adj: MeshAdjacency };
+function dabMesh(doc: QuadMeshDoc): DabMesh {
+  const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
+  return { mesh, adj: meshAdjacency(mesh) };
+}
+
+/** The patch's 16 control points exactly as the preview derives them (a model's linear cage takes the bilinear
+ *  interior, anything else its stored twist). */
+function dabControlPoints(doc: QuadMeshDoc, { mesh, adj }: DabMesh, quad: number): V3[] {
+  return quadControlPoints(mesh, docEdgeHandles(mesh, doc, adj), quad,
+    doc.linearCage ? bilinearTwist(mesh, quad) : doc.quadTwist?.[quad] ?? null);
+}
+
+/** A hit its patch's own corners carry to within this fraction of the full stroke needs no top-up. */
+const HIT_SHORTFALL_EPS = 1e-3;
+/** Finite-difference step, metres, for one corner's pull on the hit point. */
+const HIT_RESPONSE_STEP = 1e-3;
+
+/** How far the surface point at (u, v) on `quad` moves per metre each corner of that patch moves. It is measured
+ *  on the live cage, so the automatic handles re-derive from the nudged corner while authored handle / twist
+ *  offsets ride along with it — exactly how a sculpt displacement treats them — and a pole, a rim or a linear
+ *  cage needs no special case. The three axis responses are averaged, so one number serves the vertical and
+ *  normal Pull/Push, the camera-plane Grab and the tangent Nudge. Locks are ignored: a locked corner's share is
+ *  carried by its free controls (`lockedCornerControls`), and what the lock holds back is simply not moved. */
+function hitCornerResponse(doc: QuadMeshDoc, dab: DabMesh, quad: number, u: number, v: number): Map<number, number> {
+  const base = patchPoint(dabControlPoints(doc, dab, quad), u, v);
+  const response = new Map<number, number>();
+  for (const id of new Set(doc.quads[quad])) {
+    let sum = 0;
+    for (let axis = 0; axis < 3; axis++) {
+      const i = id * 3 + axis, original = doc.vertices[i];
+      doc.vertices[i] = original + HIT_RESPONSE_STEP;
+      sum += (patchPoint(dabControlPoints(doc, dab, quad), u, v)[axis] - base[axis]) / HIT_RESPONSE_STEP;
+      doc.vertices[i] = original;
+    }
+    response.set(id, sum / 3);
+  }
+  return response;
+}
+
+/**
+ * Per-corner influence of one dab, 0 outside its reach. Each corner first takes the falloff
+ * of its connected surface distance. The bicubic cage is coarse, though — a brush narrower than the patch, or a
+ * dab on an edge or a patch middle, can leave every corner of the hit patch outside the radius, and then nothing
+ * under the cursor moves (Maya's NURBS sculpt brush had the same limit: only CVs inside the radius move). So the
+ * hit patch's own corners are topped up by the least-norm move that carries the surface point under the cursor
+ * the full stroke — the solve behind Maya's Surface Editing Tool, applied per dab — capped so no corner moves
+ * further than the stroke itself (right beside a corner the cap leaves the hit a little short). A footprint
+ * whose falloff already carries the hit, as any brush that spans the patch does, keeps exactly its falloff
+ * weights.
+ *
+ * Locks are not applied here. A locked corner keeps its weight and each brush enforces protection per control
+ * point: the corner stays put while the controls it owns outside the locked patches take its share.
+ */
+export function surfaceBrushWeights(
+  doc: QuadMeshDoc, center: V3, radius: number, seedQuad: number, falloff: BrushFalloff, dab = dabMesh(doc),
+): Float64Array {
+  // The dab's adjacency is the patch-edge graph too unless free edges have joined it.
+  const distance = surfaceBrushDistances(doc, center, radius, seedQuad, doc.freeEdges?.length ? undefined : dab.adj);
+  const weights = new Float64Array(distance.length);
+  if (!doc.quads[seedQuad]?.length || radius <= 0) return weights;
+  for (let id = 0; id < distance.length; id++) {
+    if (distance[id] < radius) weights[id] = brushFalloffWeight(falloff, distance[id] / radius);
+  }
+  const [u, v] = nearestPatchParam(dabControlPoints(doc, dab, seedQuad), center);
+  const response = hitCornerResponse(doc, dab, seedQuad, u, v);
+  let shortfall = 1, norm2 = 0;
+  const open = [...response].filter(([id, r]) => r > 0 && weights[id] < 1);
+  for (const [id, r] of response) shortfall -= r * weights[id];
+  for (const [, r] of open) norm2 += r * r;
+  if (shortfall <= HIT_SHORTFALL_EPS || norm2 < 1e-12) return weights;
+  // One least-norm pass, each corner capped at full strength. What the cap holds back is dropped rather than
+  // handed to the others: near a corner, or beside a lock, re-solving would drag the far side of the patch in.
+  for (const [id, r] of open) weights[id] = Math.min(1, weights[id] + r * shortfall / norm2);
+  return weights;
+}
+
+/** The controls a weighted locked corner owns outside every locked patch, as absolute positions captured before
+ *  a stroke moves anything: its handles on unlocked edges, and its interior points in unlocked patches. A corner
+ *  shared with a locked patch must stay put, but these do not shape that patch — they are the surface beside the
+ *  lock (a cliff lip's handles and interiors back onto the snow above it), so they take the stroke instead. */
+type LockedCornerControls = {
+  handles: { from: number; to: number; pos: V3 }[];
+  interiors: { quad: number; corner: 0 | 1 | 2 | 3; owner: number; pos: V3 }[];
+};
+
+function lockedCornerControls(doc: QuadMeshDoc, dab: DabMesh, weights: Float64Array): LockedCornerControls {
+  const out: LockedCornerControls = { handles: [], interiors: [] };
+  const lockedVertices = lockedVertexSet(doc);
+  // A model's linear cage derives every handle and interior from its corners; there is nothing free to move.
+  if (doc.linearCage || ![...lockedVertices].some(id => weights[id] > 0)) return out;
+  const lockedEdges = lockedEdgeSet(doc);
+  const handle = docEdgeHandles(dab.mesh, doc, dab.adj);
+  for (const from of lockedVertices) {
+    if (!(weights[from] > 0)) continue;
+    for (const to of dab.adj.neighbors[from] ?? []) {
+      if (!edgeIsLocked(doc, from, to, lockedEdges)) out.handles.push({ from, to, pos: add(pointAt(doc.vertices, from), handle(from, to)) });
+    }
+  }
+  for (let quad = 0; quad < doc.quads.length; quad++) {
+    if (quadIsLocked(doc, quad)) continue;
+    const corners = doc.quads[quad];
+    let cp: V3[] | null = null;
+    for (let corner = 0 as 0 | 1 | 2 | 3; corner < 4; corner = (corner + 1) as 0 | 1 | 2 | 3) {
+      const owner = corners[corner];
+      if (!lockedVertices.has(owner) || !(weights[owner] > 0)) continue;
+      cp ??= dabControlPoints(doc, dab, quad);
+      out.interiors.push({ quad, corner, owner, pos: cp[INTERIOR_CP[corner]] });
+    }
+  }
+  return out;
+}
+
+/** Write one stroke's per-corner displacement over `base` positions. Unlocked corners move (their dependent
+ *  controls follow as usual); a locked corner stays put and its captured free controls move by its displacement
+ *  instead — handles first, then interiors re-expressed against the cage those handles now give. */
+function writeCornerDisplacement(
+  doc: QuadMeshDoc, dab: () => DabMesh, base: readonly number[], free: LockedCornerControls,
+  move: (id: number) => V3 | null,
+) {
+  const locked = lockedVertexSet(doc);
+  const count = Math.floor(Math.min(doc.vertices.length, base.length) / 3);
+  for (let id = 0; id < count; id++) {
+    const d = locked.has(id) ? null : move(id);
+    if (!d) continue;
+    const i = id * 3;
+    doc.vertices[i] = base[i] + d[0]; doc.vertices[i + 1] = base[i + 1] + d[1]; doc.vertices[i + 2] = base[i + 2] + d[2];
+  }
+  for (const { from, to, pos } of free.handles) {
+    meshSetHandle(doc, from, to, sub(add(pos, move(from) ?? [0, 0, 0]), pointAt(doc.vertices, from)));
+  }
+  if (!free.interiors.length) return;
+  const { mesh, adj } = dab();
+  const handle = docEdgeHandles(mesh, doc, adj); // read after the handle writes above
+  for (const { quad, corner, owner, pos } of free.interiors) {
+    const zeroTwist = quadControlPoints(mesh, handle, quad)[INTERIOR_CP[corner]];
+    meshSetTwist(doc, quad, corner, sub(add(pos, move(owner) ?? [0, 0, 0]), zeroTwist));
+  }
+}
+
 /** Frozen source positions + influence weights for one Grab gesture. The footprint is captured on press so
  * dragging a folded surface cannot change membership or accumulate error as the live preview rebuilds. */
-export type GrabBrushState = { vertices: number[]; weights: Float64Array };
+export type GrabBrushState = { vertices: number[]; weights: Float64Array; free: LockedCornerControls };
 
 export function createGrabBrushState(
   doc: QuadMeshDoc, center: V3, radius: number, seedQuad: number, falloff: BrushFalloff,
 ): GrabBrushState {
-  const distance = surfaceBrushDistances(doc, center, radius, seedQuad);
-  const weights = new Float64Array(distance.length);
-  const locked = lockedVertexSet(doc);
-  if (radius > 0) for (let id = 0; id < distance.length; id++) {
-    if (!locked.has(id) && distance[id] < radius) weights[id] = brushFalloffWeight(falloff, distance[id] / radius);
-  }
-  return { vertices: doc.vertices.slice(), weights };
+  const dab = dabMesh(doc);
+  const weights = surfaceBrushWeights(doc, center, radius, seedQuad, falloff, dab);
+  return { vertices: doc.vertices.slice(), weights, free: lockedCornerControls(doc, dab, weights) };
 }
 
 /** Move a captured Grab footprint by the total pointer displacement. Every update evaluates from the press
  * snapshot rather than adding frame deltas, keeping the result independent of pointer-event frequency. */
 export function applyGrabBrush(doc: QuadMeshDoc, state: GrabBrushState, delta: V3) {
-  const count = Math.floor(Math.min(doc.vertices.length, state.vertices.length) / 3);
-  const locked = lockedVertexSet(doc);
-  for (let id = 0; id < count; id++) {
-    const w = state.weights[id];
-    if (w <= 0 || locked.has(id)) continue;
-    const i = id * 3;
-    doc.vertices[i] = state.vertices[i] + delta[0] * w;
-    doc.vertices[i + 1] = state.vertices[i + 1] + delta[1] * w;
-    doc.vertices[i + 2] = state.vertices[i + 2] + delta[2] * w;
-  }
+  writeCornerDisplacement(doc, () => dabMesh(doc), state.vertices, state.free,
+    id => state.weights[id] > 0 ? mul(delta, state.weights[id]) : null);
 }
 
 /** Shove the live connected footprint along one pointer-motion segment. Unlike Grab, membership is sampled
  * anew at every hit, so a stroke continuously picks up terrain as it travels. Motion is projected onto the
  * current hit tangent before falloff is applied; authored handles/twists stay as offsets and follow their
  * owning corners without losing the patch's finer Bezier shape. */
-export function applyPushBrush(
+export function applyNudgeBrush(
   doc: QuadMeshDoc, center: V3, radius: number, seedQuad: number, falloff: BrushFalloff,
   strokeDelta: V3, hitNormal: V3, amount = 1,
 ) {
@@ -379,34 +535,23 @@ export function applyPushBrush(
   const tangentDelta = sub(strokeDelta, mul(n, dot(strokeDelta, n)));
   const scale = Math.max(0, amount);
   if (radius <= 0 || scale <= 0 || Math.hypot(...tangentDelta) < 1e-12) return;
-  const distance = surfaceBrushDistances(doc, center, radius, seedQuad);
-  const locked = lockedVertexSet(doc);
-  for (let id = 0; id * 3 + 2 < doc.vertices.length; id++) {
-    const d = distance[id];
-    if (d >= radius || locked.has(id)) continue;
-    const w = scale * brushFalloffWeight(falloff, d / radius);
-    if (w <= 0) continue;
-    const i = id * 3;
-    doc.vertices[i] += tangentDelta[0] * w;
-    doc.vertices[i + 1] += tangentDelta[1] * w;
-    doc.vertices[i + 2] += tangentDelta[2] * w;
-  }
+  const dab = dabMesh(doc);
+  const weights = surfaceBrushWeights(doc, center, radius, seedQuad, falloff, dab);
+  writeCornerDisplacement(doc, () => dab, doc.vertices, lockedCornerControls(doc, dab, weights),
+    id => weights[id] > 0 ? mul(tangentDelta, scale * weights[id]) : null);
 }
 
 function flattenPlaneFromFootprint(
-  doc: QuadMeshDoc, center: V3, radius: number, falloff: BrushFalloff, mode: FlattenMode, hitNormal: V3,
-  surfaceDistance: Float64Array, adj: MeshAdjacency | null,
+  doc: QuadMeshDoc, center: V3, mode: FlattenMode, hitNormal: V3, weights: Float64Array, adj: MeshAdjacency,
 ): FlattenBrushPlane {
   let point = center;
   let normal: V3 = mode === 'height' ? [0, 1, 0] : norm(hitNormal);
-  if (mode !== 'area' || !adj) return { point, normal };
+  if (mode !== 'area') return { point, normal };
 
   const pos = doc.vertices;
   let px = 0, py = 0, pz = 0, nx = 0, ny = 0, nz = 0, total = 0;
   for (let id = 0; id * 3 + 2 < pos.length; id++) {
-    const d = surfaceDistance[id];
-    if (d >= radius) continue;
-    const w = brushFalloffWeight(falloff, d / radius);
+    const w = weights[id];
     if (w <= 0) continue;
     const i = id * 3;
     px += pos[i] * w; py += pos[i + 1] * w; pz += pos[i + 2] * w; total += w;
@@ -424,9 +569,9 @@ export function createFlattenBrushPlane(
   doc: QuadMeshDoc, center: V3, radius: number, seedQuad: number, falloff: BrushFalloff,
   mode: FlattenMode, hitNormal: V3,
 ): FlattenBrushPlane {
-  const distance = surfaceBrushDistances(doc, center, radius, seedQuad);
-  const adj = mode === 'area' ? meshAdjacency(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges)) : null;
-  return flattenPlaneFromFootprint(doc, center, radius, falloff, mode, hitNormal, distance, adj);
+  const dab = dabMesh(doc);
+  const weights = surfaceBrushWeights(doc, center, radius, seedQuad, falloff, dab);
+  return flattenPlaneFromFootprint(doc, center, mode, hitNormal, weights, dab.adj);
 }
 
 const pointAt = readVertex;
@@ -439,28 +584,21 @@ function projectControlPoint(point: V3, plane: FlattenBrushPlane, factor: number
 /** Flatten the effective bicubic cage, not just its four shared corners. Boundary controls are written once
  * through their directed-edge identity and interiors are written after corners/handles, so the document's
  * dependency representation still reconstructs the exact projected 16-point patch. */
-function flattenControlCage(
-  doc: QuadMeshDoc, surfaceDistance: Float64Array, radius: number, falloff: BrushFalloff,
-  plane: FlattenBrushPlane, amount: number,
-) {
+function flattenControlCage(doc: QuadMeshDoc, weights: Float64Array, plane: FlattenBrushPlane, amount: number) {
   const beforeMesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
   const beforeHandle = meshEdgeHandles(beforeMesh, doc.edgeHandles);
-  const lockedVertices = lockedVertexSet(doc);
-  const factor = (vertex: number) => {
-    if (lockedVertices.has(vertex)) return 0;
-    const d = surfaceDistance[vertex];
-    return d < radius ? Math.min(1, amount * brushFalloffWeight(falloff, d / radius)) : 0;
-  };
+  const lockedVertices = lockedVertexSet(doc), lockedEdges = lockedEdgeSet(doc);
+  const factor = (vertex: number) => Math.min(1, amount * weights[vertex]);
 
   const vertices: { id: number; pos: V3 }[] = [];
   for (let id = 0; id < beforeMesh.vertexCount; id++) {
     const f = factor(id);
-    if (f > 0) vertices.push({ id, pos: projectControlPoint(pointAt(doc.vertices, id), plane, f) });
+    if (f > 0 && !lockedVertices.has(id)) vertices.push({ id, pos: projectControlPoint(pointAt(doc.vertices, id), plane, f) });
   }
 
   const edges = new Map<string, { from: number; to: number; pos: V3 }>();
   const addEdge = (from: number, to: number) => {
-    if (from === to || factor(from) <= 0) return;
+    if (from === to || factor(from) <= 0 || edgeIsLocked(doc, from, to, lockedEdges)) return;
     const key = `${from}>${to}`;
     if (edges.has(key)) return;
     const control = add(pointAt(doc.vertices, from), beforeHandle(from, to));
@@ -474,6 +612,7 @@ function flattenControlCage(
 
   const interiors: { quad: number; corner: 0 | 1 | 2 | 3; pos: V3 }[] = [];
   for (let quad = 0; quad < doc.quads.length; quad++) {
+    if (quadIsLocked(doc, quad)) continue;
     const corners = doc.quads[quad];
     const cp = quadControlPoints(beforeMesh, beforeHandle, quad, doc.quadTwist?.[quad] ?? null);
     for (let corner = 0 as 0 | 1 | 2 | 3; corner < 4; corner = (corner + 1) as 0 | 1 | 2 | 3) {
@@ -507,16 +646,9 @@ function flattenControlCage(
  *
  * The creases under the brush are reached through the mesh's own adjacency rather than by taking their keys
  * apart: a handle key is only ever written, so a crease never depends on the shape of its own key (docs/039). */
-function relaxSmoothDetail(
-  doc: QuadMeshDoc, surfaceDistance: Float64Array, radius: number, falloff: BrushFalloff, amount: number,
-  adj: MeshAdjacency,
-) {
-  const lockedVertices = lockedVertexSet(doc), lockedEdges = lockedEdgeSet(doc);
-  const smoothFactor = (vertex: number) => {
-    if (lockedVertices.has(vertex)) return 0;
-    const d = surfaceDistance[vertex];
-    return d < radius ? Math.min(1, amount * brushFalloffWeight(falloff, d / radius)) : 0;
-  };
+function relaxSmoothDetail(doc: QuadMeshDoc, weights: Float64Array, amount: number, adj: MeshAdjacency) {
+  const lockedEdges = lockedEdgeSet(doc);
+  const smoothFactor = (vertex: number) => Math.min(1, amount * weights[vertex]);
   if (doc.edgeHandles) {
     const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
     const automatic = meshEdgeHandles(mesh);
@@ -551,42 +683,37 @@ function relaxSmoothDetail(
 
 /**
  * Apply one brush dab to the authored control net at surface `center`, seeded by the tessellated hit's quad.
- * raise/lower push each corner under the
- * brush by `strength·falloff` - vertically, or along its local surface normal so the brush works on a
- * wall face and can pull an overhang. smooth relaxes corners toward their 3D neighbour average (folds
- * included); flatten projects toward a horizontal, hit-tangent, or footprint-area plane.
- * `surfaceBrushDistances` supplies the connected 3D footprint, so walls and overhangs use real surface travel
- * instead of horizontal projection.
- * Raise/lower remain broad corner-shape operations (dependent controls follow while authored detail offsets
+ * raise/lower move each corner under the brush by `strength·falloff` vertically; pull/push move it out of or
+ * into the surface along its own normal, so the brush works on a wall face and can pull an overhang. smooth
+ * relaxes corners toward their 3D neighbour average (folds included); flatten projects toward a horizontal,
+ * hit-tangent, or footprint-area plane.
+ * `surfaceBrushWeights` supplies the connected 3D footprint, so walls and overhangs use real surface travel
+ * instead of horizontal projection, and tops up the hit patch's corners so a dab between them still moves the
+ * surface under the cursor.
+ * Raise/lower/pull/push remain broad corner-shape operations (dependent controls follow while authored detail offsets
  * survive); Flatten projects the effective 16-point cages; Smooth relaxes corners plus explicit detail.
  * Normals + smoothing come from the mesh's own adjacency, so a pole is no special case.
  */
 export function applyBrush(
-  doc: QuadMeshDoc, op: BrushOp, center: V3, radius: number, strength: number, dir: BrushDir = 'vertical',
-  seedQuad = -1, falloff: BrushFalloff = 'smooth', flattenMode: FlattenMode = 'height',
+  doc: QuadMeshDoc, op: BrushOp, center: V3, radius: number, strength: number, seedQuad = -1, falloff: BrushFalloff = 'smooth', flattenMode: FlattenMode = 'height',
   hitNormal: V3 = [0, 1, 0], lockedFlattenPlane: FlattenBrushPlane | null = null,
   smoothAmount = 0.5, flattenAmount = 0.35,
 ) {
-  if (op === 'grab' || op === 'push') return; // Gesture brushes use their dedicated displacement functions.
+  if (op === 'grab' || op === 'nudge') return; // Gesture brushes use their dedicated displacement functions.
   const pos = doc.vertices;
   const lockedVertices = lockedVertexSet(doc);
-  const surfaceDistance = surfaceBrushDistances(doc, center, radius, seedQuad);
-  const needsAdj = op === 'smooth' || (dir === 'normal' && (op === 'raise' || op === 'lower'))
-    || (op === 'flatten' && flattenMode === 'area');
-  const adj = needsAdj ? meshAdjacency(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges)) : null;
-  const flattenPlane = lockedFlattenPlane ?? (op === 'flatten'
-    ? flattenPlaneFromFootprint(doc, center, radius, falloff, flattenMode, hitNormal, surfaceDistance, adj)
-    : { point: center, normal: [0, 1, 0] as V3 });
+  const dab = dabMesh(doc), adj = dab.adj;
+  const weights = surfaceBrushWeights(doc, center, radius, seedQuad, falloff, dab);
   if (op === 'flatten') {
-    flattenControlCage(doc, surfaceDistance, radius, falloff, flattenPlane, Math.max(0, flattenAmount));
+    const plane = lockedFlattenPlane ?? flattenPlaneFromFootprint(doc, center, flattenMode, hitNormal, weights, adj);
+    flattenControlCage(doc, weights, plane, Math.max(0, flattenAmount));
     return;
   }
-  if (op === 'smooth' && adj) {
+  if (op === 'smooth') {
     const before = pos.slice();
     for (let id = 0; id * 3 + 2 < pos.length; id++) {
-      const d = surfaceDistance[id];
-      if (d >= radius || lockedVertices.has(id)) continue;
-      const w = brushFalloffWeight(falloff, d / radius);
+      const w = weights[id];
+      if (w <= 0 || lockedVertices.has(id)) continue;
       let sx = 0, sy = 0, sz = 0, count = 0;
       for (const nb of vertexNeighbors(adj, id)) {
         sx += before[nb * 3]; sy += before[nb * 3 + 1]; sz += before[nb * 3 + 2]; count++;
@@ -597,24 +724,25 @@ export function applyBrush(
       pos[i + 1] += (sy / count - before[i + 1]) * f;
       pos[i + 2] += (sz / count - before[i + 2]) * f;
     }
-    relaxSmoothDetail(doc, surfaceDistance, radius, falloff, Math.max(0, smoothAmount), adj);
+    relaxSmoothDetail(doc, weights, Math.max(0, smoothAmount), adj);
     return;
   }
-  for (let id = 0; id * 3 + 2 < pos.length; id++) {
-    const i = id * 3;
-    const d = surfaceDistance[id];
-    if (d >= radius || lockedVertices.has(id)) continue;
-    const w = brushFalloffWeight(falloff, d / radius);
-    if (op === 'raise' || op === 'lower') {
-      const s = (op === 'raise' ? 1 : -1) * strength * w;
-      if (dir === 'normal' && adj) {
-        const n = vertexFrame(pos, adj, id).n;
-        pos[i] += n[0] * s; pos[i + 1] += n[1] * s; pos[i + 2] += n[2] * s;
-      } else {
-        pos[i + 1] += s;
-      }
-    }
-  }
+  const sign = op === 'raise' || op === 'pull' ? strength : -strength;
+  const alongNormal = op === 'pull' || op === 'push';
+  // A vertex frame's normal is only defined up to sign, and its skyward convention means nothing on a wall —
+  // there a hair of tilt decides it, so neighbouring corners can point opposite ways. Each is turned to the side
+  // the stroke works from (`hitNormal`, the face under the cursor turned to the viewer): Pull comes out toward
+  // it, Push goes in away from it.
+  const facing = norm(hitNormal);
+  const step = (id: number): V3 | null => {
+    if (!(weights[id] > 0)) return null;
+    if (!alongNormal) return [0, sign * weights[id], 0];
+    const n = vertexFrame(pos, adj, id).n;
+    return mul(dot(n, facing) < 0 ? mul(n, -1) : n, sign * weights[id]);
+  };
+  // Directions come from the surface as it stands before the dab, not from corners this dab already moved.
+  const steps = Array.from({ length: pos.length / 3 }, (_, id) => step(id));
+  writeCornerDisplacement(doc, () => dab, pos.slice(), lockedCornerControls(doc, dab, weights), id => steps[id]);
 }
 
 // ---- tangent handles & creases: directed-edge overrides on the mesh (pull a handle; crease for a kink) ----
