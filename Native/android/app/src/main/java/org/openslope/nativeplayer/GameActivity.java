@@ -14,6 +14,7 @@ public final class GameActivity extends NativeActivity {
     public String getRunMode() { String mode=getIntent().getStringExtra("run_mode");return mode==null?"freeride":mode; }
     public double getRenderScale(){return getIntent().getDoubleExtra("render_scale",1.0);}
     public int getMsaa(){return getIntent().getIntExtra("msaa",4);}
+    public boolean getHeadSteering(){return getIntent().getBooleanExtra("head_steering",false);}
     public void reportError(String message) { error = message; runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()); }
     @Override public void finish() {
         if (!returning) {

@@ -16,9 +16,9 @@ The importer currently converts terrain, textures, lightmaps, static prop geomet
 AIP/SOP course paths, collision proxies/physics bodies, configured sound/music assets and provenance. The player renders textured
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
 authored prop contacts for bounce, ride surfaces and pass-through events. Animated crash recovery,
-analytic rails, riding effects and the visible stick figure are implemented. Quest starts on foot
+analytic rails, timed runs, spin/flip/rail scoring and the visible stick figure are implemented. Quest starts on foot
 beside the board, with walking/jumping and nearby mounting. Live prop behavior, executable audio
-resolvers, full tricks/scoring, races and multiplayer remain later stages. See
+resolvers, grabs, pickups/uber tiers, AI races and multiplayer remain later stages. See
 [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 ## Build and try on Windows
@@ -46,6 +46,11 @@ sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
 OpenXR also defaults to 4x MSAA. The Quest launcher offers 100%, 125% and 150% of
 the runtime's recommended eye dimensions, plus Off/2x/4x edge smoothing. Start at
 100%/4x; higher resolution increases attachment memory and GPU cost.
+Quest's **Riding steering** selector offers Stick only or Head + stick override.
+Head mode uses look-to-carve with a neutral zone; the stick takes priority when
+deflected. See [VR steering](docs/vr-steering.md) for controls, view carry and
+remaining headset validation. Timed runs now bank spin/flip and rail tricks and
+spend/refill boost; see [trick scoring](docs/trick-scoring.md) for exact scope.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

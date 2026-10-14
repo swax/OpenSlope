@@ -14,6 +14,7 @@ Replay Replay::load(const std::filesystem::path& path){
     const auto& rows=doc.at("Steps");if(!rows.is_array()||rows.empty()||rows.size()>10000)throw std::runtime_error("Invalid replay step count");std::size_t total=0;
     for(const auto& row:rows){ReplayStep step;step.ticks=row.at("Ticks");total+=step.ticks;if(!step.ticks||total>216000)throw std::runtime_error("Replay duration exceeds one hour");
         step.input={row.value("Steer",0.),row.value("Boost",false),row.value("Reset",false),row.value("Jump",false),row.value("Posture",0.),row.value("RailExit",false),row.value("Mount",false),row.contains("WalkForward")?vector(row.at("WalkForward")):Vec3{},row.contains("RoomOffset")?vector(row.at("RoomOffset")):Vec3{}};if(!std::isfinite(step.input.steer)||!std::isfinite(step.input.posture)||std::abs(step.input.steer)>1||std::abs(step.input.posture)>1)throw std::runtime_error("Invalid replay control range");step.input.run_restart=row.value("RunRestart",false);result.steps.push_back(step);
+        if(row.contains("VR")){const auto& vr=row.at("VR");step.input.vr={true,vr.value("Head",false),vr.value("Stick",false),vr.contains("Gaze")?vector(vr.at("Gaze")):Vec3{},vr.value("Spin",0.)};if(!std::isfinite(step.input.vr.spin)||std::abs(step.input.vr.spin)>1)throw std::runtime_error("Invalid VR replay spin");result.steps.back()=step;}
     }return result;
 }
 void Replay::run(Player& player,const std::function<void()>& after_tick) const {

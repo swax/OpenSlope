@@ -87,3 +87,10 @@ choices. Clean 400 still governs scene lighting, depth and transparent ordering;
 separate eye placement buffers preserve these semantics during deferred submission.
 Neither MSAA nor render scale substitutes for the outstanding terrain LOD/stitching
 work. See graphics-quality.md for synthetic and live Quest evidence.
+
+Spin/flip/rail style, bank/loss and energy gates use clean 360/390. Rounded base
+energy and quarter-bar starts are the first-party play profile; character-stat,
+flip divisor, airborne bleed and uber tiers remain explicit in trick-scoring.md.
+VR head/stick selection and seat carry are application controls from first-party
+behavioral tests, outside the original game's recovered inputs. They retain the
+shared 330 carve and desktop 350 rail paths; see vr-steering.md.

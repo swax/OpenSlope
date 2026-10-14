@@ -9,6 +9,7 @@ struct XrPlatform {
     std::function<bool()> process_events;
     double render_scale=1.0;
     unsigned msaa=4;
+    bool head_steering=false;
 };
 int run_openxr(Player& player,const XrPlatform& platform={},double seconds=0);
 }

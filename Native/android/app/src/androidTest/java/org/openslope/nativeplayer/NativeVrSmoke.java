@@ -41,6 +41,7 @@ public final class NativeVrSmoke {
             intent.putExtra("map_path", map.getAbsolutePath());intent.putExtra("map_cache",map.getName().startsWith("play-vr-smoke-"));
             intent.putExtra("run_mode",arguments==null?"freeride":arguments.getString("mode","freeride"));
             intent.putExtra("render_scale",Double.parseDouble(arguments==null?"1.0":arguments.getString("scale","1.0")));intent.putExtra("msaa",Integer.parseInt(arguments==null?"4":arguments.getString("msaa","4")));
+            intent.putExtra("head_steering",arguments!=null&&Boolean.parseBoolean(arguments.getString("head","false")));
             activity = (GameActivity) host.startActivitySync(intent);
             Thread.sleep(seconds * 1000L);
             if (activity.isFinishing()) throw new IllegalStateException("VR activity ended during smoke check");

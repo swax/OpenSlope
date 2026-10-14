@@ -24,7 +24,7 @@ public final class LauncherActivity extends Activity {
     private Button chooseFolder, useLocal, importIso, refresh, cancel;
     private MapLibrary library;
     private Spinner runMode;
-    private Spinner renderScale,antialiasing;
+    private Spinner renderScale,antialiasing,steeringMode;
     private native String nativeCourses(int descriptor, long length);
     private native void nativeExtract(int descriptor, long length, String course, String output);
     private native void nativeValidate(String path);
@@ -39,6 +39,7 @@ public final class LauncherActivity extends Activity {
         runMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){getPreferences(0).edit().putString("run_mode",new String[]{"freeride","race","showoff"}[position]).apply();}});
         renderScale=choice("VR resolution",new String[]{"100% (runtime recommendation)","125% (sharper)","150% (sharpest)"},"render_scale",0);
         antialiasing=choice("Edge smoothing",new String[]{"Off","2x","4x"},"antialiasing",2);
+        steeringMode=choice("Riding steering",new String[]{"Stick only","Head + stick override"},"steering_mode",0);
         chooseFolder = button("Choose Maps folder", this::pickMaps);
         useLocal = button("Use app Maps folder", () -> { getPreferences(0).edit().remove("maps_tree").apply(); loadLibrary(); refreshMaps(); });
         importIso = button("Import SSX Tricky ISO", this::pickIso);
@@ -61,7 +62,7 @@ public final class LauncherActivity extends Activity {
     private void state(boolean importing) {
         busy = importing; if (importing) cancelled = false;
         runMode.setEnabled(!importing);
-        renderScale.setEnabled(!importing);antialiasing.setEnabled(!importing);
+        renderScale.setEnabled(!importing);antialiasing.setEnabled(!importing);steeringMode.setEnabled(!importing);
         chooseFolder.setEnabled(!importing); useLocal.setEnabled(!importing); importIso.setEnabled(!importing); refresh.setEnabled(!importing);
         cancel.setVisibility(importing ? View.VISIBLE : View.GONE); cancel.setEnabled(importing);
         for (int i = 0; i < courses.getChildCount(); ++i) courses.getChildAt(i).setEnabled(!importing);
@@ -147,11 +148,12 @@ public final class LauncherActivity extends Activity {
     private void play(MapLibrary.Entry map) {
         final String mode=new String[]{"freeride","race","showoff"}[runMode.getSelectedItemPosition()];
         final double scale=1+renderScale.getSelectedItemPosition()*.25;final int samples=1<<antialiasing.getSelectedItemPosition();
+        final boolean headSteering=steeringMode.getSelectedItemPosition()==1;
         state(true); setStatus("Loading " + map.name + "…"); final MapLibrary selected = library;
         worker.execute(() -> {
             File prepared = null;
             try { prepared = selected.prepare(map, getCacheDir(), this::checkCancelled); nativeValidate(prepared.getAbsolutePath()); checkCancelled(); final File path = prepared;
-                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus("Loading cancelled."); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_cache", selected.tree != null);intent.putExtra("run_mode",mode);intent.putExtra("render_scale",scale);intent.putExtra("msaa",samples); startActivity(intent); finishAndRemoveTask(); });
+                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus("Loading cancelled."); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_cache", selected.tree != null);intent.putExtra("run_mode",mode);intent.putExtra("render_scale",scale);intent.putExtra("msaa",samples);intent.putExtra("head_steering",headSteering); startActivity(intent); finishAndRemoveTask(); });
             } catch (Exception e) { if (prepared != null && selected.tree != null) MapLibrary.deleteLocal(prepared); ui(() -> { state(false); failure(e); }); }
         });
     }

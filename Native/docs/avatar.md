@@ -81,3 +81,10 @@ API authority: [Meta native body tracking](https://developers.meta.com/vr/docume
 Clean Trailmap 300, 340, 350, 370 and 400 continue to establish gameplay state,
 pose/camera separation and depth behavior; the user-directed avatar/tracking
 presentation is explicitly an application choice.
+
+Build 0.21.0 subsequently records focused Quest ALASKA rendering, actual high
+fidelity and live full-body poses, with fallback transitions; see graphics-quality.md.
+Build 0.22.0 adds a right-controller score/boost panel. 84 actual Vulkan checks
+verify body/controllers, numeric clock/score, green bank/red loss pixels and
+stereo/target formats. Worn-headset readability and the new steering controls
+remain separate device checks; see trick-scoring.md and vr-steering.md.

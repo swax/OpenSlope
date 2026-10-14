@@ -18,6 +18,7 @@ Vec3 Player::walk_move(Vec3 start,Vec3 destination,Vec3& velocity,double radius,
     }return destination;
 }
 void Player::place_foot(Vec3 position,Vec3 forward,Vec3 velocity){
+    score_.lose(ScoreLoss::BoardReleased);rider_.view_yaw=0;
     on_foot_=true;++placement_serial_;effects_.reset();get_up_.stop();settled_=0;rider_.position=rider_.previous_position=position;rider_.velocity=velocity;
     rider_.forward=flight_heading_=normalized(project(forward,{0,1,0}),{0,0,-1});rider_.board_up=rider_.smoothed_up={0,1,0};rider_.normal={0,1,0};
     rider_.motion=Motion::OnFoot;rider_.control=Control::OnFoot;rider_.grounded=false;rider_.ground_instance.reset();rider_.lean=rider_.slide=rider_.lift=rider_.crouch=0;rider_.flip_degrees=rider_.spin_degrees=rider_.charge=rider_.release_remaining=rider_.release_snapshot=0;rider_.rail_spline.reset();rider_.rail_spin=rider_.rail_spin_rate=0;rider_.crash_cause=CrashCause::None;rider_.recovery_height=0;

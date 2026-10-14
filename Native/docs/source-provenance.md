@@ -89,3 +89,10 @@ authored platform work using standard CMake, Vulkan and OpenXR contracts. They
 preserve clean 400's depth, lighting and draw-order authority. Synthetic queued-eye
 fixtures compare rendered pixels without consulting another renderer's implementation.
 See graphics-quality.md for the device measurements and remaining limits.
+
+Native trick scoring is independently authored from clean 360/390 and behavioral
+examples in the first-party score tests. Its rounded energy-fill profile and
+unimplemented recovered fields are explicit in trick-scoring.md. VR controls use
+first-party public head-steer/XR tests and documented tuning values, with new
+fixed-tick input/seat integration; see vr-steering.md. No other runtime or decoder
+source supplies these implementations.

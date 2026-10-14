@@ -6,12 +6,14 @@
 #include "animation.hpp"
 #include "rails.hpp"
 #include "course_run.hpp"
+#include "score.hpp"
+#include "vr_controls.hpp"
 #include <deque>
 #include <map>
 #include <functional>
 
 namespace openslope {
-struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{};bool run_restart=false; }; // Left steer; positive posture is tuck/forward flip.
+struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{};bool run_restart=false;VrInput vr{}; }; // Left steer; positive posture is tuck/forward flip.
 enum class Motion {Air=1,Ground=2,Rail=3,Wipeout=5,RecoverContact=6,OnFoot=100};
 enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20,OnFoot=100};
 enum class CrashCause {None,PropImpact,Landing,Unrideable};
@@ -27,6 +29,7 @@ struct Rider {
     Vec3 position,previous_position,velocity,forward{0,0,-1},normal{0,1,0},smoothed_up{0,1,0},board_up{0,1,0};
     double lean{},slide{},bog{},budget{},lift{},speed_cap{},contact_error{};
     double charge{},release_remaining{},release_snapshot{},flip_degrees{},spin_degrees{},air_time{},crouch{},landing_scale=1;
+    double view_yaw=0;
     int lead=1;unsigned launches{},landings{};Motion motion=Motion::Air;Control control=Control::Air;
     int surface=1;
     bool grounded=false;
@@ -46,7 +49,7 @@ struct ContactEvent {WorldContact contact;ContactPhase phase=ContactPhase::Begin
 class Player {
 public:
     explicit Player(Terrain terrain,PlayTuning tuning={});
-    void reset();
+    void reset(bool manual=false);
     void tick(const RideInput& input);
     void advance(double seconds,const RideInput& input);
     Vec3 render_position() const;
@@ -71,6 +74,8 @@ public:
     void configure_run(RunMode mode);
     void restart_run();
     const CourseRun& course_run() const {return run_;}
+    TrickScore& scoring(){return score_;}
+    const TrickScore& scoring() const {return score_;}
     void start_on_foot();
     bool on_foot() const {return on_foot_;}
     bool interact_board(Vec3 room_offset={});
@@ -84,6 +89,9 @@ private:
     CollisionWorld world_;
     Rails rails_;
     CourseRun run_;
+    TrickScore score_;
+    bool score_started_=false;
+    double held_boost_=0;
     RideContract contract_;
     FixedClock clock_;
     Rider rider_;
