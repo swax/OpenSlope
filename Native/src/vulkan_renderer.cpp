@@ -99,6 +99,7 @@ VulkanRenderer::~VulkanRenderer() {
     destroy_buffer(visible_indices_);
     destroy_buffer(sprite_vertices_);
     destroy_buffer(wake_vertices_);
+    destroy_buffer(sheet_vertices_);
 }
 void VulkanRenderer::clear_targets() {
     if(targets_.empty()&&!pass_)return;vkDeviceWaitIdle(context_.device);
@@ -190,7 +191,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
         vk_check(vkCreateFramebuffer(context_.device,&framebuffer,nullptr,&target.framebuffer),"Create framebuffer");
     }
 }
-void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake) {
+void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet) {
     const auto started=std::chrono::steady_clock::now();stats_={};
     vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Wait for previous frame");vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
     const auto cull_start=std::chrono::steady_clock::now();terrain_draws_.clear();packed_indices_.clear();
@@ -230,6 +231,13 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
         if(wake_mesh_.size()>wake_capacity_){destroy_buffer(wake_vertices_);wake_capacity_=std::min(std::size_t(594),std::max(wake_mesh_.size(),wake_capacity_*2));wake_vertices_=create_buffer(wake_capacity_*sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,nullptr);}
         void* mapped;vk_check(vkMapMemory(context_.device,wake_vertices_.memory,0,wake_mesh_.size()*sizeof(Vertex),0,&mapped),"Map wake vertices");std::memcpy(mapped,wake_mesh_.data(),wake_mesh_.size()*sizeof(Vertex));vkUnmapMemory(context_.device,wake_vertices_.memory);stats_.wake_segments=unsigned(wake.size()/6);
     }
+    sheet_mesh_.clear();
+    if(scene_->sheet_set_&&!sheet.empty()){
+        if(sheet.size()>2286||sheet.size()%18)throw std::runtime_error("Spray sheet submission exceeds its column limit");sheet_mesh_.reserve(sheet.size());
+        for(const auto& point:sheet){if(!finite(point.position)||!std::isfinite(point.u)||!std::isfinite(point.v)||!std::isfinite(point.alpha)||point.alpha<0||point.alpha>1)throw std::runtime_error("Invalid spray sheet submission");Vertex v{float(point.position.x),float(point.position.y),float(point.position.z),1,1,1};v.s=point.u;v.t=point.v;v.ls=point.alpha;sheet_mesh_.push_back(v);}
+        if(sheet_mesh_.size()>sheet_capacity_){destroy_buffer(sheet_vertices_);sheet_capacity_=std::min(std::size_t(2286),std::max(sheet_mesh_.size(),sheet_capacity_*2));sheet_vertices_=create_buffer(sheet_capacity_*sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,nullptr);}
+        void* mapped;vk_check(vkMapMemory(context_.device,sheet_vertices_.memory,0,sheet_mesh_.size()*sizeof(Vertex),0,&mapped),"Map spray sheet vertices");std::memcpy(mapped,sheet_mesh_.data(),sheet_mesh_.size()*sizeof(Vertex));vkUnmapMemory(context_.device,sheet_vertices_.memory);stats_.sheet_segments=unsigned(sheet.size()/18);
+    }
     struct VisibleDraw {std::size_t part;std::uint32_t first,count;};std::vector<VisibleDraw> prop_draws;std::vector<PropPose> poses;
     std::map<std::pair<bool,std::size_t>,std::vector<std::size_t>> groups;
     struct Translucent {std::size_t part,instance;int depth;};std::vector<Translucent> transparent;
@@ -264,6 +272,7 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
         for(int layer=0;layer<2;++layer){push.options[3]=layer;vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDraw(command_,std::uint32_t(wake_mesh_.size()),1,0,0);++stats_.wake_draws;}push.options[3]=0;
     }
     if(!sprite_mesh.empty()){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,sprite_pipeline_);vkCmdBindVertexBuffers(command_,0,1,&sprite_vertices_.buffer,&offset);push.mvp=camera;push.options[0]=4;push.options[2]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->effect_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDraw(command_,std::uint32_t(sprite_mesh.size()),1,0,0);}
+    if(!sheet_mesh_.empty()){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,sprite_pipeline_);vkCmdBindVertexBuffers(command_,0,1,&sheet_vertices_.buffer,&offset);push.mvp=camera;push.options[0]=6;push.options[2]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->sheet_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDraw(command_,std::uint32_t(sheet_mesh_.size()),1,0,0);++stats_.sheet_draws;}
     vkCmdEndRenderPass(command_);
     if(final_layout!=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};barrier.srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;barrier.dstAccessMask=final_layout==VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL?VK_ACCESS_TRANSFER_READ_BIT:0;

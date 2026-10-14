@@ -66,7 +66,7 @@ python Native/tests/desktop_wake_test.py temp/native/Release/openslope_player.ex
 They compare enabled/disabled wake captures for straight/carved riding, powder,
 ice, rock and a raised rideable prop, while checking unchanged rider state.
 Quest build/cache cases compile; headset execution remains pending. Surface
-spray, the four-rail sheet, sparks, airborne puffs, boost/debris/pickup effects,
+spray chunks, exact sheet bindings, sparks, airborne puffs, boost/debris/pickup effects,
 authored emitter lifecycle and the rest of desktop-parity.md remain outstanding.
 
 A local 180-frame GARI replay run twice in builds 0.12/0.13 preserved the same

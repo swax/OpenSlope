@@ -19,9 +19,9 @@ struct Target {
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=type;vk_check(vkAllocateMemory(context.device,&allocation,nullptr,&memory),"Allocate test image");vk_check(vkBindImageMemory(context.device,image,memory,0),"Bind test image");
     }
 };
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={}) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={}) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},sprites,wake);renderer.capture(0,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},sprites,wake,sheet);renderer.capture(0,output);
     std::ifstream file(output,std::ios::binary);std::string magic;unsigned width,height,maximum;file>>magic>>width>>height>>maximum;file.get();
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
@@ -33,11 +33,14 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
 std::array<WakeVertex,6> ribbon(double z,float alpha=.5f){
     const WakeVertex a{{-.8,-.8,z},{0,0,-1},0,0,alpha},b{{.8,-.8,z},{0,0,-1},1,0,alpha},c{{.8,.8,z},{0,0,-1},1,2,alpha},d{{-.8,.8,z},{0,0,-1},0,2,alpha};return {a,b,c,a,c,d};
 }
+std::vector<SprayVertex> spray_sheet(double z,float alpha=.5f){
+    std::vector<SprayVertex> result;for(unsigned rail=0;rail<3;++rail){const auto lo=float(rail)/3,hi=float(rail+1)/3;const SprayVertex a{{-.8,-.8+1.6*lo,z},0,lo,alpha},b{{.8,-.8+1.6*lo,z},1,lo,alpha},c{{.8,-.8+1.6*hi,z},1,hi,alpha},d{{-.8,-.8+1.6*hi,z},0,hi,alpha};result.insert(result.end(),{a,b,c,a,c,d});}return result;
+}
 }
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
@@ -49,6 +52,16 @@ int main(int argc,char** argv) {
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
             VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128,samples);
             const auto camera=std::string(name)=="handedness"?projection(-1,1,-1,1)*view({0,0,0},{0,0,-1}):Matrix::identity();
+            if(std::string(name)=="sheet"){
+                const auto plain=capture(first,root/"sheet-plain.ppm",camera);const auto front=spray_sheet(.25),behind=spray_sheet(.75);
+                ++checks;if(capture(first,root/"sheet-hidden.ppm",camera,{},{},behind)!=plain)throw std::runtime_error("Spray sheet ignores scene depth");
+                const auto drawn=capture(first,root/"sheet-drawn.ppm",camera,{},{},front);pixel(drawn,.5,.5,{104,144,184});++checks;if(first.stats().sheet_segments!=1||first.stats().sheet_draws!=1)throw std::runtime_error("Four-rail sheet did not draw as one three-band ribbon");
+                auto stacked=front;const auto back=spray_sheet(.35);stacked.insert(stacked.end(),back.begin(),back.end());pixel(capture(first,root/"sheet-stacked.ppm",camera,{},{},stacked),.5,.5,{168,208,248});
+                auto gradient=spray_sheet(.25);for(auto& p:gradient)p.alpha=p.v;const auto fade=capture(first,root/"sheet-gradient.ppm",camera,{},{},gradient);pixel(fade,.5,.125,{56,96,136});pixel(fade,.5,.875,{152,192,232});
+                pixel(capture(second,root/"sheet-srgb.ppm",camera,{},{},front),.5,.5,{142,156,177});
+                first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);pixel(capture(first,root/"sheet-recreated.ppm",camera,{},{},front),.5,.5,{104,144,184});
+                ++checks;if(capture(first,root/"sheet-cleared.ppm",camera)!=plain)throw std::runtime_error("Spray sheet leaves stale geometry");continue;
+            }
             if(std::string(name)=="wake"||std::string(name)=="wake_repeat"){
                 const auto plain=capture(first,root/"wake-plain.ppm",camera);const auto front=ribbon(.25),behind=ribbon(.75);
                 const auto hidden=capture(first,root/"wake-hidden.ppm",camera,{},behind);++checks;if(plain!=hidden)throw std::runtime_error("Wake ignores scene depth");

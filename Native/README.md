@@ -45,6 +45,8 @@ existing maps can provide the same profile and their own PNG. See
 Supported ground surfaces also leave a bounded textured wake, narrow while
 riding straight and wider through a carve. See [carved wake](docs/carved-wake.md)
 for the surface table, contact probes, two alpha passes and open tuning bindings.
+Grounded carves also throw a connected four-rail additive ribbon; see
+[spray sheet](docs/spray-sheet.md) for implemented behavior and provisional tuning.
 Terrain now uses hierarchical frustum selection and adaptive index submission.
 `--no-terrain-culling` provides a desktop comparison path; see
 [terrain culling](docs/terrain-culling.md) for measurements and remaining limits.

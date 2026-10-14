@@ -40,13 +40,13 @@ private:
     VkDescriptorSetLayout descriptors_{};VkDescriptorPool descriptor_pool_{};
     VkSampler repeat_{},clamp_{};
     VkDeviceSize image_bytes_{};
-    VkDescriptorSet effect_set_{},wake_set_{};
+    VkDescriptorSet effect_set_{},wake_set_{},sheet_set_{};
     Image image(const struct RgbaImage& pixels,VkCommandPool pool,bool mipmapped=true);
     Buffer buffer(VkDeviceSize size,VkBufferUsageFlags usage,const void* data);
 };
 class VulkanRenderer {
 public:
-    struct Stats {unsigned visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},gpu_ms=-1;};
+    struct Stats {unsigned visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},gpu_ms=-1;};
     explicit VulkanRenderer(VulkanContext& context):context_(context){}
     ~VulkanRenderer();
     VulkanRenderer(const VulkanRenderer&)=delete;
@@ -56,7 +56,7 @@ public:
     unsigned samples() const {return unsigned(samples_);}
     void cull_terrain(bool enabled){terrain_culling_=enabled;}
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
-        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={});
+        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={});
     const Stats& stats() const {return stats_;}
     void capture(unsigned image,const std::filesystem::path& output);
     void clear_targets();
@@ -75,6 +75,7 @@ private:
     Buffer sprite_vertices_;std::size_t sprite_capacity_{};
     std::vector<Vertex> sprite_mesh_;
     Buffer wake_vertices_;std::size_t wake_capacity_{};std::vector<Vertex> wake_mesh_;
+    Buffer sheet_vertices_;std::size_t sheet_capacity_{};std::vector<Vertex> sheet_mesh_;
     struct Target { VkImage colour{},depth{},multisample{};VkDeviceMemory depth_memory{},multisample_memory{};VkImageView colour_view{},depth_view{},multisample_view{};VkFramebuffer framebuffer{}; };
     std::vector<Target> targets_;
     Buffer create_buffer(VkDeviceSize size,VkBufferUsageFlags usage,const void* data);

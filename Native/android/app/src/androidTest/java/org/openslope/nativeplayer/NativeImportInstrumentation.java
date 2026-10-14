@@ -39,6 +39,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(extracted, "Audio/Intro/Quiet-A.wav").isFile(), "JNI imports configured intro stems");
             require(new File(extracted, "RidingEffects.json").isFile() && new File(extracted, "Textures/particle-part.png").isFile(), "JNI imports the riding sprite profile and art");
             require(new File(extracted, "Textures/particle-tral.png").isFile(), "JNI imports named wake art");
+            require(new File(extracted, "Textures/particle-spry.png").isFile(), "JNI imports named spray sheet art");
             require(new File(extracted, "Patches.json").isFile() && new File(extracted, "Textures/0000.png").isFile(), "JNI writes canonical map files");
             File local = new File(temporary, "Maps"); local.mkdir();
             MapLibrary direct = new MapLibrary(context.getContentResolver(), local, null); direct.publish("Custom course", extracted, () -> {});
@@ -60,6 +61,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(prepared, "Physics.json").isFile(), "SAF cache includes independent physics metadata");
             require(new File(prepared, "RidingEffects.json").isFile() && new File(prepared, "Textures/particle-part.png").isFile(), "SAF cache includes referenced riding sprite assets");
             require(new File(prepared, "Textures/particle-tral.png").isFile(), "SAF cache includes the referenced wake texture");
+            require(new File(prepared, "Textures/particle-spry.png").isFile(), "SAF cache includes the referenced spray sheet texture");
             require(new File(prepared, "Audio/SFX/tone/000.wav").isFile(), "SAF cache includes nested audio clips");
             require(new File(prepared, "Audio/SoundIndex.json").isFile(), "SAF cache includes audio routing metadata");
             require(new File(prepared, "Audio/Music/song/loops/loop/000.loop.wav").isFile(), "SAF cache includes configured async-bank assets");

@@ -31,7 +31,7 @@ std::vector<MeshBatch> terrain_batches(const Terrain& terrain) {
     std::vector<MeshBatch> batches;
     for(const auto& patch:terrain.patches())batches.push_back({0,0,patch.texture,patch.lightmap_rect[2]>0&&patch.lightmap_rect[3]>0?patch.lightmap:-1});
     for(const auto& name:prop_files(terrain.map_root()))if(name.starts_with("Textures/"))batches.push_back({0,0,name.substr(9),-1});
-    for(const auto slot:{"Puff","Wake"}){const auto sprite=riding_sprite(terrain.map_root(),slot);if(!sprite.empty())batches.push_back({0,0,sprite,-1});}
+    for(const auto slot:{"Puff","Wake","Sheet"}){const auto sprite=riding_sprite(terrain.map_root(),slot);if(!sprite.empty())batches.push_back({0,0,sprite,-1});}
     return batches;
 }
 }

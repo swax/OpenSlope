@@ -34,6 +34,10 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    sheet = course(root, 'sheet', 'background.png')
+    (sheet / 'Textures/background.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+    (sheet / 'Textures/sheet.png').write_bytes(rgba(1, 1, [255,255,255,128]))
+    (sheet / 'RidingEffects.json').write_text(json.dumps(dict(Schema='openslope-riding-effects/v1', Sheet='sheet.png')))
     for name in ('wake', 'wake_repeat', 'unsafe_wake'):
         wake = course(root, name, 'background.png')
         (wake / 'Textures/background.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))

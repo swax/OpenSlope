@@ -59,6 +59,22 @@ void wakes(){
     effect.reset();require(effect.wake().empty()&&effect.wake_sections()==0,"Reset clears wake geometry and history");
     Player player(Terrain({floor()}));seat(player);for(unsigned i=0;i<30;++i)player.tick({});require(!player.effects().wake().empty(),"Player supplies ground probes independently of audio/rendering");for(const auto& v:player.effects().wake())near(v.position.y,0,1e-9,"Player wake seats at terrain contact rather than stale absorber error");player.reset();require(player.effects().wake().empty(),"Player reset clears its trail");
 }
+void sheets(){
+    const WakeProbe ground=[](Vec3 p)->std::optional<WakeContact>{return WakeContact{{p.x,0,p.z},{0,1,0},1};};
+    RidingEffects effect;Rider a,b;a.grounded=b.grounded=true;a.motion=b.motion=Motion::Ground;a.velocity=b.velocity={0,0,-18};b.position={0,0,-1};
+    effect.tick(a,b,1./60,ground);require(effect.sheet().empty(),"Straight riding does not create the lean-gated sheet");a.lean=b.lean=.3;effect.tick(a,b,1./60,ground);require(effect.sheet().empty(),"Sheet threshold is strictly above 0.3");
+    effect.reset();a.lean=b.lean=.8;effect.tick(a,b,1./60,ground);require(effect.sheet_columns()==5&&effect.sheet().size()==72,"Quarter-metre columns produce three connected bands over four rails");near(effect.sheet()[0].position.z,.5,1e-9,"Sheet base is half a metre behind the board");near(effect.sheet()[0].position.y,.008,1e-9,"Sheet base seats at contact with a small render clearance");
+    require(effect.sheet()[5].position.x>effect.sheet()[0].position.x&&effect.sheet()[5].position.y>effect.sheet()[0].position.y,"Positive carving throws the upper rail up and outside the turn");
+    const auto x=effect.sheet()[5].position.x,y=effect.sheet()[5].position.y;effect.reset();a.lean=b.lean=-.8;effect.tick(a,b,1./60,ground);near(effect.sheet()[5].position.x,-x,1e-9,"Opposite carve mirrors the sheet throw");near(effect.sheet()[5].position.y,y,1e-9,"Opposite carve keeps the same launch height");
+    effect.reset();a.lean=b.lean=1;effect.tick(a,b,.1,ground);const auto base=effect.sheet()[0].position,one=effect.sheet()[5].position,two=effect.sheet()[11].position,three=effect.sheet()[17].position;
+    near(two.x-base.x,2*(one.x-base.x),1e-9,"Second rail uses double the outward throw");near(three.x-base.x,3*(one.x-base.x),1e-9,"Third rail uses triple the outward throw");const auto birth_alpha=effect.sheet()[0].alpha;effect.tick(a,b,0,ground);near(effect.sheet()[0].alpha,birth_alpha,0,"Pause freezes the sheet clock");
+    b.grounded=false;b.motion=Motion::Air;const auto origin=effect.sheet()[0].position;effect.tick(b,b,.1,ground);near(length(effect.sheet()[0].position-origin),0,0,"Old sheet bases remain world-fixed during flight");require(effect.sheet()[0].alpha<birth_alpha,"Sheet alpha fades with age");for(unsigned i=0;i<6;++i)effect.tick(b,b,.1,ground);require(effect.sheet()[5].position.y<origin.y,"Gravity and drag curl an old upper rail back into the ground");for(unsigned i=0;i<4;++i)effect.tick(b,b,.1,ground);require(effect.sheet().empty()&&effect.sheet_columns()==0,"Sheet expires after 0.9 seconds without extra emission");
+    for(const auto surface:{5,9,13,18}){effect.reset();a.surface=b.surface=surface;b.grounded=true;b.motion=Motion::Ground;effect.tick(a,b,1./60,ground);require(effect.sheet().empty(),"Ice, rock and metal do not emit the snow sheet");}
+    effect.reset();a.surface=b.surface=1;for(unsigned i=0;i<100;++i){a.position={0,0,-double(i)*.75};b.position={0,0,-double(i+1)*.75};effect.tick(a,b,1./60,ground);}require(effect.sheet_columns()==128&&effect.sheet().size()==2286,"Fast sheet history remains bounded under ring pressure");
+    a=b;b.position={0,0,-300};effect.tick(a,b,1./60,ground);a=b;b.position.z-=.5;effect.tick(a,b,1./60,ground);for(std::size_t i=0;i<effect.sheet().size();i+=18)require(std::abs(effect.sheet()[i+1].position.z-effect.sheet()[i].position.z)<=.251,"Sheet never bridges a teleport or gap");
+    effect.reset();a=b;b.position.z-=1;effect.tick(a,b,1./60,[](Vec3)->std::optional<WakeContact>{return {};});require(effect.sheet().empty(),"Missing contact stops sheet emission");
+    effect.reset();require(effect.sheet_columns()==0&&effect.sheet().empty(),"Reset clears spray columns and mesh");
+}
 void paths(){
     const auto root=std::filesystem::temp_directory_path()/("openslope-play-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".v1");std::filesystem::create_directory(root);
     struct Cleanup{std::filesystem::path path;~Cleanup(){std::error_code e;std::filesystem::remove_all(path,e);}}cleanup{root};
@@ -72,7 +88,7 @@ void paths(){
     sequence["Steps"][0]["Ticks"]=216001;write_replay();rejects([&]{static_cast<void>(Replay::load(root/"replay.json"));},"Reject unbounded replay durations");
 }
 }
-int main(){try{helpers();controls();wakes();paths();
+int main(){try{helpers();controls();wakes();sheets();paths();
     RidingEffects effects;Rider a,b;a.grounded=b.grounded=true;a.motion=b.motion=Motion::Ground;b.velocity={0,0,-18};b.position={0,0,-1};
     effects.tick(a,b,1./60);require(effects.sprites().empty(),"Standard straight riding does not create a carve plume");b.lean=.5;effects.tick(a,b,1./60);require(effects.carve_emitted()==1&&!effects.sprites().empty(),"Ground carve emits by traveled distance");
     const auto birth=effects.sprites()[0].position;b.grounded=false;b.motion=Motion::Air;b.position={100,0,0};effects.tick(a,b,1./60);require(effects.carve_emitted()==1&&std::abs(effects.sprites()[0].position.x-birth.x)<1e-9,"Air stops carve emission and retains old world origins");

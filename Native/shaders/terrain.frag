@@ -20,6 +20,7 @@ void main() {
         displayColour=base.rgb;
         if(transform.options.x==4){displayColour=base.rgb*vertexColour;alpha=base.a*lightmapTile.x;}
         if(transform.options.x==5)alpha=base.a*effectAlpha;
+        if(transform.options.x==6){displayColour=base.rgb*vertexColour;alpha=base.a*effectAlpha;}
         if(transform.options.x==3)displayColour=clamp(base.rgb*vertexColour,0.0,1.0);
         if(transform.options.x==2) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]

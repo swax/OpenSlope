@@ -93,6 +93,7 @@ void VulkanScene::upload(const Mesh& source) {
     for(const auto& part:props_.parts)batches.push_back({0,0,part.texture,-1});
     const auto sprite=riding_sprite(source.map_root);if(!sprite.empty())batches.push_back({0,0,sprite,-1});
     const auto wake=riding_sprite(source.map_root,"Wake");if(!wake.empty())batches.push_back({0,0,wake,-1});
+    const auto sheet=riding_sprite(source.map_root,"Sheet");if(!sheet.empty())batches.push_back({0,0,sheet,-1});
     auto appearance=Appearance::load(source.map_root,batches);
     if(!appearance.missing.empty())std::cerr<<"OpenSlope: "<<appearance.missing.size()<<" referenced map images are missing; using available textures or terrain colours\n";
     VkFormatProperties format;vkGetPhysicalDeviceFormatProperties(context_.physical,VK_FORMAT_R8G8B8A8_UNORM,&format);
@@ -120,6 +121,7 @@ void VulkanScene::upload(const Mesh& source) {
     };
     if(const auto found=names.find("Textures/"+sprite);!sprite.empty()&&found!=names.end())effect_set_=descriptor(found->second,1);
     if(const auto found=names.find("Textures/"+wake);!wake.empty()&&found!=names.end())wake_set_=descriptor(found->second,1);
+    if(const auto found=names.find("Textures/"+sheet);!sheet.empty()&&found!=names.end())sheet_set_=descriptor(found->second,1);
     for(const auto& batch:source.batches){
         auto diffuse=names.find("Textures/"+batch.texture);std::ostringstream page;page<<"Lightmaps/"<<std::setfill('0')<<std::setw(4)<<batch.lightmap<<".png";auto lightmap=names.find(page.str());
         const bool base=diffuse!=names.end(),lit=batch.lightmap>=0&&lightmap!=names.end();

@@ -5,6 +5,8 @@ carve plumes, a lean-independent powder cloud and touchdown/skid cloud puffs.
 Clean Trailmap 180, 380 and 400 establish the system distinctions, world-space
 origins, size/life behavior and compositing. This is not complete spray/wake or
 general authored-effect parity; the full objective stays in desktop-parity.md.
+The subsequent connected carve sheet is documented in spray-sheet.md; it uses
+the same fixed-tick riding state with its own geometry and texture slot.
 
 The shared Player ticks effects at 60 Hz, after riding/contact resolution, even
 when audio is disabled. Stable ground motion plus |lean|>0.2, or powder type 3/4,
@@ -58,6 +60,6 @@ attachment paths, occlusion, overlap without depth writes and empty-frame cleanu
 Portable tests cover gates, fixed-world origins, landing bursts, expiry, pause
 and reset; actual-host carving renders the extracted puff art. Existing contact,
 jump and audio checks remain applicable. Surface-driven 40-slot streams, the
-four-rail spray sheet, sparks, airborne puffs, boost/debris/pickup
+exact sheet bindings, sparks, airborne puffs, boost/debris/pickup
 effects and general authored emitter lifecycle are still outstanding. Weather
 snowfall is a separate system and is not satisfied by these riding clouds.

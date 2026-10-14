@@ -83,8 +83,8 @@ def graph():
 
 def particle_bank():
     image = ssh()[32:]
-    size = 32 + len(image) * 2
-    return b'SHPS' + struct.pack('<II', size, 2) + b'TESTpart' + struct.pack('<I', 32) + b'tral' + struct.pack('<I', 32 + len(image)) + image * 2
+    size = 48 + len(image) * 3
+    return b'SHPS' + struct.pack('<II', size, 3) + b'TESTpart' + struct.pack('<I', 48) + b'tral' + struct.pack('<I', 48 + len(image)) + b'spry' + struct.pack('<I', 48 + len(image) * 2) + bytes(8) + image * 3
 
 
 def fixture(course=None):
@@ -126,6 +126,8 @@ def main():
         assert json.loads((output / 'RidingEffects.json').read_text())['Puff'] == 'particle-part.png'
         assert json.loads((output / 'RidingEffects.json').read_text())['Wake'] == 'particle-tral.png'
         assert (output / 'Textures/particle-tral.png').exists()
+        assert json.loads((output / 'RidingEffects.json').read_text())['Sheet'] == 'particle-spry.png'
+        assert (output / 'Textures/particle-spry.png').exists()
         assert (output / 'Textures/particle-part.png').exists()
         assert png_pixels(output / 'Textures/particle-part.png') == bytes([10,20,30,255,128,128,128,255,200,50,0,128,0,0,0,0]), 'Full-bright particle art uses its own colour profile'
         index = json.loads((audio / 'SoundIndex.json').read_text())
