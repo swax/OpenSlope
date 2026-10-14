@@ -38,6 +38,9 @@ focus; an uncommitted jump charge is cancelled.
 Desktop rendering defaults to 4x MSAA, falling back to a supported colour/depth
 sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
 The OpenXR host keeps 1x until headset performance is validated.
+Terrain now uses hierarchical frustum selection and adaptive index submission.
+`--no-terrain-culling` provides a desktop comparison path; see
+[terrain culling](docs/terrain-culling.md) for measurements and remaining limits.
 See [graphics quality](docs/graphics-quality.md) for verification and limits.
 A course can be opened directly:
 

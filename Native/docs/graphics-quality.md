@@ -23,8 +23,11 @@ the serialized GPU waits or establish a headset frame-rate budget.
 Diffuse terrain/prop mipmaps and trilinear minification remain enabled. Lightmap
 atlas filtering retains the existing patch boundary policy. MSAA smooths geometric
 edges; shader-discarded cutout edges still need coverage preservation or another
-anti-aliasing policy. Anisotropy, atlas-safe lightmap mips, terrain culling/LOD,
+anti-aliasing policy. Anisotropy, atlas-safe lightmap mips, terrain LOD/stitching,
 configurable quality UI and full frame/memory profiling remain outstanding.
+
+Terrain frustum selection and adaptive submission are now implemented; see
+terrain-culling.md for all-course equivalence and measurement limits.
 
 Actual Vulkan tests cover UNORM/sRGB at 1x and requested 4x, with 628 assertions
 for textures, lightmaps, transparency, minification and diagonal-edge coverage.

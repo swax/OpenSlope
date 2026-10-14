@@ -195,6 +195,8 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
     for(const auto& [material,patches]:groups){
         MeshBatch batch{static_cast<std::uint32_t>(mesh.indices.size()),0,material.first,material.second};
         for(const auto* patch:patches) {const auto& p=*patch;
+        const auto range_first=static_cast<std::uint32_t>(mesh.indices.size());
+        Bounds render_bounds;
         const auto first=static_cast<std::uint32_t>(mesh.vertices.size());
         for(unsigned u=0;u<=subdivisions;++u) for(unsigned v=0;v<=subdivisions;++v) {
             const auto point=p.evaluate(u/double(subdivisions),v/double(subdivisions));
@@ -204,11 +206,13 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
             const auto rock=p.surface==9;
             const auto uv=p.texture_uv(u/double(subdivisions),v/double(subdivisions)),lm=p.lightmap_uv(u/double(subdivisions),v/double(subdivisions));
             mesh.vertices.push_back({static_cast<float>(point.x),static_cast<float>(point.y),static_cast<float>(point.z),light*(rock?.48f:ice?.55f:.91f),light*(rock?.44f:ice?.82f:.96f),light,float(uv[0]),float(uv[1]),float(lm[0]),float(lm[1]),float(p.lightmap_rect[0]),float(p.lightmap_rect[1]),float(p.lightmap_rect[2]),float(p.lightmap_rect[3])});
+            const auto& vertex=mesh.vertices.back();render_bounds.add({vertex.x,vertex.y,vertex.z});
         }
         for(unsigned u=0;u<subdivisions;++u) for(unsigned v=0;v<subdivisions;++v) {
             const auto a=first+u*(subdivisions+1)+v,b=a+subdivisions+1;
             mesh.indices.insert(mesh.indices.end(),{a,b,b+1,a,b+1,a+1});
         }
+        mesh.terrain_ranges.push_back({range_first,static_cast<std::uint32_t>(mesh.indices.size())-range_first,static_cast<std::uint32_t>(mesh.batches.size()),render_bounds});
         }
         batch.count=static_cast<std::uint32_t>(mesh.indices.size())-batch.first;mesh.batches.push_back(std::move(batch));
     }

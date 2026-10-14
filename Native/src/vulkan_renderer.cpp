@@ -61,6 +61,7 @@ std::uint32_t VulkanRenderer::memory_type(std::uint32_t bits,VkMemoryPropertyFla
 }
 VulkanRenderer::Buffer VulkanRenderer::create_buffer(VkDeviceSize size,VkBufferUsageFlags usage,const void* data) {
     Buffer buffer;
+    try {
     VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};info.size=size;info.usage=usage;
     vk_check(vkCreateBuffer(context_.device,&info,nullptr,&buffer.buffer),"Create buffer");
     VkMemoryRequirements requirements;vkGetBufferMemoryRequirements(context_.device,buffer.buffer,&requirements);
@@ -70,6 +71,7 @@ VulkanRenderer::Buffer VulkanRenderer::create_buffer(VkDeviceSize size,VkBufferU
     vk_check(vkBindBufferMemory(context_.device,buffer.buffer,buffer.memory,0),"Bind buffer");
     if(data){void* mapped;vk_check(vkMapMemory(context_.device,buffer.memory,0,size,0,&mapped),"Map buffer");std::memcpy(mapped,data,std::size_t(size));vkUnmapMemory(context_.device,buffer.memory);}
     return buffer;
+    }catch(...){destroy_buffer(buffer);throw;}
 }
 void VulkanRenderer::destroy_buffer(Buffer& b) {
     if(b.buffer)vkDestroyBuffer(context_.device,b.buffer,nullptr);if(b.memory)vkFreeMemory(context_.device,b.memory,nullptr);b={};
@@ -94,6 +96,7 @@ VulkanRenderer::~VulkanRenderer() {
     if(!context_.device)return;vkDeviceWaitIdle(context_.device);clear_targets();
     if(fence_)vkDestroyFence(context_.device,fence_,nullptr);if(pool_)vkDestroyCommandPool(context_.device,pool_,nullptr);
     if(timing_)vkDestroyQueryPool(context_.device,timing_,nullptr);
+    destroy_buffer(visible_indices_);
 }
 void VulkanRenderer::clear_targets() {
     if(targets_.empty()&&!pass_)return;vkDeviceWaitIdle(context_.device);
@@ -183,6 +186,27 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
 void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye) {
     const auto started=std::chrono::steady_clock::now();stats_={};
     vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Wait for previous frame");vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
+    const auto cull_start=std::chrono::steady_clock::now();terrain_draws_.clear();packed_indices_.clear();
+    stats_.terrain_patches=unsigned(scene_->terrain_ranges_.size());stats_.terrain_total_indices=scene_->terrain_total_indices_;
+    bool compact=false;stats_.visible_terrain=stats_.terrain_patches;
+    if(terrain_culling_&&!scene_->terrain_ranges_.empty()){
+        scene_->terrain_visibility_.query(Frustum(camera.values),visible_ranges_,stats_.visibility_tests);stats_.visible_terrain=unsigned(visible_ranges_.size());
+        std::uint64_t retained=0;for(const auto id:visible_ranges_)retained+=scene_->terrain_ranges_[id].count;
+        // A dense view gains little from copying almost the full index stream.
+        // Keep the original submission unless at least a quarter is removed.
+        compact=retained<=scene_->terrain_total_indices_*3/4;
+    }
+    stats_.terrain_compacted=compact;
+    if(compact){
+        for(const auto id:visible_ranges_){const auto& range=scene_->terrain_ranges_[id];
+            if(terrain_draws_.empty()||terrain_draws_.back().material!=range.batch)terrain_draws_.push_back({std::uint32_t(packed_indices_.size()),0,range.batch});
+            terrain_draws_.back().count+=range.count;packed_indices_.insert(packed_indices_.end(),scene_->terrain_indices_.begin()+range.first,scene_->terrain_indices_.begin()+range.first+range.count);
+        }
+        if(packed_indices_.size()>index_capacity_){destroy_buffer(visible_indices_);index_capacity_=std::min(scene_->terrain_indices_.size(),std::max(packed_indices_.size(),index_capacity_*2));visible_indices_=create_buffer(index_capacity_*sizeof(std::uint32_t),VK_BUFFER_USAGE_INDEX_BUFFER_BIT,nullptr);}
+        if(!packed_indices_.empty()){void* mapped;vk_check(vkMapMemory(context_.device,visible_indices_.memory,0,packed_indices_.size()*sizeof(std::uint32_t),0,&mapped),"Map visible terrain indices");std::memcpy(mapped,packed_indices_.data(),packed_indices_.size()*sizeof(std::uint32_t));vkUnmapMemory(context_.device,visible_indices_.memory);}
+        stats_.terrain_indices=packed_indices_.size();
+    }else{stats_.terrain_indices=stats_.terrain_total_indices;for(std::size_t i=0;i<scene_->draws_.size();++i){const auto& draw=scene_->draws_[i];terrain_draws_.push_back({draw.first,draw.count,i});}}
+    stats_.terrain_draws=unsigned(terrain_draws_.size());stats_.cull_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-cull_start).count();
     struct VisibleDraw {std::size_t part;std::uint32_t first,count;};std::vector<VisibleDraw> prop_draws;std::vector<PropPose> poses;
     std::map<std::pair<bool,std::size_t>,std::vector<std::size_t>> groups;
     struct Translucent {std::size_t part,instance;int depth;};std::vector<Translucent> transparent;
@@ -203,10 +227,12 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     vkCmdSetViewport(command_,0,1,&viewport);vkCmdSetScissor(command_,0,1,&scissor);
     const VkDeviceSize offset=0;vkCmdBindVertexBuffers(command_,0,1,&scene_->vertices_.buffer,&offset);vkCmdBindIndexBuffer(command_,scene_->indices_.buffer,0,VK_INDEX_TYPE_UINT32);
     DrawPush push{camera,{0,format_==VK_FORMAT_R8G8B8A8_SRGB||format_==VK_FORMAT_B8G8R8A8_SRGB?1:0,0,0}};
-    for(const auto& draw:scene_->draws_){
+    if(compact&&!packed_indices_.empty())vkCmdBindIndexBuffer(command_,visible_indices_.buffer,0,VK_INDEX_TYPE_UINT32);
+    for(const auto& visible:terrain_draws_){const auto& draw=scene_->draws_[visible.material];
         push.options[0]=draw.mode;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);
-        vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,1,draw.first,0,0);
+        vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,visible.count,1,visible.first,0,0);
     }
+    vkCmdBindIndexBuffer(command_,scene_->indices_.buffer,0,VK_INDEX_TYPE_UINT32);
     push.mvp=camera*board;push.options[0]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->board_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,6,1,scene_->board_first_,0,0);
     push.mvp=camera;push.options[0]=3;bool blending=false;
     for(const auto& visible:prop_draws){const auto& draw=scene_->prop_draws_[visible.part];if(draw.alpha==2&&!blending){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,blend_pipeline_);blending=true;}push.options[2]=draw.alpha;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,visible.count,draw.first,0,visible.first);}

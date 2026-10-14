@@ -34,9 +34,12 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
+            else if(std::string(name)=="visibility"){
+                std::vector<Patch> patches;for(const auto center:std::array<Vec3,8>{{{-.6,0,.5},{.6,0,.5},{-3,0,.5},{3,0,.5},{0,0,-2},{0,4,.5},{0,-4,.5},{0,0,2}}}){Patch p;p.texture=patches.size()%2?"missing-b":"missing-a";for(unsigned u=0;u<4;++u)for(unsigned v=0;v<4;++v)p.points[u*4+v]=center+Vec3{u*.8/3-.4,v*.8/3-.4,0};patches.push_back(p);}mesh=Terrain(std::move(patches)).mesh(4);
+            }
             else mesh=Terrain::load(root/name).mesh(4);
             scene->upload(mesh);
             // The same scene is used by two renderers, just like the stereo host.
@@ -44,6 +47,12 @@ int main(int argc,char** argv) {
             VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128,samples);
             const auto camera=std::string(name)=="handedness"?projection(-1,1,-1,1)*view({0,0,0},{0,0,-1}):Matrix::identity();
             const auto a=capture(first,root/(std::string(name)+"-unorm.ppm"),camera),b=capture(second,root/(std::string(name)+"-srgb.ppm"),camera);
+            const auto visibility=first.stats();first.cull_terrain(false);second.cull_terrain(false);
+            const auto baseline_a=capture(first,root/"baseline-unorm.ppm",camera),baseline_b=capture(second,root/"baseline-srgb.ppm",camera);checks+=2;if(a!=baseline_a||b!=baseline_b)throw std::runtime_error("Culled pixels differ from complete terrain submission");first.cull_terrain(true);second.cull_terrain(true);
+            if(std::string(name)=="visibility"){
+                ++checks;if(visibility.visible_terrain!=2||visibility.terrain_patches!=8||visibility.terrain_indices*4!=visibility.terrain_total_indices||visibility.terrain_draws!=2)throw std::runtime_error("Terrain compaction did not retain two visible material groups");
+                auto empty=camera;empty.values[12]=100;const auto culled=capture(first,root/"empty-cull.ppm",empty);++checks;if(first.stats().terrain_indices||first.stats().terrain_draws)throw std::runtime_error("Empty view still submitted terrain");first.cull_terrain(false);const auto complete=capture(first,root/"empty-full.ppm",empty);++checks;if(culled!=complete)throw std::runtime_error("Empty view lost visible pixels");continue;
+            }
             if(std::string(name)=="antialiasing"){
                 for(const auto* pixels:{&a,&b}){std::size_t partial=0;for(std::size_t p=0;p<pixels->size();p+=3)if((*pixels)[p]>90&&(*pixels)[p]<240)++partial;++checks;if((first.samples()>1)!=(partial>0))throw std::runtime_error("MSAA resolve did not produce expected geometric edge coverage");}
                 first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,1);capture(first,root/"aa-recreated.ppm",camera);

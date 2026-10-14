@@ -1,6 +1,10 @@
 #include "openslope/player.hpp"
 #include "openslope/import.hpp"
 #include "openslope/appearance.hpp"
+#include "openslope/visibility.hpp"
+#include "openslope/props.hpp"
+#include "../src/render_math.hpp"
+#include <random>
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <fstream>
@@ -52,12 +56,28 @@ void terrain_tests() {
     auto other=p;other.texture="other.png";
     const auto grouped=Terrain({p,other,p}).mesh(2);
     require(grouped.batches.size()==2&&grouped.batches[0].count==48&&grouped.batches[1].count==24,"Shared material patches form contiguous draws");
+    require(grouped.terrain_ranges.size()==3&&grouped.terrain_ranges[0].first==0&&grouped.terrain_ranges[1].first==24&&grouped.terrain_ranges[2].batch==1,"Patch visibility spans retain material/index order");
     near(grouped.vertices[0].s,-1,0,"Mesh carries diffuse UV");near(grouped.vertices[0].lx,.25,0,"Mesh carries lightmap tile bounds");
     require(referenced_images(Terrain({p,p}))==std::vector<std::string>({"Lightmaps/0007.png","Textures/authored.png"}),"Unique portable image paths");
     const auto colour=terrain_light({200./255,180./255,160./255},{20./255,40./255,60./255,128./255});
     near(colour[0],180.*128/(255.*255),1e-12,"RGB residual subtracts before alpha intensity");
     near(terrain_light({.1,.2,.3},{.2,.1,.4,.5})[0],0,0,"Negative lighting saturates");
     for(const bool invalid_uv:{false,true}){auto bad=p;if(invalid_uv)bad.uv[0][0]=std::numeric_limits<double>::infinity();else bad.lightmap_rect={.9,.2,.2,.1};bool rejected=false;try{static_cast<void>(Terrain({bad}));}catch(const std::exception&){rejected=true;}require(rejected,"Reject invalid GPU material coordinates");}
+}
+void visibility_tests(){
+    const auto identity=Matrix::identity();const Frustum clip(identity.values);
+    require(clip.classify({{-.2,-.2,.2},{.2,.2,.8}})==1,"Interior AABB is fully inside");
+    for(const auto p:std::array<Vec3,6>{{{-2,0,.5},{2,0,.5},{0,-2,.5},{0,2,.5},{0,0,-1},{0,0,2}}})require(clip.classify({p-Vec3{.01,.01,.01},p+Vec3{.01,.01,.01}})==-1,"Reject each of six Vulkan clip planes");
+    require(clip.classify({{-100,-100,-100},{100,100,100}})==0,"Keep bounds enclosing the entire view");
+    require(clip.classify({{-.1,-.1,0},{.1,.1,0}})==0,"Retain exact near-plane boundary");
+    const auto left=projection(-1,1,-1,1)*view({-.2,0,0},{0,0,-1}),right=projection(-1,1,-1,1)*view({.2,0,0},{0,0,-1});
+    const Bounds stereo{{1.05,-.01,-1.01},{1.15,.01,-.99}};
+    require(Frustum(left.values).classify(stereo)<0&&Frustum(right.values).classify(stereo)>=0,"Each stereo eye independently retains its edge geometry");
+    VisibilityTree tree;std::vector<Bounds> boxes;for(unsigned i=0;i<1024;++i)boxes.push_back({{10.+i,-.1,.2},{10.1+i,.1,.8}});tree.build(boxes);std::vector<std::size_t> ids;std::size_t tested=0;tree.query(clip,ids,tested);require(ids.empty()&&tested==1,"Reject a distant subtree without per-patch work");
+    std::mt19937 random(419);std::uniform_real_distribution<double> position(-20,20),extent(.01,3);
+    boxes.clear();for(unsigned i=0;i<1024;++i){const Vec3 p{position(random),position(random),position(random)},e{extent(random),extent(random),extent(random)};boxes.push_back({p-e,p+e});}tree.build(boxes);
+    for(unsigned frame=0;frame<20;++frame){const Vec3 eye{position(random),position(random),position(random)};const auto camera=projection(-.9,.9,-.7,.7)*view(eye,normalized(Vec3{position(random),position(random),position(random)}));std::vector<std::size_t> expected;for(std::size_t i=0;i<boxes.size();++i)if(prop_visible(boxes[i],camera.values,eye,1e10))expected.push_back(i);tree.query(Frustum(camera.values),ids,tested);require(ids==expected,"Hierarchy agrees with independent eight-corner clip oracle and preserves order");}
+    bool rejected=false;try{tree.build(std::array<Bounds,1>{Bounds{}});}catch(const std::exception&){rejected=true;}require(rejected,"Reject empty/non-finite visibility bounds");
 }
 void map_tests() {
     const auto path=std::filesystem::temp_directory_path()/("openslope-native-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".json");
@@ -153,7 +173,7 @@ void import_tests() {
 int main(int argc,char** argv) {
     try {
         require(argc==2,"Supply the independent scalar fixtures");
-        terrain_tests();map_tests();response_tests(argv[1]);clock_tests();import_tests();
+        terrain_tests();visibility_tests();map_tests();response_tests(argv[1]);clock_tests();import_tests();
         std::cout<<"PASS: "<<checks<<" native conformance checks\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

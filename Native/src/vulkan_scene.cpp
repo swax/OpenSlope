@@ -73,6 +73,22 @@ VulkanScene::~VulkanScene() {
 }
 void VulkanScene::upload(const Mesh& source) {
     if(vertices_.buffer)throw std::runtime_error("Scene has already been uploaded");
+    terrain_total_indices_=source.indices.size();
+    if(!source.terrain_ranges.empty()){
+        std::size_t batch_cursor=0;for(const auto& batch:source.batches){if(batch.first!=batch_cursor||!batch.count||batch.count%3||batch.count>source.indices.size()-batch_cursor)throw std::runtime_error("Invalid culled terrain material partition");batch_cursor+=batch.count;}if(batch_cursor!=source.indices.size())throw std::runtime_error("Terrain materials do not cover their indices");
+        std::size_t cursor=0;std::vector<Bounds> boxes;
+        for(const auto& range:source.terrain_ranges){
+            if(range.first!=cursor||!range.count||range.count%3||range.count>source.indices.size()-cursor||range.batch>=source.batches.size())throw std::runtime_error("Invalid terrain visibility range");
+            const auto& batch=source.batches[range.batch];if(range.first<batch.first||std::uint64_t(range.first)+range.count>std::uint64_t(batch.first)+batch.count)throw std::runtime_error("Terrain visibility range crosses its material");
+            for(std::size_t i=range.first;i<std::size_t(range.first)+range.count;++i){const auto index=source.indices[i];if(index>=source.vertices.size())throw std::runtime_error("Terrain index exceeds its vertices");const auto& vertex=source.vertices[index];const Vec3 p{vertex.x,vertex.y,vertex.z};
+                const auto contained=[](double value,double low,double high){const auto epsilon=8*std::numeric_limits<float>::epsilon()*(std::abs(value)+std::abs(low)+std::abs(high)+1);return std::isfinite(value)&&value>=low-epsilon&&value<=high+epsilon;};
+                if(!contained(p.x,range.bounds.min.x,range.bounds.max.x)||!contained(p.y,range.bounds.min.y,range.bounds.max.y)||!contained(p.z,range.bounds.min.z,range.bounds.max.z))throw std::runtime_error("Terrain visibility bounds exclude their geometry");
+            }
+            cursor+=range.count;boxes.push_back(range.bounds);
+        }
+        if(cursor!=source.indices.size())throw std::runtime_error("Terrain visibility ranges do not cover the source mesh");
+        terrain_visibility_.build(boxes);terrain_ranges_=source.terrain_ranges;terrain_indices_=source.indices;
+    }
     props_=Props::load(source.map_root);auto batches=source.batches;
     for(const auto& part:props_.parts)batches.push_back({0,0,part.texture,-1});
     auto appearance=Appearance::load(source.map_root,batches);

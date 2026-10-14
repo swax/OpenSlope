@@ -36,17 +36,18 @@ struct Image {
         vk_check(vkAllocateMemory(context.device,&allocation,nullptr,&memory),"Allocate capture image");vk_check(vkBindImageMemory(context.device,image,memory,0),"Bind capture image");
     }
 };
-int capture(Player& player,const std::filesystem::path& output,double seconds,const std::filesystem::path& replay,const std::filesystem::path& audio_output,unsigned msaa) {
+int capture(Player& player,const std::filesystem::path& output,double seconds,const std::filesystem::path& replay,const std::filesystem::path& audio_output,unsigned msaa,bool terrain_culling) {
     VulkanContext context;context.create(false);Image image(context);image.create(1280,720);
-    VulkanRenderer renderer(context);renderer.upload(player.terrain().mesh());renderer.targets(std::span(&image.image,1),VK_FORMAT_R8G8B8A8_UNORM,1280,720,msaa);
+    VulkanRenderer renderer(context);renderer.cull_terrain(terrain_culling);renderer.upload(player.terrain().mesh());renderer.targets(std::span(&image.image,1),VK_FORMAT_R8G8B8A8_UNORM,1280,720,msaa);
     std::cout<<"MSAA samples: "<<renderer.samples()<<'\n';
     std::unique_ptr<AudioScene> audio;PcmClip recorded;recorded.channels=2;if(!audio_output.empty()){audio=std::make_unique<AudioScene>(player.terrain().map_root());player.observe_ticks([&](const Player& p,const Rider& before){audio->listener({camera_eye(p),p.camera_forward(),{0,1,0}});audio->tick(p,before);std::array<float,1600> block{};audio->mixer().render(block);if(recorded.samples.size()+block.size()>32*1024*1024)throw std::runtime_error("Audio capture exceeds its sample limit");recorded.samples.insert(recorded.samples.end(),block.begin(),block.end());});}
-    unsigned frames=0;double wall=0,gpu=0;const auto draw=[&]{const auto started=std::chrono::steady_clock::now();renderer.render(0,camera_for(player,1280.0/720),board_transform(player.render_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},camera_eye(player));wall+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();gpu+=renderer.stats().gpu_ms;++frames;};
+    unsigned frames=0,packed_frames=0;double wall=0,gpu=0,cull=0;std::uint64_t submitted=0;const auto draw=[&]{const auto started=std::chrono::steady_clock::now();renderer.render(0,camera_for(player,1280.0/720),board_transform(player.render_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},camera_eye(player));wall+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();gpu+=renderer.stats().gpu_ms;cull+=renderer.stats().cull_ms;submitted+=renderer.stats().terrain_indices;packed_frames+=renderer.stats().terrain_compacted;++frames;};
     if(replay.empty()){for(unsigned i=0;i<unsigned(seconds*60);++i)player.tick({});draw();}else{
         const auto started=std::chrono::steady_clock::now();Replay::load(replay).run(player,draw);const auto total=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         const auto& r=player.rider();std::cout<<"Replay: "<<frames<<" rendered frames; launches "<<r.launches<<"; landings "<<r.landings<<"; grounded "<<r.grounded<<"; switch "<<(r.lead<0)<<"; spin "<<r.spin_degrees<<" deg; flip "<<r.flip_degrees<<" deg; surface "<<r.surface<<"; ground prop "<<(r.ground_instance?std::to_string(*r.ground_instance):"none")<<"; contacts "<<r.world_contacts<<"; bounces "<<r.bounces<<"; hard impacts "<<r.hard_impacts<<"; wipeout "<<(r.motion==Motion::Wipeout)<<"; position ["<<r.position.x<<','<<r.position.y<<','<<r.position.z<<"]; velocity ["<<r.velocity.x<<','<<r.velocity.y<<','<<r.velocity.z<<"]; average simulation "<<std::max(0.,total-wall)/frames<<" ms; render wall "<<wall/frames<<" ms; GPU "<<gpu/frames<<" ms\n";
     }
     const auto stats=renderer.stats();std::cout<<"Visible props: "<<stats.visible_props<<"; prop draws: "<<stats.prop_draws<<"; CPU frame: "<<stats.cpu_ms<<" ms; GPU frame: "<<stats.gpu_ms<<" ms\n";
+    std::cout<<"Terrain: "<<stats.visible_terrain<<'/'<<stats.terrain_patches<<" patches; "<<stats.terrain_indices<<'/'<<stats.terrain_total_indices<<" indices; "<<stats.terrain_draws<<" draws; "<<stats.visibility_tests<<" bounds tests; average visibility "<<cull/frames<<" ms; average submitted "<<double(submitted)/frames<<" indices; packed frames "<<packed_frames<<'/'<<frames<<'\n';
     if(audio){write_wave(audio_output,recorded);const auto sound=audio->stats();std::cout<<"Audio capture: "<<recorded.frames()<<" stereo frames; contact sounds "<<sound.contacts<<"; transients "<<sound.transients<<"; ambient voices "<<sound.ambient<<"; music node "<<sound.music_node<<'\n';player.observe_ticks({});}
     renderer.capture(0,output);std::cout<<"Vulkan capture: "<<output.string()<<'\n';return 0;
 }
@@ -115,30 +116,31 @@ struct Window {
 }
 int main(int argc,char** argv) {
     try {
-        std::filesystem::path map,output,replay,audio_output;bool xr=false,smoke_window=false,no_audio=false,audio_smoke=false,msaa_set=false;double seconds=0;unsigned msaa=4;
+        std::filesystem::path map,output,replay,audio_output;bool xr=false,smoke_window=false,no_audio=false,audio_smoke=false,msaa_set=false,terrain_culling=true;double seconds=0;unsigned msaa=4;
         for(int i=1;i<argc;++i) {
             const std::string option=argv[i];
             if(option=="--xr")xr=true;
             else if(option=="--smoke-window")smoke_window=true;
             else if(option=="--msaa"&&i+1<argc){const std::string value=argv[++i];if(value!="1"&&value!="2"&&value!="4"&&value!="8")throw std::runtime_error("MSAA must be 1, 2, 4 or 8");msaa=unsigned(std::stoul(value));msaa_set=true;}
+            else if(option=="--no-terrain-culling")terrain_culling=false;
             else if(option=="--no-audio")no_audio=true;
             else if(option=="--audio-smoke")audio_smoke=true;
             else if((option=="--map"||option=="--capture"||option=="--seconds"||option=="--replay"||option=="--audio-capture")&&i+1<argc) {
                 const std::string argument=argv[++i];if(option=="--map")map=argument;else if(option=="--capture")output=argument;else if(option=="--replay")replay=argument;else if(option=="--audio-capture")audio_output=argument;else seconds=std::stod(argument);
-            }else if(option=="--help") {std::cout<<"openslope_player [--map <map folder>] [--xr] [--capture <output.ppm>] [--audio-capture <output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] [--msaa 1|2|4|8]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space charged jump, Shift boost, R reset, F/V camera, P pause, M mute, Escape quit.\n";return 0;}
+            }else if(option=="--help") {std::cout<<"openslope_player [--map <map folder>] [--xr] [--capture <output.ppm>] [--audio-capture <output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] [--msaa 1|2|4|8] [--no-terrain-culling]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space charged jump, Shift boost, R reset, F/V camera, P pause, M mute, Escape quit.\n";return 0;}
             else throw std::runtime_error("Unknown or incomplete argument: "+option);
         }
         if(!std::isfinite(seconds)||seconds<0||seconds>3600)throw std::runtime_error("Duration must be between 0 and 3600 seconds");
-        if(xr&&msaa_set)throw std::runtime_error("The --msaa option currently applies to desktop window/capture mode");
+        if(xr&&(msaa_set||!terrain_culling))throw std::runtime_error("MSAA/culling options currently apply to desktop window/capture mode");
         if(audio_smoke){AudioMixer mixer;auto clip=std::make_shared<PcmClip>();clip->samples.resize(48000);for(std::size_t i=0;i<clip->samples.size();++i)clip->samples[i]=float(.03*std::sin(2*pi*440*i/48000.));mixer.play(clip);AudioDevice device(mixer);if(!device.active())throw std::runtime_error("No audio output device accepted stereo float PCM");std::this_thread::sleep_for(std::chrono::milliseconds(1100));std::cout<<"Audio device: "<<device.frames()<<" frames queued\n";return device.frames()>=48000?0:1;}
         if(xr&&!output.empty())throw std::runtime_error("Choose either OpenXR or offline capture");
         if(!replay.empty()&&(output.empty()||seconds!=0))throw std::runtime_error("Replay requires --capture and cannot combine with --seconds");
         Player player(map.empty()?Terrain::demo():Terrain::load(map));
         if(xr)return run_openxr(player,{},seconds);
         if(!audio_output.empty()&&output.empty())throw std::runtime_error("Audio capture requires --capture");
-        if(!output.empty())return capture(player,output,seconds,replay,audio_output,msaa);
+        if(!output.empty())return capture(player,output,seconds,replay,audio_output,msaa,terrain_culling);
         if(smoke_window&&seconds==0)seconds=3;
-        VulkanContext context;context.create(true);Window window(context);window.msaa=msaa;window.create(player.terrain().mesh(),!smoke_window);
+        VulkanContext context;context.create(true);Window window(context);window.renderer.cull_terrain(terrain_culling);window.msaa=msaa;window.create(player.terrain().mesh(),!smoke_window);
         std::unique_ptr<AudioScene> audio;std::unique_ptr<AudioDevice> device;std::unique_ptr<AudioService> audio_service;if(!no_audio&&!smoke_window){audio=std::make_unique<AudioScene>(player.terrain().map_root());audio->mixer().paused(true);device=std::make_unique<AudioDevice>(audio->mixer());audio_service=std::make_unique<AudioService>(*audio);player.observe_ticks([&](const Player& p,const Rider& before){audio->tick(p,before);});if(!device->active())std::cerr<<"Audio output unavailable; use --no-audio for silent playback\n";}
         const auto started=std::chrono::steady_clock::now();auto previous=started;bool first_person=false,last_camera=false,paused=false,last_pause=false,last_focus=false,muted=false,last_mute=false;
         while(window.events()) {

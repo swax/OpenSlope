@@ -64,7 +64,8 @@ Lightmap atlases retain base-level sampling to prevent unrelated patch tiles
 bleeding into each other. GPU sampled-image allocations, including driver padding,
 are capped at 512 MiB; the existing 256 MiB decoded base-image budget remains.
 Anisotropic filtering, mask coverage preservation, atlas-safe lightmap mips,
-terrain LOD/culling and upload batching remain outstanding. Desktop geometric MSAA
+terrain LOD/stitching and upload batching remain outstanding. Hierarchical frustum
+selection and adaptive index submission are now supported; see terrain-culling.md. Desktop geometric MSAA
 is now supported; see graphics-quality.md for its evidence and remaining limits.
 
 Portable fixtures cover odd/rectangular reductions, alpha fringes and invalid
