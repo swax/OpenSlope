@@ -35,5 +35,6 @@ int main(int argc,char** argv){try{
     b.render(0,projection(-.85,.85,-.85,.85)*view(eye_a,direction),board_transform({},player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye_a,{},{},{},mesh);b.capture(0,root/"vr-srgb.ppm");pb=pixels(root/"vr-srgb.ppm");double error=0;for(std::size_t i=0;i<pa.size();++i)error+=std::abs(int(pa[i])-int(pb[i]));check(error/pa.size()<1.0,"sRGB and display-domain avatar match");
     a.targets(std::span(&left.image,1),VK_FORMAT_R8G8B8A8_UNORM,1024,1024,1);render("vr-single-sample",full,true,tracking.head,{0,-.7,-1},true);
     tracking.body_active=false;tracking.controllers[0].valid=tracking.controllers[1].valid=false;render("vr-tracking-lost",avatar_pose(player,&tracking),true,tracking.head,{0,-1,-.22},true);
+    player.start_on_foot();tracking.body_active=false;tracking.head=player.render_position()+Vec3{0,1.65,0};for(unsigned i=0;i<2;++i){tracking.controllers[i].valid=true;tracking.controllers[i].position=tracking.head+Vec3{i?.24:-.24,-.5,-.36};}render("vr-on-foot-help",avatar_pose(player,&tracking),true,tracking.head,{0,-.7,-1},true);
     std::cout<<"PASS: "<<checks<<" actual Vulkan avatar, look-down, labels, tracking fallback and stereo checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

@@ -26,4 +26,6 @@ for filename, fields in [('fixture.pbd', ((32,92,40),(36,96,128))), ('fixture.ss
     files[filename] = bytes(target)
 files['fixture.map'] += rails['fixture.map'][rails['fixture.map'].index(b'### SPLINES BEGIN'):]
 files['fixture.aip'] = files['fixture.sop'] = path_file()
-destination.write_bytes(disc(fixture(files)))
+data=fixture(files)
+data['DATA/CONFIG/SNOW.INF']=b'[PACK]\n[GLIDE]\nLOAD BOARD\nASSIGNVOL\n'
+destination.write_bytes(disc(data))

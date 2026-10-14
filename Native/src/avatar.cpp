@@ -42,7 +42,7 @@ void label(std::vector<Vertex>& out,std::string_view text,Vec3 anchor,Vec3 eye,d
     quad(out,base-right*.003-up*.003,base+right*(width+.003)-up*.003,base+right*(width+.003)+up*.017,base-right*.003+up*.017,{.035f,.045f,.065f});
     for(std::size_t i=0;i<text.size();++i){const auto bits=glyph(text[i]);for(unsigned y=0;y<7;++y)for(unsigned x=0;x<5;++x)if(bits[y]&(1u<<(4-x))){const auto p=base+right*(double(i*6+x)*pixel)+up*((6-y)*pixel)+normal*.0005;quad(out,p,p+right*pixel,p+(right+up)*pixel,p+up*pixel,{1,1,1});}}
 }
-void controller(std::vector<Vertex>& out,const ControllerPose& c,unsigned side,bool labels,Vec3 eye){
+void controller(std::vector<Vertex>& out,const ControllerPose& c,unsigned side,bool labels,Vec3 eye,bool on_foot){
     if(!c.valid)return;const auto colour=side?std::array<float,3>{1,.62f,.14f}:std::array<float,3>{.52f,.94f,.20f};
     const auto top=c.position+c.up*.04+c.forward*.015;
     tube(out,c.position-c.up*.09,top,.026,{.22f,.25f,.3f});tube(out,top-c.up*.014,top+c.up*.014,.043,{.1f,.12f,.17f});
@@ -50,8 +50,8 @@ void controller(std::vector<Vertex>& out,const ControllerPose& c,unsigned side,b
     tube(out,top+c.up*.016+c.right*.022-c.forward*.008,top+c.up*.020+c.right*.022-c.forward*.008,.008,colour);
     tube(out,c.position+c.forward*.027,c.position+c.forward*.043,.012,{.72f,.77f,.84f});
     if(labels){const auto anchor=top+c.up*.07+c.forward*.08;tube(out,top,anchor,.0015,colour);
-        if(c.touch){if(side){label(out,"TRIGGER BOOST",anchor,eye,.050);label(out,"A HOLD JUMP",anchor,eye,.025);label(out,"RELEASE TO JUMP",anchor,eye,0);}else{label(out,"STICK STEER",anchor,eye,.075);label(out,"UP TUCK / DOWN BRAKE",anchor,eye,.050);label(out,"CLICK EXIT RAIL",anchor,eye,.025);label(out,"X RESET",anchor,eye,0);}}
-        else{label(out,"SELECT JUMP",anchor,eye,.025);label(out,"MENU RESET",anchor,eye,0);}
+        if(c.touch){if(on_foot){if(side){label(out,"TRIGGER RUN",anchor,eye,.050);label(out,"A JUMP",anchor,eye,.025);label(out,"B MOUNT BOARD",anchor,eye,0);}else{label(out,"STICK WALK",anchor,eye,.025);label(out,"X RESET",anchor,eye,0);}}else if(side){label(out,"TRIGGER BOOST",anchor,eye,.050);label(out,"A HOLD JUMP",anchor,eye,.025);label(out,"RELEASE TO JUMP",anchor,eye,0);label(out,"B DISMOUNT",anchor,eye,-.025);}else{label(out,"STICK STEER",anchor,eye,.075);label(out,"UP TUCK / DOWN BRAKE",anchor,eye,.050);label(out,"CLICK EXIT RAIL",anchor,eye,.025);label(out,"X RESET",anchor,eye,0);}}
+        else{label(out,"SELECT JUMP",anchor,eye,.025);label(out,"LEFT MENU RESET",anchor,eye,0);label(out,on_foot?"RIGHT MENU MOUNT":"RIGHT MENU DISMOUNT",anchor,eye,-.025);}
     }
 }
 struct BoneTarget{Vec3 head,tail;};
@@ -71,8 +71,8 @@ BoneTarget target(std::string_view name,const AvatarPose& p){
 }
 AvatarPose avatar_pose(const Player& player,const AvatarTracking* tracking){
     if(tracking&&(!finite(tracking->head)||!finite(tracking->forward)||!finite(tracking->up)))tracking=nullptr;
-    AvatarPose p;const auto root=player.render_board_position();const auto& rider=player.rider();const auto crouch=std::clamp(rider.crouch,0.,1.);
-    p.up=player.render_up();p.forward=normalized(rotate(player.render_forward(),p.up,-pi*.5*rider.lead));const auto right=normalized(cross(p.forward,p.up));
+    AvatarPose p;p.on_foot=player.on_foot();const auto root=p.on_foot?player.render_position():player.render_board_position();const auto& rider=player.rider();const auto crouch=std::clamp(rider.crouch,0.,1.);
+    p.up=p.on_foot?Vec3{0,1,0}:player.render_up();p.forward=p.on_foot?rider.forward:normalized(rotate(player.render_forward(),p.up,-pi*.5*rider.lead));const auto right=normalized(cross(p.forward,p.up));
     const auto at=[&](double x,double y,double z){return root+right*x+p.up*y+p.forward*z;};
     p.joints[id(J::Hips)]=at(0,1.0364-.35*crouch,.04*crouch);p.joints[id(J::Spine)]=p.joint(J::Hips)+p.up*.14+p.forward*(.09*crouch);
     p.joints[id(J::Chest)]=p.joint(J::Spine)+p.up*.052+p.forward*(.03*crouch);p.joints[id(J::Neck)]=p.joint(J::Chest)+p.up*.242;p.joints[id(J::Head)]=p.joint(J::Neck)+p.up*.075;
@@ -93,7 +93,7 @@ AvatarPose avatar_pose(const Player& player,const AvatarTracking* tracking){
         if(p.controllers[side].valid&&finite(p.controllers[side].position)&&length(p.controllers[side].position-p.joint(shoulder))<1.2)p.joints[id(wrist)]=p.controllers[side].position;else p.controllers[side].valid=false;
         if(!tracked(elbow))p.joints[id(elbow)]=knee(p.joint(shoulder),p.joint(wrist),-p.forward+body_right*sign,.3162,.2482);
         if(!tracked(hip))p.joints[id(hip)]=p.joint(J::Hips)+body_right*(sign*.105)-p.up*.08;
-        if(!tracked(ankle)){p.joints[id(ankle)]=at(sign*.27,.12,0);if(tracking){const auto along=normalized(project(player.render_forward(),{0,1,0}),player.camera_forward());p.joints[id(ankle)]=root+project(tracking->head-root,{0,1,0})+along*(-sign*.27)+Vec3{0,.12,0};}}
+        if(!tracked(ankle)){const auto stride=p.on_foot?std::sin(player.walk_phase()+side*pi)*std::min(.18,length(project(rider.velocity,{0,1,0}))*.05):0.;p.joints[id(ankle)]=at(sign*(p.on_foot?.105:.27),.12+std::max(0.,stride)*.2,stride);if(tracking){const auto along=normalized(project(player.render_forward(),{0,1,0}),player.camera_forward());p.joints[id(ankle)]=p.on_foot?root+project(tracking->head-root,{0,1,0})+body_right*(sign*.105)+p.forward*stride+Vec3{0,.12+std::max(0.,stride)*.2,0}:root+project(tracking->head-root,{0,1,0})+along*(-sign*.27)+Vec3{0,.12,0};}}
         if(!tracked(k))p.joints[id(k)]=knee(p.joint(hip),p.joint(ankle),p.forward,.4165,.4182);
         if(!tracked(toe))p.joints[id(toe)]=p.joint(ankle)+p.forward*.13-p.up*.068;
     }
@@ -126,7 +126,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p,bool first_person,bool 
     for(const auto& b:bones_){if(b.name.starts_with("LeftHand")||b.name.starts_with("RightHand")){transforms.push_back(transforms.at(b.parent));continue;}const auto t=target(b.name,p);const auto from=basis(b.tail-b.head),to=t.tail-t.head;transforms.push_back({b.head,from,to,t.head,std::clamp(length(to)/std::max(.001,length(from)),.5,1.5)});}
     std::vector<Vec3> posed;posed.reserve(vertices_.size());std::vector<double> lighting;lighting.reserve(vertices_.size());for(const auto& v:vertices_){const auto& t=transforms[v.bone];auto relative=basis(v.position-t.origin);const auto axis=normalized(t.from);relative+=axis*(dot(relative,axis)*(t.scale-1));posed.push_back(t.target+align(relative,t.from,t.to));const auto normal=normalized(align(basis(v.normal),t.from,t.to));lighting.push_back(.60+.40*std::max(0.,dot(normal,normalized(Vec3{-.3,.8,-.5}))));}
     mesh_.clear();for(std::size_t i=0;i<corners_.size();i+=3){bool hide=false;for(unsigned k=0;k<3;++k){const auto& name=bones_[vertices_[corners_[i+k].vertex].bone].name;hide|=first_person&&(name=="Head"||name=="Neck");}if(!hide)for(unsigned k=0;k<3;++k){const auto& c=corners_[i+k];auto colour=c.colour;for(auto& value:colour)value*=float(lighting[c.vertex]);mesh_.push_back(vertex(posed[c.vertex],colour));}}
-    for(unsigned i=0;i<2;++i)controller(mesh_,p.controllers[i],i,labels,eye);
+    for(unsigned i=0;i<2;++i)controller(mesh_,p.controllers[i],i,labels,eye,p.on_foot);
     if(mesh_.size()>60000)throw std::runtime_error("Avatar submission exceeds bounds");return mesh_;
 }
 }

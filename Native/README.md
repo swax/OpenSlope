@@ -1,11 +1,12 @@
 # OpenSlope Native
 
 Experimental C++20 player for portable OpenSlope maps, with a Vulkan renderer and OpenXR host.
-The first milestone is a playable terrain/contact prototype. Windows desktop rendering and
-portable conformance tests are the local validation targets. The OpenXR host compiles on Windows;
-headset behavior still needs device testing. The ARM64 Android debug APK also builds and its
-signature/package are verified. The Linux host still needs target build/device validation.
-This is not yet a complete Quest application or a full gameplay port.
+Windows desktop rendering and portable conformance tests are the local validation targets.
+The ARM64 Android APK builds, and the user reports successful Quest play after importing ALASKA
+inside the app. Build 0.19.0 also passes device importer/library checks and initializes Quest's
+full-body tracker. Worn-headset controls, body poses, comfort and frame budgets need targeted
+testing. The Linux host still needs target build/device validation. Full gameplay parity remains
+tracked in the matrix below.
 
 The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
 The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
@@ -13,9 +14,11 @@ ISO to add courses. No ISO is required to browse and play custom maps. No retail
 The importer currently converts terrain, textures, lightmaps, static prop geometry/placements,
 AIP/SOP course paths, collision proxies/physics bodies, configured sound/music assets and provenance. The player renders textured
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
-authored prop contacts for bounce, ride surfaces and pass-through events. Live prop behavior,
-animation-driven crash recovery, effects, executable audio resolvers, rails, races and multiplayer remain
-later stages. See [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
+authored prop contacts for bounce, ride surfaces and pass-through events. Animated crash recovery,
+analytic rails, riding effects and the visible stick figure are implemented. Quest starts on foot
+beside the board, with walking/jumping and nearby mounting. Live prop behavior, executable audio
+resolvers, full tricks/scoring, races and multiplayer remain later stages. See
+[the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 ## Build and try on Windows
 
@@ -32,7 +35,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 ```
 
 A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
-F/V switches first/chase camera, P pauses and Escape exits. Input pauses when the preview loses
+F/V switches first/chase camera, C looks down, G mounts/dismounts, P pauses and Escape exits.
+Use `--on-foot` to start beside the board; A/D/W/S walk, Shift runs and Space jumps in that mode.
+See [walking and boarding](docs/boarding.md). Input pauses when the preview loses
 focus; an uncommitted jump charge is cancelled.
 
 Desktop rendering defaults to 4x MSAA, falling back to a supported colour/depth
@@ -75,7 +80,7 @@ Map courses load their referenced
 and a missing lightmap leaves the diffuse texture visible. See [terrain appearance](docs/terrain-appearance.md).
 Courses with the prop contracts also render their referenced `Meshes/*.obj` and textures with
 per-instance lighting. Collision uses authored proxy/body assets and local boxes. Hard prop impacts
-enter wipeout; use R to reset until animation-driven recovery is implemented. See
+enter wipeout followed by animated relative get-up; R also resets. See
 [static props](docs/static-props.md) and [world contact](docs/world-contacts.md).
 
 Offline GPU validation requires no visible window or headset:
@@ -104,7 +109,9 @@ sRGB output targets. They require a Vulkan GPU and are separate from the portabl
 Use an active OpenXR runtime and a connected headset. Errors are reported if no headset is
 available. The host creates the Vulkan instance/device through `XR_KHR_vulkan_enable2`, uses
 runtime-selected stereo views and swapchain formats, and pauses simulation outside input focus.
-Left stick steers, right trigger boosts, and left X resets. Touch-compatible bindings are the
+VR starts on foot: left stick walks, right trigger runs, right A jumps and B mounts a nearby
+board. B while riding steps off; X resets to the on-foot start. While riding, left stick
+steers and right trigger boosts. Touch-compatible bindings are the
 initial profile; dedicated Steam Frame bindings and device-specific extensions remain device work.
 Right A charges/releases the jump, and left-stick Y controls posture/flip when vertically dominant.
 Locomotion rotates the world camera by heading without applying board bank to the tracked head.
@@ -142,8 +149,10 @@ adb install Native/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 The ARM64 Android build is verified with the isolated Windows toolchain. The debug-signed APK
-contains no retail assets. No headset was connected during local validation, so the system pickers,
-persistent document grants, installation, stereo display, controllers and performance need device testing.
+contains no retail assets. Installation, the actual JNI importer and local/custom SAF library
+contracts have connected-Quest evidence. The user imported ALASKA with the system picker and
+played build 0.14.0. Build 0.19.0 launches that existing course and initializes optional tracking;
+live stereo/body poses, controller interaction and performance need targeted device testing.
 
 After installation, find **OpenSlope Native** in the headset's sideloaded applications:
 
@@ -154,8 +163,10 @@ After installation, find **OpenSlope Native** in the headset's sideloaded applic
 3. **Import SSX Tricky ISO** opens the system file picker, discovers supported courses, and lets
    you select which to import into the current Maps folder. Existing map names are kept. Cancel
    stops the current course; courses already imported remain available.
-4. **Play** validates the selected terrain, props and PNGs, then loads them into the immersive OpenXR activity. Left stick
-   steers/postures, right trigger boosts, right A charges/releases a jump and left X resets.
+4. **Play** validates the selected terrain, props and PNGs, then loads them into the immersive OpenXR activity.
+   You start on foot; right B mounts the nearby board. Left stick walks, trigger runs and A jumps.
+   Once mounted, stick steers/postures, trigger boosts and A charges/releases a jump. B dismounts;
+   X resets beside the board.
    Returning from the game returns to the library.
 
 System document providers must support seekable ISO reads and writable/renameable folders for import.
@@ -194,7 +205,9 @@ adb shell am instrument -w org.openslope.nativeplayer.test/org.openslope.nativep
 These tests exercise the actual ARM64 JNI importer, local custom-map discovery, and folder
 publication/playback/cancellation through a test document provider, including copying referenced
 textures, lightmaps and prop meshes and removing an interrupted play cache. They do not exercise the
-headset's own picker UI or immersive rendering. Run them on a connected Quest before release.
+headset's own picker UI or immersive rendering. They pass 52 checks on the connected Quest 3.
+The same runner accepts `-e vr true -e course ALASKA -e seconds 18` for a bounded local-course
+activity smoke check; see [boarding validation](docs/boarding.md) for its evidence limits.
 
 ## Portable checks
 
@@ -238,8 +251,8 @@ from existing ports, and explicit prototype choices. No Trailmap installation or
 to build or run the synthetic tests. When the local Trailmap data files are present, the native
 check also requires the tracked ride contract and independent fixtures to match them exactly.
 
-Authored prop contacts now run in desktop gameplay. Recovery, authored world logic,
-rails/races/tricks, presentation, audio/effects and graphics/performance remain in the
+Authored prop contacts, recovery, rails, avatar presentation and walking now run in desktop gameplay.
+Remaining world logic, races/tricks, presentation, audio/effects and graphics/performance stay in the
 desktop-parity.md matrix. The user reports successful initial Quest play on 0.14.0.
 Targeted headset checks continue alongside desktop implementation. Sky import,
 camera-centred panorama and fog are described in [world appearance](docs/world-appearance.md).

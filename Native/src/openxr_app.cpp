@@ -45,13 +45,14 @@ struct Eye {
 };
 struct State {
     XrInstance instance{};XrSystemId system{};XrSession session{};XrSpace space{};
-    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{},grip{};
+    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{},mount{},grip{};
     std::array<XrPath,2> hands{};std::array<XrSpace,2> grips{};
+    Vec3 walk_forward{},room_offset{};bool walking=true;
     XrPath touch_profile{};
     XrBodyTrackerFB body_tracker{};PFN_xrDestroyBodyTrackerFB destroy_body{};PFN_xrLocateBodyJointsFB locate_body{};
     bool body_extension=false,full_extension=false,fidelity_extension=false,full_body=false,fidelity_supported=false;
     bool anchored=false;Vec3 origin{};double reference_yaw=0;std::uint64_t anchor_serial=0;XrTime reference_change=0;
-    int tracking_mode=-1,actual_fidelity=-1;
+    int tracking_mode=-1,actual_fidelity=-1,boarding_mode=-1,pose_mode=-1;
     Avatar avatar;
     VulkanContext vulkan;
     std::vector<Eye> eyes;
@@ -148,21 +149,21 @@ struct State {
             std::vector<VkImage> images;for(const auto& image:xr_images)images.push_back(image.image);
             eye.renderer=std::make_unique<VulkanRenderer>(vulkan);eye.renderer->use_scene(scene);eye.renderer->targets(images,format,eye.width,eye.height);
         }
-        std::cout<<"OpenXR stereo session prepared. Left stick: steer/posture; right trigger: boost; A: charged jump; X: reset; left stick click: exit rail.\n";
+        std::cout<<"OpenXR stereo session prepared. Left stick: steer/posture; right trigger: boost; A: charged jump; X: reset; left stick click: exit rail; B: mount/dismount. Start on foot.\n";
     }
     void create_input() {
         XrActionSetCreateInfo set{XR_TYPE_ACTION_SET_CREATE_INFO};std::strcpy(set.actionSetName,"ride");std::strcpy(set.localizedActionSetName,"Riding");
         xr_check(xrCreateActionSet(instance,&set,&actions),"Create riding action set");
         const auto action=[&](const char* name,XrActionType type,XrAction& result){
             XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};info.actionType=type;std::strcpy(info.actionName,name);std::strcpy(info.localizedActionName,name);xr_check(xrCreateAction(actions,&info,&result),"Create riding action");};
-        action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("boost",XR_ACTION_TYPE_FLOAT_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);action("rail_exit",XR_ACTION_TYPE_BOOLEAN_INPUT,rail_exit);
+        action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("boost",XR_ACTION_TYPE_FLOAT_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);action("rail_exit",XR_ACTION_TYPE_BOOLEAN_INPUT,rail_exit);action("mount",XR_ACTION_TYPE_BOOLEAN_INPUT,mount);
         touch_profile=path("/interaction_profiles/oculus/touch_controller");
         hands={path("/user/hand/left"),path("/user/hand/right")};
         XrActionCreateInfo pose{XR_TYPE_ACTION_CREATE_INFO};pose.actionType=XR_ACTION_TYPE_POSE_INPUT;std::strcpy(pose.actionName,"grip_pose");std::strcpy(pose.localizedActionName,"Controller grip");pose.countSubactionPaths=2;pose.subactionPaths=hands.data();xr_check(xrCreateAction(actions,&pose,&grip),"Create controller poses");
-        const std::array<XrActionSuggestedBinding,7> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")},{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")}}};
+        const std::array<XrActionSuggestedBinding,8> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")},{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{mount,path("/user/hand/right/input/b/click")}}};
         XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};suggested.interactionProfile=path("/interaction_profiles/oculus/touch_controller");suggested.countSuggestedBindings=std::uint32_t(bindings.size());suggested.suggestedBindings=bindings.data();
         xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest Touch-compatible bindings");
-        const std::array<XrActionSuggestedBinding,4> simple{{{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{reset,path("/user/hand/left/input/menu/click")},{jump,path("/user/hand/right/input/select/click")}}};
+        const std::array<XrActionSuggestedBinding,5> simple{{{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{reset,path("/user/hand/left/input/menu/click")},{jump,path("/user/hand/right/input/select/click")},{mount,path("/user/hand/right/input/menu/click")}}};
         suggested.interactionProfile=path("/interaction_profiles/khr/simple_controller");suggested.countSuggestedBindings=std::uint32_t(simple.size());suggested.suggestedBindings=simple.data();xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest simple controller bindings");
         XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};attach.countActionSets=1;attach.actionSets=&actions;xr_check(xrAttachSessionActionSets(session,&attach),"Attach riding input");
         for(unsigned i=0;i<2;++i){XrActionSpaceCreateInfo info{XR_TYPE_ACTION_SPACE_CREATE_INFO};info.action=grip;info.subactionPath=hands[i];info.poseInActionSpace.orientation.w=1;xr_check(xrCreateActionSpace(session,&info,&grips[i]),"Create controller grip space");}
@@ -214,9 +215,10 @@ struct State {
         info.action=boost;XrActionStateFloat boosting{XR_TYPE_ACTION_STATE_FLOAT};xr_check(xrGetActionStateFloat(session,&info,&boosting),"Read boost");
         info.action=reset;XrActionStateBoolean resetting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&resetting),"Read reset");
         info.action=jump;XrActionStateBoolean jumping{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&jumping),"Read charged jump");
+        info.action=mount;XrActionStateBoolean mounting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&mounting),"Read board mounting");
         info.action=rail_exit;XrActionStateBoolean leaving{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&leaving),"Read rail exit");
-        const auto y=steering.isActive&&std::abs(steering.currentState.y)>.1f&&std::abs(steering.currentState.y)>=std::abs(steering.currentState.x)?steering.currentState.y:0;
-        return {steering.isActive?-steering.currentState.x:0,boosting.isActive&&boosting.currentState>.5f,resetting.isActive&&resetting.changedSinceLastSync&&resetting.currentState,jumping.isActive&&jumping.currentState,y,leaving.isActive&&leaving.currentState};
+        const auto y=walking?(steering.isActive?steering.currentState.y:0):steering.isActive&&std::abs(steering.currentState.y)>.1f&&std::abs(steering.currentState.y)>=std::abs(steering.currentState.x)?steering.currentState.y:0;
+        return {steering.isActive?-steering.currentState.x:0,boosting.isActive&&boosting.currentState>.5f,resetting.isActive&&resetting.changedSinceLastSync&&resetting.currentState,jumping.isActive&&jumping.currentState,y,leaving.isActive&&leaving.currentState,mounting.isActive&&mounting.currentState,walk_forward,room_offset};
     }
     void events() {
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};XrResult result;
@@ -237,7 +239,7 @@ struct State {
 };
 }
 int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
-    State state;state.create(platform,player.terrain().mesh());
+    player.start_on_foot();State state;state.create(platform,player.terrain().mesh());
     AudioScene audio(player.terrain().map_root());audio.mixer().paused(true);AudioDevice audio_device(audio.mixer());AudioService audio_service(audio);player.observe_ticks([&](const Player& p,const Rider& before){audio.tick(p,before);});
     const auto started=std::chrono::steady_clock::now();auto next_stats=started+std::chrono::seconds(5);XrTime previous_time=0;
     while(!state.quit) {
@@ -248,7 +250,8 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
         XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};XrFrameState frame{XR_TYPE_FRAME_STATE};xr_check(xrWaitFrame(state.session,&wait,&frame),"Wait for VR frame");
         XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};xr_check(xrBeginFrame(state.session,&begin),"Begin VR frame");
         const auto dt=previous_time?double(frame.predictedDisplayTime-previous_time)*1e-9:0;previous_time=frame.predictedDisplayTime;
-        if(state.focused)player.advance(std::max(0.0,dt),state.input());else player.release_inputs();
+        state.walking=player.on_foot();if(state.focused)player.advance(std::max(0.0,dt),state.input());else player.release_inputs();
+        const auto boarding=player.on_foot()?1:0;if(boarding!=state.boarding_mode){state.boarding_mode=boarding;tracking_log(boarding?"Boarding: on foot; B to mount nearby board":"Boarding: mounted; B to dismount");}
         std::array<XrCompositionLayerProjectionView,2> projections{{{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}}};
         bool rendered=false;
         if(frame.shouldRender) {
@@ -262,7 +265,7 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
                 if(state.reference_change&&frame.predictedDisplayTime>=state.reference_change){state.anchored=false;state.reference_change=0;}
                 if(!state.anchored||state.anchor_serial!=player.placement_serial()){state.origin={head.position.x,state.floor_space?0:head.position.y-1.65,head.position.z};const auto direction=quaternion_rotate(head.orientation,{0,0,-1});state.reference_yaw=std::atan2(-direction.x,-direction.z);state.anchor_serial=player.placement_serial();state.anchored=true;}
                 const auto facing=player.camera_forward();const auto yaw=std::atan2(-facing.x,-facing.z)-state.reference_yaw;const XrQuaternionf body_rotation{0,float(std::sin(yaw*.5)),0,float(std::cos(yaw*.5))};
-                const auto tracked=state.tracking(frame.predictedDisplayTime,head,body,body_rotation);const auto pose=avatar_pose(player,&tracked);const auto avatar_mesh=state.avatar.mesh(pose,true,true,tracked.head);
+                const auto tracked=state.tracking(frame.predictedDisplayTime,head,body,body_rotation);state.walk_forward=normalized(project(tracked.forward,{0,1,0}),player.camera_forward());state.room_offset=finite(tracked.head)?project(tracked.head-body,{0,1,0}):Vec3{};const auto pose=avatar_pose(player,&tracked);const auto mode=pose.tracked_body?(pose.tracked_legs?2:1):0;if(mode!=state.pose_mode){state.pose_mode=mode;tracking_log(mode==2?"Avatar rendered pose: tracked full body and legs":mode==1?"Avatar rendered pose: tracked upper body, procedural legs":"Avatar rendered pose: procedural head/controller fallback");}const auto avatar_mesh=state.avatar.mesh(pose,true,true,tracked.head);
                 for(unsigned i=0;i<2;++i) {
                     auto& eye=state.eyes[i];std::uint32_t image=0;XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};xr_check(xrAcquireSwapchainImage(eye.swapchain,&acquire,&image),"Acquire eye image");
                     XrSwapchainImageWaitInfo image_wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};image_wait.timeout=XR_INFINITE_DURATION;xr_check(xrWaitSwapchainImage(eye.swapchain,&image_wait),"Wait for eye image");

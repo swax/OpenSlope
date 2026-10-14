@@ -16,12 +16,12 @@ Player::Player(Terrain terrain,PlayTuning tuning):terrain_(std::move(terrain)),w
     const auto spawn=terrain_.spawn();spawn_position_=spawn.first;spawn_forward_=spawn.second;reset();
 }
 void Player::release_inputs(){
-    jump_held_=false;jump_edges_.clear();reset_held_=false;
+    jump_held_=false;jump_edges_.clear();reset_held_=false;mount_held_=false;mount_pending_=false;
     if(rider_.control==Control::Charge){rider_.charge=0;rider_.control=rider_.motion==Motion::Rail?Control::OnRail:rider_.grounded?Control::Cruise:Control::Air;}
 }
 void Player::warp(Vec3 position,Vec3 forward,Vec3 velocity,Vec3 up){
     if(!finite(position)||!finite(forward)||!finite(velocity)||!finite(up)||length(forward)<1e-9||length(cross(forward,up))<1e-9)throw std::runtime_error("Invalid rider placement");
-    ++placement_serial_;effects_.reset();rails_.reset();get_up_.stop();settled_=0;tumble_velocity_={};rider_={};previous_contacts_.clear();contact_events_.clear();rider_.position=rider_.previous_position=position;rider_.velocity=velocity;rider_.forward=normalized(forward);rider_.board_up=normalized(project(up,rider_.forward));
+    on_foot_=false;++placement_serial_;effects_.reset();rails_.reset();get_up_.stop();settled_=0;tumble_velocity_={};rider_={};previous_contacts_.clear();contact_events_.clear();rider_.position=rider_.previous_position=position;rider_.velocity=velocity;rider_.forward=normalized(forward);rider_.board_up=normalized(project(up,rider_.forward));
     if(const auto hit=trace_ground(position+Vec3{0,2,0},position-Vec3{0,1,0})){
         rider_.normal=hit->normal;rider_.surface=hit->surface;rider_.contact_error=dot(position-hit->point,hit->normal);
         rider_.ground_instance=hit->instance;
@@ -35,10 +35,11 @@ void Player::reset(){
     // Desktop drop-in: seed the surface fields, then land from one metre up.
     // Authored start-row selection is separate from this application policy.
     auto position=spawn_position_;if(const auto hit=trace_ground(position+Vec3{0,2,0},position-Vec3{0,10,0}))position=hit->point;
-    warp(position+Vec3{0,1,0},spawn_forward_);
+    warp(position+Vec3{0,1,0},spawn_forward_);if(start_on_foot_)start_on_foot();
 }
 void Player::sample_input(const RideInput& input){
-    if(!std::isfinite(input.steer)||!std::isfinite(input.posture))throw std::invalid_argument("Rider input must be finite");
+    if(!std::isfinite(input.steer)||!std::isfinite(input.posture)||!finite(input.walk_forward)||!finite(input.room_offset)||length(input.room_offset)>10)throw std::invalid_argument("Rider input must be finite");
+    if(input.mount&&!mount_held_)mount_pending_=true;mount_held_=input.mount;
     if(input.jump!=jump_held_){if(jump_edges_.size()>=16)throw std::runtime_error("Too many unconsumed jump edges");jump_edges_.push_back(input.jump);jump_held_=input.jump;}
 }
 std::optional<Player::GroundContact> Player::trace_ground(Vec3 start,Vec3 end) const {
@@ -131,6 +132,8 @@ void Player::ride_rail(const RailHit& hit,const RideInput& input,const Rider& be
 }
 void Player::tick(const RideInput& input){
     sample_input(input);const auto dt=contract_.tick_seconds();const auto before_pose=rider_;rider_.previous_position=rider_.position;jump_cooldown_=std::max(0.0,jump_cooldown_-dt);air_grace_=std::max(0.0,air_grace_-dt);rail_cooldown_=std::max(0.,rail_cooldown_-dt);
+    if(mount_pending_){mount_pending_=false;const auto changed=interact_board(input.room_offset);mount_held_=input.mount;if(changed){jump_held_=input.jump;jump_edges_.clear();notify_tick(before_pose);return;}}
+    if(on_foot_){tick_foot(input,before_pose);notify_tick(before_pose);return;}
     if(!update_recovery()){notify_tick(before_pose);return;}auto active=input;if(recovering())active={};
     // Interpret edges against the last validated motion state. A press made
     // on the last ground frame must not be lost to this tick's crest discovery.
@@ -272,16 +275,19 @@ Vec3 Player::camera_position(Vec3 desired) const {
     return anchor+delta*std::max(0.0,t-(t<1?.15/distance:0));
 }
 Vec3 Player::render_position() const {
+    if(on_foot_)return rider_.previous_position*(1-clock_.alpha())+rider_.position*clock_.alpha();
     const auto lateral=normalized(cross(rider_.normal,rider_.forward*double(rider_.lead)));
     return rider_.previous_position*(1-clock_.alpha())+rider_.position*clock_.alpha()+rider_.smoothed_up*rider_.lift+lateral*rider_.slide;
 }
-Vec3 Player::render_board_position() const {return render_position()+rider_.normal*rider_.recovery_height;}
+Vec3 Player::render_board_position() const {if(on_foot_)return loose_board_.previous*(1-clock_.alpha())+loose_board_.position*clock_.alpha();return render_position()+rider_.normal*rider_.recovery_height;}
 Vec3 Player::render_forward() const {
+    if(on_foot_)return loose_board_.forward;
     const auto forward=normalized(project(rider_.forward,rider_.board_up),rider_.forward),right=normalized(cross(forward,rider_.board_up));return rotate(forward,right,-rider_.flip_degrees*pi/180);
 }
 Vec3 Player::render_up() const {
+    if(on_foot_)return loose_board_.up;
     const auto forward=normalized(project(rider_.forward,rider_.board_up),rider_.forward),right=normalized(cross(forward,rider_.board_up));auto up=rotate(rider_.board_up,right,-rider_.flip_degrees*pi/180);
     if(rider_.motion==Motion::Ground)up=rotate(up,render_forward(),-contract_.value("steering","bankMaxDeg")*pi/180*rider_.lean*rider_.lead);return normalized(up);
 }
-Vec3 Player::camera_forward() const {if(recovering())return recovery_camera_;if(rider_.motion==Motion::Rail)return flight_heading_;return rider_.grounded?normalized(project(rider_.forward*double(rider_.lead),{0,1,0}),flight_heading_):flight_heading_;}
+Vec3 Player::camera_forward() const {if(on_foot_)return flight_heading_;if(recovering())return recovery_camera_;if(rider_.motion==Motion::Rail)return flight_heading_;return rider_.grounded?normalized(project(rider_.forward*double(rider_.lead),{0,1,0}),flight_heading_):flight_heading_;}
 }

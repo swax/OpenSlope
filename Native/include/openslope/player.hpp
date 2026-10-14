@@ -10,9 +10,9 @@
 #include <functional>
 
 namespace openslope {
-struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false; }; // Left steer; positive posture is tuck/forward flip.
-enum class Motion {Air=1,Ground=2,Rail=3,Wipeout=5,RecoverContact=6};
-enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20};
+struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{}; }; // Left steer; positive posture is tuck/forward flip.
+enum class Motion {Air=1,Ground=2,Rail=3,Wipeout=5,RecoverContact=6,OnFoot=100};
+enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20,OnFoot=100};
 enum class CrashCause {None,PropImpact,Landing,Unrideable};
 struct PlayTuning {
     // Desktop application defaults where the clean specification is open.
@@ -67,6 +67,12 @@ public:
     bool recovering() const {return rider_.control==Control::Wipeout||rider_.control==Control::RecoverWait;}
     void run_active(bool active){run_active_=active;}
     bool run_active() const {return run_active_;}
+    void start_on_foot();
+    bool on_foot() const {return on_foot_;}
+    bool interact_board(Vec3 room_offset={});
+    double board_distance(Vec3 room_offset={}) const;
+    double walk_phase() const {return walk_phase_;}
+    bool board_coasting() const {return on_foot_&&length(loose_board_.velocity)>.02;}
     Rails& rails(){return rails_;}
     const Rails& rails() const {return rails_;}
 private:
@@ -88,6 +94,14 @@ private:
     double jump_cooldown_=0,air_grace_=0,rail_cooldown_=0;
     std::deque<bool> jump_edges_;
     struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance;};
+    struct LooseBoard {Vec3 position,previous,velocity,forward{0,0,-1},up{0,1,0};bool grounded=true;int lead=1;double age=0;} loose_board_;
+    bool on_foot_=false,start_on_foot_=false,mount_held_=false,mount_pending_=false;
+    double walk_phase_=0;
+    void place_foot(Vec3 position,Vec3 forward,Vec3 velocity={});
+    void tick_foot(const RideInput& input,const Rider& before);
+    void tick_loose_board();
+    std::optional<GroundContact> walk_ground(Vec3 start,Vec3 end) const;
+    Vec3 walk_move(Vec3 start,Vec3 destination,Vec3& velocity,double radius=.28,double height=1.65) const;
     std::map<std::size_t,WorldContact> previous_contacts_;
     std::vector<ContactEvent> contact_events_;
     std::function<void(const Player&,const Rider&)> tick_observer_;

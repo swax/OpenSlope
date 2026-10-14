@@ -13,11 +13,11 @@ Replay Replay::load(const std::filesystem::path& path){
     if(doc.contains("Placement")){const auto& p=doc.at("Placement");result.placement=true;result.position=vector(p.at("Position"));result.forward=vector(p.at("Forward"));if(p.contains("Velocity"))result.velocity=vector(p.at("Velocity"));if(p.contains("Up"))result.up=vector(p.at("Up"));if(length(cross(result.forward,result.up))<1e-9)throw std::runtime_error("Invalid replay orientation");}
     const auto& rows=doc.at("Steps");if(!rows.is_array()||rows.empty()||rows.size()>10000)throw std::runtime_error("Invalid replay step count");std::size_t total=0;
     for(const auto& row:rows){ReplayStep step;step.ticks=row.at("Ticks");total+=step.ticks;if(!step.ticks||total>216000)throw std::runtime_error("Replay duration exceeds one hour");
-        step.input={row.value("Steer",0.),row.value("Boost",false),row.value("Reset",false),row.value("Jump",false),row.value("Posture",0.),row.value("RailExit",false)};if(!std::isfinite(step.input.steer)||!std::isfinite(step.input.posture)||std::abs(step.input.steer)>1||std::abs(step.input.posture)>1)throw std::runtime_error("Invalid replay control range");result.steps.push_back(step);
+        step.input={row.value("Steer",0.),row.value("Boost",false),row.value("Reset",false),row.value("Jump",false),row.value("Posture",0.),row.value("RailExit",false),row.value("Mount",false),row.contains("WalkForward")?vector(row.at("WalkForward")):Vec3{},row.contains("RoomOffset")?vector(row.at("RoomOffset")):Vec3{}};if(!std::isfinite(step.input.steer)||!std::isfinite(step.input.posture)||std::abs(step.input.steer)>1||std::abs(step.input.posture)>1)throw std::runtime_error("Invalid replay control range");result.steps.push_back(step);
     }return result;
 }
 void Replay::run(Player& player,const std::function<void()>& after_tick) const {
-    if(placement)player.warp(position,forward,velocity,up);
+    if(placement){const auto foot=player.on_foot();player.warp(position,forward,velocity,up);if(foot)player.start_on_foot();}
     for(const auto& step:steps)for(unsigned i=0;i<step.ticks;++i){player.advance(player.contract().tick_seconds(),step.input);if(after_tick)after_tick();}
 }
 }

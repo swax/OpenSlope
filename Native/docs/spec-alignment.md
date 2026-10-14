@@ -70,3 +70,8 @@ User-directed stick figure and controller presentation uses the existing
 first-party asset and new procedural posing. Clean 300/340/350/370/400 retain
 state, pose/camera and depth authority. Optional platform tracking does not
 change recovered physical controls. See avatar.md for application choices.
+
+Walking/boarding is an application mode outside clean 300's recovered riding
+states, using separate ID 100 and independently authored movement/coasting.
+Riding charge, rail and collision authority remains clean 340/350/370.
+See boarding.md for explicit tuning, feature-test comparisons and remaining work.

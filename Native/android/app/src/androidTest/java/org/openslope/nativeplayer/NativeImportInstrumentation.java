@@ -12,15 +12,16 @@ import java.util.*;
 
 /** No test-framework dependency; run with adb shell am instrument -w <test-package>/<runner>. */
 public final class NativeImportInstrumentation extends Instrumentation {
-    private int checks;
-    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+    private int checks;private Bundle arguments;
+    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); this.arguments=arguments; start(); }
     private void require(boolean condition, String message) { ++checks; if (!condition) throw new AssertionError(message); }
     private Object invoke(LauncherActivity activity, String name, Class<?>[] types, Object... values) throws Exception {
         Method method = LauncherActivity.class.getDeclaredMethod(name, types); method.setAccessible(true);
         try { return method.invoke(activity, values); } catch (InvocationTargetException e) { throw new IOException(e.getCause().getMessage(), e.getCause()); }
     }
     @Override public void onStart() {
-        Bundle results = new Bundle(); LauncherActivity activity = null; File temporary = null;
+        if(arguments!=null&&"true".equals(arguments.getString("vr"))){NativeVrSmoke.run(this,arguments);return;}
+        Bundle results = new Bundle(); LauncherActivity activity = null; File temporary = null; int code=Activity.RESULT_OK;
         try {
             Intent intent = new Intent(getTargetContext(), LauncherActivity.class); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity = (LauncherActivity) startActivitySync(intent); waitForIdleSync();
@@ -51,7 +52,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             boolean rejected = false; try { direct.publish("Custom course", extracted, () -> {}); } catch (IOException e) { rejected = true; }
             require(rejected && direct.maps().size() == 1, "Existing local map is preserved");
             Uri tree = DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, "root");
-            MapLibrary documents = new MapLibrary(getContext().getContentResolver(), local, tree);
+            MapLibrary documents = new MapLibrary(context.getContentResolver(), local, tree);
             String name = "Authored " + UUID.randomUUID(); documents.publish(name, extracted, () -> {});
             MapLibrary.Entry selected = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(name)) selected = row;
             require(selected != null, "Published SAF map discovered under opaque tree URI");
@@ -87,8 +88,8 @@ public final class NativeImportInstrumentation extends Instrumentation {
             try { documents.publish(cancelled, extracted, () -> { if (++probes[0] > 3) throw new IOException("cancelled"); }); } catch (IOException e) { rejected = true; }
             require(rejected && !documents.exists(cancelled), "Cancelled SAF import is not published");
             DocumentsContract.deleteDocument(getContext().getContentResolver(), selected.uri);
-            results.putString("stream", "PASS: " + checks + " device-side JNI, custom-library and SAF checks\n"); finish(Activity.RESULT_OK, results);
-        } catch (Throwable e) { results.putString("stream", "FAIL: " + e + "\n"); finish(Activity.RESULT_CANCELED, results); }
-        finally { if (temporary != null) MapLibrary.deleteLocal(temporary); if (activity != null) { LauncherActivity launched = activity; runOnMainSync(launched::finish); } }
+            results.putString("stream", "PASS: " + checks + " device-side JNI, custom-library and SAF checks\n");
+        } catch (Throwable e) { results.putString("stream", "FAIL: " + e + "\n"); code=Activity.RESULT_CANCELED; }
+        finally { if (temporary != null) MapLibrary.deleteLocal(temporary); if (activity != null) { LauncherActivity launched = activity; runOnMainSync(launched::finish); } finish(code, results); }
     }
 }

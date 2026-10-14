@@ -10,9 +10,11 @@ speed bands, braking, tuck pose state and pause/focus handling. The broader
 Desktop input follows Slopesmith's control vocabulary: A/D or horizontal arrows
 carve on the ground and spin in the air; W/S or vertical arrows tuck/brake on the
 ground and flip in the air; Space holds a jump charge; Shift boosts; R resets;
-F/V changes camera; P pauses; Escape exits. The title reports speed, charge,
-ground/air/switch state and visible prop/draw counts. A visible rider/crouch pose,
-mouse look, gamepad, complete HUD and on-foot controls remain outstanding.
+F/V changes camera; C looks down; G mounts/dismounts; P pauses; Escape exits.
+The title reports speed, charge, ground/air/switch or on-foot state and visible
+prop/draw counts. The stick figure depicts stance and crouch. Mouse look,
+gamepad and the complete HUD remain outstanding. See boarding.md for walking,
+running, foot jumps and the optional desktop on-foot start.
 
 Motion and jump control are separate (`300-two-machines`, `300-decoupled`). Only
 charge entry needs ground. Once committed, charge and release survive a crest;
@@ -28,8 +30,8 @@ The charge-up rate of 2.5/s, high jump-stat default, 18 m/s² brake and 720 deg/
 unfinished-flip recovery are desktop application choices. They match the current
 Slopesmith play profile's intended controls, rather than claiming recovered retail
 constants where Trailmap is open. `PlayTuning` carries these choices separately
-from the unchanged shared ride contract. Tuck currently drives a pose field;
-the current diagnostic board cannot depict a crouching body.
+from the unchanged shared ride contract. Tuck drives both the pose field and
+the visible stick figure's crouch; equipment remains a diagnostic board.
 
 ## Motion and presentation
 
@@ -57,7 +59,8 @@ The board draws bank and flip from its presentation frame. The camera uses the
 travel-facing frame on ground and the takeoff heading in air, so a flip/half-spin
 does not rotate the camera around the rider. OpenXR uses the same separation;
 right A is mapped to jump, left-stick Y to posture and the existing trigger/X
-bindings remain boost/reset. These bindings are build-checked, not device-verified.
+bindings remain boost/reset. B mounts/dismounts; Quest starts on foot. Automated
+device launch does not verify physical controller presses or comfort.
 
 Falling motion sweeps the previous/new position against terrain, catching a
 surface crossed within one tick. Touchdown seats at the hit, applies independent
@@ -65,8 +68,10 @@ tilt/yaw speed bands, seeds response error at zero and keeps incoming normal
 velocity. The next ground response absorbs that impact; it is not projected flat
 at discovery. Ground redirect runs before separation and launch, with a 0.3 m/s
 tangential floor to avoid turning a stationary absorber oscillation into travel.
-The source-constant and application-guard distinction is intentional. Complete
-hard-landing/wipeout/recovery, walls/undersides and unified prop contact are pending.
+The source-constant and application-guard distinction is intentional. Hard-impact
+wipeout, animated relative get-up and shared prop contacts are implemented in
+later milestones; see crash-recovery.md and world-contacts.md. Complete original
+landing gates and walls/undersides remain.
 Exact whole-trajectory equivalence to Slopesmith has not been established.
 
 ## Paths and spawn
@@ -96,7 +101,7 @@ GARI contains three AI events whose end station precedes the start. Native keeps
 those exact stations rather than sorting or discarding them. Future event dispatch
 must define the correct consumption behavior; this milestone only preserves them.
 Race events, DTF and respawn flags are carried for subsequent race/reset/AI work.
-Rail splines are separate PBD data and remain an outstanding import stage.
+Rail splines are separate PBD data, now imported and playable; see rails.md.
 
 ## Verification and replay
 

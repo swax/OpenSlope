@@ -11,7 +11,9 @@ A bounded loader accepts the bundled GLB's rigid skin profile: 49 joints,
 8,744 vertices and 4,816 triangles. Independently authored posing transforms
 each bone segment, preserves the coloured geometry and applies simple vertex
 lighting. Desktop follows board orientation, stance, crouch, jump, rail spin and
-the existing recovery pose. Two-segment limb geometry supplies bent knees and
+the existing recovery pose. On foot the figure stands upright at the walker's
+position, with procedural walking legs; the parked/coasting board stays separate.
+Two-segment limb geometry supplies bent knees and
 elbows. These are application poses, not original character/trick clips.
 First-person views omit head/neck geometry so the camera cannot be enclosed by
 the player's own head. F/V toggles desktop first person; hold C to look down.
@@ -20,9 +22,11 @@ the player's own head. F/V toggles desktop first person; hold C to look down.
 OpenXR reads both grip-pose actions at predicted display time. The procedural
 controller models have handles, top plates, sticks, buttons and triggers, with
 depth-tested text anchored above each model and facing the viewer. Touch labels
-explain stick steer/tuck/brake, stick-click rail exit, X reset, trigger boost and
-A hold/release jump. The simple-controller profile has Select jump/Menu reset
-bindings and matching help. These are original generic models, not device art.
+explain stick steer/tuck/brake, stick-click rail exit, X reset, trigger boost,
+A hold/release jump and B dismount. On foot they show stick walk, trigger run,
+A jump and B mount board. The simple-controller profile has Select jump,
+left Menu reset and right Menu mount/dismount bindings and matching help.
+These are original generic models, not device art.
 Missing grip poses hide the affected model immediately and use a procedural arm.
 
 Quest tracking uses the official optional extensions:
@@ -63,9 +67,13 @@ Validation covers portable pose/skin tests, malformed/partial/lost tracking,
 controller anchoring, head removal, crouch, yaw and physics independence. Actual
 Vulkan tests render desktop, look-down, full-body and fallback poses, compare
 visible labels, distinct stereo eyes, 1x/4x samples and UNORM/sRGB targets. Existing gameplay
-and graphics regressions pass. ARM64 main/test APKs and Android lint pass. These
-synthetic tracking captures do not establish hardware API operation or VR comfort;
-the new body APIs still need a connected-headset check.
+and graphics regressions pass. ARM64 main/test APKs and Android lint pass.
+On the connected Quest 3, build 0.19.0 has the body permission granted, creates the
+full-body tracker and receives success (0) for the high-fidelity request. The
+existing ISO-imported ALASKA course opens through a bounded activity smoke check.
+These checks establish API initialization, not active high-fidelity status, live
+joint poses, rendered stereo frames or comfort. Effective pose/fidelity logs and
+a worn-headset self-view/controller check remain the next device evidence.
 
 API authority: [Meta native body tracking](https://developers.meta.com/vr/documentation/native/android/move-body-tracking/),
 [Khronos full-body joints](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrBodyJointSetFB.html),
