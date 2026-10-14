@@ -5,12 +5,13 @@
 #include "riding_effects.hpp"
 #include "animation.hpp"
 #include "rails.hpp"
+#include "course_run.hpp"
 #include <deque>
 #include <map>
 #include <functional>
 
 namespace openslope {
-struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{}; }; // Left steer; positive posture is tuck/forward flip.
+struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{};bool run_restart=false; }; // Left steer; positive posture is tuck/forward flip.
 enum class Motion {Air=1,Ground=2,Rail=3,Wipeout=5,RecoverContact=6,OnFoot=100};
 enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20,OnFoot=100};
 enum class CrashCause {None,PropImpact,Landing,Unrideable};
@@ -66,7 +67,10 @@ public:
     std::uint64_t placement_serial() const {return placement_serial_;}
     bool recovering() const {return rider_.control==Control::Wipeout||rider_.control==Control::RecoverWait;}
     void run_active(bool active){run_active_=active;}
-    bool run_active() const {return run_active_;}
+    bool run_active() const {return run_active_||(run_.status().mode!=RunMode::Freeride&&run_.status().phase==RunPhase::Running);}
+    void configure_run(RunMode mode);
+    void restart_run();
+    const CourseRun& course_run() const {return run_;}
     void start_on_foot();
     bool on_foot() const {return on_foot_;}
     bool interact_board(Vec3 room_offset={});
@@ -79,6 +83,7 @@ private:
     Terrain terrain_;
     CollisionWorld world_;
     Rails rails_;
+    CourseRun run_;
     RideContract contract_;
     FixedClock clock_;
     Rider rider_;
@@ -91,6 +96,7 @@ private:
     double settled_=0;
     bool run_active_=false;
     bool jump_held_=false,reset_held_=false;
+    bool restart_held_=false,restart_pending_=false;
     double jump_cooldown_=0,air_grace_=0,rail_cooldown_=0;
     std::deque<bool> jump_edges_;
     struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance;};

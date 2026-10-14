@@ -56,6 +56,7 @@ int capture(Player& player,const std::filesystem::path& output,double seconds,co
     const auto& grinding=player.rider();std::cout<<"Rails: "<<grinding.grinds<<" grinds; "<<grinding.rail_transfers<<" transfers; "<<grinding.rail_exits<<" exits; on rail "<<(grinding.motion==Motion::Rail)<<"; spin "<<grinding.rail_spin<<" deg; spline "<<(grinding.rail_spline?std::to_string(*grinding.rail_spline):"none")<<'\n';
     if(audio){write_wave(audio_output,recorded);const auto sound=audio->stats();std::cout<<"Audio capture: "<<recorded.frames()<<" stereo frames; contact sounds "<<sound.contacts<<"; transients "<<sound.transients<<"; ambient voices "<<sound.ambient<<"; music node "<<sound.music_node<<'\n';player.observe_ticks({});}
     std::cout<<"Boarding: on foot "<<player.on_foot()<<"; distance "<<player.board_distance()<<" m; coasting "<<player.board_coasting()<<"; board ["<<player.render_board_position().x<<','<<player.render_board_position().y<<','<<player.render_board_position().z<<"]\n";
+    const auto& run=player.course_run().status();std::cout<<"Run: "<<run_name(run.mode)<<"; "<<run_name(run.phase)<<"; clock "<<run_clock(run.clock)<<"; elapsed "<<run.elapsed<<"; checkpoints "<<run.checkpoints<<"; lap "<<run.lap<<'/'<<run.passes<<"; remaining "<<run.remaining;if(run.progress)std::cout<<"; DTF "<<run.progress->distance_to_finish<<" m; progress "<<run.progress->fraction*100<<'%';std::cout<<'\n';
     renderer.capture(0,output);std::cout<<"Vulkan capture: "<<output.string()<<'\n';return 0;
 }
 struct Window {
@@ -125,9 +126,11 @@ struct Window {
 int main(int argc,char** argv) {
     try {
         std::filesystem::path map,output,replay,audio_output;bool xr=false,smoke_window=false,no_audio=false,audio_smoke=false,msaa_set=false,terrain_culling=true,first_person_option=false,look_down_option=false,on_foot_option=false;double seconds=0;unsigned msaa=4;
+        RunMode run_option=RunMode::Freeride;
         for(int i=1;i<argc;++i) {
             const std::string option=argv[i];
             if(option=="--xr")xr=true;
+            else if(option=="--mode"&&i+1<argc)run_option=run_mode(argv[++i]);
             else if(option=="--on-foot")on_foot_option=true;
             else if(option=="--first-person")first_person_option=true;
             else if(option=="--look-down"){first_person_option=true;look_down_option=true;}
@@ -138,7 +141,7 @@ int main(int argc,char** argv) {
             else if(option=="--audio-smoke")audio_smoke=true;
             else if((option=="--map"||option=="--capture"||option=="--seconds"||option=="--replay"||option=="--audio-capture")&&i+1<argc) {
                 const std::string argument=argv[++i];if(option=="--map")map=argument;else if(option=="--capture")output=argument;else if(option=="--replay")replay=argument;else if(option=="--audio-capture")audio_output=argument;else seconds=std::stod(argument);
-            }else if(option=="--help") {std::cout<<"openslope_player [--map <map folder>] [--xr] [--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture <output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] [--msaa 1|2|4|8] [--no-terrain-culling]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, E exit rail, G mount/dismount, Escape quit.\n";return 0;}
+            }else if(option=="--help") {std::cout<<"openslope_player [--map <map folder>] [--xr] [--mode freeride|race|showoff] [--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture <output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] [--msaa 1|2|4|8] [--no-terrain-culling]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, E exit rail, G mount/dismount, T restart run, Escape quit.\n";return 0;}
             else throw std::runtime_error("Unknown or incomplete argument: "+option);
         }
         if(!std::isfinite(seconds)||seconds<0||seconds>3600)throw std::runtime_error("Duration must be between 0 and 3600 seconds");
@@ -147,6 +150,7 @@ int main(int argc,char** argv) {
         if(xr&&!output.empty())throw std::runtime_error("Choose either OpenXR or offline capture");
         if(!replay.empty()&&(output.empty()||seconds!=0))throw std::runtime_error("Replay requires --capture and cannot combine with --seconds");
         Player player(map.empty()?Terrain::demo():Terrain::load(map));
+        if(run_option!=RunMode::Freeride)player.configure_run(run_option);
         if(xr)return run_openxr(player,{},seconds);
         if(!audio_output.empty()&&output.empty())throw std::runtime_error("Audio capture requires --capture");
         if(on_foot_option)player.start_on_foot();
@@ -166,9 +170,10 @@ int main(int argc,char** argv) {
             const auto mute=key('M');if(mute&&!last_mute)muted=!muted;last_mute=mute;
             if(audio){audio->listener({camera_eye(player,first_person),player.camera_forward(),{0,1,0}});audio->mixer().paused(paused||!focused);audio->mixer().volume(muted?0:1);}
             if(!focused&&last_focus)player.release_inputs();last_focus=focused;
-            if(focused&&!paused)player.advance(dt,{double(key('A')||key(VK_LEFT))-double(key('D')||key(VK_RIGHT)),key(VK_SHIFT),key('R'),key(VK_SPACE),double(key('W')||key(VK_UP))-double(key('S')||key(VK_DOWN)),key('E'),key('G')});
+            if(focused&&!paused)player.advance(dt,{double(key('A')||key(VK_LEFT))-double(key('D')||key(VK_RIGHT)),key(VK_SHIFT),key('R'),key(VK_SPACE),double(key('W')||key(VK_UP))-double(key('S')||key(VK_DOWN)),key('E'),key('G'),{},{},key('T')});
             const auto& stats=window.renderer.stats();
             const auto& rider=player.rider();std::wostringstream title;title<<L"OpenSlope Native | "<<int(length(rider.velocity)*3.6)<<L" km/h | ";
+            const auto& run=player.course_run().status();if(run.mode!=RunMode::Freeride){const auto clock=run_clock(run.clock),phase=std::string(run_name(run.phase));title<<std::wstring(clock.begin(),clock.end())<<L" | "<<std::wstring(phase.begin(),phase.end())<<L" | CP "<<run.checkpoints<<L" | Lap "<<run.lap<<L"/"<<run.passes<<L" | T restart | ";if(run.phase==RunPhase::Countdown)title<<int(std::ceil(run.countdown))<<L" | ";}
             if(player.on_foot())title<<L"On foot | G mount ("<<int(player.board_distance()*100)<<L" cm) | ";
             if(paused)title<<L"PAUSED";else if(rider.control==Control::RecoverWait)title<<L"Getting up "<<int(rider.recovery_standing*100)<<L"%";else if(rider.motion==Motion::Wipeout)title<<L"Wipeout - recovering | R to reset";else if(rider.control==Control::Charge)title<<L"Charge "<<int(rider.charge*100)<<L"%";else if(rider.motion==Motion::Rail)title<<L"Grinding | Spin "<<int(rider.rail_spin)<<L" deg | E exit";else if(player.on_foot())title<<L"Walking";else title<<(rider.grounded?(rider.lead<0?L"Switch":L"Riding"):L"Air");
             title<<L" | "<<stats.visible_props<<L" props / "<<stats.prop_draws<<L" draws | A/D steer | W/S tuck/brake | Space jump | Shift boost | P pause | F/V camera | C look down | M "<<(muted?L"unmute":L"mute");SetWindowTextW(window.handle,title.str().c_str());

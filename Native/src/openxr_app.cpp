@@ -45,14 +45,14 @@ struct Eye {
 };
 struct State {
     XrInstance instance{};XrSystemId system{};XrSession session{};XrSpace space{};
-    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{},mount{},grip{};
+    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{},mount{},restart{},grip{};
     std::array<XrPath,2> hands{};std::array<XrSpace,2> grips{};
     Vec3 walk_forward{},room_offset{};bool walking=true;
     XrPath touch_profile{};
     XrBodyTrackerFB body_tracker{};PFN_xrDestroyBodyTrackerFB destroy_body{};PFN_xrLocateBodyJointsFB locate_body{};
     bool body_extension=false,full_extension=false,fidelity_extension=false,full_body=false,fidelity_supported=false;
     bool anchored=false;Vec3 origin{};double reference_yaw=0;std::uint64_t anchor_serial=0;XrTime reference_change=0;
-    int tracking_mode=-1,actual_fidelity=-1,boarding_mode=-1,pose_mode=-1;
+    int tracking_mode=-1,actual_fidelity=-1,boarding_mode=-1,pose_mode=-1,run_phase=-1;unsigned run_checkpoints=0;
     Avatar avatar;
     VulkanContext vulkan;
     std::vector<Eye> eyes;
@@ -157,13 +157,14 @@ struct State {
         const auto action=[&](const char* name,XrActionType type,XrAction& result){
             XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};info.actionType=type;std::strcpy(info.actionName,name);std::strcpy(info.localizedActionName,name);xr_check(xrCreateAction(actions,&info,&result),"Create riding action");};
         action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("boost",XR_ACTION_TYPE_FLOAT_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);action("rail_exit",XR_ACTION_TYPE_BOOLEAN_INPUT,rail_exit);action("mount",XR_ACTION_TYPE_BOOLEAN_INPUT,mount);
+        action("restart_run",XR_ACTION_TYPE_BOOLEAN_INPUT,restart);
         touch_profile=path("/interaction_profiles/oculus/touch_controller");
         hands={path("/user/hand/left"),path("/user/hand/right")};
         XrActionCreateInfo pose{XR_TYPE_ACTION_CREATE_INFO};pose.actionType=XR_ACTION_TYPE_POSE_INPUT;std::strcpy(pose.actionName,"grip_pose");std::strcpy(pose.localizedActionName,"Controller grip");pose.countSubactionPaths=2;pose.subactionPaths=hands.data();xr_check(xrCreateAction(actions,&pose,&grip),"Create controller poses");
-        const std::array<XrActionSuggestedBinding,8> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")},{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{mount,path("/user/hand/right/input/b/click")}}};
+        const std::array<XrActionSuggestedBinding,9> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")},{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{mount,path("/user/hand/right/input/b/click")},{restart,path("/user/hand/left/input/y/click")}}};
         XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};suggested.interactionProfile=path("/interaction_profiles/oculus/touch_controller");suggested.countSuggestedBindings=std::uint32_t(bindings.size());suggested.suggestedBindings=bindings.data();
         xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest Touch-compatible bindings");
-        const std::array<XrActionSuggestedBinding,5> simple{{{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{reset,path("/user/hand/left/input/menu/click")},{jump,path("/user/hand/right/input/select/click")},{mount,path("/user/hand/right/input/menu/click")}}};
+        const std::array<XrActionSuggestedBinding,6> simple{{{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{reset,path("/user/hand/left/input/menu/click")},{jump,path("/user/hand/right/input/select/click")},{mount,path("/user/hand/right/input/menu/click")},{restart,path("/user/hand/left/input/select/click")}}};
         suggested.interactionProfile=path("/interaction_profiles/khr/simple_controller");suggested.countSuggestedBindings=std::uint32_t(simple.size());suggested.suggestedBindings=simple.data();xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest simple controller bindings");
         XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};attach.countActionSets=1;attach.actionSets=&actions;xr_check(xrAttachSessionActionSets(session,&attach),"Attach riding input");
         for(unsigned i=0;i<2;++i){XrActionSpaceCreateInfo info{XR_TYPE_ACTION_SPACE_CREATE_INFO};info.action=grip;info.subactionPath=hands[i];info.poseInActionSpace.orientation.w=1;xr_check(xrCreateActionSpace(session,&info,&grips[i]),"Create controller grip space");}
@@ -216,9 +217,10 @@ struct State {
         info.action=reset;XrActionStateBoolean resetting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&resetting),"Read reset");
         info.action=jump;XrActionStateBoolean jumping{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&jumping),"Read charged jump");
         info.action=mount;XrActionStateBoolean mounting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&mounting),"Read board mounting");
+        info.action=restart;XrActionStateBoolean restarting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&restarting),"Read run restart");
         info.action=rail_exit;XrActionStateBoolean leaving{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&leaving),"Read rail exit");
         const auto y=walking?(steering.isActive?steering.currentState.y:0):steering.isActive&&std::abs(steering.currentState.y)>.1f&&std::abs(steering.currentState.y)>=std::abs(steering.currentState.x)?steering.currentState.y:0;
-        return {steering.isActive?-steering.currentState.x:0,boosting.isActive&&boosting.currentState>.5f,resetting.isActive&&resetting.changedSinceLastSync&&resetting.currentState,jumping.isActive&&jumping.currentState,y,leaving.isActive&&leaving.currentState,mounting.isActive&&mounting.currentState,walk_forward,room_offset};
+        return {steering.isActive?-steering.currentState.x:0,boosting.isActive&&boosting.currentState>.5f,resetting.isActive&&resetting.changedSinceLastSync&&resetting.currentState,jumping.isActive&&jumping.currentState,y,leaving.isActive&&leaving.currentState,mounting.isActive&&mounting.currentState,walk_forward,room_offset,restarting.isActive&&restarting.currentState};
     }
     void events() {
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};XrResult result;
@@ -252,6 +254,7 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
         const auto dt=previous_time?double(frame.predictedDisplayTime-previous_time)*1e-9:0;previous_time=frame.predictedDisplayTime;
         state.walking=player.on_foot();if(state.focused)player.advance(std::max(0.0,dt),state.input());else player.release_inputs();
         const auto boarding=player.on_foot()?1:0;if(boarding!=state.boarding_mode){state.boarding_mode=boarding;tracking_log(boarding?"Boarding: on foot; B to mount nearby board":"Boarding: mounted; B to dismount");}
+        const auto& run=player.course_run().status();if(int(run.phase)!=state.run_phase||run.checkpoints!=state.run_checkpoints){state.run_phase=int(run.phase);state.run_checkpoints=run.checkpoints;tracking_log((std::string("Run: ")+run_name(run.mode)+" "+run_name(run.phase)+" "+run_clock(run.clock)+"; checkpoints "+std::to_string(run.checkpoints)).c_str());}
         std::array<XrCompositionLayerProjectionView,2> projections{{{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}}};
         bool rendered=false;
         if(frame.shouldRender) {

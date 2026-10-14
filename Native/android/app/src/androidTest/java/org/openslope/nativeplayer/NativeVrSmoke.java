@@ -39,6 +39,7 @@ public final class NativeVrSmoke {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).addCategory("com.oculus.intent.category.VR")
                 .addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD");
             intent.putExtra("map_path", map.getAbsolutePath());intent.putExtra("map_cache",map.getName().startsWith("play-vr-smoke-"));
+            intent.putExtra("run_mode",arguments==null?"freeride":arguments.getString("mode","freeride"));
             activity = (GameActivity) host.startActivitySync(intent);
             Thread.sleep(seconds * 1000L);
             if (activity.isFinishing()) throw new IllegalStateException("VR activity ended during smoke check");

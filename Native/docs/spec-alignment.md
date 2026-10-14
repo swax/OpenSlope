@@ -75,3 +75,9 @@ Walking/boarding is an application mode outside clean 300's recovered riding
 states, using separate ID 100 and independently authored movement/coasting.
 Riding charge, rail and collision authority remains clean 340/350/370.
 See boarding.md for explicit tuning, feature-test comparisons and remaining work.
+
+Course progression and timed runs follow clean 250/390 for horizontal stored DTF,
+mode-specific datasets, active-line checkpoints, slot clocks, AIP finish location
+and lap/finish order. The countdown and bounded plane test are application
+presentation/query choices. Full field, world, scoring, audio and reset behavior
+remain separate work; see course-runs.md for evidence and limits.

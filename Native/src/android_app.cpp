@@ -59,7 +59,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivi
     catch(const std::exception& e){java_error(env,e);}
 }
 extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeValidate(JNIEnv* env,jobject,jstring path) {
-    try {const auto root=std::filesystem::path(string_value(env,path));if(std::filesystem::file_size(root/"Patches.json")>64*1024*1024)throw std::runtime_error("Map terrain exceeds the loading limit");static_cast<void>(openslope::Appearance::load(openslope::Terrain::load(root)));static_cast<void>(openslope::Props::load(root));static_cast<void>(openslope::World::load(root));static_cast<void>(openslope::PoseAnimation::get_up(root));static_cast<void>(openslope::Rails::load(root));static_cast<void>(openslope::CoursePaths::load(root));static_cast<void>(openslope::CollisionWorld::load(root));static_cast<void>(openslope::AudioScene(root));}
+    try {const auto root=std::filesystem::path(string_value(env,path));if(std::filesystem::file_size(root/"Patches.json")>64*1024*1024)throw std::runtime_error("Map terrain exceeds the loading limit");static_cast<void>(openslope::Appearance::load(openslope::Terrain::load(root)));static_cast<void>(openslope::Props::load(root));static_cast<void>(openslope::World::load(root));static_cast<void>(openslope::PoseAnimation::get_up(root));static_cast<void>(openslope::Rails::load(root));static_cast<void>(openslope::CoursePaths::load(root));static_cast<void>(openslope::CourseRun::load(root,openslope::RunMode::Showoff));static_cast<void>(openslope::CollisionWorld::load(root));static_cast<void>(openslope::AudioScene(root));}
     catch(const std::exception& e){java_error(env,e);}
 }
 extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_MapLibrary_nativeAssetFiles(JNIEnv* env,jclass,jstring path) {
@@ -76,8 +76,11 @@ extern "C" void android_main(android_app* app) {
             const auto getter=environment->GetMethodID(type,"getMapPath","()Ljava/lang/String;");
             if(!getter)throw std::runtime_error("Course selection host is missing");
             const auto path=static_cast<jstring>(environment->CallObjectMethod(app->activity->clazz,getter));
+            const auto mode_getter=environment->GetMethodID(type,"getRunMode","()Ljava/lang/String;");if(!mode_getter)throw std::runtime_error("Run mode host is missing");const auto mode_value=static_cast<jstring>(environment->CallObjectMethod(app->activity->clazz,mode_getter));const auto mode=openslope::run_mode(string_value(environment,mode_value));environment->DeleteLocalRef(mode_value);
             const auto root=std::filesystem::path(string_value(environment,path));environment->DeleteLocalRef(path);environment->DeleteLocalRef(type);
             openslope::Player player(openslope::Terrain::load(root));
+            player.configure_run(mode);
+            __android_log_print(ANDROID_LOG_INFO,"OpenSlopeNative","Run mode configured: %s; initial clock %s",openslope::run_name(mode),openslope::run_clock(player.course_run().status().clock).c_str());
             openslope::XrPlatform platform{app->activity->vm,app->activity->clazz,[&]{return process_events(app);}};
             openslope::run_openxr(player,platform);
         }

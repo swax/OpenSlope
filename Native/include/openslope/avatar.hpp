@@ -23,6 +23,7 @@ struct AvatarPose {
     std::array<ControllerPose,2> controllers{};
     Vec3 forward{0,0,-1},up{0,1,0};
     bool tracked_body=false,tracked_legs=false,on_foot=false;
+    std::array<std::string,3> run_text{};
     Vec3 joint(AvatarJoint j) const {return joints[unsigned(j)];}
 };
 AvatarPose avatar_pose(const Player& player,const AvatarTracking* tracking=nullptr);

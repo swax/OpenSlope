@@ -23,6 +23,7 @@ public final class LauncherActivity extends Activity {
     private TextView location, status;
     private Button chooseFolder, useLocal, importIso, refresh, cancel;
     private MapLibrary library;
+    private Spinner runMode;
     private native String nativeCourses(int descriptor, long length);
     private native void nativeExtract(int descriptor, long length, String course, String output);
     private native void nativeValidate(String path);
@@ -32,6 +33,9 @@ public final class LauncherActivity extends Activity {
         ScrollView scroll = new ScrollView(this); layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(32, 24, 32, 24); scroll.addView(layout); setContentView(scroll);
         text("OpenSlope", 28); text("Choose a course from your Maps folder. Importing an ISO adds courses to the same library.", 18);
         location = text("", 14);
+        text("Event", 16);runMode=new Spinner(this);ArrayAdapter<String> modes=new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,new String[]{"Freeride","Race","Showoff"});modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);runMode.setAdapter(modes);layout.addView(runMode);
+        String savedMode=getPreferences(0).getString("run_mode","freeride");runMode.setSelection(savedMode.equals("race")?1:savedMode.equals("showoff")?2:0);
+        runMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){getPreferences(0).edit().putString("run_mode",new String[]{"freeride","race","showoff"}[position]).apply();}});
         chooseFolder = button("Choose Maps folder", this::pickMaps);
         useLocal = button("Use app Maps folder", () -> { getPreferences(0).edit().remove("maps_tree").apply(); loadLibrary(); refreshMaps(); });
         importIso = button("Import SSX Tricky ISO", this::pickIso);
@@ -52,6 +56,7 @@ public final class LauncherActivity extends Activity {
     private void checkCancelled() throws IOException { if (cancelled) throw new IOException("Import cancelled."); }
     private void state(boolean importing) {
         busy = importing; if (importing) cancelled = false;
+        runMode.setEnabled(!importing);
         chooseFolder.setEnabled(!importing); useLocal.setEnabled(!importing); importIso.setEnabled(!importing); refresh.setEnabled(!importing);
         cancel.setVisibility(importing ? View.VISIBLE : View.GONE); cancel.setEnabled(importing);
         for (int i = 0; i < courses.getChildCount(); ++i) courses.getChildAt(i).setEnabled(!importing);
@@ -135,11 +140,12 @@ public final class LauncherActivity extends Activity {
         });
     }
     private void play(MapLibrary.Entry map) {
+        final String mode=new String[]{"freeride","race","showoff"}[runMode.getSelectedItemPosition()];
         state(true); setStatus("Loading " + map.name + "…"); final MapLibrary selected = library;
         worker.execute(() -> {
             File prepared = null;
             try { prepared = selected.prepare(map, getCacheDir(), this::checkCancelled); nativeValidate(prepared.getAbsolutePath()); checkCancelled(); final File path = prepared;
-                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus("Loading cancelled."); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_cache", selected.tree != null); startActivity(intent); finishAndRemoveTask(); });
+                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus("Loading cancelled."); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_cache", selected.tree != null);intent.putExtra("run_mode",mode); startActivity(intent); finishAndRemoveTask(); });
             } catch (Exception e) { if (prepared != null && selected.tree != null) MapLibrary.deleteLocal(prepared); ui(() -> { state(false); failure(e); }); }
         });
     }

@@ -33,7 +33,10 @@ std::array<unsigned char,7> glyph(char c){
     case 'M':return {17,27,21,21,17,17,17};case 'N':return {17,25,25,21,19,19,17};case 'O':return {14,17,17,17,17,17,14};case 'P':return {30,17,17,30,16,16,16};
     case 'Q':return {14,17,17,17,21,18,13};case 'R':return {30,17,17,30,20,18,17};case 'S':return {15,16,16,14,1,1,30};case 'T':return {31,4,4,4,4,4,4};
     case 'U':return {17,17,17,17,17,17,14};case 'V':return {17,17,17,17,17,10,4};case 'W':return {17,17,17,21,21,21,10};case 'X':return {17,17,10,4,10,17,17};
-    case 'Y':return {17,17,10,4,4,4,4};case 'Z':return {31,1,2,4,8,16,31};case '/':return {1,2,2,4,8,8,16};case '-':return {0,0,0,31,0,0,0};default:return {};
+    case 'Y':return {17,17,10,4,4,4,4};case 'Z':return {31,1,2,4,8,16,31};case '/':return {1,2,2,4,8,8,16};case '-':return {0,0,0,31,0,0,0};
+    case '0':return {14,17,19,21,25,17,14};case '1':return {4,12,4,4,4,4,14};case '2':return {14,17,1,2,4,8,31};case '3':return {30,1,1,14,1,1,30};case '4':return {2,6,10,18,31,2,2};
+    case '5':return {31,16,16,30,1,1,30};case '6':return {14,16,16,30,17,17,14};case '7':return {31,1,2,4,8,8,8};case '8':return {14,17,17,14,17,17,14};case '9':return {14,17,17,15,1,1,14};
+    case ':':return {0,4,4,0,4,4,0};case '.':return {0,0,0,0,0,4,4};case '+':return {0,4,4,31,4,4,0};default:return {};
     }
 }
 void label(std::vector<Vertex>& out,std::string_view text,Vec3 anchor,Vec3 eye,double row){
@@ -72,6 +75,7 @@ BoneTarget target(std::string_view name,const AvatarPose& p){
 AvatarPose avatar_pose(const Player& player,const AvatarTracking* tracking){
     if(tracking&&(!finite(tracking->head)||!finite(tracking->forward)||!finite(tracking->up)))tracking=nullptr;
     AvatarPose p;p.on_foot=player.on_foot();const auto root=p.on_foot?player.render_position():player.render_board_position();const auto& rider=player.rider();const auto crouch=std::clamp(rider.crouch,0.,1.);
+    const auto& run=player.course_run().status();if(run.mode!=RunMode::Freeride){p.run_text[0]=std::string(run_name(run.mode))+" "+run_clock(run.clock);p.run_text[1]=run.phase==RunPhase::Ready?"MOUNT TO START":run.phase==RunPhase::Countdown?"START IN "+std::to_string(int(std::ceil(run.countdown))):std::string(run_name(run.phase));p.run_text[2]=run.checkpoint_notice>0?(run.mode==RunMode::Race?std::string("CHECKPOINT"):"CHECKPOINT +"+std::to_string(int(run.checkpoint_bonus))):"CP "+std::to_string(run.checkpoints)+" LAP "+std::to_string(run.lap)+"/"+std::to_string(run.passes);}
     p.up=p.on_foot?Vec3{0,1,0}:player.render_up();p.forward=p.on_foot?rider.forward:normalized(rotate(player.render_forward(),p.up,-pi*.5*rider.lead));const auto right=normalized(cross(p.forward,p.up));
     const auto at=[&](double x,double y,double z){return root+right*x+p.up*y+p.forward*z;};
     p.joints[id(J::Hips)]=at(0,1.0364-.35*crouch,.04*crouch);p.joints[id(J::Spine)]=p.joint(J::Hips)+p.up*.14+p.forward*(.09*crouch);
@@ -127,6 +131,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p,bool first_person,bool 
     std::vector<Vec3> posed;posed.reserve(vertices_.size());std::vector<double> lighting;lighting.reserve(vertices_.size());for(const auto& v:vertices_){const auto& t=transforms[v.bone];auto relative=basis(v.position-t.origin);const auto axis=normalized(t.from);relative+=axis*(dot(relative,axis)*(t.scale-1));posed.push_back(t.target+align(relative,t.from,t.to));const auto normal=normalized(align(basis(v.normal),t.from,t.to));lighting.push_back(.60+.40*std::max(0.,dot(normal,normalized(Vec3{-.3,.8,-.5}))));}
     mesh_.clear();for(std::size_t i=0;i<corners_.size();i+=3){bool hide=false;for(unsigned k=0;k<3;++k){const auto& name=bones_[vertices_[corners_[i+k].vertex].bone].name;hide|=first_person&&(name=="Head"||name=="Neck");}if(!hide)for(unsigned k=0;k<3;++k){const auto& c=corners_[i+k];auto colour=c.colour;for(auto& value:colour)value*=float(lighting[c.vertex]);mesh_.push_back(vertex(posed[c.vertex],colour));}}
     for(unsigned i=0;i<2;++i)controller(mesh_,p.controllers[i],i,labels,eye,p.on_foot);
+    if(labels&&p.controllers[0].valid&&!p.run_text[0].empty()){const auto anchor=p.controllers[0].position+Vec3{0,.30,0}+p.controllers[0].forward*.15;for(unsigned i=0;i<p.run_text.size();++i)label(mesh_,p.run_text[i],anchor,eye,.06-i*.025);label(mesh_,p.controllers[0].touch?"Y RESTART RUN":"LEFT SELECT RESTART",anchor,eye,-.015);}
     if(mesh_.size()>60000)throw std::runtime_error("Avatar submission exceeds bounds");return mesh_;
 }
 }

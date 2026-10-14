@@ -144,3 +144,8 @@ The stick figure follows crouch and board presentation. F/V selects first person
 hold C to look down at the body and board. `--first-person` / `--look-down` also
 work for offline captures. VR shows grip-tracked controller models with labels;
 see avatar.md for optional body tracking and fallback behavior.
+
+`--mode race` / `--mode showoff` selects a timed event; the default is Freeride.
+Mounting starts the countdown, the title displays the clock/checkpoints/lap,
+and T restarts the event. Quest's library has the same mode selector; its
+left-controller clock panel labels Y restart. See course-runs.md.

@@ -21,14 +21,16 @@ declares both activity modes and Horizon OS 69+ hybrid support, following
 
 Document URIs are opaque identifiers, never converted to guessed filesystem paths. Folder listing
 and publication use `DocumentsContract`. For playback, the selected `Patches.json`, optional complete
-prop JSON set, optional AIP/SOP, Physics/SSFLogic, World and RiderAnimations metadata, optional model-only Skybox tables, and only their referenced `Textures/`, `Lightmaps/`, `Meshes/`, `Collision/` and `Skybox/Textures`/`Skybox/Meshes` assets are copied
+prop JSON set, optional AIP/SOP, Physics/SSFLogic, World, RiderAnimations, Origin and Slopesmith metadata, optional model-only Skybox tables, and only their referenced `Textures/`, `Lightmaps/`, `Meshes/`, `Collision/` and `Skybox/Textures`/`Skybox/Meshes` assets are copied
 into an isolated application cache directory. C++ readers provide the reference list, keeping
 Java independent of map-record parsing. Separate encoded image/geometry budgets are 256 MiB each;
 render meshes and collision proxies share the geometry budget.
 The native host receives that path; the cache is removed when the game activity ends. The source
 library remains authoritative. Missing optional images use the renderer's fallback. Copy failure
-or cancellation removes the newly created cache. Missing meshes reject playback. Import source
-sidecars are not copied. The optional Audio library copies WAV/JSON/INF bank,
+or cancellation removes the newly created cache. Missing meshes reject playback.
+`Source/` and `Import.json` sidecars are not copied. Origin retains the course's
+slot identity and Slopesmith metadata its authored lap/showoff settings; see
+course-runs.md. The optional Audio library copies WAV/JSON/INF bank,
 program and music assets under its own 512 MiB budget, plus the shared board
 routing sidecar when present. See audio-playback.md. Maps without prop tables
 remain valid terrain-only courses.

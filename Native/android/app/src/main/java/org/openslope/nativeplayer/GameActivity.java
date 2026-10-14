@@ -11,6 +11,7 @@ public final class GameActivity extends NativeActivity {
     private volatile String error;
     private boolean returning;
     public String getMapPath() { return getIntent().getStringExtra("map_path"); }
+    public String getRunMode() { String mode=getIntent().getStringExtra("run_mode");return mode==null?"freeride":mode; }
     public void reportError(String message) { error = message; runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()); }
     @Override public void finish() {
         if (!returning) {

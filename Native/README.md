@@ -268,3 +268,9 @@ The desktop and VR player now use the first-party stick figure avatar. F/V switc
 to first person; hold C to look down. VR controller models show control labels,
 and supported Quest runtimes can supply upper-body/full-body joints. See
 [avatar presentation](docs/avatar.md) for API support, fallbacks and validation.
+
+Timed events are available through `--mode race|showoff` or the Quest library's
+Event selector. Mount to start the countdown; Race counts up and Showoff counts
+down with checkpoint time awards. T/Y restarts. The desktop title and left VR
+controller panel show clock/state. See [course runs](docs/course-runs.md) for
+the course metric, finish/lap rules, authored settings and remaining race systems.
