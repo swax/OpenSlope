@@ -98,6 +98,7 @@ VulkanRenderer::~VulkanRenderer() {
     if(timing_)vkDestroyQueryPool(context_.device,timing_,nullptr);
     destroy_buffer(visible_indices_);
     destroy_buffer(sprite_vertices_);
+    destroy_buffer(wake_vertices_);
 }
 void VulkanRenderer::clear_targets() {
     if(targets_.empty()&&!pass_)return;vkDeviceWaitIdle(context_.device);
@@ -114,6 +115,7 @@ void VulkanRenderer::clear_targets() {
     targets_.clear();
     if(pipeline_)vkDestroyPipeline(context_.device,pipeline_,nullptr);if(blend_pipeline_)vkDestroyPipeline(context_.device,blend_pipeline_,nullptr);if(layout_)vkDestroyPipelineLayout(context_.device,layout_,nullptr);
     if(sprite_pipeline_)vkDestroyPipeline(context_.device,sprite_pipeline_,nullptr);sprite_pipeline_={};
+    if(wake_pipeline_)vkDestroyPipeline(context_.device,wake_pipeline_,nullptr);wake_pipeline_={};
     if(pass_)vkDestroyRenderPass(context_.device,pass_,nullptr);pipeline_={};blend_pipeline_={};layout_={};pass_={};
 }
 void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height,unsigned requested_samples) {
@@ -164,7 +166,9 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
     VkResult blend_result=pipeline_result;
     if(pipeline_result==VK_SUCCESS){blend.blendEnable=VK_TRUE;blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.colorBlendOp=VK_BLEND_OP_ADD;blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.alphaBlendOp=VK_BLEND_OP_ADD;blend_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&blend_pipeline_);}
     VkResult sprite_result=blend_result;if(blend_result==VK_SUCCESS){blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE;blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE;depth_state.depthWriteEnable=VK_FALSE;sprite_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&sprite_pipeline_);}
+    VkResult wake_result=sprite_result;if(sprite_result==VK_SUCCESS){blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;wake_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&wake_pipeline_);}
     vkDestroyShaderModule(context_.device,vertex,nullptr);vkDestroyShaderModule(context_.device,fragment,nullptr);vk_check(pipeline_result,"Create terrain pipeline");vk_check(blend_result,"Create prop blend pipeline");vk_check(sprite_result,"Create additive sprite pipeline");
+    vk_check(wake_result,"Create alpha wake pipeline");
     for(auto image:images) {
         targets_.push_back({});auto& target=targets_.back();target.colour=image;
         VkImageViewCreateInfo view_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};view_info.image=image;view_info.viewType=VK_IMAGE_VIEW_TYPE_2D;view_info.format=format;view_info.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
@@ -186,7 +190,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
         vk_check(vkCreateFramebuffer(context_.device,&framebuffer,nullptr,&target.framebuffer),"Create framebuffer");
     }
 }
-void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites) {
+void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake) {
     const auto started=std::chrono::steady_clock::now();stats_={};
     vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Wait for previous frame");vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
     const auto cull_start=std::chrono::steady_clock::now();terrain_draws_.clear();packed_indices_.clear();
@@ -219,6 +223,13 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
         if(sprite_mesh.size()>sprite_capacity_){destroy_buffer(sprite_vertices_);sprite_capacity_=std::min(std::size_t(6144),std::max(sprite_mesh.size(),sprite_capacity_*2));sprite_vertices_=create_buffer(sprite_capacity_*sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,nullptr);}
         if(!sprite_mesh.empty()){void* mapped;vk_check(vkMapMemory(context_.device,sprite_vertices_.memory,0,sprite_mesh.size()*sizeof(Vertex),0,&mapped),"Map billboard vertices");std::memcpy(mapped,sprite_mesh.data(),sprite_mesh.size()*sizeof(Vertex));vkUnmapMemory(context_.device,sprite_vertices_.memory);}
     }
+    wake_mesh_.clear();
+    if(scene_->wake_set_&&!wake.empty()){
+        if(wake.size()>594||wake.size()%6)throw std::runtime_error("Wake submission exceeds its section limit");wake_mesh_.reserve(wake.size());
+        for(const auto& point:wake){if(!finite(point.position)||!finite(point.normal)||!std::isfinite(point.across)||!std::isfinite(point.along)||!std::isfinite(point.alpha)||point.alpha<0||point.alpha>1)throw std::runtime_error("Invalid wake submission");Vertex v{float(point.position.x),float(point.position.y),float(point.position.z),1,1,1};v.s=point.across;v.t=point.along;v.ls=point.alpha;v.nx=float(point.normal.x);v.ny=float(point.normal.y);v.nz=float(point.normal.z);wake_mesh_.push_back(v);}
+        if(wake_mesh_.size()>wake_capacity_){destroy_buffer(wake_vertices_);wake_capacity_=std::min(std::size_t(594),std::max(wake_mesh_.size(),wake_capacity_*2));wake_vertices_=create_buffer(wake_capacity_*sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,nullptr);}
+        void* mapped;vk_check(vkMapMemory(context_.device,wake_vertices_.memory,0,wake_mesh_.size()*sizeof(Vertex),0,&mapped),"Map wake vertices");std::memcpy(mapped,wake_mesh_.data(),wake_mesh_.size()*sizeof(Vertex));vkUnmapMemory(context_.device,wake_vertices_.memory);stats_.wake_segments=unsigned(wake.size()/6);
+    }
     struct VisibleDraw {std::size_t part;std::uint32_t first,count;};std::vector<VisibleDraw> prop_draws;std::vector<PropPose> poses;
     std::map<std::pair<bool,std::size_t>,std::vector<std::size_t>> groups;
     struct Translucent {std::size_t part,instance;int depth;};std::vector<Translucent> transparent;
@@ -248,6 +259,10 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     push.mvp=camera*board;push.options[0]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->board_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,6,1,scene_->board_first_,0,0);
     push.mvp=camera;push.options[0]=3;bool blending=false;
     for(const auto& visible:prop_draws){const auto& draw=scene_->prop_draws_[visible.part];if(draw.alpha==2&&!blending){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,blend_pipeline_);blending=true;}push.options[2]=draw.alpha;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,visible.count,draw.first,0,visible.first);}
+    if(!wake_mesh_.empty()){
+        vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,wake_pipeline_);vkCmdBindVertexBuffers(command_,0,1,&wake_vertices_.buffer,&offset);push.mvp=camera;push.options[0]=5;push.options[2]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->wake_set_,0,nullptr);
+        for(int layer=0;layer<2;++layer){push.options[3]=layer;vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDraw(command_,std::uint32_t(wake_mesh_.size()),1,0,0);++stats_.wake_draws;}push.options[3]=0;
+    }
     if(!sprite_mesh.empty()){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,sprite_pipeline_);vkCmdBindVertexBuffers(command_,0,1,&sprite_vertices_.buffer,&offset);push.mvp=camera;push.options[0]=4;push.options[2]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->effect_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDraw(command_,std::uint32_t(sprite_mesh.size()),1,0,0);}
     vkCmdEndRenderPass(command_);
     if(final_layout!=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {

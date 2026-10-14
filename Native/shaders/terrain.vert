@@ -11,10 +11,13 @@ layout(location=0) out vec3 vertexColour;
 layout(location=1) out vec2 textureUV;
 layout(location=2) out vec2 lightmapUV;
 layout(location=3) flat out vec4 lightmapTile;
+layout(location=4) out float effectAlpha;
 layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; } transform;
 void main() {
     gl_Position=transform.mvp*vec4(position,1.0);
     vertexColour=colour;
+    effectAlpha=lightUV.x;
+    if(transform.options.x==5)gl_Position=transform.mvp*vec4(position+modelNormal*(0.008+0.004*transform.options.w),1.0);
     if(transform.options.x==4){
         vec3 forward=vec3(transform.mvp[0][3],transform.mvp[1][3],transform.mvp[2][3]);
         forward=length(forward)>0.00001?normalize(forward):vec3(0,0,-1);
@@ -33,6 +36,7 @@ void main() {
         vertexColour=clamp(light,0.0,255.0/128.0);
     }
     textureUV=diffuseUV;
+    if(transform.options.x==5&&transform.options.w==1)textureUV.x=1.0-diffuseUV.x;
     lightmapUV=lightUV;
     lightmapTile=tile;
 }

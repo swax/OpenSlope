@@ -19,9 +19,9 @@ struct Target {
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=type;vk_check(vkAllocateMemory(context.device,&allocation,nullptr,&memory),"Allocate test image");vk_check(vkBindImageMemory(context.device,image,memory,0),"Bind test image");
     }
 };
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={}) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={}) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},sprites);renderer.capture(0,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},sprites,wake);renderer.capture(0,output);
     std::ifstream file(output,std::ios::binary);std::string magic;unsigned width,height,maximum;file>>magic>>width>>height>>maximum;file.get();
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
@@ -30,11 +30,14 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
     const auto x=unsigned((.1+.8*u)*128),y=unsigned((.1+.8*v)*128);
     for(unsigned c=0;c<3;++c){++checks;const auto actual=int(pixels[(y*128+x)*3+c]);if(std::abs(actual-expected[c])>1)throw std::runtime_error("GPU pixel differs at ("+std::to_string(u)+","+std::to_string(v)+"), channel "+std::to_string(c)+": "+std::to_string(actual)+" expected "+std::to_string(expected[c]));}
 }
+std::array<WakeVertex,6> ribbon(double z,float alpha=.5f){
+    const WakeVertex a{{-.8,-.8,z},{0,0,-1},0,0,alpha},b{{.8,-.8,z},{0,0,-1},1,0,alpha},c{{.8,.8,z},{0,0,-1},1,2,alpha},d{{-.8,.8,z},{0,0,-1},0,2,alpha};return {a,b,c,a,c,d};
+}
 }
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
@@ -46,6 +49,25 @@ int main(int argc,char** argv) {
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
             VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128,samples);
             const auto camera=std::string(name)=="handedness"?projection(-1,1,-1,1)*view({0,0,0},{0,0,-1}):Matrix::identity();
+            if(std::string(name)=="wake"||std::string(name)=="wake_repeat"){
+                const auto plain=capture(first,root/"wake-plain.ppm",camera);const auto front=ribbon(.25),behind=ribbon(.75);
+                const auto hidden=capture(first,root/"wake-hidden.ppm",camera,{},behind);++checks;if(plain!=hidden)throw std::runtime_error("Wake ignores scene depth");
+                const auto drawn=capture(first,root/"wake-drawn.ppm",camera,{},front);++checks;if(first.stats().wake_segments!=1||first.stats().wake_draws!=2)throw std::runtime_error("Wake did not submit both alpha passes");
+                if(std::string(name)=="wake"){
+                    pixel(drawn,.5,.5,{110,89,89});
+                    const auto further=ribbon(.35);std::vector<WakeVertex> stacked(front.begin(),front.end());stacked.insert(stacked.end(),further.begin(),further.end());pixel(capture(first,root/"wake-stacked.ppm",camera,{},stacked),.5,.5,{150,94,72});
+                    const auto transparent=ribbon(.25,0);++checks;if(capture(first,root/"wake-zero.ppm",camera,{},transparent)!=plain)throw std::runtime_error("Zero-alpha wake changed scene pixels");
+                    const auto fade=capture(first,root/"wake-fade.ppm",camera,{},ribbon(.25,.25f));pixel(fade,.5,.5,{78,85,104});
+                    auto gradient=ribbon(.25);for(auto& v:gradient)v.alpha=v.along*.5f;const auto tapered=capture(first,root/"wake-taper.ppm",camera,{},gradient);pixel(tapered,.5,.125,{59,82,112});pixel(tapered,.5,.875,{149,94,72});
+                    const auto encoded=capture(second,root/"wake-srgb.ppm",camera,{},front);pixel(encoded,.5,.5,{141,89,97});
+                    first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);pixel(capture(first,root/"wake-recreated.ppm",camera,{},front),.5,.5,{110,89,89});
+                }else{
+                    for(const auto u:{.125,.875})for(const auto v:{.125,.625})pixel(drawn,u,v,{120,140,160});
+                    for(const auto v:{.125,.375,.625,.875})pixel(drawn,.5,v,{40,80,120});
+                    for(const auto u:{.125,.875})for(const auto v:{.375,.875})pixel(drawn,u,v,{40,80,120});
+                }
+                ++checks;if(capture(first,root/"wake-cleared.ppm",camera)!=plain)throw std::runtime_error("Wake pass retained stale geometry");continue;
+            }
             if(std::string(name)=="sprites"){
                 const std::array<Sprite,1> front{{{{0,0,.25},.2f,.25f,0}}},behind{{{{0,0,.75},.2f,.25f,0}}};
                 const auto plain=capture(first,root/"sprite-plain.ppm",camera),hidden=capture(first,root/"sprite-hidden.ppm",camera,behind);++checks;if(plain!=hidden)throw std::runtime_error("Sprite depth test failed");

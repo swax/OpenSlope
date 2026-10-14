@@ -34,6 +34,12 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    for name in ('wake', 'wake_repeat', 'unsafe_wake'):
+        wake = course(root, name, 'background.png')
+        (wake / 'Textures/background.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+        (wake / 'RidingEffects.json').write_text(json.dumps(dict(Schema='openslope-riding-effects/v1', Wake='../rgb.png' if name == 'unsafe_wake' else 'wake.png')))
+        art = rgba(1, 1, [200, 100, 50, 128]) if name != 'wake_repeat' else rgba(32, 32, [c for y in range(32) for x in range(32) for c in [200,200,200,255 if x < 8 and y < 16 else 0]])
+        (wake / 'Textures/wake.png').write_bytes(art)
     sprites = course(root, "sprites", "background.png")
     (sprites / "Textures/background.png").write_bytes(rgba(1, 1, [40, 80, 120, 255]))
     (sprites / "Textures/puff.png").write_bytes(rgba(1, 1, [255, 255, 255, 255]))

@@ -41,6 +41,24 @@ void controls(){
     Player reset(Terrain({floor()}));reset.advance(1.0/60,{0,false,true});reset.advance(1.0/60,{0,false,true});reset.advance(1.0/60,{0,false,true});require(reset.rider().position.y<1,"Held reset does not teleport every frame");
     rejects([&]{reset.tick({std::numeric_limits<double>::quiet_NaN()});},"Reject non-finite control input");
 }
+void wakes(){
+    const WakeProbe ground=[](Vec3 p)->std::optional<WakeContact>{return WakeContact{{p.x,0,p.z},{0,1,0},1};};
+    RidingEffects effect;Rider a,b;a.grounded=b.grounded=true;a.motion=b.motion=Motion::Ground;a.velocity=b.velocity={0,0,-18};
+    for(int surface=0;surface<20;++surface){effect.reset();a.surface=b.surface=surface;b.position={0,0,-1};effect.tick(a,b,1./60,[&](Vec3 p)->std::optional<WakeContact>{return WakeContact{{p.x,0,p.z},{0,1,0},surface};});const bool enabled=surface==1||surface==2||surface==3||surface==4||surface==5||surface==8||surface==15||surface==16;require(effect.wake().empty()!=enabled,"Wake enable table covers all twenty surfaces");}
+    effect.reset();a.surface=b.surface=1;effect.tick(a,b,1./60,ground);require(effect.wake_sections()==3&&effect.wake().size()==12,"Straight riding samples paired sections every half metre");const auto straight=length(effect.wake()[1].position-effect.wake()[0].position);near(straight,.28,1e-9,"Straight wake is narrow");
+    near(effect.wake()[2].along,.5,1e-6,"Longitudinal texture coordinates advance with distance");const auto alpha=effect.wake()[0].alpha;effect.tick(a,b,0,ground);near(effect.wake()[0].alpha,alpha,0,"Pause preserves wake age");
+    effect.reset();b.lean=1;a.slide=b.slide=.4;effect.tick(a,b,1./60,ground);require(length(effect.wake()[1].position-effect.wake()[0].position)>straight*3,"Carving widens the paired grooves");near((effect.wake()[0].position.x+effect.wake()[1].position.x)*.5,-.4,1e-9,"Wake centre follows the board's contact slide direction");a.slide=b.slide=0;
+    effect.reset();b.lean=0;for(unsigned i=0;i<400;++i){a.position={0,0,-double(i)*.5};b.position={0,0,-double(i+1)*.5};effect.tick(a,b,1./60,ground);}require(effect.wake_sections()==100&&effect.wake().size()==594,"Wake ring remains bounded after wrapping");near(std::abs(effect.wake().back().position.z-effect.wake().front().position.z),49.5,1e-9,"A full ring spans tens of metres");
+    a=b;b.motion=Motion::Air;b.grounded=false;effect.tick(a,b,1./60,ground);near(effect.wake().back().alpha,0,0,"Gate loss tapers the newest endpoint to zero");require(effect.wake()[effect.wake().size()-6].alpha>0,"End taper retains the preceding section");
+    a=b;b.grounded=true;b.motion=Motion::Ground;b.position={0,0,-300};effect.tick(a,b,1./60,ground);a=b;b.position.z-=1;effect.tick(a,b,1./60,ground);for(std::size_t i=0;i<effect.wake().size();i+=6)require(length(effect.wake()[i+2].position-effect.wake()[i].position)<2,"Wake never bridges an airborne gap or teleport");
+    effect.reset();a=b;a.position={};b.position={0,0,-1};effect.tick(a,b,1./60,[](Vec3 p)->std::optional<WakeContact>{if(p.x<0)return {};return WakeContact{p,{0,1,0},1};});require(effect.wake().empty(),"Missing ribbon edge stops emission");
+    effect.tick(a,b,1./60,[](Vec3 p)->std::optional<WakeContact>{return WakeContact{{p.x,p.x*.2,p.z},{-.2,1,0},1};});for(const auto& v:effect.wake())near(v.position.y,v.position.x*.2,1e-9,"Both edges follow the contact plane");
+    std::array<float,3> faded{};unsigned j=0;for(const auto surface:{3,1,5}){effect.reset();a.surface=b.surface=surface;a.position={};b.position={0,0,-8};const WakeProbe probe=[&](Vec3 p)->std::optional<WakeContact>{return WakeContact{{p.x,0,p.z},{0,1,0},surface};};effect.tick(a,b,1./60,probe);a=b;b.position.z-=4;effect.tick(a,b,1./60,probe);a=b;b.grounded=false;b.motion=Motion::Air;for(unsigned i=0;i<120;++i)effect.tick(b,b,1./60,probe);faded[j++]=effect.wake().front().alpha;b.grounded=true;b.motion=Motion::Ground;}
+    require(faded[0]>faded[1]&&faded[1]>faded[2],"Powder wake persists longer than snow and ice");
+    effect.reset();a.surface=b.surface=1;for(unsigned i=0;i<2400;++i){a.position={0,0,-double(i)*.5};b.position={0,0,-double(i+1)*.5};effect.tick(a,b,1./60,ground);}require(effect.wake_sections()==100,"Long sessions retain the same bounded section storage");for(const auto& v:effect.wake())require(std::abs(v.along)<1024,"Longitudinal UV rebasing prevents float precision loss");
+    effect.reset();require(effect.wake().empty()&&effect.wake_sections()==0,"Reset clears wake geometry and history");
+    Player player(Terrain({floor()}));seat(player);for(unsigned i=0;i<30;++i)player.tick({});require(!player.effects().wake().empty(),"Player supplies ground probes independently of audio/rendering");for(const auto& v:player.effects().wake())near(v.position.y,0,1e-9,"Player wake seats at terrain contact rather than stale absorber error");player.reset();require(player.effects().wake().empty(),"Player reset clears its trail");
+}
 void paths(){
     const auto root=std::filesystem::temp_directory_path()/("openslope-play-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".v1");std::filesystem::create_directory(root);
     struct Cleanup{std::filesystem::path path;~Cleanup(){std::error_code e;std::filesystem::remove_all(path,e);}}cleanup{root};
@@ -54,7 +72,7 @@ void paths(){
     sequence["Steps"][0]["Ticks"]=216001;write_replay();rejects([&]{static_cast<void>(Replay::load(root/"replay.json"));},"Reject unbounded replay durations");
 }
 }
-int main(){try{helpers();controls();paths();
+int main(){try{helpers();controls();wakes();paths();
     RidingEffects effects;Rider a,b;a.grounded=b.grounded=true;a.motion=b.motion=Motion::Ground;b.velocity={0,0,-18};b.position={0,0,-1};
     effects.tick(a,b,1./60);require(effects.sprites().empty(),"Standard straight riding does not create a carve plume");b.lean=.5;effects.tick(a,b,1./60);require(effects.carve_emitted()==1&&!effects.sprites().empty(),"Ground carve emits by traveled distance");
     const auto birth=effects.sprites()[0].position;b.grounded=false;b.motion=Motion::Air;b.position={100,0,0};effects.tick(a,b,1./60);require(effects.carve_emitted()==1&&std::abs(effects.sprites()[0].position.x-birth.x)<1e-9,"Air stops carve emission and retains old world origins");

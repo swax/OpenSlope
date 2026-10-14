@@ -65,7 +65,11 @@ void Player::land(const GroundContact& hit){
     rider_.ground_instance=hit.instance;rider_.grounded=true;if(rider_.motion!=Motion::Wipeout)rider_.motion=Motion::Ground;++rider_.landings;
     if(rider_.control==Control::Air||rider_.control==Control::Launched)rider_.control=Control::Cruise;
 }
-void Player::notify_tick(const Rider& before){effects_.tick(before,rider_,contract_.tick_seconds());if(tick_observer_)tick_observer_(*this,before);}
+void Player::notify_tick(const Rider& before){
+    effects_.tick(before,rider_,contract_.tick_seconds(),[&](Vec3 position)->std::optional<WakeContact>{
+        const auto n=normalized(rider_.normal);if(const auto hit=trace_ground(position+n*.75,position-n*.75))return WakeContact{hit->point,hit->normal,hit->surface};return {};
+    });if(tick_observer_)tick_observer_(*this,before);
+}
 void Player::tick(const RideInput& input){
     sample_input(input);const auto dt=contract_.tick_seconds();const auto before_pose=rider_;rider_.previous_position=rider_.position;jump_cooldown_=std::max(0.0,jump_cooldown_-dt);air_grace_=std::max(0.0,air_grace_-dt);
     auto active=input;if(rider_.motion==Motion::Wipeout)active={};

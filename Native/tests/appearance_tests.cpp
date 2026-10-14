@@ -25,6 +25,8 @@ int main(int argc,char** argv) {
         require(Appearance::load(Terrain::load(root/"missing")).missing.size()==2,"Missing custom map images fall back without blocking terrain");
         rejects([&]{static_cast<void>(referenced_images(Terrain::load(root/"unsafe")));},"Reject texture path traversal");
         rejects([&]{static_cast<void>(Appearance::load(Terrain::load(root/"corrupt")));},"Present corrupt map image is an error");
+        const auto wake=referenced_images(Terrain::load(root/"wake"));require(wake.size()==2&&std::find(wake.begin(),wake.end(),"Textures/wake.png")!=wake.end(),"Wake-only profile contributes art to the Quest cache manifest without a puff slot");
+        rejects([&]{static_cast<void>(referenced_images(Terrain::load(root/"unsafe_wake")));},"Reject wake texture traversal");
         std::cout<<"PASS: "<<checks<<" PNG/material loading checks\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

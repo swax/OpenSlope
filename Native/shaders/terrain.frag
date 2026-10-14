@@ -3,6 +3,7 @@ layout(location=0) in vec3 vertexColour;
 layout(location=1) in vec2 textureUV;
 layout(location=2) in vec2 lightmapUV;
 layout(location=3) flat in vec4 lightmapTile;
+layout(location=4) in float effectAlpha;
 layout(set=0,binding=0) uniform sampler2D diffuseImage;
 layout(set=0,binding=1) uniform sampler2D lightmapImage;
 layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; } transform;
@@ -18,6 +19,7 @@ void main() {
         }else if(base.a<=1.0/255.0)discard;
         displayColour=base.rgb;
         if(transform.options.x==4){displayColour=base.rgb*vertexColour;alpha=base.a*lightmapTile.x;}
+        if(transform.options.x==5)alpha=base.a*effectAlpha;
         if(transform.options.x==3)displayColour=clamp(base.rgb*vertexColour,0.0,1.0);
         if(transform.options.x==2) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]

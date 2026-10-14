@@ -201,9 +201,9 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     notify("Converting course audio");const auto audio=import_detail::write_course_audio(disc,stem,files,output,progress,cancelled);if(audio)outputs.push_back("Audio");
     const auto directories=disc_directory(disc,"DATA");if(std::any_of(directories.begin(),directories.end(),[](const auto& e){return e.directory&&upper(e.name)=="TEXTURES";})){
         const auto textures=disc_directory(disc,"DATA/TEXTURES");if(std::any_of(textures.begin(),textures.end(),[](const auto& e){return !e.directory&&upper(e.name)=="PARTICLE.SSH";})){
-            notify("Converting shared particle sprites");const auto sprites=import_detail::decode_ssh(disc_file(disc,"DATA/TEXTURES/PARTICLE.SSH"),false,cancelled,true);Json bank=Json::object();bool puff=false;
-            for(const auto& sprite:sprites){notify("Particle sprite "+sprite.name);const auto name="particle-"+sprite.name+".png";if(std::filesystem::exists(output/"Textures"/name))throw std::runtime_error("Particle sprite conflicts with a course texture");import_detail::write_png(output/"Textures"/name,sprite);bank[sprite.name]=name;puff|=sprite.name=="part";}
-            if(puff){write_json(output/"RidingEffects.json",{{"Schema","openslope-riding-effects/v1"},{"Enabled",true},{"Puff","particle-part.png"},{"SpriteBank",bank},{"Profile","native-riding-clouds/v1"}});outputs.push_back("RidingEffects.json");}
+            notify("Converting shared particle sprites");const auto sprites=import_detail::decode_ssh(disc_file(disc,"DATA/TEXTURES/PARTICLE.SSH"),false,cancelled,true);Json bank=Json::object();
+            for(const auto& sprite:sprites){notify("Particle sprite "+sprite.name);const auto name="particle-"+sprite.name+".png";if(std::filesystem::exists(output/"Textures"/name))throw std::runtime_error("Particle sprite conflicts with a course texture");import_detail::write_png(output/"Textures"/name,sprite);bank[sprite.name]=name;}
+            if(bank.contains("part")||bank.contains("tral")){Json profile={{"Schema","openslope-riding-effects/v1"},{"Enabled",true},{"SpriteBank",bank},{"Profile","native-riding-effects/v2"}};if(bank.contains("part"))profile["Puff"]=bank["part"];if(bank.contains("tral"))profile["Wake"]=bank["tral"];write_json(output/"RidingEffects.json",profile);outputs.push_back("RidingEffects.json");}
         }
     }
     write_json(output/"Origin.json",{{"Schema","openslope-origin/v1"},{"Origin","retail"},{"Course",stem},{"RetailData",true},{"Reasons",{"retail-extract"}}});

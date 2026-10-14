@@ -38,7 +38,8 @@ particle colour independently of course normalization.
 
 `RidingEffects.json` is an optional native extension, schema
 `openslope-riding-effects/v1`, with `Enabled` and a `Puff` filename in the course's
-Textures folder. Imports select `particle-part.png` and preserve the bank's
+Textures folder. An independent optional `Wake` slot selects the carved strip;
+see carved-wake.md. Imports select `particle-part.png` and preserve the bank's
 name→filename map for later consumers. No registration-index mapping is inferred
 from directory order. Existing/custom Maps can provide this profile and their own
 PNG. Without a profile or available referenced art, no substitute sprite is drawn.
@@ -57,6 +58,6 @@ attachment paths, occlusion, overlap without depth writes and empty-frame cleanu
 Portable tests cover gates, fixed-world origins, landing bursts, expiry, pause
 and reset; actual-host carving renders the extracted puff art. Existing contact,
 jump and audio checks remain applicable. Surface-driven 40-slot streams, the
-four-rail spray sheet, sparks, airborne puffs, the wake ribbon, boost/debris/pickup
+four-rail spray sheet, sparks, airborne puffs, boost/debris/pickup
 effects and general authored emitter lifecycle are still outstanding. Weather
 snowfall is a separate system and is not satisfied by these riding clouds.

@@ -81,6 +81,12 @@ def graph():
     return bytes(data)
 
 
+def particle_bank():
+    image = ssh()[32:]
+    size = 32 + len(image) * 2
+    return b'SHPS' + struct.pack('<II', size, 2) + b'TESTpart' + struct.pack('<I', 32) + b'tral' + struct.pack('<I', 32 + len(image)) + image * 2
+
+
 def fixture(course=None):
     course = dict(members() if course is None else course)
     text = course['fixture.map'].decode()
@@ -104,7 +110,7 @@ def fixture(course=None):
         'DATA/AUDIO/AUDIO.BIG': archive({'tone.bnk': bank(), 'Coyote.bnk': bank()}),
         'DATA/AUDIO/MUSIC.BIG': archive({'song.mpf': graph(), 'song.mus': stream(), 'loop.bnk': bank()}),
         'DATA/AUDIO/INTRO.BIG': archive({'Quiet-A': stream(), 'end': stream()}),
-        'DATA/TEXTURES/PARTICLE.SSH': ssh().replace(b'TEST0000', b'TESTpart'),
+        'DATA/TEXTURES/PARTICLE.SSH': particle_bank(),
     }
 
 
@@ -118,6 +124,8 @@ def main():
         output = root / 'Maps/FIXTURE'
         audio = output / 'Audio'
         assert json.loads((output / 'RidingEffects.json').read_text())['Puff'] == 'particle-part.png'
+        assert json.loads((output / 'RidingEffects.json').read_text())['Wake'] == 'particle-tral.png'
+        assert (output / 'Textures/particle-tral.png').exists()
         assert (output / 'Textures/particle-part.png').exists()
         assert png_pixels(output / 'Textures/particle-part.png') == bytes([10,20,30,255,128,128,128,255,200,50,0,128,0,0,0,0]), 'Full-bright particle art uses its own colour profile'
         index = json.loads((audio / 'SoundIndex.json').read_text())
