@@ -6,11 +6,15 @@ import android.net.Uri;
 import android.provider.DocumentsContract;
 import java.io.*;
 import java.util.*;
+import org.json.*;
 
 /** Maps/<name>/Patches.json is the discovery contract for both local and SAF libraries. */
 final class MapLibrary {
     static final long PATCH_LIMIT = 64L * 1024 * 1024;
     static final long FILE_LIMIT = 128L * 1024 * 1024;
+    static final long IMAGE_LIMIT = 64L * 1024 * 1024;
+    static final long IMAGE_BUDGET = 256L * 1024 * 1024;
+    static native String nativeImageFiles(String path);
     static final String DIRECTORY = DocumentsContract.Document.MIME_TYPE_DIR;
     interface Cancel { void check() throws IOException; }
     static final class Entry {
@@ -78,6 +82,32 @@ final class MapLibrary {
             Entry patches = child(map.uri, "Patches.json");
             if (patches == null || patches.directory) throw new IOException("This map has no Patches.json.");
             try (InputStream input = resolver.openInputStream(patches.uri); OutputStream file = new FileOutputStream(new File(output, "Patches.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
+            JSONArray images;
+            try { images = new JSONArray(nativeImageFiles(output.getAbsolutePath())); }
+            catch (JSONException e) { throw new IOException("Cannot read map image references.", e); }
+            Map<String, Map<String, Entry>> folders = new HashMap<>(); long total = 0;
+            for (int i = 0; i < images.length(); ++i) {
+                cancel.check(); String relative;
+                try { relative = images.getString(i); } catch (JSONException e) { throw new IOException("Invalid map image reference.", e); }
+                String[] parts = relative.split("/", -1);
+                if (parts.length != 2 || !(parts[0].equals("Textures") || parts[0].equals("Lightmaps")) || !safeName(parts[1])) throw new IOException("Unsafe map image reference.");
+                Map<String, Entry> files = folders.get(parts[0]);
+                if (files == null) {
+                    files = new HashMap<>(); Entry folder = child(map.uri, parts[0]);
+                    if (folder != null) {
+                        if (!folder.directory) throw new IOException(parts[0] + " must be a folder.");
+                        for (Entry entry : children(folder.uri)) files.put(entry.name, entry);
+                    }
+                    folders.put(parts[0], files);
+                }
+                Entry image = files.get(parts[1]);
+                if (image == null) continue; // Match native fallback for incomplete custom maps.
+                if (image.directory) throw new IOException("Map image is a folder: " + parts[1]);
+                File directory = new File(output, parts[0]);
+                if (!directory.isDirectory() && !directory.mkdir()) throw new IOException("Cannot prepare map images.");
+                try (InputStream input = resolver.openInputStream(image.uri); OutputStream file = new FileOutputStream(new File(directory, parts[1]))) { total += copy(input, file, Math.min(IMAGE_LIMIT, IMAGE_BUDGET - total), cancel); }
+            }
+            cancel.check();
             return output;
         } catch (Exception e) { deleteLocal(output); throw e; }
     }
@@ -136,10 +166,11 @@ final class MapLibrary {
             else try (InputStream input = new FileInputStream(file); OutputStream output = new FileOutputStream(target)) { copy(input, output, FILE_LIMIT, cancel); }
         }
     }
-    static void copy(InputStream input, OutputStream output, long limit, Cancel cancel) throws IOException {
+    static long copy(InputStream input, OutputStream output, long limit, Cancel cancel) throws IOException {
         if (input == null || output == null) throw new IOException("The document provider could not open this file.");
         byte[] buffer = new byte[128 * 1024]; long total = 0; int count;
         while ((count = input.read(buffer)) != -1) { cancel.check(); total += count; if (total > limit) throw new IOException("Map file exceeds the import limit."); output.write(buffer, 0, count); }
+        return total;
     }
     static void deleteLocal(File directory) {
         // Called only for freshly created application cache/staging directories.

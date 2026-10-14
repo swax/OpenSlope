@@ -1,5 +1,6 @@
 #include "openxr_app.hpp"
 #include "openslope/import.hpp"
+#include "openslope/appearance.hpp"
 #include <android/log.h>
 #include <android_native_app_glue.h>
 #include <filesystem>
@@ -51,8 +52,12 @@ extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivi
     catch(const std::exception& e){java_error(env,e);}
 }
 extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeValidate(JNIEnv* env,jobject,jstring path) {
-    try {const auto root=std::filesystem::path(string_value(env,path));if(std::filesystem::file_size(root/"Patches.json")>64*1024*1024)throw std::runtime_error("Map terrain exceeds the loading limit");static_cast<void>(openslope::Terrain::load(root));}
+    try {const auto root=std::filesystem::path(string_value(env,path));if(std::filesystem::file_size(root/"Patches.json")>64*1024*1024)throw std::runtime_error("Map terrain exceeds the loading limit");static_cast<void>(openslope::Appearance::load(openslope::Terrain::load(root)));}
     catch(const std::exception& e){java_error(env,e);}
+}
+extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_MapLibrary_nativeImageFiles(JNIEnv* env,jclass,jstring path) {
+    try {const nlohmann::json names=openslope::referenced_images(openslope::Terrain::load(string_value(env,path)));return env->NewStringUTF(names.dump(-1,' ',true).c_str());}
+    catch(const std::exception& e){java_error(env,e);return nullptr;}
 }
 extern "C" void android_main(android_app* app) {
     JNIEnv* environment=nullptr;

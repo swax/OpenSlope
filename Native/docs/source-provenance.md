@@ -9,9 +9,12 @@ other components' implementation sources are outside this implementation boundar
 | Primary ISO9660 directory access | [Trailmap: 200-iso]; bounded, seekable document/file reads. |
 | Archive table and compression | [Trailmap: 200-c0fb, 200-bigf, 200-refpack-header, 200-refpack-commands]. Format identifiers and byte-command equations are interoperability facts. |
 | Terrain records and names | [Trailmap: 200-map-manifest, 220-header, 220-patch, 220-power-basis]; the public OpenSlope patch contract. |
+| Runtime coordinate conversion | Proper -90 degree X rotation and centimetre scale, preserving the observed course turns. The disputed extra reflection in chapter 002 is documented in spec-alignment.md; output maps remain in their canonical raw frame. |
 | Basis conversion | Direct tensor transform using `t^k = sum(i=k..n) C(i,k)/C(n,k) B_i^n(t)` with `n=3`. Accumulation uses double precision and does not reproduce another decoder's staged float recurrence. |
 | Texture/lightmap decoding | [Trailmap: 210-directory, 210-chunk, 210-longname, 210-palette, 210-swizzle, 210-alpha, 210-color, 210-lightmap-profile]. |
 | PNG output | Standard PNG RGBA8, CRC-32, Adler-32 and stored DEFLATE blocks; no image-conversion dependency. |
+| PNG input | Standalone LodePNG, checksum-pinned upstream revision with its complete license retained. No game-format readers are supplied by this dependency. |
+| Terrain appearance | [Trailmap: 110-uv-rotation, 160-tile, 160-luminance, 160-transpose, 400-double, 400-lighting]; first-party GLSL, UV evaluation, image bounds and Vulkan resource ownership. Synthetic PNGs and GPU pixel assertions are authored independently of course exports. |
 
 Texture association is not marked by the course bank. Native's application policy only infers
 associated alpha when there is at least one fractional texel and every fractional texel has all

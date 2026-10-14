@@ -108,6 +108,7 @@ struct State {
         VkFormat format=VK_FORMAT_UNDEFINED;
         for(auto candidate:{VK_FORMAT_R8G8B8A8_SRGB,VK_FORMAT_B8G8R8A8_SRGB,VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_B8G8R8A8_UNORM})if(std::find(formats.begin(),formats.end(),candidate)!=formats.end()){format=candidate;break;}
         if(format==VK_FORMAT_UNDEFINED)throw std::runtime_error("No supported XR colour format");
+        auto scene=std::make_shared<VulkanScene>(vulkan);scene->upload(mesh);
         eyes.reserve(2);
         for(const auto& config:views) {
             eyes.emplace_back();auto& eye=eyes.back();eye.width=config.recommendedImageRectWidth;eye.height=config.recommendedImageRectHeight;
@@ -117,7 +118,7 @@ struct State {
             std::vector<XrSwapchainImageVulkan2KHR> xr_images(images_count,{XR_TYPE_SWAPCHAIN_IMAGE_VULKAN2_KHR});
             xr_check(xrEnumerateSwapchainImages(eye.swapchain,images_count,&images_count,reinterpret_cast<XrSwapchainImageBaseHeader*>(xr_images.data())),"Read eye images");
             std::vector<VkImage> images;for(const auto& image:xr_images)images.push_back(image.image);
-            eye.renderer=std::make_unique<VulkanRenderer>(vulkan);eye.renderer->upload(mesh);eye.renderer->targets(images,format,eye.width,eye.height);
+            eye.renderer=std::make_unique<VulkanRenderer>(vulkan);eye.renderer->use_scene(scene);eye.renderer->targets(images,format,eye.width,eye.height);
         }
         std::cout<<"OpenXR stereo session prepared. Left stick: steer; right trigger: boost; X: reset.\n";
     }

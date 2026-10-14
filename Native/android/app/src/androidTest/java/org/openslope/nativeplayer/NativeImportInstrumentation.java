@@ -46,6 +46,16 @@ public final class NativeImportInstrumentation extends Instrumentation {
             MapLibrary.Entry selected = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(name)) selected = row;
             require(selected != null, "Published SAF map discovered under opaque tree URI");
             File prepared = documents.prepare(selected, temporary, () -> {}); invoke(activity, "nativeValidate", new Class<?>[]{String.class}, prepared.getAbsolutePath());
+            JSONArray references = new JSONArray(MapLibrary.nativeImageFiles(extracted.getAbsolutePath()));
+            require(references.length() >= 2, "Native manifest includes diffuse and lightmap references");
+            for (int i = 0; i < references.length(); ++i) {
+                String relative = references.getString(i);
+                require(new File(prepared, relative).isFile(), "SAF play cache includes " + relative);
+            }
+            require(!new File(prepared, "Source").exists(), "Play cache excludes unreferenced import sidecars");
+            int before = temporary.list().length; final int[] playProbes = {0}; rejected = false;
+            try { documents.prepare(selected, temporary, () -> { if (++playProbes[0] > 4) throw new IOException("cancelled"); }); } catch (IOException e) { rejected = true; }
+            require(rejected && temporary.list().length == before, "Cancelled play preparation removes partial image cache");
             rejected = false; try { documents.publish(name, extracted, () -> {}); } catch (IOException e) { rejected = true; }
             require(rejected, "Existing SAF map is preserved");
             final int[] probes = {0}; rejected = false; String cancelled = "Cancelled " + UUID.randomUUID();

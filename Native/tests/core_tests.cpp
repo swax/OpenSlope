@@ -1,5 +1,6 @@
 #include "openslope/player.hpp"
 #include "openslope/import.hpp"
+#include "openslope/appearance.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <fstream>
@@ -43,6 +44,20 @@ void terrain_tests() {
     require(hit.has_value(),"BVH must find hit");near(hit->point.y,1.9,1e-12,"Nearest hit excludes no-collision decoration");
     const auto mesh=Terrain({plane()}).mesh(2);
     require(mesh.vertices.size()==9&&mesh.indices.size()==24,"Mesh subdivision shape");
+    p=plane();p.texture="authored.png";p.uv={{{-1,2},{-1,-2},{3,2},{3,-2}}};p.lightmap=7;p.lightmap_rect={.25,.5,.125,.25};
+    for(const auto& corner:std::array<std::array<double,4>,4>{{{0,0,-1,2},{1,0,-1,-2},{0,1,3,2},{1,1,3,-2}}}) {
+        const auto uv=p.texture_uv(corner[0],corner[1]);near(uv[0],corner[2],0,"Diffuse corner pairing supports repeat/mirror");near(uv[1],corner[3],0,"Diffuse corner V pairing");
+    }
+    const auto lm=p.lightmap_uv(.2,.7);near(lm[0],.3375,1e-12,"Lightmap U uses patch v");near(lm[1],.55,1e-12,"Lightmap V uses patch u");
+    auto other=p;other.texture="other.png";
+    const auto grouped=Terrain({p,other,p}).mesh(2);
+    require(grouped.batches.size()==2&&grouped.batches[0].count==48&&grouped.batches[1].count==24,"Shared material patches form contiguous draws");
+    near(grouped.vertices[0].s,-1,0,"Mesh carries diffuse UV");near(grouped.vertices[0].lx,.25,0,"Mesh carries lightmap tile bounds");
+    require(referenced_images(Terrain({p,p}))==std::vector<std::string>({"Lightmaps/0007.png","Textures/authored.png"}),"Unique portable image paths");
+    const auto colour=terrain_light({200./255,180./255,160./255},{20./255,40./255,60./255,128./255});
+    near(colour[0],180.*128/(255.*255),1e-12,"RGB residual subtracts before alpha intensity");
+    near(terrain_light({.1,.2,.3},{.2,.1,.4,.5})[0],0,0,"Negative lighting saturates");
+    for(const bool invalid_uv:{false,true}){auto bad=p;if(invalid_uv)bad.uv[0][0]=std::numeric_limits<double>::infinity();else bad.lightmap_rect={.9,.2,.2,.1};bool rejected=false;try{static_cast<void>(Terrain({bad}));}catch(const std::exception&){rejected=true;}require(rejected,"Reject invalid GPU material coordinates");}
 }
 void map_tests() {
     const auto path=std::filesystem::temp_directory_path()/("openslope-native-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".json");
@@ -52,7 +67,17 @@ void map_tests() {
     for(unsigned u=0;u<4;++u) for(unsigned v=0;v<4;++v) row["Points"].push_back({-double(v)*100.0,u*100.0,1000.0});
     const auto write=[&]{std::ofstream file(path);file<<nlohmann::json{{"Patches",{row}}};};
     write();const auto terrain=Terrain::load(path);
-    near(length(terrain.patches()[0].evaluate(1,1)-Vec3{3,10,-3}),0,1e-12,"Raw centimetres and axis mapping");
+    near(length(terrain.patches()[0].evaluate(1,1)-Vec3{-3,10,-3}),0,1e-12,"Raw centimetres rotate to Y-up without reflecting X");
+    auto route=nlohmann::json::array();
+    for(const auto offset:std::array<Vec3,3>{{{0,0,0},{0,1000,0},{1000,1000,0}}}) {
+        auto piece=row;
+        for(auto& point:piece["Points"]){point[0]=point[0].get<double>()+offset.x;point[1]=point[1].get<double>()+offset.y;}
+        route.push_back(std::move(piece));
+    }
+    {std::ofstream file(path);file<<nlohmann::json{{"Patches",route}};}
+    const auto corner=Terrain::load(path);
+    const auto a=corner.patches()[0].evaluate(0,0),b=corner.patches()[1].evaluate(0,0),c=corner.patches()[2].evaluate(0,0);
+    require(dot(c-b,cross(b-a,{0,1,0}))>0,"An authored right turn stays right after map loading");
     row["Points"].erase(0);write();
     bool rejected=false;try{static_cast<void>(Terrain::load(path));}catch(const std::exception&){rejected=true;}
     require(rejected,"Reject incomplete control grid");

@@ -3,8 +3,8 @@
 The library root is an ordinary Maps folder. Its immediate subdirectories are courses; a
 `Patches.json` in a course directory makes it available to select. This is the existing OpenSlope
 terrain contract, including custom Slopesmith maps. `Shared/`, incomplete imports, and hidden
-staging directories do not appear as courses. Playback validates the terrain before entering VR;
-invalid JSON reports an error in the library. Selecting a course never requires an ISO.
+staging directories do not appear as courses. Playback validates the terrain and present PNGs before entering VR;
+invalid JSON or corrupt PNGs report an error in the library. Selecting a course never requires an ISO.
 
 ## Android storage
 
@@ -20,10 +20,12 @@ declares both activity modes and Horizon OS 69+ hybrid support, following
 [Meta's hybrid-app transitions](https://developers.meta.com/vr/documentation/spatial-sdk/hybrid-apps-overview/).
 
 Document URIs are opaque identifiers, never converted to guessed filesystem paths. Folder listing
-and publication use `DocumentsContract`. For playback, the selected `Patches.json` is copied into
-an isolated application cache directory. The native host receives that path; the cache is removed
-when the game activity ends. The source library remains authoritative. The renderer currently
-uses only terrain, so textures and other optional map files are not copied into the play cache.
+and publication use `DocumentsContract`. For playback, the selected `Patches.json` and only its
+referenced `Textures/` and `Lightmaps/` PNGs are copied into an isolated application cache directory.
+The C++ terrain reader provides the reference list, keeping Java independent of map-record parsing.
+The native host receives that path; the cache is removed when the game activity ends. The source
+library remains authoritative. Missing optional images use the renderer's fallback. Copy failure
+or cancellation removes the newly created cache. Props, audio and import sidecars are not copied.
 
 The alternative app Maps root is `Android/data/org.openslope.nativeplayer/files/Maps` in external
 application storage. Courses copied there over USB/ADB are listed with the same rule. The system
@@ -41,7 +43,7 @@ and the specified RefPack streams. It discovers course archives under `DATA/MODE
 end is excluded. Unsupported titles/platforms and corrupt data report errors before publication.
 The user selects any subset of courses. Existing names, including custom courses, are skipped.
 
-Each course is extracted into a fresh app cache directory, validated with the same terrain loader
+Each course is extracted into a fresh app cache directory, validated with the same terrain/image loaders
 used by playback, copied into a hidden staging directory under Maps, then renamed to its course
 name. A course becomes visible only after publication. Failed/cancelled imports clean up only
 their own new directories. Completed courses survive cancellation of a later course. Process death
@@ -60,6 +62,7 @@ This is a canonical terrain import; complete course conversion remains to be imp
 not fabricate empty props, path, world, effects, audio or skybox contracts. Those stages remain
 to be implemented; a folder already produced by a compatible extractor or Slopesmith is also accepted for
 terrain playback. Rendering those systems is separate from converting them.
+The implemented terrain appearance contract is described in [terrain appearance](terrain-appearance.md).
 
 ## Verification
 

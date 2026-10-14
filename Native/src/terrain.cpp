@@ -2,6 +2,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <numeric>
+#include <map>
 #include <stdexcept>
 
 namespace openslope {
@@ -69,12 +70,28 @@ Vec3 Patch::normal(double u,double v) const {
     return n;
 }
 Bounds Patch::bounds() const { Bounds b;for(auto p:points) b.add(p);return b; }
+std::array<double,2> Patch::texture_uv(double u,double v) const {
+    // [Trailmap: 110-uv-rotation] Corner order (0,0),(1,0),(0,1),(1,1).
+    std::array<double,2> result{};
+    const std::array<double,4> weights{(1-u)*(1-v),u*(1-v),(1-u)*v,u*v};
+    for(unsigned i=0;i<4;++i)for(unsigned axis=0;axis<2;++axis)result[axis]+=uv[i][axis]*weights[i];
+    return result;
+}
+std::array<double,2> Patch::lightmap_uv(double u,double v) const {
+    // [Trailmap: 160-transpose] Page tile uses the opposite parametric axes.
+    return {lightmap_rect[0]+v*lightmap_rect[2],lightmap_rect[1]+u*lightmap_rect[3]};
+}
 
 Terrain::Terrain(std::vector<Patch> patches):patches_(std::move(patches)) {
     if(patches_.empty()||patches_.size()>100000) throw std::runtime_error("A course must contain 1..100000 patches");
     samples_.resize(patches_.size());order_.resize(patches_.size());
     std::iota(order_.begin(),order_.end(),0);
     for(std::size_t p=0;p<patches_.size();++p) {
+        for(const auto& uv:patches_[p].uv)for(const auto value:uv)if(!std::isfinite(value)||std::abs(value)>1000000)throw std::runtime_error("Invalid terrain texture coordinate");
+        const auto& tile=patches_[p].lightmap_rect;
+        for(const auto value:tile)if(!std::isfinite(value))throw std::runtime_error("Invalid lightmap tile coordinate");
+        if(tile[0]<0||tile[1]<0||tile[2]<0||tile[3]<0||tile[0]+tile[2]>1.000001||tile[1]+tile[3]>1.000001)throw std::runtime_error("Lightmap tile lies outside its page");
+        if(patches_[p].lightmap < -1||patches_[p].lightmap>65535)throw std::runtime_error("Invalid lightmap page index");
         for(auto v:patches_[p].points) {
             if(!finite(v)) throw std::runtime_error("Non-finite terrain control point");
             bounds_.add(v);
@@ -104,14 +121,16 @@ Terrain Terrain::load(const std::filesystem::path& map) {
         if(!points.is_array()||points.size()!=16) throw std::runtime_error("Each patch requires 16 control points");
         for(std::size_t i=0;i<16;++i) {
             if(!points[i].is_array()||points[i].size()!=3) throw std::runtime_error("Each control point requires three coordinates");
-            // [Trailmap: 002-axes] Same right-handed metre frame as Slopesmith.
-            p.points[i]={-points[i][0].get<double>()/100,points[i][2].get<double>()/100,-points[i][1].get<double>()/100};
+            // [Trailmap: 002-units, 002-axes] Z-up centimetres to Y-up metres.
+            // A proper -90 degree X rotation preserves the course's turns.
+            // The spec's additional X reflection is disputed; see spec-alignment.md.
+            p.points[i]={points[i][0].get<double>()/100,points[i][2].get<double>()/100,-points[i][1].get<double>()/100};
         }
         p.uv=row.at("UVPoints").get<decltype(p.uv)>();
         p.lightmap_rect=row.at("LightMapPoint").get<decltype(p.lightmap_rect)>();
         patches.push_back(std::move(p));
     }
-    return Terrain(std::move(patches));
+    Terrain terrain(std::move(patches));terrain.map_root_=path.parent_path().empty()?std::filesystem::current_path():std::filesystem::absolute(path.parent_path());return terrain;
 }
 Terrain Terrain::demo() {
     std::vector<Patch> patches;
@@ -169,8 +188,12 @@ std::optional<TerrainHit> Terrain::intersect(Vec3 start,Vec3 end) const {
 Mesh Terrain::mesh(unsigned subdivisions) const {
     if(subdivisions<1||subdivisions>32) throw std::runtime_error("Terrain subdivisions must be 1..32");
     if(patches_.size()*(subdivisions+1)*(subdivisions+1)>8000000) throw std::runtime_error("Requested terrain mesh exceeds 8 million vertices");
-    Mesh mesh;
-    for(const auto& p:patches_) {
+    Mesh mesh;mesh.map_root=map_root_;
+    std::map<std::pair<std::string,int>,std::vector<const Patch*>> groups;
+    for(const auto& patch:patches_)groups[{patch.texture,patch.lightmap_rect[2]>0&&patch.lightmap_rect[3]>0?patch.lightmap:-1}].push_back(&patch);
+    for(const auto& [material,patches]:groups){
+        MeshBatch batch{static_cast<std::uint32_t>(mesh.indices.size()),0,material.first,material.second};
+        for(const auto* patch:patches) {const auto& p=*patch;
         const auto first=static_cast<std::uint32_t>(mesh.vertices.size());
         for(unsigned u=0;u<=subdivisions;++u) for(unsigned v=0;v<=subdivisions;++v) {
             const auto point=p.evaluate(u/double(subdivisions),v/double(subdivisions));
@@ -178,12 +201,15 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
             const auto light=static_cast<float>(.48+.52*std::max(0.0,dot(normal,normalized(Vec3{-.3,.9,.2}))));
             const auto ice=p.surface==5;
             const auto rock=p.surface==9;
-            mesh.vertices.push_back({static_cast<float>(point.x),static_cast<float>(point.y),static_cast<float>(point.z),light*(rock?.48f:ice?.55f:.91f),light*(rock?.44f:ice?.82f:.96f),light});
+            const auto uv=p.texture_uv(u/double(subdivisions),v/double(subdivisions)),lm=p.lightmap_uv(u/double(subdivisions),v/double(subdivisions));
+            mesh.vertices.push_back({static_cast<float>(point.x),static_cast<float>(point.y),static_cast<float>(point.z),light*(rock?.48f:ice?.55f:.91f),light*(rock?.44f:ice?.82f:.96f),light,float(uv[0]),float(uv[1]),float(lm[0]),float(lm[1]),float(p.lightmap_rect[0]),float(p.lightmap_rect[1]),float(p.lightmap_rect[2]),float(p.lightmap_rect[3])});
         }
         for(unsigned u=0;u<subdivisions;++u) for(unsigned v=0;v<subdivisions;++v) {
             const auto a=first+u*(subdivisions+1)+v,b=a+subdivisions+1;
             mesh.indices.insert(mesh.indices.end(),{a,b,b+1,a,b+1,a+1});
         }
+        }
+        batch.count=static_cast<std::uint32_t>(mesh.indices.size())-batch.first;mesh.batches.push_back(std::move(batch));
     }
     return mesh;
 }
