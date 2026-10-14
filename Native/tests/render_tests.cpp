@@ -19,12 +19,15 @@ struct Target {
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=type;vk_check(vkAllocateMemory(context.device,&allocation,nullptr,&memory),"Allocate test image");vk_check(vkBindImageMemory(context.device,image,memory,0),"Bind test image");
     }
 };
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={}) {
-    auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet);renderer.capture(0,output);
+std::vector<unsigned char> read_capture(VulkanRenderer& renderer,const std::filesystem::path& output) {
+    renderer.capture(0,output);
     std::ifstream file(output,std::ios::binary);std::string magic;unsigned width,height,maximum;file>>magic>>width>>height>>maximum;file.get();
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
+}
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={}) {
+    auto board=Matrix::identity();board.values[12]=10;
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet);return read_capture(renderer,output);
 }
 void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array<int,3> expected) {
     const auto x=unsigned((.1+.8*u)*128),y=unsigned((.1+.8*v)*128);
@@ -118,6 +121,20 @@ int main(int argc,char** argv) {
             const auto a=capture(first,root/(std::string(name)+"-unorm.ppm"),camera),b=capture(second,root/(std::string(name)+"-srgb.ppm"),camera);
             const auto visibility=first.stats();first.cull_terrain(false);second.cull_terrain(false);
             const auto baseline_a=capture(first,root/"baseline-unorm.ppm",camera),baseline_b=capture(second,root/"baseline-srgb.ppm",camera);checks+=2;if(a!=baseline_a||b!=baseline_b)throw std::runtime_error("Culled pixels differ from complete terrain submission");first.cull_terrain(true);second.cull_terrain(true);
+            if(std::string(name)=="props"){
+                auto shifted=camera;shifted.values[12]=-1.2f;
+                const auto shifted_b=capture(second,root/"queued-reference.ppm",shifted);
+                ++checks;if(second.stats().visible_props!=1||shifted_b==b)throw std::runtime_error("Stereo fixture must compact different placements for each eye");
+                first.deferred(true);second.deferred(true);auto board=Matrix::identity();board.values[12]=10;
+                for(unsigned frame=0;frame<4;++frame){
+                    const auto submit_first=[&]{first.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);};
+                    const auto submit_second=[&]{second.render(0,shifted,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);};
+                    if(frame%2){submit_second();submit_first();}else{submit_first();submit_second();}
+                    if(frame==2)submit_first();if(frame==3)submit_second();
+                    checks+=2;if(read_capture(first,root/"queued-first.ppm")!=a||read_capture(second,root/"queued-second.ppm")!=shifted_b)throw std::runtime_error("Queued stereo views overwrite each other's placements or buffers");
+                }
+                first.deferred(false);second.deferred(false);capture(first,root/"restored-first.ppm",camera);capture(second,root/"restored-second.ppm",camera);
+            }
             if(std::string(name)=="visibility"){
                 ++checks;if(visibility.visible_terrain!=2||visibility.terrain_patches!=8||visibility.terrain_indices*4!=visibility.terrain_total_indices||visibility.terrain_draws!=2)throw std::runtime_error("Terrain compaction did not retain two visible material groups");
                 auto empty=camera;empty.values[12]=100;const auto culled=capture(first,root/"empty-cull.ppm",empty);++checks;if(first.stats().terrain_indices||first.stats().terrain_draws)throw std::runtime_error("Empty view still submitted terrain");first.cull_terrain(false);const auto complete=capture(first,root/"empty-full.ppm",empty);++checks;if(culled!=complete)throw std::runtime_error("Empty view lost visible pixels");continue;

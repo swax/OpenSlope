@@ -6,7 +6,7 @@ layout(location=3) in vec2 lightUV;
 layout(location=4) in vec4 tile;
 layout(location=5) in vec3 modelNormal;
 struct Pose {mat4 matrix;vec4 ambient;vec4 direction[3];vec4 colour[3];};
-layout(std430,set=0,binding=2) readonly buffer Placements {Pose poses[];};
+layout(std430,set=1,binding=0) readonly buffer Placements {Pose poses[];};
 layout(location=0) out vec3 vertexColour;
 layout(location=1) out vec2 textureUV;
 layout(location=2) out vec2 lightmapUV;

@@ -53,6 +53,10 @@ public final class NativeImportInstrumentation extends Instrumentation {
             boolean rejected = false; try { direct.publish("Custom course", extracted, () -> {}); } catch (IOException e) { rejected = true; }
             require(rejected && direct.maps().size() == 1, "Existing local map is preserved");
             Uri tree = DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, "root");
+            // Start our provider as its owner so it can grant the target UID access after APK updates.
+            try(ContentProviderClient provider=getContext().getContentResolver().acquireContentProviderClient(FixtureDocumentsProvider.AUTHORITY)){
+                require(provider!=null,"Fixture document provider starts before target access");
+            }
             MapLibrary documents = new MapLibrary(context.getContentResolver(), local, tree);
             String name = "Authored " + UUID.randomUUID(); documents.publish(name, extracted, () -> {});
             MapLibrary.Entry selected = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(name)) selected = row;

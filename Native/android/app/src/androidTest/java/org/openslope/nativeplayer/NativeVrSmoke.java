@@ -19,7 +19,7 @@ public final class NativeVrSmoke {
         Bundle results = new Bundle(); GameActivity activity = null; File temporary=null; int code = Activity.RESULT_OK;
         try {
             int seconds = arguments == null ? 12 : Integer.parseInt(arguments.getString("seconds", "12"));
-            if (!course.matches("[A-Za-z0-9_-]{1,64}") || seconds < 2 || seconds > 60)
+            if (!course.matches("[A-Za-z0-9_-]{1,64}") || seconds < 2 || seconds > 300)
                 throw new IllegalArgumentException("Invalid VR smoke arguments");
             Context context = host.getTargetContext(); File base = context.getExternalFilesDir(null);
             if (base == null) base = context.getFilesDir();
@@ -40,6 +40,7 @@ public final class NativeVrSmoke {
                 .addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD");
             intent.putExtra("map_path", map.getAbsolutePath());intent.putExtra("map_cache",map.getName().startsWith("play-vr-smoke-"));
             intent.putExtra("run_mode",arguments==null?"freeride":arguments.getString("mode","freeride"));
+            intent.putExtra("render_scale",Double.parseDouble(arguments==null?"1.0":arguments.getString("scale","1.0")));intent.putExtra("msaa",Integer.parseInt(arguments==null?"4":arguments.getString("msaa","4")));
             activity = (GameActivity) host.startActivitySync(intent);
             Thread.sleep(seconds * 1000L);
             if (activity.isFinishing()) throw new IllegalStateException("VR activity ended during smoke check");

@@ -3,9 +3,10 @@
 Experimental C++20 player for portable OpenSlope maps, with a Vulkan renderer and OpenXR host.
 Windows desktop rendering and portable conformance tests are the local validation targets.
 The ARM64 Android APK builds, and the user reports successful Quest play after importing ALASKA
-inside the app. Build 0.19.0 also passes device importer/library checks and initializes Quest's
-full-body tracker. Worn-headset controls, body poses, comfort and frame budgets need targeted
-testing. The Linux host still needs target build/device validation. Full gameplay parity remains
+inside the app. Build 0.21.0 reaches 71.5–72 fps in a focused Quest 3 ALASKA sample with
+4x MSAA and live full-body tracking; the user confirms walking/boarding and improved performance.
+Longer rides, comfort and wider headset coverage still need testing.
+The Linux host still needs target build/device validation. Full gameplay parity remains
 tracked in the matrix below.
 
 The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
@@ -42,7 +43,9 @@ focus; an uncommitted jump charge is cancelled.
 
 Desktop rendering defaults to 4x MSAA, falling back to a supported colour/depth
 sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
-The OpenXR host keeps 1x until headset performance is validated.
+OpenXR also defaults to 4x MSAA. The Quest launcher offers 100%, 125% and 150% of
+the runtime's recommended eye dimensions, plus Off/2x/4x edge smoothing. Start at
+100%/4x; higher resolution increases attachment memory and GPU cost.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

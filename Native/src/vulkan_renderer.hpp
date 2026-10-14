@@ -29,7 +29,7 @@ public:
 private:
     friend class VulkanRenderer;
     VulkanContext& context_;
-    struct Buffer {VkBuffer buffer{};VkDeviceMemory memory{};} vertices_,indices_,poses_;
+    struct Buffer {VkBuffer buffer{};VkDeviceMemory memory{};} vertices_,indices_;
     struct Image {VkImage image{};VkDeviceMemory memory{};VkImageView view{};};
     struct Draw {std::uint32_t first{},count{};VkDescriptorSet set{};int mode{};};
     std::vector<Image> images_;std::vector<Draw> draws_;
@@ -48,7 +48,7 @@ private:
 };
 class VulkanRenderer {
 public:
-    struct Stats {unsigned avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},gpu_ms=-1;};
+    struct Stats {unsigned avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},wait_ms{},gpu_ms=-1;};
     explicit VulkanRenderer(VulkanContext& context):context_(context){}
     ~VulkanRenderer();
     VulkanRenderer(const VulkanRenderer&)=delete;
@@ -57,6 +57,8 @@ public:
     void targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height,unsigned requested_samples=1);
     unsigned samples() const {return unsigned(samples_);}
     void cull_terrain(bool enabled){terrain_culling_=enabled;}
+    void deferred(bool enabled){deferred_=enabled;}
+    void finish();
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
         VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={});
     const Stats& stats() const {return stats_;}
@@ -71,6 +73,8 @@ private:
     VkCommandPool pool_{};VkCommandBuffer command_{};VkFence fence_{};
     VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{},blend_pipeline_{},sprite_pipeline_{},wake_pipeline_{},sky_pipeline_{};
     Stats stats_;VkQueryPool timing_{};double timestamp_period_{};unsigned timestamp_bits_{};
+    bool deferred_=false,pending_=false;
+    Buffer poses_;VkDescriptorSetLayout pose_layout_{};VkDescriptorPool pose_pool_{};VkDescriptorSet pose_set_{};
     bool terrain_culling_=true;Buffer visible_indices_;std::size_t index_capacity_{};
     std::vector<std::size_t> visible_ranges_;std::vector<std::uint32_t> packed_indices_;
     struct TerrainDraw {std::uint32_t first{},count{};std::size_t material{};};std::vector<TerrainDraw> terrain_draws_;

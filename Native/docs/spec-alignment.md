@@ -81,3 +81,9 @@ mode-specific datasets, active-line checkpoints, slot clocks, AIP finish locatio
 and lap/finish order. The countdown and bounded plane test are application
 presentation/query choices. Full field, world, scoring, audio and reset behavior
 remain separate work; see course-runs.md for evidence and limits.
+
+Android optimization and XR submission/quality controls are application/platform
+choices. Clean 400 still governs scene lighting, depth and transparent ordering;
+separate eye placement buffers preserve these semantics during deferred submission.
+Neither MSAA nor render scale substitutes for the outstanding terrain LOD/stitching
+work. See graphics-quality.md for synthetic and live Quest evidence.

@@ -82,3 +82,10 @@ its original attribution retained. Native independently loads its rigid GLB
 skin and authors procedural posing, generic controllers and text geometry.
 OpenXR body/full-body/fidelity integration follows public Meta/Khronos ABI and
 API documentation; clean Trailmap gameplay state remains separate. See avatar.md.
+
+The optimized Android build, renderer-local placement descriptors, deferred XR
+completion, timing instrumentation and resolution/MSAA controls are independently
+authored platform work using standard CMake, Vulkan and OpenXR contracts. They
+preserve clean 400's depth, lighting and draw-order authority. Synthetic queued-eye
+fixtures compare rendered pixels without consulting another renderer's implementation.
+See graphics-quality.md for the device measurements and remaining limits.

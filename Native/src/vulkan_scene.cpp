@@ -69,7 +69,7 @@ VulkanScene::~VulkanScene() {
     if(descriptors_)vkDestroyDescriptorSetLayout(context_.device,descriptors_,nullptr);
     if(repeat_)vkDestroySampler(context_.device,repeat_,nullptr);if(clamp_)vkDestroySampler(context_.device,clamp_,nullptr);if(sky_sampler_)vkDestroySampler(context_.device,sky_sampler_,nullptr);
     for(auto& value:images_){if(value.view)vkDestroyImageView(context_.device,value.view,nullptr);if(value.image)vkDestroyImage(context_.device,value.image,nullptr);if(value.memory)vkFreeMemory(context_.device,value.memory,nullptr);}
-    for(auto* value:{&vertices_,&indices_,&poses_}){if(value->buffer)vkDestroyBuffer(context_.device,value->buffer,nullptr);if(value->memory)vkFreeMemory(context_.device,value->memory,nullptr);}
+    for(auto* value:{&vertices_,&indices_}){if(value->buffer)vkDestroyBuffer(context_.device,value->buffer,nullptr);if(value->memory)vkFreeMemory(context_.device,value->memory,nullptr);}
 }
 void VulkanScene::upload(const Mesh& source) {
     if(vertices_.buffer)throw std::runtime_error("Scene has already been uploaded");
@@ -107,17 +107,16 @@ void VulkanScene::upload(const Mesh& source) {
     pose_capacity_=1;for(const auto& instance:props_.instances)pose_capacity_+=props_.models[instance.model].parts.size();
     VkPhysicalDeviceProperties limits;vkGetPhysicalDeviceProperties(context_.physical,&limits);
     if(pose_capacity_>1000000||pose_capacity_*sizeof(PropPose)>limits.limits.maxStorageBufferRange)throw std::runtime_error("Prop instance buffer exceeds this GPU's limit");
-    poses_=buffer(pose_capacity_*sizeof(PropPose),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,nullptr);
     VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};sampler.magFilter=sampler.minFilter=VK_FILTER_LINEAR;sampler.mipmapMode=VK_SAMPLER_MIPMAP_MODE_LINEAR;sampler.maxLod=VK_LOD_CLAMP_NONE;sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_REPEAT;
     vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&repeat_),"Create diffuse sampler");sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&sky_sampler_),"Create sky sampler");sampler.maxLod=0;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&clamp_),"Create lightmap sampler");
-    const std::array<VkDescriptorSetLayoutBinding,3> bindings{{{0,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{2,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_VERTEX_BIT,nullptr}}};
-    VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};layout.bindingCount=3;layout.pBindings=bindings.data();vk_check(vkCreateDescriptorSetLayout(context_.device,&layout,nullptr,&descriptors_),"Create map descriptor layout");
-    const auto count=std::uint32_t(batches.size()+world_.sky.parts.size()+2);const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,count*2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,count}}};VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};descriptor_pool.maxSets=count;descriptor_pool.poolSizeCount=2;descriptor_pool.pPoolSizes=sizes.data();vk_check(vkCreateDescriptorPool(context_.device,&descriptor_pool,nullptr,&descriptor_pool_),"Create map descriptor pool");
+    const std::array<VkDescriptorSetLayoutBinding,2> bindings{{{0,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr}}};
+    VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};layout.bindingCount=2;layout.pBindings=bindings.data();vk_check(vkCreateDescriptorSetLayout(context_.device,&layout,nullptr,&descriptors_),"Create map descriptor layout");
+    const auto count=std::uint32_t(batches.size()+world_.sky.parts.size()+2);const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,count*2};VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};descriptor_pool.maxSets=count;descriptor_pool.poolSizeCount=1;descriptor_pool.pPoolSizes=&size;vk_check(vkCreateDescriptorPool(context_.device,&descriptor_pool,nullptr,&descriptor_pool_),"Create map descriptor pool");
     const auto descriptor=[&](std::size_t diffuse,std::size_t lightmap,bool sky=false){
         VkDescriptorSet set{};VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};allocate.descriptorPool=descriptor_pool_;allocate.descriptorSetCount=1;allocate.pSetLayouts=&descriptors_;vk_check(vkAllocateDescriptorSets(context_.device,&allocate,&set),"Allocate map descriptor");
-        const std::array<VkDescriptorImageInfo,2> images{{{sky?sky_sampler_:repeat_,images_[diffuse].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},{clamp_,images_[lightmap].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}};std::array<VkWriteDescriptorSet,3> writes{};
+        const std::array<VkDescriptorImageInfo,2> images{{{sky?sky_sampler_:repeat_,images_[diffuse].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},{clamp_,images_[lightmap].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}};std::array<VkWriteDescriptorSet,2> writes{};
         for(unsigned i=0;i<2;++i){writes[i]={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};writes[i].dstSet=set;writes[i].dstBinding=i;writes[i].descriptorCount=1;writes[i].descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;writes[i].pImageInfo=&images[i];}
-        const VkDescriptorBufferInfo pose{poses_.buffer,0,pose_capacity_*sizeof(PropPose)};writes[2]={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};writes[2].dstSet=set;writes[2].dstBinding=2;writes[2].descriptorCount=1;writes[2].descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;writes[2].pBufferInfo=&pose;vkUpdateDescriptorSets(context_.device,3,writes.data(),0,nullptr);return set;
+        vkUpdateDescriptorSets(context_.device,2,writes.data(),0,nullptr);return set;
     };
     if(const auto found=names.find("Textures/"+sprite);!sprite.empty()&&found!=names.end())effect_set_=descriptor(found->second,1);
     if(const auto found=names.find("Textures/"+wake);!wake.empty()&&found!=names.end())wake_set_=descriptor(found->second,1);

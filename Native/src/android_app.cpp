@@ -77,11 +77,12 @@ extern "C" void android_main(android_app* app) {
             if(!getter)throw std::runtime_error("Course selection host is missing");
             const auto path=static_cast<jstring>(environment->CallObjectMethod(app->activity->clazz,getter));
             const auto mode_getter=environment->GetMethodID(type,"getRunMode","()Ljava/lang/String;");if(!mode_getter)throw std::runtime_error("Run mode host is missing");const auto mode_value=static_cast<jstring>(environment->CallObjectMethod(app->activity->clazz,mode_getter));const auto mode=openslope::run_mode(string_value(environment,mode_value));environment->DeleteLocalRef(mode_value);
+            const auto scale_getter=environment->GetMethodID(type,"getRenderScale","()D"),samples_getter=environment->GetMethodID(type,"getMsaa","()I");if(!scale_getter||!samples_getter)throw std::runtime_error("VR quality host is missing");const auto scale=environment->CallDoubleMethod(app->activity->clazz,scale_getter);const auto samples=environment->CallIntMethod(app->activity->clazz,samples_getter);
             const auto root=std::filesystem::path(string_value(environment,path));environment->DeleteLocalRef(path);environment->DeleteLocalRef(type);
             openslope::Player player(openslope::Terrain::load(root));
             player.configure_run(mode);
             __android_log_print(ANDROID_LOG_INFO,"OpenSlopeNative","Run mode configured: %s; initial clock %s",openslope::run_name(mode),openslope::run_clock(player.course_run().status().clock).c_str());
-            openslope::XrPlatform platform{app->activity->vm,app->activity->clazz,[&]{return process_events(app);}};
+            openslope::XrPlatform platform{app->activity->vm,app->activity->clazz,[&]{return process_events(app);}};platform.render_scale=scale;platform.msaa=unsigned(samples);
             openslope::run_openxr(player,platform);
         }
     }catch(const std::exception& e){__android_log_print(ANDROID_LOG_ERROR,"OpenSlope","%s",e.what());const auto type=environment->GetObjectClass(app->activity->clazz);const auto report=environment->GetMethodID(type,"reportError","(Ljava/lang/String;)V");if(report){const auto message=environment->NewStringUTF(e.what());environment->CallVoidMethod(app->activity->clazz,report,message);environment->DeleteLocalRef(message);}environment->DeleteLocalRef(type);}

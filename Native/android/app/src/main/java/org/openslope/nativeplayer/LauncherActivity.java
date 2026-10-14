@@ -24,6 +24,7 @@ public final class LauncherActivity extends Activity {
     private Button chooseFolder, useLocal, importIso, refresh, cancel;
     private MapLibrary library;
     private Spinner runMode;
+    private Spinner renderScale,antialiasing;
     private native String nativeCourses(int descriptor, long length);
     private native void nativeExtract(int descriptor, long length, String course, String output);
     private native void nativeValidate(String path);
@@ -36,6 +37,8 @@ public final class LauncherActivity extends Activity {
         text("Event", 16);runMode=new Spinner(this);ArrayAdapter<String> modes=new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,new String[]{"Freeride","Race","Showoff"});modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);runMode.setAdapter(modes);layout.addView(runMode);
         String savedMode=getPreferences(0).getString("run_mode","freeride");runMode.setSelection(savedMode.equals("race")?1:savedMode.equals("showoff")?2:0);
         runMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){getPreferences(0).edit().putString("run_mode",new String[]{"freeride","race","showoff"}[position]).apply();}});
+        renderScale=choice("VR resolution",new String[]{"100% (runtime recommendation)","125% (sharper)","150% (sharpest)"},"render_scale",0);
+        antialiasing=choice("Edge smoothing",new String[]{"Off","2x","4x"},"antialiasing",2);
         chooseFolder = button("Choose Maps folder", this::pickMaps);
         useLocal = button("Use app Maps folder", () -> { getPreferences(0).edit().remove("maps_tree").apply(); loadLibrary(); refreshMaps(); });
         importIso = button("Import SSX Tricky ISO", this::pickIso);
@@ -47,6 +50,7 @@ public final class LauncherActivity extends Activity {
     @Override public void onResume() { super.onResume(); if (library != null && !busy) refreshMaps(); }
     @Override public void onDestroy() { destroyed = true; cancelled = true; worker.shutdown(); super.onDestroy(); }
     private TextView text(String value, int size) { TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setPadding(0, 8, 0, 8); layout.addView(view); return view; }
+    private Spinner choice(String label,String[] labels,String preference,int fallback){text(label,16);Spinner view=new Spinner(this);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,labels);adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);view.setAdapter(adapter);layout.addView(view);int saved=getPreferences(0).getInt(preference,fallback);view.setSelection(saved>=0&&saved<labels.length?saved:fallback);view.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View selected,int position,long id){getPreferences(0).edit().putInt(preference,position).apply();}});return view;}
     private Button button(String label, Runnable action) { Button view = new Button(this); view.setText(label); view.setOnClickListener(v -> action.run()); layout.addView(view); return view; }
     private void ui(Runnable action) { runOnUiThread(() -> { if (!destroyed) action.run(); }); }
     private void setStatus(String message) { ui(() -> status.setText(message)); }
@@ -57,6 +61,7 @@ public final class LauncherActivity extends Activity {
     private void state(boolean importing) {
         busy = importing; if (importing) cancelled = false;
         runMode.setEnabled(!importing);
+        renderScale.setEnabled(!importing);antialiasing.setEnabled(!importing);
         chooseFolder.setEnabled(!importing); useLocal.setEnabled(!importing); importIso.setEnabled(!importing); refresh.setEnabled(!importing);
         cancel.setVisibility(importing ? View.VISIBLE : View.GONE); cancel.setEnabled(importing);
         for (int i = 0; i < courses.getChildCount(); ++i) courses.getChildAt(i).setEnabled(!importing);
@@ -141,11 +146,12 @@ public final class LauncherActivity extends Activity {
     }
     private void play(MapLibrary.Entry map) {
         final String mode=new String[]{"freeride","race","showoff"}[runMode.getSelectedItemPosition()];
+        final double scale=1+renderScale.getSelectedItemPosition()*.25;final int samples=1<<antialiasing.getSelectedItemPosition();
         state(true); setStatus("Loading " + map.name + "…"); final MapLibrary selected = library;
         worker.execute(() -> {
             File prepared = null;
             try { prepared = selected.prepare(map, getCacheDir(), this::checkCancelled); nativeValidate(prepared.getAbsolutePath()); checkCancelled(); final File path = prepared;
-                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus("Loading cancelled."); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_cache", selected.tree != null);intent.putExtra("run_mode",mode); startActivity(intent); finishAndRemoveTask(); });
+                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus("Loading cancelled."); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_cache", selected.tree != null);intent.putExtra("run_mode",mode);intent.putExtra("render_scale",scale);intent.putExtra("msaa",samples); startActivity(intent); finishAndRemoveTask(); });
             } catch (Exception e) { if (prepared != null && selected.tree != null) MapLibrary.deleteLocal(prepared); ui(() -> { state(false); failure(e); }); }
         });
     }

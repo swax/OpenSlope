@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -66,6 +67,7 @@ struct State {
     }
     XrPath path(const char* text) const { XrPath result{};xr_check(xrStringToPath(instance,text,&result),"Create input path");return result; }
     void create(const XrPlatform& platform,const Mesh& mesh) {
+        if(!std::isfinite(platform.render_scale)||platform.render_scale<1||platform.render_scale>1.5||(platform.msaa!=1&&platform.msaa!=2&&platform.msaa!=4))throw std::runtime_error("Invalid VR image quality");
 #ifdef __ANDROID__
         if(!platform.java_vm||!platform.activity)throw std::runtime_error("Android OpenXR requires an Activity and JavaVM");
         PFN_xrVoidFunction init_pointer{};
@@ -140,14 +142,15 @@ struct State {
         auto scene=std::make_shared<VulkanScene>(vulkan);scene->upload(mesh);
         eyes.reserve(2);
         for(const auto& config:views) {
-            eyes.emplace_back();auto& eye=eyes.back();eye.width=config.recommendedImageRectWidth;eye.height=config.recommendedImageRectHeight;
+            eyes.emplace_back();auto& eye=eyes.back();eye.width=std::min(config.maxImageRectWidth,std::uint32_t(std::lround(config.recommendedImageRectWidth*platform.render_scale)));eye.height=std::min(config.maxImageRectHeight,std::uint32_t(std::lround(config.recommendedImageRectHeight*platform.render_scale)));
             XrSwapchainCreateInfo swapchain{XR_TYPE_SWAPCHAIN_CREATE_INFO};swapchain.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;swapchain.format=format;swapchain.sampleCount=1;swapchain.width=eye.width;swapchain.height=eye.height;swapchain.faceCount=swapchain.arraySize=swapchain.mipCount=1;
             xr_check(xrCreateSwapchain(session,&swapchain,&eye.swapchain),"Create eye swapchain");
             std::uint32_t images_count=0;xr_check(xrEnumerateSwapchainImages(eye.swapchain,0,&images_count,nullptr),"Enumerate eye images");
             std::vector<XrSwapchainImageVulkan2KHR> xr_images(images_count,{XR_TYPE_SWAPCHAIN_IMAGE_VULKAN2_KHR});
             xr_check(xrEnumerateSwapchainImages(eye.swapchain,images_count,&images_count,reinterpret_cast<XrSwapchainImageBaseHeader*>(xr_images.data())),"Read eye images");
             std::vector<VkImage> images;for(const auto& image:xr_images)images.push_back(image.image);
-            eye.renderer=std::make_unique<VulkanRenderer>(vulkan);eye.renderer->use_scene(scene);eye.renderer->targets(images,format,eye.width,eye.height);
+            eye.renderer=std::make_unique<VulkanRenderer>(vulkan);eye.renderer->use_scene(scene);eye.renderer->deferred(true);eye.renderer->targets(images,format,eye.width,eye.height,platform.msaa);
+            tracking_log("XR eye "+std::to_string(eyes.size()-1)+": recommended "+std::to_string(config.recommendedImageRectWidth)+"x"+std::to_string(config.recommendedImageRectHeight)+"; actual "+std::to_string(eye.width)+"x"+std::to_string(eye.height)+"; MSAA "+std::to_string(eye.renderer->samples())+"; queued GPU submission");
         }
         std::cout<<"OpenXR stereo session prepared. Left stick: steer/posture; right trigger: boost; A: charged jump; X: reset; left stick click: exit rail; B: mount/dismount. Start on foot.\n";
     }
@@ -243,18 +246,23 @@ struct State {
 int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
     player.start_on_foot();State state;state.create(platform,player.terrain().mesh());
     AudioScene audio(player.terrain().map_root());audio.mixer().paused(true);AudioDevice audio_device(audio.mixer());AudioService audio_service(audio);player.observe_ticks([&](const Player& p,const Rider& before){audio.tick(p,before);});
-    const auto started=std::chrono::steady_clock::now();auto next_stats=started+std::chrono::seconds(5);XrTime previous_time=0;
+    using Clock=std::chrono::steady_clock;const auto started=Clock::now();auto sample_started=started;XrTime previous_time=0;
+    unsigned sample_frames=0;double frame_wait=0,simulation=0,pose_time=0,image_wait_time=0,render_time=0,resource_wait=0,end_time=0,gpu_time=0,total_time=0;unsigned gpu_samples=0;
+    const auto reset_sample=[&](auto now){sample_started=now;sample_frames=0;frame_wait=simulation=pose_time=image_wait_time=render_time=resource_wait=end_time=gpu_time=total_time=0;gpu_samples=0;};
     while(!state.quit) {
         if(platform.process_events&&!platform.process_events())break;
         if(seconds>0&&std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count()>=seconds)break;
         state.events();audio.mixer().paused(!state.running||!state.focused);if(state.quit)break;
-        if(!state.running){previous_time=0;std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
-        XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};XrFrameState frame{XR_TYPE_FRAME_STATE};xr_check(xrWaitFrame(state.session,&wait,&frame),"Wait for VR frame");
+        if(!state.running){previous_time=0;reset_sample(Clock::now());std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
+        const auto loop_start=Clock::now();const auto ms=[](auto a,auto b){return std::chrono::duration<double,std::milli>(b-a).count();};
+        if(!sample_frames)sample_started=loop_start;
+        XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};XrFrameState frame{XR_TYPE_FRAME_STATE};xr_check(xrWaitFrame(state.session,&wait,&frame),"Wait for VR frame");const auto waited=Clock::now();
         XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};xr_check(xrBeginFrame(state.session,&begin),"Begin VR frame");
         const auto dt=previous_time?double(frame.predictedDisplayTime-previous_time)*1e-9:0;previous_time=frame.predictedDisplayTime;
         state.walking=player.on_foot();if(state.focused)player.advance(std::max(0.0,dt),state.input());else player.release_inputs();
         const auto boarding=player.on_foot()?1:0;if(boarding!=state.boarding_mode){state.boarding_mode=boarding;tracking_log(boarding?"Boarding: on foot; B to mount nearby board":"Boarding: mounted; B to dismount");}
         const auto& run=player.course_run().status();if(int(run.phase)!=state.run_phase||run.checkpoints!=state.run_checkpoints){state.run_phase=int(run.phase);state.run_checkpoints=run.checkpoints;tracking_log((std::string("Run: ")+run_name(run.mode)+" "+run_name(run.phase)+" "+run_clock(run.clock)+"; checkpoints "+std::to_string(run.checkpoints)).c_str());}
+        const auto simulated=Clock::now();double this_image_wait=0,this_render=0,this_resource_wait=0,this_gpu=0;bool gpu_valid=true;
         std::array<XrCompositionLayerProjectionView,2> projections{{{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}}};
         bool rendered=false;
         if(frame.shouldRender) {
@@ -270,8 +278,10 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
                 const auto facing=player.camera_forward();const auto yaw=std::atan2(-facing.x,-facing.z)-state.reference_yaw;const XrQuaternionf body_rotation{0,float(std::sin(yaw*.5)),0,float(std::cos(yaw*.5))};
                 const auto tracked=state.tracking(frame.predictedDisplayTime,head,body,body_rotation);state.walk_forward=normalized(project(tracked.forward,{0,1,0}),player.camera_forward());state.room_offset=finite(tracked.head)?project(tracked.head-body,{0,1,0}):Vec3{};const auto pose=avatar_pose(player,&tracked);const auto mode=pose.tracked_body?(pose.tracked_legs?2:1):0;if(mode!=state.pose_mode){state.pose_mode=mode;tracking_log(mode==2?"Avatar rendered pose: tracked full body and legs":mode==1?"Avatar rendered pose: tracked upper body, procedural legs":"Avatar rendered pose: procedural head/controller fallback");}const auto avatar_mesh=state.avatar.mesh(pose,true,true,tracked.head);
                 for(unsigned i=0;i<2;++i) {
+                    if(i==0)pose_time+=ms(simulated,Clock::now());const auto image_start=Clock::now();
                     auto& eye=state.eyes[i];std::uint32_t image=0;XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};xr_check(xrAcquireSwapchainImage(eye.swapchain,&acquire,&image),"Acquire eye image");
                     XrSwapchainImageWaitInfo image_wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};image_wait.timeout=XR_INFINITE_DURATION;xr_check(xrWaitSwapchainImage(eye.swapchain,&image_wait),"Wait for eye image");
+                    this_image_wait+=ms(image_start,Clock::now());const auto render_start=Clock::now();
                     const auto& camera=views[i];
                     const auto eye_position=body+quaternion_rotate(body_rotation,Vec3{camera.pose.position.x,camera.pose.position.y,camera.pose.position.z}-state.origin);
                     const auto forward=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,0,-1}));
@@ -279,6 +289,7 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
                     if(i==0)audio.listener({eye_position,forward,up});
                     const auto matrix=projection(std::tan(camera.fov.angleLeft),std::tan(camera.fov.angleRight),std::tan(camera.fov.angleDown),std::tan(camera.fov.angleUp))*view(eye_position,forward,up);
                     eye.renderer->render(image,matrix,board_transform(player.render_board_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,{},{},eye_position,player.effects().sprites(),player.effects().wake(),player.effects().sheet(),avatar_mesh);
+                    this_render+=ms(render_start,Clock::now());const auto& stats=eye.renderer->stats();this_resource_wait+=stats.wait_ms;this_gpu+=stats.gpu_ms;gpu_valid&=stats.gpu_ms>=0;
                     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};xr_check(xrReleaseSwapchainImage(eye.swapchain,&release),"Release eye image");
                     projections[i].pose=camera.pose;projections[i].fov=camera.fov;projections[i].subImage.swapchain=eye.swapchain;projections[i].subImage.imageRect.extent={std::int32_t(eye.width),std::int32_t(eye.height)};
                 }
@@ -288,18 +299,14 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
         XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};layer.space=state.space;layer.viewCount=2;layer.views=projections.data();
         const XrCompositionLayerBaseHeader* layer_pointer=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
         XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};end.displayTime=frame.predictedDisplayTime;end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;end.layerCount=rendered?1:0;end.layers=rendered?&layer_pointer:nullptr;
-        xr_check(xrEndFrame(state.session,&end),"Submit VR frame");
+        const auto end_start=Clock::now();xr_check(xrEndFrame(state.session,&end),"Submit VR frame");
         const auto now=std::chrono::steady_clock::now();
-        if(rendered&&now>=next_stats){
-            double cpu=0,gpu=0;unsigned visible=0,draws=0;bool timed=true;
-            for(const auto& eye:state.eyes){const auto& s=eye.renderer->stats();cpu+=s.cpu_ms;gpu+=s.gpu_ms;timed&=s.gpu_ms>=0;visible+=s.visible_props;draws+=s.prop_draws;}
-            // Serialized per-eye render wall time includes the GPU fence wait.
-#ifdef __ANDROID__
-            __android_log_print(ANDROID_LOG_INFO,"OpenSlopeNative","Frame sample: %u visible prop submissions, %u prop draws, render wall %.2f ms, GPU %.2f ms (both eyes)",visible,draws,cpu,timed?gpu:-1);
-#else
-            std::cout<<"Frame sample: "<<visible<<" visible prop submissions, "<<draws<<" prop draws, render wall "<<cpu<<" ms, GPU "<<(timed?gpu:-1)<<" ms (both eyes)\n";
-#endif
-            next_stats=now+std::chrono::seconds(5);
+        if(!rendered){reset_sample(now);continue;}
+        if(rendered){++sample_frames;frame_wait+=ms(loop_start,waited);simulation+=ms(waited,simulated);image_wait_time+=this_image_wait;render_time+=this_render;resource_wait+=this_resource_wait;end_time+=ms(end_start,now);total_time+=ms(loop_start,now);if(gpu_valid){gpu_time+=this_gpu;++gpu_samples;}}
+        if(rendered&&now-sample_started>=std::chrono::seconds(5)){
+            const auto n=double(sample_frames),fps=n/std::chrono::duration<double>(now-sample_started).count(),hz=frame.predictedDisplayPeriod>0?1e9/double(frame.predictedDisplayPeriod):0.;
+            char message[768];std::snprintf(message,sizeof(message),"XR frames: %.1f fps / %.1f Hz; focused %d; total %.2f ms; wait-frame %.2f; simulation %.2f; tracking/avatar %.2f; image-wait %.2f; render-submit %.2f; resource-wait %.2f; end-frame %.2f; GPU previous %.2f ms; eye %ux%u MSAA %u",fps,hz,int(state.focused),total_time/n,frame_wait/n,simulation/n,pose_time/n,image_wait_time/n,render_time/n,resource_wait/n,end_time/n,gpu_samples?gpu_time/gpu_samples:-1.,state.eyes[0].width,state.eyes[0].height,state.eyes[0].renderer->samples());tracking_log(message);
+            reset_sample(now);
         }
     }
     player.observe_ticks({});return 0;

@@ -83,6 +83,12 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     if(!scene||&scene->context_!=&context_)throw std::runtime_error("Renderer requires a scene on its Vulkan device");
     if(scene_)throw std::runtime_error("Renderer already has a scene");
     scene_=std::move(scene);
+    // Eye-local placements allow both views to remain queued on the same GPU.
+    poses_=create_buffer(scene_->pose_capacity_*sizeof(PropPose),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,nullptr);
+    const VkDescriptorSetLayoutBinding binding{0,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_VERTEX_BIT,nullptr};VkDescriptorSetLayoutCreateInfo pose_layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};pose_layout.bindingCount=1;pose_layout.pBindings=&binding;vk_check(vkCreateDescriptorSetLayout(context_.device,&pose_layout,nullptr,&pose_layout_),"Create eye placement layout");
+    const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1};VkDescriptorPoolCreateInfo pose_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};pose_pool.maxSets=1;pose_pool.poolSizeCount=1;pose_pool.pPoolSizes=&size;vk_check(vkCreateDescriptorPool(context_.device,&pose_pool,nullptr,&pose_pool_),"Create eye placement pool");
+    VkDescriptorSetAllocateInfo pose_allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};pose_allocate.descriptorPool=pose_pool_;pose_allocate.descriptorSetCount=1;pose_allocate.pSetLayouts=&pose_layout_;vk_check(vkAllocateDescriptorSets(context_.device,&pose_allocate,&pose_set_),"Allocate eye placements");
+    const VkDescriptorBufferInfo data{poses_.buffer,0,scene_->pose_capacity_*sizeof(PropPose)};VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};write.dstSet=pose_set_;write.dstBinding=0;write.descriptorCount=1;write.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;write.pBufferInfo=&data;vkUpdateDescriptorSets(context_.device,1,&write,0,nullptr);
     VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};pool.queueFamilyIndex=context_.family;pool.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     vk_check(vkCreateCommandPool(context_.device,&pool,nullptr,&pool_),"Create command pool");
     VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};allocate.commandPool=pool_;allocate.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;allocate.commandBufferCount=1;
@@ -96,6 +102,7 @@ VulkanRenderer::~VulkanRenderer() {
     if(!context_.device)return;vkDeviceWaitIdle(context_.device);clear_targets();
     if(fence_)vkDestroyFence(context_.device,fence_,nullptr);if(pool_)vkDestroyCommandPool(context_.device,pool_,nullptr);
     if(timing_)vkDestroyQueryPool(context_.device,timing_,nullptr);
+    if(pose_pool_)vkDestroyDescriptorPool(context_.device,pose_pool_,nullptr);if(pose_layout_)vkDestroyDescriptorSetLayout(context_.device,pose_layout_,nullptr);destroy_buffer(poses_);
     destroy_buffer(visible_indices_);
     destroy_buffer(sprite_vertices_);
     destroy_buffer(wake_vertices_);
@@ -145,7 +152,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
     VkRenderPassCreateInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};pass.attachmentCount=samples_==VK_SAMPLE_COUNT_1_BIT?2:3;pass.pAttachments=attachments.data();pass.subpassCount=1;pass.pSubpasses=&subpass;pass.dependencyCount=1;pass.pDependencies=&dependency;
     vk_check(vkCreateRenderPass(context_.device,&pass,nullptr,&pass_),"Create terrain render pass");
     VkPushConstantRange push{draw_stages,0,sizeof(DrawPush)};
-    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};layout.pushConstantRangeCount=1;layout.pPushConstantRanges=&push;layout.setLayoutCount=1;layout.pSetLayouts=&scene_->descriptors_;
+    const std::array<VkDescriptorSetLayout,2> sets{scene_->descriptors_,pose_layout_};VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};layout.pushConstantRangeCount=1;layout.pPushConstantRanges=&push;layout.setLayoutCount=2;layout.pSetLayouts=sets.data();
     vk_check(vkCreatePipelineLayout(context_.device,&layout,nullptr,&layout_),"Create pipeline layout");
     const auto shader=[&](const auto& words){VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=sizeof(words);info.pCode=words;VkShaderModule result;vk_check(vkCreateShaderModule(context_.device,&info,nullptr,&result),"Create shader");return result;};
     const auto vertex=shader(terrain_vert),fragment=shader(terrain_frag);
@@ -195,8 +202,8 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
     }
 }
 void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet,std::span<const Vertex> avatar) {
-    const auto started=std::chrono::steady_clock::now();stats_={};
-    vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Wait for previous frame");vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
+    const auto started=std::chrono::steady_clock::now();finish();const auto previous_gpu=stats_.gpu_ms;stats_={};if(deferred_)stats_.gpu_ms=previous_gpu;stats_.wait_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+    vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
     const auto cull_start=std::chrono::steady_clock::now();terrain_draws_.clear();packed_indices_.clear();
     stats_.terrain_patches=unsigned(scene_->terrain_ranges_.size());stats_.terrain_total_indices=scene_->terrain_total_indices_;
     bool compact=false;stats_.visible_terrain=stats_.terrain_patches;
@@ -257,7 +264,7 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     for(const auto& [key,instances]:groups){const auto first=std::uint32_t(poses.size());for(const auto i:instances)poses.push_back(scene_->props_.instances[i].pose);prop_draws.push_back({key.second,first,std::uint32_t(instances.size())});}
     std::stable_sort(transparent.begin(),transparent.end(),[](const auto& a,const auto& b){return a.depth>b.depth;});
     for(const auto& draw:transparent){prop_draws.push_back({draw.part,std::uint32_t(poses.size()),1});poses.push_back(scene_->props_.instances[draw.instance].pose);}
-    if(!poses.empty()){if(poses.size()>scene_->pose_capacity_)throw std::runtime_error("Visible instance buffer exceeds capacity");void* mapped;vk_check(vkMapMemory(context_.device,scene_->poses_.memory,0,poses.size()*sizeof(PropPose),0,&mapped),"Map visible placements");std::memcpy(mapped,poses.data(),poses.size()*sizeof(PropPose));vkUnmapMemory(context_.device,scene_->poses_.memory);}stats_.prop_draws=unsigned(prop_draws.size());
+    if(!poses.empty()){if(poses.size()>scene_->pose_capacity_)throw std::runtime_error("Visible instance buffer exceeds capacity");void* mapped;vk_check(vkMapMemory(context_.device,poses_.memory,0,poses.size()*sizeof(PropPose),0,&mapped),"Map visible placements");std::memcpy(mapped,poses.data(),poses.size()*sizeof(PropPose));vkUnmapMemory(context_.device,poses_.memory);}stats_.prop_draws=unsigned(prop_draws.size());
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vk_check(vkBeginCommandBuffer(command_,&begin),"Begin draw command");
     if(timing_){vkCmdResetQueryPool(command_,timing_,0,2);vkCmdWriteTimestamp(command_,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,timing_,0);}
@@ -265,6 +272,7 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     std::array<VkClearValue,2> clear{};for(unsigned c=0;c<3;++c){const auto v=scene_->world_.sky_colour[c];clear[0].color.float32[c]=srgb?(v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f)):v;}clear[0].color.float32[3]=1;clear[1].depthStencil={1,0};
     VkRenderPassBeginInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};pass.renderPass=pass_;pass.framebuffer=targets_.at(image).framebuffer;pass.renderArea.extent={width_,height_};pass.clearValueCount=2;pass.pClearValues=clear.data();
     vkCmdBeginRenderPass(command_,&pass,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
+    vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,1,1,&pose_set_,0,nullptr);
     const VkViewport viewport{0,0,float(width_),float(height_),0,1};const VkRect2D scissor{{0,0},{width_,height_}};
     vkCmdSetViewport(command_,0,1,&viewport);vkCmdSetScissor(command_,0,1,&scissor);
     const VkDeviceSize offset=0;vkCmdBindVertexBuffers(command_,0,1,&scene_->vertices_.buffer,&offset);vkCmdBindIndexBuffer(command_,scene_->indices_.buffer,0,VK_INDEX_TYPE_UINT32);
@@ -304,13 +312,15 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.commandBufferCount=1;submit.pCommandBuffers=&command_;
     if(wait){submit.waitSemaphoreCount=1;submit.pWaitSemaphores=&wait;submit.pWaitDstStageMask=&stage;}if(signal){submit.signalSemaphoreCount=1;submit.pSignalSemaphores=&signal;}
     vk_check(vkQueueSubmit(context_.queue,1,&submit,fence_),"Submit terrain frame");
-    // Keep ownership simple for the first prototype: no image is released to XR
-    // or reused by another eye before its draw has completed.
-    vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Finish terrain frame");
-    if(timing_){std::array<std::uint64_t,2> ticks{};vk_check(vkGetQueryPoolResults(context_.device,timing_,0,2,sizeof(ticks),ticks.data(),sizeof(std::uint64_t),VK_QUERY_RESULT_64_BIT|VK_QUERY_RESULT_WAIT_BIT),"Read GPU frame timestamps");const auto mask=timestamp_bits_>=64?UINT64_MAX:(std::uint64_t(1)<<timestamp_bits_)-1;stats_.gpu_ms=double((ticks[1]-ticks[0])&mask)*timestamp_period_/1e6;}
+    pending_=true;if(!deferred_){const auto waited=std::chrono::steady_clock::now();finish();stats_.wait_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-waited).count();}
     stats_.cpu_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
 }
+void VulkanRenderer::finish(){
+    if(!pending_)return;vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Wait for renderer resources");
+    if(timing_){std::array<std::uint64_t,2> ticks{};vk_check(vkGetQueryPoolResults(context_.device,timing_,0,2,sizeof(ticks),ticks.data(),sizeof(std::uint64_t),VK_QUERY_RESULT_64_BIT),"Read completed GPU timestamps");const auto mask=timestamp_bits_>=64?UINT64_MAX:(std::uint64_t(1)<<timestamp_bits_)-1;stats_.gpu_ms=double((ticks[1]-ticks[0])&mask)*timestamp_period_/1e6;}pending_=false;
+}
 void VulkanRenderer::capture(unsigned image,const std::filesystem::path& output) {
+    finish();
     auto buffer=create_buffer(VkDeviceSize(width_)*height_*4,VK_BUFFER_USAGE_TRANSFER_DST_BIT,nullptr);
     vk_check(vkResetCommandBuffer(command_,0),"Reset capture command");VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};vk_check(vkBeginCommandBuffer(command_,&begin),"Begin capture");
     VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={width_,height_,1};
