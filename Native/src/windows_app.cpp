@@ -9,7 +9,7 @@
 
 namespace {
 using namespace openslope;
-Vec3 camera_eye(const Player& player,bool first_person=false){const auto p=player.render_position();return first_person?p+Vec3{0,1.65,0}:p-player.camera_forward()*7+Vec3{0,3.5,0};}
+Vec3 camera_eye(const Player& player,bool first_person=false){const auto p=player.render_position();return first_person?p+Vec3{0,1.65,0}:player.camera_position(p-player.camera_forward()*7+Vec3{0,3.5,0});}
 Matrix camera_for(const Player& player,double aspect,bool first_person=false) {
     const auto position=player.render_position(),forward=player.camera_forward();
     const auto eye=camera_eye(player,first_person);
@@ -38,7 +38,10 @@ int capture(Player& player,const std::filesystem::path& output,double seconds,co
     VulkanContext context;context.create(false);Image image(context);image.create(1280,720);
     VulkanRenderer renderer(context);renderer.upload(player.terrain().mesh());renderer.targets(std::span(&image.image,1),VK_FORMAT_R8G8B8A8_UNORM,1280,720);
     unsigned frames=0;double wall=0,gpu=0;const auto draw=[&]{const auto started=std::chrono::steady_clock::now();renderer.render(0,camera_for(player,1280.0/720),board_transform(player.render_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},camera_eye(player));wall+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();gpu+=renderer.stats().gpu_ms;++frames;};
-    if(replay.empty()){for(unsigned i=0;i<unsigned(seconds*60);++i)player.tick({});draw();}else{Replay::load(replay).run(player,draw);const auto& r=player.rider();std::cout<<"Replay: "<<frames<<" rendered frames; launches "<<r.launches<<"; landings "<<r.landings<<"; grounded "<<r.grounded<<"; switch "<<(r.lead<0)<<"; spin "<<r.spin_degrees<<" deg; flip "<<r.flip_degrees<<" deg; average render wall "<<wall/frames<<" ms; GPU "<<gpu/frames<<" ms\n";}
+    if(replay.empty()){for(unsigned i=0;i<unsigned(seconds*60);++i)player.tick({});draw();}else{
+        const auto started=std::chrono::steady_clock::now();Replay::load(replay).run(player,draw);const auto total=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+        const auto& r=player.rider();std::cout<<"Replay: "<<frames<<" rendered frames; launches "<<r.launches<<"; landings "<<r.landings<<"; grounded "<<r.grounded<<"; switch "<<(r.lead<0)<<"; spin "<<r.spin_degrees<<" deg; flip "<<r.flip_degrees<<" deg; surface "<<r.surface<<"; ground prop "<<(r.ground_instance?std::to_string(*r.ground_instance):"none")<<"; contacts "<<r.world_contacts<<"; bounces "<<r.bounces<<"; hard impacts "<<r.hard_impacts<<"; wipeout "<<(r.motion==Motion::Wipeout)<<"; position ["<<r.position.x<<','<<r.position.y<<','<<r.position.z<<"]; velocity ["<<r.velocity.x<<','<<r.velocity.y<<','<<r.velocity.z<<"]; average simulation "<<std::max(0.,total-wall)/frames<<" ms; render wall "<<wall/frames<<" ms; GPU "<<gpu/frames<<" ms\n";
+    }
     const auto stats=renderer.stats();std::cout<<"Visible props: "<<stats.visible_props<<"; prop draws: "<<stats.prop_draws<<"; CPU frame: "<<stats.cpu_ms<<" ms; GPU frame: "<<stats.gpu_ms<<" ms\n";
     renderer.capture(0,output);std::cout<<"Vulkan capture: "<<output.string()<<'\n';return 0;
 }
@@ -138,7 +141,7 @@ int main(int argc,char** argv) {
             if(focused&&!paused)player.advance(dt,{double(key('A')||key(VK_LEFT))-double(key('D')||key(VK_RIGHT)),key(VK_SHIFT),key('R'),key(VK_SPACE),double(key('W')||key(VK_UP))-double(key('S')||key(VK_DOWN))});
             const auto& stats=window.renderer.stats();
             const auto& rider=player.rider();std::wostringstream title;title<<L"OpenSlope Native | "<<int(length(rider.velocity)*3.6)<<L" km/h | ";
-            if(paused)title<<L"PAUSED";else if(rider.control==Control::Charge)title<<L"Charge "<<int(rider.charge*100)<<L"%";else title<<(rider.grounded?(rider.lead<0?L"Switch":L"Riding"):L"Air");
+            if(paused)title<<L"PAUSED";else if(rider.motion==Motion::Wipeout)title<<L"Wipeout - R to reset";else if(rider.control==Control::Charge)title<<L"Charge "<<int(rider.charge*100)<<L"%";else title<<(rider.grounded?(rider.lead<0?L"Switch":L"Riding"):L"Air");
             title<<L" | "<<stats.visible_props<<L" props / "<<stats.prop_draws<<L" draws | A/D steer | W/S tuck/brake | Space jump | Shift boost | P pause | F/V camera";SetWindowTextW(window.handle,title.str().c_str());
             window.draw(player,first_person);
             if(IsIconic(window.handle))std::this_thread::sleep_for(std::chrono::milliseconds(30));

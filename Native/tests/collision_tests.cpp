@@ -1,4 +1,5 @@
 #include "openslope/collision.hpp"
+#include "openslope/player.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -11,6 +12,30 @@ template<class F> void rejects(F operation,const char* message){bool rejected=fa
 void write(const std::filesystem::path& path,const Json& doc){std::ofstream file(path);file<<doc;}
 std::vector<WorldContact> sweep(const CollisionWorld& world,Vec3 a,Vec3 b,double radius=.25){const std::array<ProbeSphere,1> start{{{a,radius}}},end{{{b,radius}}};return world.sweep(start,end);}
 Json body(double radius,const Json& levels,const char* masks){return {{"UFloat0",0},{"UFloat1",0},{"UFloat2",0},{"U2",0},{"uPhysicsStruct0",levels},{"UByteData",masks},{"UFloat3",radius*100}};}
+void playable(const std::filesystem::path& root,const Json& original_rows,const Json& original_models){
+    Json points=Json::array();for(unsigned u=0;u<4;++u)for(unsigned v=0;v<4;++v)points.push_back({-10000+20000.*u/3,-10000+20000.*v/3,0});
+    write(root/"Patches.json",{{"Patches",Json::array({{{"PatchName","Authored collision floor"},{"Points",points},{"SurfaceType",1},{"TrickOnlyPatch",false},{"UVPoints",{{0,0},{1,0},{0,1},{1,1}}},{"TexturePath",""},{"LightmapID",-1},{"LightMapPoint",{0,0,0,0}}}})}});
+    auto rows=original_rows;rows[0]["SurfaceType"]=-1;write(root/"Instances.json",{{"Instances",rows}});
+    Player bounce(Terrain::load(root));bounce.warp({-1.6,-.005,0},{1,0,0},{12,0,0});bounce.tick({});
+    require(bounce.rider().bounces==1&&bounce.rider().velocity.x<0,"Live rider rebounds off a hidden solid");require(bounce.rider().position.x<-1.6,"Swept rebound consumes remaining travel away from the solid");
+    require(bounce.contacts().size()==1&&bounce.contacts()[0].phase==ContactPhase::Begin&&bounce.contacts()[0].response.impulse>0,"Bounce publishes contact and response separately");
+    Player fast(Terrain::load(root));fast.warp({-2.5,-.005,0},{1,0,0},{80,0,0});fast.tick({});require(fast.rider().position.x<0,"High-speed rider cannot tunnel through an authored box");
+    require(fast.rider().hard_impacts==1&&fast.rider().motion==Motion::Wipeout&&fast.rider().control==Control::Wipeout,"Hard collision enters the specified wipeout state pair");fast.tick({1,true,false,true,1});require(fast.rider().launches==0&&fast.rider().spin_degrees==0,"Wipeout suppresses cruise and trick input");fast.advance(1./60,{0,false,true});require(fast.rider().motion!=Motion::Wipeout,"Reset exits unfinished recovery explicitly");
+    Player trigger(Terrain::load(root));trigger.warp({35,-.005,0},{1,0,0},{600,0,0});trigger.tick({});require(trigger.rider().position.x>44&&trigger.rider().bounces==0,"Live rider traverses a zero-mass trigger without response");
+    require(trigger.contacts().size()==1&&trigger.contacts()[0].contact.instance==4&&trigger.contacts()[0].phase==ContactPhase::Begin,"Crossed trigger dispatches a begin event");trigger.tick({});require(trigger.contacts().size()==1&&trigger.contacts()[0].phase==ContactPhase::End,"Leaving a trigger dispatches an end event");
+    Player stay(Terrain::load(root));stay.warp({40,-.005,0},{1,0,0});stay.tick({0,false,false,false,-1});stay.tick({0,false,false,false,-1});require(stay.contacts().size()==1&&stay.contacts()[0].phase==ContactPhase::Stay&&stay.rider().world_contacts==1,"An overlapping trigger stays active without repeated begin events");
+    Player gateway(Terrain::load(root));gateway.warp({30,-.005,5},{0,0,-1},{0,0,-600});gateway.tick({});require(gateway.rider().position.z<-4&&gateway.rider().bounces==0&&gateway.contacts().empty(),"Posed rider traverses the authored occupancy opening");
+    Player post(Terrain::load(root));post.warp({30.65,-.005,1},{0,0,-1},{0,0,-150});post.tick({});require(post.rider().bounces>0&&!post.contacts().empty()&&post.contacts()[0].contact.instance==3,"Enabled limb spheres hit an occupied gateway post");
+    std::ofstream(root/"Collision/plane.obj")<<"v 0 -100 0\nv 0 100 0\nv 0 100 300\nv 0 -100 300\nf 1 2 3\nf 1 3 4\n";
+    Player panel(Terrain::load(root));panel.warp({8,-.005,0},{1,0,0},{200,0,0});panel.tick({});require(panel.rider().position.x<10&&panel.rider().bounces==1,"Full posed sweep catches a zero-thickness triangle wall");
+    std::ofstream(root/"Collision/plane.obj")<<"v -200 -200 0\nv 200 -200 0\nv 0 200 0\nvn 0 0 1\nf 1//1 2//1 3//1\n";
+    rows[0]["SurfaceType"]=5;write(root/"Instances.json",{{"Instances",rows}});Player deck(Terrain::load(root));deck.warp({0,2,0},{0,0,-1},{0,-80,0});deck.tick({});
+    require(deck.rider().grounded&&deck.rider().surface==5&&deck.rider().ground_instance==0,"Rideable box enters the shared ground surface model");near(deck.rider().position.y,1,"Landing occurs at deck contact, not at body-sphere height");
+    for(unsigned i=0;i<3;++i)deck.tick({0,false,false,false,-1});require(deck.rider().ground_instance==0&&deck.rider().grounded,"Ground probes retain an elevated prop surface");
+    auto models=original_models;models["Models"][0]["ModelObjects"][0]["CollisionBounds"]["Max"][2]=400;write(root/"Models.json",models);Player camera(Terrain::load(root));camera.warp({-5,0,0},{1,0,0});require(camera.camera_position({5,1.4,0}).x< -1,"Desktop camera shortens its arm before an authored solid");camera.warp({35,0,0},{1,0,0});near(camera.camera_position({45,1.4,0}).x,45,"Camera ignores contact-only triggers");
+    models=original_models;models["Models"][0]["ModelObjects"][0]["MeshData"]=Json::array();write(root/"Models.json",models);Player shape_only(Terrain::load(root));shape_only.warp({0,2,0},{0,0,-1},{0,-80,0});shape_only.tick({});require(shape_only.rider().grounded&&shape_only.rider().ground_instance==0,"Explicit box bounds work without any render geometry");
+    write(root/"Instances.json",{{"Instances",original_rows}});write(root/"Models.json",original_models);
+}
 }
 int main(int argc,char** argv){
     try{
@@ -55,6 +80,7 @@ int main(int argc,char** argv){
         auto bad=rows;bad[1]["CollsionModelPaths"]={"../outside.obj"};write(root/"Instances.json",{{"Instances",bad}});rejects([&]{static_cast<void>(collision_files(root));},"Reject proxy traversal before asset copying");
         bad=rows;bad[1]["CollsionModelPaths"]={"plane.obj","plane.obj","plane.obj"};write(root/"Instances.json",{{"Instances",bad}});rejects([&]{static_cast<void>(CollisionWorld::load(root));},"Reject ambiguous subobject mapping");write(root/"Instances.json",{{"Instances",rows}});
         require(collision_files(root)==std::vector<std::string>({"Collision/plane.obj"}),"Referenced proxy asset list is unique");
+        playable(root,rows,models);
         require(CollisionWorld::load(root/"missing").objects()==0,"Terrain-only map has an empty collision world");
         for(int i=2;i<argc;++i){const auto map=CollisionWorld::load(argv[i]);std::cout<<"Loaded "<<std::filesystem::path(argv[i]).filename().string()<<": "<<map.objects()<<" objects, "<<map.triangles()<<" shared triangles, "<<map.bodies()<<" shared bodies\n";}
         std::cout<<"PASS: "<<checks<<" collision geometry, response, occupancy and map checks\n";return 0;

@@ -3,7 +3,7 @@
 The library root is an ordinary Maps folder. Its immediate subdirectories are courses; a
 `Patches.json` in a course directory makes it available to select. This is the existing OpenSlope
 terrain contract, including custom Slopesmith maps. `Shared/`, incomplete imports, and hidden
-staging directories do not appear as courses. Playback validates terrain, present props and PNGs before entering VR;
+staging directories do not appear as courses. Playback validates terrain, present props, collision assets and PNGs before entering VR;
 invalid JSON or corrupt PNGs report an error in the library. Selecting a course never requires an ISO.
 
 ## Android storage
@@ -21,9 +21,10 @@ declares both activity modes and Horizon OS 69+ hybrid support, following
 
 Document URIs are opaque identifiers, never converted to guessed filesystem paths. Folder listing
 and publication use `DocumentsContract`. For playback, the selected `Patches.json`, optional complete
-prop JSON set, optional AIP/SOP path metadata, and only their referenced `Textures/`, `Lightmaps/` and `Meshes/` assets are copied
+prop JSON set, optional AIP/SOP and Physics/SSFLogic metadata, and only their referenced `Textures/`, `Lightmaps/`, `Meshes/` and `Collision/` assets are copied
 into an isolated application cache directory. C++ readers provide the reference list, keeping
-Java independent of map-record parsing. Separate encoded image/mesh budgets are 256 MiB each.
+Java independent of map-record parsing. Separate encoded image/geometry budgets are 256 MiB each;
+render meshes and collision proxies share the geometry budget.
 The native host receives that path; the cache is removed when the game activity ends. The source
 library remains authoritative. Missing optional images use the renderer's fallback. Copy failure
 or cancellation removes the newly created cache. Missing meshes reject playback. Audio and import
@@ -57,15 +58,16 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Textures/<name>.png` | SSH directory names; decoded RGBA and modulate2x colour conversion. Associated-alpha inference uses the strict normalized colour bound, as described in the source-provenance notes. |
 | `Lightmaps/<name>.png` | Raw full-range RGBA; both lighting blend terms retained, without colour brightening. |
 | `Models.json`, `Meshes/*.obj` | Shared model hierarchy, raw mesh positions, authored UV/normal splits, material IDs, rest poses and animation records. Optional exact affine matrix extension; rendering samples animation at time zero. |
-| `Instances.json` | Model IDs, names, raw placement TRS/matrix, model-local ambient/key lighting and authored `Visable` flag from SSF. |
+| `Instances.json` | Model IDs, names, raw placement TRS/matrix, lighting, authored visibility, collision/response flags, mass/bounce/surface, proxy paths, physics index and effect slot. |
+| `Collision/*.obj`, `Physics.json` | All SSF pool payloads; raw proxy positions and normals, preserved physics centre/inertia, level records and raw/RLE mask bytes. Models carry source local `CollisionBounds`. Older exported physics data in `SSFLogic.json` also loads. |
 | `Materials.json` | Static base-texture references and flags; neutral labels, with remaining material behavior fields deferred. |
 | `AIP.json`, `SOP.json` (when present) | Existing start-slot, AI/race-line and event contracts; expanded displacement steps, raw seeds, DTF and path attributes. Runtime retains the seed vertex and uses the middle start slot. |
 | `Origin.json` | Existing `openslope-origin/v1`, `retail`, course name and `retail-extract` reason. |
 | `Source/` | Decompressed level archive sidecars retained locally for later conversion stages. Not a portable runtime contract. |
 | `Import.json` | Explicit stage report: `Complete` is false, with emitted and deferred stage names. |
 
-This imports canonical terrain, static-prop rendering and AIP/SOP course paths; complete course conversion
-remains to be implemented. Object collision/live behavior, rail splines, world, effects, audio and skybox
+This imports canonical terrain, static-prop rendering, collision data and AIP/SOP course paths; complete course conversion
+remains to be implemented. Live object behavior, rail splines, world, effects, audio and skybox
 contracts remain deferred. A folder already produced by a compatible extractor or Slopesmith
 is also accepted. Rendering those systems is separate from converting them.
 The implemented terrain appearance contract is described in [terrain appearance](terrain-appearance.md).

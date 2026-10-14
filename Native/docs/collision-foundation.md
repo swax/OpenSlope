@@ -1,10 +1,9 @@
 # Authored collision foundation
 
-This milestone adds independent collision extraction and portable queries. The
-player and camera do not consume these queries yet. It does not change the
-playable desktop build's prop-contact behavior. Android Maps-folder caching of
-collision assets, rider volumes, rideable prop contact, contact effects, dynamic
-activation and crash/recovery remain integration work.
+Commit `d6e29ee` established independent collision extraction and portable
+queries. The player, desktop chase camera and Quest Maps-folder cache now consume
+this foundation; see [playable world contact](world-contacts.md) for integration,
+validation and remaining effects, dynamic-body and recovery work.
 
 The clean Trailmap bodies of chapters 120, 130, 220, 230 and 370 supply format and
 behavior requirements. Implementation uses standard affine transforms, triangle
@@ -43,8 +42,10 @@ World and proxy BVHs accelerate candidate selection; shared proxy/body records
 are reused across placements. Queries return the earliest contact per instance
 with effect and response metadata. They do not dispatch effects, simulate mass
 sharing, choose a character's limb pose or replace terrain contact automatically.
-The public rider-volume input supports at most nineteen spheres. Callers remain
-responsible for selecting the grounded, airborne or rail volume.
+The public rider-volume input supports at most nineteen spheres. Its broad-phase
+box uses enabled limbs when present, otherwise the body. Callers select the
+grounded, airborne or rail volume. Legacy local-box vertex reads are restricted
+to models actually used by enabled mode-2 placements.
 
 File/array bounds cover JSON/OBJ size, source sections, pool/payload counts,
 indices, hierarchy cycles, mask size/depth and root-confined asset references.

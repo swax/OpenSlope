@@ -85,8 +85,9 @@ Concurrent frames or multiview will require revisiting this ownership rule.
 Every eye builds a draw list from authored visibility, distance to the instance
 AABB (300 metre fallback range), and six Vulkan clip-plane tests. Intersecting
 bounds are retained. This is an application culler, not a port of the original
-world grid. Geometry is visual only: props do not yet stop the rider, break,
-bounce, animate or trigger events.
+world grid. Render geometry remains visual only: authored collision assets supply
+solid, rideable and pass-through contacts separately. See world-contacts.md.
+Live animation, break/rearm and scripted effects remain outstanding.
 
 Each JSON/OBJ file is limited to 64 MiB, with table/object/count/path checks and
 a 256 MiB decoded prop geometry limit. The Android document cache copies only

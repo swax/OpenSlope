@@ -3,6 +3,7 @@
 #include "openslope/appearance.hpp"
 #include "openslope/props.hpp"
 #include "openslope/paths.hpp"
+#include "openslope/collision.hpp"
 #include <android/log.h>
 #include <android_native_app_glue.h>
 #include <filesystem>
@@ -54,11 +55,11 @@ extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivi
     catch(const std::exception& e){java_error(env,e);}
 }
 extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeValidate(JNIEnv* env,jobject,jstring path) {
-    try {const auto root=std::filesystem::path(string_value(env,path));if(std::filesystem::file_size(root/"Patches.json")>64*1024*1024)throw std::runtime_error("Map terrain exceeds the loading limit");static_cast<void>(openslope::Appearance::load(openslope::Terrain::load(root)));static_cast<void>(openslope::Props::load(root));static_cast<void>(openslope::CoursePaths::load(root));}
+    try {const auto root=std::filesystem::path(string_value(env,path));if(std::filesystem::file_size(root/"Patches.json")>64*1024*1024)throw std::runtime_error("Map terrain exceeds the loading limit");static_cast<void>(openslope::Appearance::load(openslope::Terrain::load(root)));static_cast<void>(openslope::Props::load(root));static_cast<void>(openslope::CoursePaths::load(root));static_cast<void>(openslope::CollisionWorld::load(root));}
     catch(const std::exception& e){java_error(env,e);}
 }
-extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_MapLibrary_nativeImageFiles(JNIEnv* env,jclass,jstring path) {
-    try {const auto root=std::filesystem::path(string_value(env,path));auto files=openslope::referenced_images(openslope::Terrain::load(root));for(const auto& file:openslope::prop_files(root))if(file.starts_with("Meshes/"))files.push_back(file);const nlohmann::json names=files;return env->NewStringUTF(names.dump(-1,' ',true).c_str());}
+extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_MapLibrary_nativeAssetFiles(JNIEnv* env,jclass,jstring path) {
+    try {const auto root=std::filesystem::path(string_value(env,path));auto files=openslope::referenced_images(openslope::Terrain::load(root));for(const auto& file:openslope::prop_files(root))if(file.starts_with("Meshes/"))files.push_back(file);for(const auto& file:openslope::collision_files(root))files.push_back(file);const nlohmann::json names=files;return env->NewStringUTF(names.dump(-1,' ',true).c_str());}
     catch(const std::exception& e){java_error(env,e);return nullptr;}
 }
 extern "C" void android_main(android_app* app) {

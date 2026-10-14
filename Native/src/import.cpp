@@ -2,6 +2,7 @@
 #include "openslope/terrain.hpp"
 #include "openslope/props.hpp"
 #include "openslope/paths.hpp"
+#include "openslope/collision.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <array>
@@ -176,7 +177,7 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     // Lossless local source sidecars support later importer stages without
     // reselecting the ISO. They are not a replacement for portable contracts.
     std::filesystem::create_directory(output/"Source");for(const auto& [name,bytes]:files){notify("Saving source "+name);std::ofstream stream(output/"Source"/name,std::ios::binary);stream.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));if(!stream)throw std::runtime_error("Cannot write source sidecar");}
-    write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",outputs},{"Deferred",{"collision-playback","live-object-effects","skybox","rail-splines","effects","audio","world"}}});
-    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));static_cast<void>(CoursePaths::load(output));cleanup.complete=true;
+    write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",outputs},{"Deferred",{"live-object-effects","skybox","rail-splines","effects","audio","world"}}});
+    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));static_cast<void>(CoursePaths::load(output));static_cast<void>(CollisionWorld::load(output));cleanup.complete=true;
 }
 }

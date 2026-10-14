@@ -11,9 +11,10 @@ The desktop player starts on an original procedural slope, or reads a local `Map
 The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
 ISO to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
 The importer currently converts terrain, textures, lightmaps, static prop geometry/placements,
-AIP/SOP course paths and provenance. The player renders textured terrain and shared world props
-with baked lighting and visibility culling, and supports charged jumps, spins/flips and switch landings.
-Prop collision/live behavior, effects, world and audio conversion, rails, races and multiplayer remain
+AIP/SOP course paths, collision proxies/physics bodies and provenance. The player renders textured
+terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
+authored prop contacts for bounce, ride surfaces and pass-through events. Live prop behavior,
+animation-driven crash recovery, effects, world and audio conversion, rails, races and multiplayer remain
 later stages. See [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 ## Build and try on Windows
@@ -46,7 +47,9 @@ Map courses load their referenced
 `Textures/*.png` and `Lightmaps/*.png`; missing diffuse images retain surface/normal colours,
 and a missing lightmap leaves the diffuse texture visible. See [terrain appearance](docs/terrain-appearance.md).
 Courses with the prop contracts also render their referenced `Meshes/*.obj` and textures with
-per-instance lighting. Props currently have no gameplay collision. See [static props](docs/static-props.md).
+per-instance lighting. Collision uses authored proxy/body assets and local boxes. Hard prop impacts
+enter wipeout; use R to reset until animation-driven recovery is implemented. See
+[static props](docs/static-props.md) and [world contact](docs/world-contacts.md).
 
 Offline GPU validation requires no visible window or headset:
 
@@ -208,8 +211,9 @@ from existing ports, and explicit prototype choices. No Trailmap installation or
 to build or run the synthetic tests. When the local Trailmap data files are present, the native
 check also requires the tracked ride contract and independent fixtures to match them exactly.
 
-The next desktop milestone is authored collision and world interaction, with the broader work
-tracked in desktop-parity.md. Headset checks are deferred while desktop implementation continues.
+Authored prop contacts now run in desktop gameplay. Recovery, authored world logic,
+rails/races/tricks, presentation, audio/effects and graphics/performance remain in the
+desktop-parity.md matrix. Headset checks are deferred while desktop implementation continues.
 Keep platform file access behind the application host,
 so the readers and gameplay core can also be compiled for desktop tools or WebAssembly.
 

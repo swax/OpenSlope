@@ -46,11 +46,13 @@ public final class NativeImportInstrumentation extends Instrumentation {
             MapLibrary.Entry selected = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(name)) selected = row;
             require(selected != null, "Published SAF map discovered under opaque tree URI");
             File prepared = documents.prepare(selected, temporary, () -> {}); invoke(activity, "nativeValidate", new Class<?>[]{String.class}, prepared.getAbsolutePath());
-            JSONArray references = new JSONArray(MapLibrary.nativeImageFiles(extracted.getAbsolutePath()));
+            JSONArray references = new JSONArray(MapLibrary.nativeAssetFiles(extracted.getAbsolutePath()));
             require(references.length() >= 4, "Native manifest includes diffuse, lightmap and shared-mesh references");
             for (String metadata : new String[]{"Models.json", "Instances.json", "Materials.json"}) require(new File(prepared, metadata).isFile(), "SAF cache includes prop metadata " + metadata);
             for (String metadata : new String[]{"AIP.json", "SOP.json"}) require(new File(prepared, metadata).isFile(), "SAF cache includes authored start and course paths " + metadata);
             require(new File(prepared, "Meshes/0.obj").isFile(), "SAF cache includes imported prop geometry");
+            require(new File(prepared, "Collision/0.obj").isFile() && new File(prepared, "Collision/1.obj").isFile(), "SAF cache includes every collision payload");
+            require(new File(prepared, "Physics.json").isFile(), "SAF cache includes independent physics metadata");
             for (int i = 0; i < references.length(); ++i) {
                 String relative = references.getString(i);
                 require(new File(prepared, relative).isFile(), "SAF play cache includes " + relative);

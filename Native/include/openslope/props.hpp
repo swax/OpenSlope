@@ -17,8 +17,8 @@ struct PropPose {
 static_assert(sizeof(PropPose)==176);
 struct PropPart {std::uint32_t first{},count{};std::string texture;std::uint32_t flags{};};
 struct PropModel {std::vector<std::size_t> parts;Bounds bounds;};
-struct PropObjectLayout {Transform rest;Bounds box;bool has_geometry=false;};
-std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root);
+struct PropObjectLayout {Transform rest;Bounds box;bool has_geometry=false,has_box=false;};
+std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root,std::span<const std::size_t> box_models);
 std::vector<Transform> prop_placements(const std::filesystem::path& root);
 Transform map_transform(Transform raw);
 Transform inverse_transform(const Transform& matrix);

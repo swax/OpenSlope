@@ -1,16 +1,19 @@
 #pragma once
 #include "ride.hpp"
 #include "terrain.hpp"
+#include "collision.hpp"
 #include <deque>
+#include <map>
 
 namespace openslope {
 struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; }; // Left steer; positive posture is tuck/forward flip.
-enum class Motion {Air=1,Ground=2};
-enum class Control {Cruise=3,Release=10,Air=13,Charge=14,Launched=16};
+enum class Motion {Air=1,Ground=2,Wipeout=5};
+enum class Control {Cruise=3,Release=10,Air=13,Charge=14,Launched=16,Wipeout=19};
 struct PlayTuning {
     // Desktop application defaults where the clean specification is open.
     double charge_rate=2.5,brake_acceleration=18,flip_recovery_rate=720;
     unsigned jump_stat=255;
+    double body_radius=.85;
 };
 struct Rider {
     Vec3 position,previous_position,velocity,forward{0,0,-1},normal{0,1,0},smoothed_up{0,1,0},board_up{0,1,0};
@@ -19,10 +22,14 @@ struct Rider {
     int lead=1;unsigned launches{},landings{};Motion motion=Motion::Air;Control control=Control::Air;
     int surface=1;
     bool grounded=false;
+    unsigned world_contacts{},bounces{},hard_impacts{};
+    std::optional<std::size_t> ground_instance;
 };
+enum class ContactPhase {Begin,Stay,End};
+struct ContactEvent {WorldContact contact;ContactPhase phase=ContactPhase::Begin;CollisionResponse response;};
 
-// Portable desktop riding. Rails, world interaction and race logic are separate
-// milestones; the parity matrix records the remaining scope.
+// Portable riding shared by desktop and OpenXR. The parity matrix records
+// remaining rail, race, presentation and authored world-logic work.
 class Player {
 public:
     explicit Player(Terrain terrain,PlayTuning tuning={});
@@ -38,8 +45,12 @@ public:
     const Rider& rider() const { return rider_; }
     const Terrain& terrain() const { return terrain_; }
     const RideContract& contract() const { return contract_; }
+    const CollisionWorld& world() const {return world_;}
+    const std::vector<ContactEvent>& contacts() const {return contact_events_;}
+    Vec3 camera_position(Vec3 desired) const;
 private:
     Terrain terrain_;
+    CollisionWorld world_;
     RideContract contract_;
     FixedClock clock_;
     Rider rider_;
@@ -49,9 +60,15 @@ private:
     bool jump_held_=false,reset_held_=false;
     double jump_cooldown_=0,air_grace_=0;
     std::deque<bool> jump_edges_;
-    std::optional<TerrainHit> probe(Vec3 position) const;
+    struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance;};
+    std::map<std::size_t,WorldContact> previous_contacts_;
+    std::vector<ContactEvent> contact_events_;
+    std::optional<GroundContact> trace_ground(Vec3 start,Vec3 end) const;
+    std::optional<GroundContact> probe(Vec3 position) const;
+    std::vector<ProbeSphere> volume(const Rider& pose,bool airborne) const;
+    bool move_world(const Rider& before,Vec3 destination,bool landing_allowed);
     void sample_input(const RideInput& input);
-    void land(const TerrainHit& hit);
+    void land(const GroundContact& hit);
     void enter_air();
 };
 }
