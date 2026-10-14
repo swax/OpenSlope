@@ -1,5 +1,6 @@
 #include "openxr_app.hpp"
 #include "vulkan_renderer.hpp"
+#include "openslope/replay.hpp"
 #include <windows.h>
 #include <chrono>
 #include <iostream>
@@ -8,9 +9,9 @@
 
 namespace {
 using namespace openslope;
-Vec3 camera_eye(const Player& player,bool first_person=false){const auto p=player.render_position();return first_person?p+Vec3{0,1.65,0}:p-player.rider().forward*7+Vec3{0,3.5,0};}
+Vec3 camera_eye(const Player& player,bool first_person=false){const auto p=player.render_position();return first_person?p+Vec3{0,1.65,0}:p-player.camera_forward()*7+Vec3{0,3.5,0};}
 Matrix camera_for(const Player& player,double aspect,bool first_person=false) {
-    const auto position=player.render_position(),forward=player.rider().forward;
+    const auto position=player.render_position(),forward=player.camera_forward();
     const auto eye=camera_eye(player,first_person);
     const auto direction=first_person?forward:position+forward*12-eye;
     const auto tangent=std::tan(70*pi/360);
@@ -33,11 +34,11 @@ struct Image {
         vk_check(vkAllocateMemory(context.device,&allocation,nullptr,&memory),"Allocate capture image");vk_check(vkBindImageMemory(context.device,image,memory,0),"Bind capture image");
     }
 };
-int capture(Player& player,const std::filesystem::path& output,double seconds) {
-    for(unsigned i=0;i<unsigned(seconds*60);++i)player.tick({});
+int capture(Player& player,const std::filesystem::path& output,double seconds,const std::filesystem::path& replay) {
     VulkanContext context;context.create(false);Image image(context);image.create(1280,720);
     VulkanRenderer renderer(context);renderer.upload(player.terrain().mesh());renderer.targets(std::span(&image.image,1),VK_FORMAT_R8G8B8A8_UNORM,1280,720);
-    renderer.render(0,camera_for(player,1280.0/720),board_transform(player.render_position(),player.rider().forward,player.rider().normal),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},camera_eye(player));
+    unsigned frames=0;double wall=0,gpu=0;const auto draw=[&]{const auto started=std::chrono::steady_clock::now();renderer.render(0,camera_for(player,1280.0/720),board_transform(player.render_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},camera_eye(player));wall+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();gpu+=renderer.stats().gpu_ms;++frames;};
+    if(replay.empty()){for(unsigned i=0;i<unsigned(seconds*60);++i)player.tick({});draw();}else{Replay::load(replay).run(player,draw);const auto& r=player.rider();std::cout<<"Replay: "<<frames<<" rendered frames; launches "<<r.launches<<"; landings "<<r.landings<<"; grounded "<<r.grounded<<"; switch "<<(r.lead<0)<<"; spin "<<r.spin_degrees<<" deg; flip "<<r.flip_degrees<<" deg; average render wall "<<wall/frames<<" ms; GPU "<<gpu/frames<<" ms\n";}
     const auto stats=renderer.stats();std::cout<<"Visible props: "<<stats.visible_props<<"; prop draws: "<<stats.prop_draws<<"; CPU frame: "<<stats.cpu_ms<<" ms; GPU frame: "<<stats.gpu_ms<<" ms\n";
     renderer.capture(0,output);std::cout<<"Vulkan capture: "<<output.string()<<'\n';return 0;
 }
@@ -96,7 +97,7 @@ struct Window {
         std::uint32_t image=0;const auto acquired=vkAcquireNextImageKHR(context.device,swapchain,UINT64_MAX,available,{},&image);
         if(acquired==VK_ERROR_OUT_OF_DATE_KHR){resized=true;return;}
         if(acquired!=VK_SUBOPTIMAL_KHR)vk_check(acquired,"Acquire preview image");
-        renderer.render(image,camera_for(player,double(width)/height,first_person),board_transform(player.render_position(),player.rider().forward,player.rider().normal),VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,available,finished,camera_eye(player,first_person));
+        renderer.render(image,camera_for(player,double(width)/height,first_person),board_transform(player.render_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,available,finished,camera_eye(player,first_person));
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};present.waitSemaphoreCount=1;present.pWaitSemaphores=&finished;present.swapchainCount=1;present.pSwapchains=&swapchain;present.pImageIndices=&image;
         const auto result=vkQueuePresentKHR(context.queue,&present);
         if(result==VK_ERROR_OUT_OF_DATE_KHR||result==VK_SUBOPTIMAL_KHR)resized=true;else vk_check(result,"Present preview frame");
@@ -106,34 +107,39 @@ struct Window {
 }
 int main(int argc,char** argv) {
     try {
-        std::filesystem::path map,output;bool xr=false,smoke_window=false;double seconds=0;
+        std::filesystem::path map,output,replay;bool xr=false,smoke_window=false;double seconds=0;
         for(int i=1;i<argc;++i) {
             const std::string option=argv[i];
             if(option=="--xr")xr=true;
             else if(option=="--smoke-window")smoke_window=true;
-            else if((option=="--map"||option=="--capture"||option=="--seconds")&&i+1<argc) {
-                const std::string argument=argv[++i];if(option=="--map")map=argument;else if(option=="--capture")output=argument;else seconds=std::stod(argument);
-            }else if(option=="--help") {std::cout<<"openslope_player [--map <map folder>] [--xr] [--capture <output.ppm>] [--seconds <duration>]\nDesktop: A/D steer, Space boost, R reset, F camera, Escape quit.\n";return 0;}
+            else if((option=="--map"||option=="--capture"||option=="--seconds"||option=="--replay")&&i+1<argc) {
+                const std::string argument=argv[++i];if(option=="--map")map=argument;else if(option=="--capture")output=argument;else if(option=="--replay")replay=argument;else seconds=std::stod(argument);
+            }else if(option=="--help") {std::cout<<"openslope_player [--map <map folder>] [--xr] [--capture <output.ppm>] [--seconds <duration>] [--replay <sequence.json>]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space charged jump, Shift boost, R reset, F/V camera, P pause, Escape quit.\n";return 0;}
             else throw std::runtime_error("Unknown or incomplete argument: "+option);
         }
         if(!std::isfinite(seconds)||seconds<0||seconds>3600)throw std::runtime_error("Duration must be between 0 and 3600 seconds");
         if(xr&&!output.empty())throw std::runtime_error("Choose either OpenXR or offline capture");
+        if(!replay.empty()&&(output.empty()||seconds!=0))throw std::runtime_error("Replay requires --capture and cannot combine with --seconds");
         Player player(map.empty()?Terrain::demo():Terrain::load(map));
         if(xr)return run_openxr(player,{},seconds);
-        if(!output.empty())return capture(player,output,seconds);
+        if(!output.empty())return capture(player,output,seconds,replay);
         if(smoke_window&&seconds==0)seconds=3;
         VulkanContext context;context.create(true);Window window(context);window.create(player.terrain().mesh(),!smoke_window);
-        const auto started=std::chrono::steady_clock::now();auto previous=started;bool first_person=false,last_camera=false;
+        const auto started=std::chrono::steady_clock::now();auto previous=started;bool first_person=false,last_camera=false,paused=false,last_pause=false,last_focus=false;
         while(window.events()) {
             const auto now=std::chrono::steady_clock::now();const auto dt=std::chrono::duration<double>(now-previous).count();previous=now;
             if(seconds>0&&std::chrono::duration<double>(now-started).count()>=seconds)break;
             const bool focused=GetForegroundWindow()==window.handle;
             const auto key=[&](int value){return focused&&(GetAsyncKeyState(value)&0x8000)!=0;};
             if(key(VK_ESCAPE))break;
-            const auto camera=key('F');if(camera&&!last_camera)first_person=!first_person;last_camera=camera;
-            if(focused)player.advance(dt,{double(key('A'))-double(key('D')),key(VK_SPACE),key('R')});
+            const auto camera=key('F')||key('V');if(camera&&!last_camera)first_person=!first_person;last_camera=camera;
+            const auto pause=key('P');if(pause&&!last_pause){paused=!paused;if(paused)player.release_inputs();}last_pause=pause;
+            if(!focused&&last_focus)player.release_inputs();last_focus=focused;
+            if(focused&&!paused)player.advance(dt,{double(key('A')||key(VK_LEFT))-double(key('D')||key(VK_RIGHT)),key(VK_SHIFT),key('R'),key(VK_SPACE),double(key('W')||key(VK_UP))-double(key('S')||key(VK_DOWN))});
             const auto& stats=window.renderer.stats();
-            std::wostringstream title;title<<L"OpenSlope Native | "<<int(length(player.rider().velocity)*3.6)<<L" km/h | "<<stats.visible_props<<L" props / "<<stats.prop_draws<<L" draws | GPU "<<stats.gpu_ms<<L" ms | A/D steer | Space boost | R reset | F camera";SetWindowTextW(window.handle,title.str().c_str());
+            const auto& rider=player.rider();std::wostringstream title;title<<L"OpenSlope Native | "<<int(length(rider.velocity)*3.6)<<L" km/h | ";
+            if(paused)title<<L"PAUSED";else if(rider.control==Control::Charge)title<<L"Charge "<<int(rider.charge*100)<<L"%";else title<<(rider.grounded?(rider.lead<0?L"Switch":L"Riding"):L"Air");
+            title<<L" | "<<stats.visible_props<<L" props / "<<stats.prop_draws<<L" draws | A/D steer | W/S tuck/brake | Space jump | Shift boost | P pause | F/V camera";SetWindowTextW(window.handle,title.str().c_str());
             window.draw(player,first_person);
             if(IsIconic(window.handle))std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }

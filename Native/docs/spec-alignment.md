@@ -20,7 +20,9 @@ The native build consumes the tracked Contracts copy, so it works without the op
 | Grounded redirect | [Trailmap: 320-redirect] | Re-probe after integration; rotate normal velocity with speed preservation; skip powder types 3 and 4. |
 | Forward / lateral resistance | [Trailmap: 330-resistance, 330-lateral] | Independent C++ equations run against the shared synthetic scalar fixtures with the same relative tolerance as the TypeScript suite. |
 | Heading closure | [Trailmap: 330-yaw, 330-alignment-basis] | Mode-dependent lead, slip sign, speed gate and per-tick yaw cap; direct rest/cap checks. Full trajectory parity has not yet been established. |
-| Complete rider, world, rendering, audio | Chapters 130, 170, 300, 340-430 | Not complete: jump/landing detail, walls/undersides, prop collision/live behavior, rails, triggers, authored spawn/reset, remaining material/blend modes, effects, audio and races remain ports. |
+| Desktop controls and jump/landing | [Trailmap: 300-decoupled, 330-lean, 340-charge, 340-magnitude, 340-blend, 340-landing-bands, 340-landing-seed, 360-cruise, 360-held] | Separate jump control, delayed additive launch, shaped lean, cruise/boost gates, switch riding and progressive landing bands. Swept terrain contact retains impact velocity. Authored CPU checks and a 269-frame actual Vulkan replay. Application choices and remaining trajectory/air-orientation gaps are in desktop-controls.md. |
+| Course path conversion / starts | [Trailmap: 120-stagearea, 250-header, 250-section-a, 250-section-b, 250-accumulation, 250-seed-vertex, 250-events] | Independent AIP/SOP readers, retained event/DTF/rating/respawn fields, N+1 runtime polylines and middle start-slot selection. Source/generated comparisons and authored layout fixtures; race/reset/event consumers remain outstanding. |
+| Complete rider, world, rendering, audio | Chapters 130, 170, 300, 340-430 | Not complete: hard landing/crash recovery, walls/undersides, prop collision/live behavior, rails, triggers, authored course reset, remaining material/blend modes, effects, audio and races remain ports. The full desktop-parity.md matrix tracks the active objective. |
 
 ## Deliberate difference from existing ports
 
@@ -43,7 +45,9 @@ bug in every existing runtime, and the native work does not silently change thos
 ## Prototype choices, not recovered behavior
 
 The demo uses original procedural terrain, colour-only rendering, a simple board quad, a
-highest-rideable-patch start, initial 3 m/s movement, input smoothing, and recovery below the course.
+highest-rideable-patch fallback start and recovery below the course. Map starts prefer authored
+start slots and use a one metre, zero-velocity drop-in. Desktop charge/brake/flip tuning, rendered
+pitch flips, switch folding and camera separation are application choices recorded in desktop-controls.md.
 Terrain normals are oriented toward the sky for this initial upper-surface player. Full underside
 and wall orientation handling needs the complete rider/collision port. Controller mappings and the
 standing-camera fallback are application choices. No retail character or trick repertoire is included.

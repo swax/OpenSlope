@@ -17,6 +17,8 @@ other components' implementation sources are outside this implementation boundar
 | Terrain appearance | [Trailmap: 110-uv-rotation, 160-tile, 160-luminance, 160-transpose, 400-double, 400-lighting]; first-party GLSL, UV evaluation, image bounds and Vulkan resource ownership. Synthetic PNGs and GPU pixel assertions are authored independently of course exports. |
 | Static prop decoding | Clean chapters 120, 170, 220 and 230; bounded independent PBD/VIF/SSF readers and standard OBJ output. Pointer origins are checked against source bytes and authored synthetic records, never another decoder's implementation. |
 | Prop placement/lighting/rendering | Clean chapters 120, 160, 170 and 400; standard affine/quaternion identities, first-party OBJ parser, model-local baked lighting and Vulkan instancing/culling. Generated outputs are comparison data only; see static-props.md for deliberate limits. |
+| Course path decoding | Clean chapter 250 and independent byte-layout fixtures. Relative section offsets, header shapes, displacement expansion and event retention are authored here. Generated AIP/SOP output supplies validation only. |
+| Desktop rider controls | Clean chapters 300, 330, 340 and 360 plus the unchanged shared contract. Slopesmith establishes the desktop feature/control vocabulary; Native's state, launch, contact and replay code are independently authored. Port tuning and presentation differences are explicit in desktop-controls.md. |
 
 Texture association is not marked by the course bank. Native's application policy only infers
 associated alpha when there is at least one fractional texel and every fractional texel has all

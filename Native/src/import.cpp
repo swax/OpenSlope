@@ -1,6 +1,7 @@
 #include "import_internal.hpp"
 #include "openslope/terrain.hpp"
 #include "openslope/props.hpp"
+#include "openslope/paths.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <array>
@@ -168,11 +169,13 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     write_json(output/"Patches.json",document);
     notify("Converting static object models and placements");const auto behavior=files.find(stem+".SSF");
     import_detail::write_props(member(files,stem+".PBD"),member(files,stem+".MAP"),images,behavior==files.end()?nullptr:&behavior->second,output,cancelled);
+    Json outputs={"Patches.json","Origin.json","Textures","Lightmaps","Models.json","Instances.json","Materials.json","Meshes"};
+    for(const auto kind:{"AIP","SOP"}){const auto it=files.find(stem+"."+kind);if(it!=files.end()){notify(std::string("Converting ")+kind+" paths");const auto name=std::string(kind)+".json";import_detail::write_paths(it->second,output/name,cancelled);outputs.push_back(name);}}
     write_json(output/"Origin.json",{{"Schema","openslope-origin/v1"},{"Origin","retail"},{"Course",stem},{"RetailData",true},{"Reasons",{"retail-extract"}}});
     // Lossless local source sidecars support later importer stages without
     // reselecting the ISO. They are not a replacement for portable contracts.
     std::filesystem::create_directory(output/"Source");for(const auto& [name,bytes]:files){notify("Saving source "+name);std::ofstream stream(output/"Source"/name,std::ios::binary);stream.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));if(!stream)throw std::runtime_error("Cannot write source sidecar");}
-    write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",{"Patches.json","Origin.json","Textures","Lightmaps","Models.json","Instances.json","Materials.json","Meshes"}},{"Deferred",{"object-collision","live-object-effects","skybox","paths","effects","audio","world"}}});
-    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));cleanup.complete=true;
+    write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",outputs},{"Deferred",{"object-collision","live-object-effects","skybox","rail-splines","effects","audio","world"}}});
+    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));static_cast<void>(CoursePaths::load(output));cleanup.complete=true;
 }
 }

@@ -21,7 +21,7 @@ declares both activity modes and Horizon OS 69+ hybrid support, following
 
 Document URIs are opaque identifiers, never converted to guessed filesystem paths. Folder listing
 and publication use `DocumentsContract`. For playback, the selected `Patches.json`, optional complete
-prop JSON set, and only their referenced `Textures/`, `Lightmaps/` and `Meshes/` assets are copied
+prop JSON set, optional AIP/SOP path metadata, and only their referenced `Textures/`, `Lightmaps/` and `Meshes/` assets are copied
 into an isolated application cache directory. C++ readers provide the reference list, keeping
 Java independent of map-record parsing. Separate encoded image/mesh budgets are 256 MiB each.
 The native host receives that path; the cache is removed when the game activity ends. The source
@@ -59,17 +59,19 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Models.json`, `Meshes/*.obj` | Shared model hierarchy, raw mesh positions, authored UV/normal splits, material IDs, rest poses and animation records. Optional exact affine matrix extension; rendering samples animation at time zero. |
 | `Instances.json` | Model IDs, names, raw placement TRS/matrix, model-local ambient/key lighting and authored `Visable` flag from SSF. |
 | `Materials.json` | Static base-texture references and flags; neutral labels, with remaining material behavior fields deferred. |
+| `AIP.json`, `SOP.json` (when present) | Existing start-slot, AI/race-line and event contracts; expanded displacement steps, raw seeds, DTF and path attributes. Runtime retains the seed vertex and uses the middle start slot. |
 | `Origin.json` | Existing `openslope-origin/v1`, `retail`, course name and `retail-extract` reason. |
 | `Source/` | Decompressed level archive sidecars retained locally for later conversion stages. Not a portable runtime contract. |
 | `Import.json` | Explicit stage report: `Complete` is false, with emitted and deferred stage names. |
 
-This imports canonical terrain and the static-prop rendering subset; complete course conversion
-remains to be implemented. Object collision/live behavior, path, world, effects, audio and skybox
+This imports canonical terrain, static-prop rendering and AIP/SOP course paths; complete course conversion
+remains to be implemented. Object collision/live behavior, rail splines, world, effects, audio and skybox
 contracts remain deferred. A folder already produced by a compatible extractor or Slopesmith
 is also accepted. Rendering those systems is separate from converting them.
 The implemented terrain appearance contract is described in [terrain appearance](terrain-appearance.md).
 See [static props](static-props.md) for geometry, lighting, alpha behavior, culling and limitations.
 Older native terrain-only imports continue to play; importing into a fresh Maps root adds props.
+Re-importing into a fresh root also adds the authored start and course paths.
 Existing course folders are always skipped, including earlier imports.
 
 ## Verification
@@ -90,6 +92,9 @@ Run `python tools/native-compare-props.py <native-course> <reference-course>` fo
 contracts and expanded mesh triangles. The tool checks hierarchy, placements, visibility, flags,
 lighting and animation records, with explicit geometry tolerances. Deferred behavior/material
 fields and neutral material labels are excluded; it reads generated files only.
+Run `python tools/native-compare-paths.py <native-course> <reference-course>` for AIP/SOP output.
+Seeds, slots, attributes, DTF and event stations compare at recovered float32 precision; expanded
+displacements permit 0.01 raw cm. Reversed authored event intervals are preserved, not normalized.
 No reference output or retail fixture is tracked or packaged.
 
 The Android APK and its JNI exports are build-checked. Document picker behavior, provider grants,

@@ -1,4 +1,5 @@
 #include "openslope/terrain.hpp"
+#include "openslope/paths.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <numeric>
@@ -214,6 +215,9 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
     return mesh;
 }
 std::pair<Vec3,Vec3> Terrain::spawn() const {
+    const auto paths=CoursePaths::load(map_root_);if(const auto start=paths.start_pose())return *start;
+    if(const auto marker=start_marker(map_root_))return *marker;
+    if(!paths.race.empty())return paths.race.front().pose(4);
     const Patch* best=nullptr;double height=-std::numeric_limits<double>::infinity();
     for(const auto& p:patches_) {
         if(p.surface==0||p.surface==17||p.normal(.5,.5).y<.5) continue;

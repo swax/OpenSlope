@@ -1,0 +1,48 @@
+# Desktop gameplay parity work
+
+The active objective is feature parity with playing in Slopesmith, including
+sound, music, effects, collisions, culling, anti-aliasing, graphical improvements,
+performance work and the VR path. Desktop behavior is the current verification
+target. Headset behavior remains unverified until hardware is available. This
+matrix tracks the full scope; a committed milestone is not completion of the goal.
+
+Slopesmith's gameplay controls, public contracts and tests establish the feature
+inventory and comparison behavior. Clean Trailmap bodies establish recovered
+behavior; native implementation remains independently authored. Generated maps
+can validate interoperability, never supply decoder implementation. Source-boundary
+checks apply to every milestone. The shared ride contract is retained unchanged.
+
+| Feature | Current evidence / remaining work |
+|---|---|
+| Custom and imported Maps playback | Quest library and desktop CLI work. Desktop map selection/menu and wider existing-map compatibility still need coverage. |
+| Textured terrain / static props | Committed `b8579a9`; authored CPU/Vulkan checks and generated-output comparison. Full material fidelity, translucency in sRGB, mipmaps and live props remain. |
+| Start placement and path data | Independent AIP/SOP reader and start-row selection pass authored fixtures and all eleven generated-output comparisons. Middle slot and heading baseline replace terrain-height guessing when paths exist. Race/event/reset consumption remains. |
+| Fixed-step carving / surface response | Portable scalar and geometry checks, shaped lean, cruise alignment and switch stance are verified. Full trajectory equivalence remains unproven. |
+| Charged jump / air control / touchdown | Separate charge/release, launch carry, spins/flips, landing bands and swept floor contact pass CPU checks and a 269-frame actual Vulkan replay. Prewind, complete crash/recovery and trajectory comparison still need work. |
+| Tuck / brake / boost / pause | Keyboard controls and focus handling are implemented; tuck is a pose field until the visible rider exists. Boost remains binary; meter/tier/trick energy behavior is outstanding. |
+| Body and prop collisions | Outstanding: authored collision assets, spheres/OBBs/triangles/occupancy shapes, rideable props, bounce, sliding, pass-through, dynamic bodies and broad-phase acceleration. Render meshes must not silently replace collision assets. |
+| Crash, breakables and world interaction | Outstanding: collision-triggered crash/recovery, reset volumes, break/rearm, debris, scripted forces, moving props and runtime visibility. |
+| Rails / splines | Outstanding: independent PBD spline extraction, grind capture/travel/exit, jump/boost and rail presentation. |
+| Race / showoff / freeride | Outstanding: course progress, checkpoints, finish/laps, countdown, score, pickups, path-driven respawn and run HUD. |
+| Tricks and scoring | Outstanding: completed spins/flips, grabs, strings/combo banking, landing/crash outcomes and meter integration. |
+| Rider and equipment presentation | Outstanding: visible rider pose/animation, crouch, gear/stance choices, snowboard/skis and equipment art. Current board is a diagnostic quad. |
+| On-foot / boarding | Outstanding: walking, crouch/jump/flight, stepping off and recalling/mounting/handling the board. |
+| Camera and input | Tests confirm trick rotation stays out of the camera frame. Mouse look, orbit/zoom, gamepad, HUD/control help and settings remain. |
+| AI riders and other players | Outstanding: AI path following/field behavior and shared play-session movement. These are not satisfied by rendering static props. |
+| Sound / music | Outstanding: portable decoding, playback/spatialization, board/collision/world sounds, race soundtrack, interactive music and announcer behavior. No retail media may enter source control or the application package. |
+| Effects | Outstanding: snow spray, carve wake, boost afterimages, landing/crash bursts, pickups, breakables and authored effect lifecycle. |
+| World graphics | Outstanding: sky/background, fog, celestial/glare, snow, billboards and texture animation. |
+| Culling / anti-aliasing / image quality | Prop distance/frustum culling exists. Terrain culling/LOD, mipmaps/filtering, anti-aliasing and configurable quality remain. |
+| Performance | Timestamp samples and shared stereo geometry exist. Whole-frame baselines, memory profiling, reduced stalls, batching/upload work and larger-course regression measurements remain. |
+| VR | OpenXR hosts compile; shared core and controller mapping need continued build checks. Stereo comfort, rendering quality, input, performance and lifecycle need hardware verification. |
+
+Milestones use a descriptive commit subject and bullet-point body. Each milestone
+records its supported behavior, tests, comparison evidence and remaining limits.
+Playable test EXEs are versioned in ignored build folders so a later change does
+not silently replace a build the user is testing. No public distribution of local
+course data is part of the work.
+
+The next sequence is rider controls/start placement, authored collisions and world
+interaction, rails/races/tricks, presentation/camera, audio/music/effects and the
+remaining rendering/performance work. Evidence may change the order, but cannot
+remove requirements from this matrix merely because an easier slice is complete.

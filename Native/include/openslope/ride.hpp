@@ -41,6 +41,10 @@ public:
     double heading_yaw(double lean,double lead,double slip,double speed,double forward_speed,double fall_line_speed,double dt) const;
     double contact_response(const Surface& s,double error,double vn,double bog,double budget) const;
     Vec3 redirect(Vec3 velocity,Vec3 normal,int surface_type) const;
+    double lean(double current,double input,double speed,int surface_type,double dt,int mode=1) const;
+    double cruise_alignment(Vec3 velocity,Vec3 forward,Vec3 normal) const;
+    Vec3 jump_impulse(Vec3 normal,Vec3 tangent,double speed,double charge,unsigned rider_stat=255) const;
+    double landing_retention(double tilt_radians,double yaw_radians) const;
 private:
     struct Data;
     std::unique_ptr<Data> data_;

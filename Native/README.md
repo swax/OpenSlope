@@ -10,10 +10,11 @@ This is not yet a complete Quest application or a full gameplay port.
 The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
 The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
 ISO to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
-The importer currently converts terrain, textures, lightmaps, static prop geometry/placements and provenance;
-the player renders textured terrain and shared world props with baked lighting and visibility culling.
-Prop collision/live behavior, path, effects, world and audio conversion, jumping,
-rails, races and multiplayer remain later stages. See [the map-library contract](docs/map-library.md).
+The importer currently converts terrain, textures, lightmaps, static prop geometry/placements,
+AIP/SOP course paths and provenance. The player renders textured terrain and shared world props
+with baked lighting and visibility culling, and supports charged jumps, spins/flips and switch landings.
+Prop collision/live behavior, effects, world and audio conversion, rails, races and multiplayer remain
+later stages. See [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 ## Build and try on Windows
 
@@ -29,16 +30,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 ./temp/native/Release/openslope_player.exe
 ```
 
-A/D steer, Space boosts, R resets, F switches first/chase camera, and Escape exits. Input pauses
-when the preview loses focus. A course can be opened directly:
+A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
+F/V switches first/chase camera, P pauses and Escape exits. Input pauses when the preview loses
+focus; an uncommitted jump charge is cancelled. A course can be opened directly:
 
 ```powershell
 ./temp/native/Release/openslope_player.exe --map Maps/GARI
 ./temp/native/Release/openslope_inspect.exe Maps/GARI
 ```
 
-The first prototype chooses a skyward start on the highest rideable patch. This is a diagnostic
-spawn policy, not the authored start-gate implementation. Map courses load their referenced
+Courses with AIP/SOP metadata use the middle authored start-row slot and its down-course heading.
+Fallbacks use the staging anchor, race line and finally the highest rideable patch. The desktop
+drop-in begins one metre above the surface. See [desktop controls](docs/desktop-controls.md).
+Map courses load their referenced
 `Textures/*.png` and `Lightmaps/*.png`; missing diffuse images retain surface/normal colours,
 and a missing lightmap leaves the diffuse texture visible. See [terrain appearance](docs/terrain-appearance.md).
 Courses with the prop contracts also render their referenced `Meshes/*.obj` and textures with
@@ -72,7 +76,9 @@ available. The host creates the Vulkan instance/device through `XR_KHR_vulkan_en
 runtime-selected stereo views and swapchain formats, and pauses simulation outside input focus.
 Left stick steers, right trigger boosts, and left X resets. Touch-compatible bindings are the
 initial profile; dedicated Steam Frame bindings and device-specific extensions remain device work.
+Right A charges/releases the jump, and left-stick Y controls posture/flip when vertically dominant.
 Locomotion rotates the world camera by heading without applying board bank to the tracked head.
+Air trick rotation stays out of the camera frame.
 
 The current renderer serializes GPU work and draws the two eyes separately. This intentionally
 simple first renderer shares geometry and sampled images between eyes, but needs profiling, multiview and optional foveation
@@ -81,7 +87,7 @@ before any claim of headset performance. It does not request Meta-only rendering
 ## Android / Quest build path
 
 The Android host uses a Java map-library panel, `NativeActivity` and the Khronos loader. Selecting
-a course prepares its terrain, prop tables, referenced meshes and PNGs, then starts the immersive player.
+a course prepares its terrain, prop/path tables, referenced meshes and PNGs, then starts the immersive player.
 The Gradle project targets ARM64, Android API 29+, NDK 28.1, CMake 3.31.6, and Android SDK 35.
 Use JDK 17 and Gradle 8.10.2 with Android Gradle Plugin 8.8.2. The SDK/NDK and Gradle are separate
 prerequisites; no system-wide installer is run by the host build.
@@ -119,7 +125,8 @@ After installation, find **OpenSlope Native** in the headset's sideloaded applic
    you select which to import into the current Maps folder. Existing map names are kept. Cancel
    stops the current course; courses already imported remain available.
 4. **Play** validates the selected terrain, props and PNGs, then loads them into the immersive OpenXR activity. Left stick
-   steers, right trigger boosts, and left X resets. Returning from the game returns to the library.
+   steers/postures, right trigger boosts, right A charges/releases a jump and left X resets.
+   Returning from the game returns to the library.
 
 System document providers must support seekable ISO reads and writable/renameable folders for import.
 If the headset has no system document picker, custom maps can still be copied into the app Maps folder
@@ -134,6 +141,7 @@ The same importer can be checked on desktop without a headset:
 ./temp/native-core/Release/openslope_import.exe extract "discs/SSX Tricky (USA).iso" GARI temp/native-import/Maps
 python tools/native-compare-maps.py temp/native-import/Maps/GARI Maps/GARI --point-tolerance-cm 0.1 --allow-texture-difference 0083.png --allow-texture-difference 0108.png
 python tools/native-compare-props.py temp/native-import/Maps/GARI Maps/GARI
+python tools/native-compare-paths.py temp/native-import/Maps/GARI Maps/GARI
 ```
 
 The comparison checks the implemented canonical stages against an existing reference map,
@@ -141,7 +149,7 @@ comparing decoded PNG pixels and JSON values rather than formatting or compressi
 claim equivalence for the deferred import stages.
 The GARI example explicitly records a 1 mm coordinate allowance and the two documented alpha-policy
 differences; the comparator's defaults remain strict. See [source provenance](docs/source-provenance.md).
-Previously imported terrain-only courses remain playable. To add extracted props, import into a
+Previously imported terrain-only courses remain playable. To add extracted props and course paths, import into a
 fresh Maps root; existing course names are deliberately skipped rather than overwritten.
 
 Build the separate device-test APK with `Native/build-android.ps1 -Tests`. The authored synthetic
@@ -179,6 +187,17 @@ Appearance checks cover PNG variants, corrupt/oversized images, image path bound
 pairing, transposed lightmap UVs, material grouping, and the RGB-residual/alpha lighting equation.
 Prop checks cover shared OBJ geometry, hierarchy, instance lighting/transforms, visibility/culling,
 static animation snapshots, material indirection and independently authored VIF packets.
+Gameplay checks cover separate jump control, countdown/carry, spins/flips, switch, landing bands,
+swept terrain contact, focus clearing, braking and authored starts. Independent AIP/SOP fixtures
+cover displacement expansion, event records and corrupt-input cleanup.
+
+For a complete charged jump/half-spin/switch landing through the actual desktop renderer:
+
+```powershell
+python Native/tests/desktop_replay_test.py temp/native/Release/openslope_player.exe
+```
+
+The bounded replay interface and its limits are described in [desktop controls](docs/desktop-controls.md).
 
 ## Specification alignment
 
@@ -189,8 +208,9 @@ from existing ports, and explicit prototype choices. No Trailmap installation or
 to build or run the synthetic tests. When the local Trailmap data files are present, the native
 check also requires the tracked ride contract and independent fixtures to match them exactly.
 
-The next milestone is on-headset verification and the remaining world/material systems, followed by the
-remaining import stages. Keep platform file access behind the application host,
+The next desktop milestone is authored collision and world interaction, with the broader work
+tracked in desktop-parity.md. Headset checks are deferred while desktop implementation continues.
+Keep platform file access behind the application host,
 so the readers and gameplay core can also be compiled for desktop tools or WebAssembly.
 
 See [NOTICE](NOTICE) and [third-party notices](ThirdPartyNotices/README.md).

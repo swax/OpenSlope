@@ -85,6 +85,41 @@ Vec3 RideContract::redirect(Vec3 velocity,Vec3 normal,int type) const {
     const auto magnitude=length(result);
     return magnitude>0?result*(speed/magnitude):result;
 }
+double RideContract::lean(double current,double input,double speed,int type,double dt,int mode) const {
+    // [Trailmap: 330-lean] Clamp without rescaling the stick's inner range.
+    const auto reference=response("lean",mode==2?"speedMode2Mps":mode==0?"speedMode0Mps":"speedDefaultMps");
+    const auto target=std::clamp(input,-response("lean","inputLimit"),response("lean","inputLimit"))*std::min(1.0,speed/reference);
+    auto rate=std::clamp(std::abs(target-current)*response("lean","slewGain"),response("lean","slewMinPerSecond"),response("lean","slewMaxPerSecond"));
+    if(type==3||type==4)rate*=response("lean","powderSlewScale");return approach(current,target,rate*dt);
+}
+double RideContract::cruise_alignment(Vec3 velocity,Vec3 forward,Vec3 normal) const {
+    // [Trailmap: 360-cruise] A square switch landing rides tail-first. Folding
+    // the heading error makes that stance cost the same as nose-first riding.
+    const auto tangent=project(velocity,normal);const auto speed=length(tangent);if(speed<1e-6)return 1;
+    const auto error=std::acos(std::clamp(std::abs(dot(tangent/speed,normalized(project(forward,normal),forward))),0.0,1.0));
+    return std::clamp((pi/3-error)/(pi/6),0.0,1.0);
+}
+Vec3 RideContract::jump_impulse(Vec3 normal,Vec3 tangent,double speed,double charge,unsigned stat) const {
+    // [Trailmap: 340-magnitude, 340-blend] Evaluate centimetre constants once,
+    // then convert the additive launch velocity to metres per second.
+    const auto used=std::clamp(charge,0.0,1.0),curve=.09851468+std::min(stat,255u)*(.78700274/255);
+    const auto factor=std::min(speed*100*.88093346+24.678448,899.86835);
+    const auto launch=std::max(630.8786,used*used*curve*factor)/100;
+    normal=normalized(normal);tangent=normalized(project(tangent,normal),{0,0,-1});
+    const auto steep=(normal.y-std::cos(50*pi/180))/(std::cos(70*pi/180)-std::cos(50*pi/180));
+    const auto up=tangent.y/std::sin(20*pi/180);
+    if(steep<0||std::abs(up)<1e-6)return normalized(normal+tangent*.2)*launch;
+    const auto mix=std::clamp(steep*up,0.0,.9);
+    // The unit carry multiplier is the desktop port's application choice;
+    // the spec establishes the proportional carry but not its coefficient.
+    return normalized(normal*(1-mix)+tangent*mix)*launch+tangent*(mix*speed);
+}
+double RideContract::landing_retention(double tilt,double yaw) const {
+    // [Trailmap: 340-landing-bands] Keep both progressive bands independent.
+    const auto pitch=std::clamp((std::abs(tilt)*180/pi-15)/35,0.0,1.0);
+    const auto heading=std::clamp((std::abs(yaw)*180/pi-25)/55,0.0,1.0);
+    return (1-.15*pitch)*(1-.25*heading);
+}
 unsigned FixedClock::advance(double seconds) {
     if(!std::isfinite(seconds)||seconds<0) throw std::invalid_argument("Frame duration must be finite and nonnegative");
     accumulator_+=std::min(seconds,step_*maximum_);
