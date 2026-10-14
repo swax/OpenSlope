@@ -21,6 +21,7 @@ public:
     std::size_t objects() const;
     std::size_t triangles() const;
     std::size_t bodies() const;
+    void instance_flags(std::span<const std::uint8_t> flags);
 private:
     struct Data;std::unique_ptr<Data> data_;
 };

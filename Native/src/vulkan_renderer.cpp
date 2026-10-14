@@ -201,7 +201,8 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
         vk_check(vkCreateFramebuffer(context_.device,&framebuffer,nullptr,&target.framebuffer),"Create framebuffer");
     }
 }
-void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet,std::span<const Vertex> avatar,float fade) {
+void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet,std::span<const Vertex> avatar,float fade,std::span<const std::uint8_t> instance_flags) {
+    if(!instance_flags.empty()&&(!scene_||instance_flags.size()!=scene_->props_.instances.size()))throw std::invalid_argument("World instance flags disagree with rendered props");
     if(!std::isfinite(fade)||fade<0||fade>1)throw std::invalid_argument("Invalid scene fade");const auto visibility=1-fade;
     const auto started=std::chrono::steady_clock::now();finish();const auto previous_gpu=stats_.gpu_ms;stats_={};if(deferred_)stats_.gpu_ms=previous_gpu;stats_.wait_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
     vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
@@ -259,7 +260,7 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     struct VisibleDraw {std::size_t part;std::uint32_t first,count;};std::vector<VisibleDraw> prop_draws;std::vector<PropPose> poses;
     std::map<std::pair<bool,std::size_t>,std::vector<std::size_t>> groups;
     struct Translucent {std::size_t part,instance;int depth;};std::vector<Translucent> transparent;
-    for(std::size_t i=0;i<scene_->props_.instances.size();++i){const auto& instance=scene_->props_.instances[i];const auto& model=scene_->props_.models[instance.model];if(!instance.visible||model.parts.empty()||!prop_visible(instance.bounds,camera.values,eye))continue;++stats_.visible_props;
+    for(std::size_t i=0;i<scene_->props_.instances.size();++i){const auto& instance=scene_->props_.instances[i];const auto& model=scene_->props_.models[instance.model];const auto visible=instance_flags.empty()?instance.visible:(instance_flags[i]&1)!=0;if(!visible||model.parts.empty()||!prop_visible(instance.bounds,camera.values,eye))continue;++stats_.visible_props;
         for(const auto part:model.parts){if(scene_->prop_draws_[part].alpha==2){const auto& m=instance.pose.matrix;const auto depth=camera.values[3]*m[12]+camera.values[7]*m[13]+camera.values[11]*m[14]+camera.values[15];transparent.push_back({part,i,int(std::clamp(depth*1023/400,0.f,1023.f))});}else groups[{(scene_->props_.parts[part].flags&(1u<<17))!=0,part}].push_back(i);}
     }
     for(const auto& [key,instances]:groups){const auto first=std::uint32_t(poses.size());for(const auto i:instances)poses.push_back(scene_->props_.instances[i].pose);prop_draws.push_back({key.second,first,std::uint32_t(instances.size())});}

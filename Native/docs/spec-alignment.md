@@ -102,3 +102,9 @@ tracker are application choices. The 0.8-second hold and 0.5-second fade-out are
 implemented in desktop and OpenXR; the 0.2-second fade-in and completion across
 clock expiry are application choices. The separate viewport effect, field bias
 and remaining world/reset triggers are still required; see course-recovery.md.
+
+Authored graph contacts use clean 150/230/390 for counted frames, slot and stable-ID joins,
+function ownership, waits/gates/debounce, reset/multiplier/audio and tombstones.
+Mode functions and rail toggles share runtime instance state across desktop/OpenXR.
+Application script bounds, mode fallback and remaining region/property lifecycles
+are explicit in world-logic.md; full graph playback is not yet complete.

@@ -83,11 +83,24 @@ final class MapLibrary {
             Entry patches = child(map.uri, "Patches.json");
             if (patches == null || patches.directory) throw new IOException("This map has no Patches.json.");
             try (InputStream input = resolver.openInputStream(patches.uri); OutputStream file = new FileOutputStream(new File(output, "Patches.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
-            for (String name : new String[]{"Models.json", "Instances.json", "Materials.json", "AIP.json", "SOP.json", "Splines.json", "RidingEffects.json", "Physics.json", "SSFLogic.json", "World.json", "RiderAnimations.json", "Origin.json", "Slopesmith.json"}) {
+            for (String name : new String[]{"Models.json", "Instances.json", "Materials.json", "AIP.json", "SOP.json", "Splines.json", "RidingEffects.json", "Effects.json", "Physics.json", "SSFLogic.json", "World.json", "RiderAnimations.json", "Origin.json", "Slopesmith.json"}) {
                 cancel.check(); Entry metadata = child(map.uri, name);
                 if (metadata == null) continue;
                 if (metadata.directory) throw new IOException("Map metadata is a folder: " + name);
                 try (InputStream input = resolver.openInputStream(metadata.uri); OutputStream file = new FileOutputStream(new File(output, name))) { copy(input, file, PATCH_LIMIT, cancel); }
+            }
+            if (!new File(output, "Effects.json").isFile() && !new File(output, "SSFLogic.json").isFile()) {
+                Entry source = child(map.uri, "Source"); Entry behavior = null;
+                if (source != null && source.directory) for (Entry file : children(source.uri)) {
+                    if (file.directory || !safeName(file.name) || !file.name.toLowerCase(Locale.ROOT).endsWith(".ssf")) continue;
+                    if (behavior != null) throw new IOException("Map has multiple behavior sidecars.");
+                    behavior = file;
+                }
+                if (behavior != null) {
+                    File sourceFolder = new File(output, "Source");
+                    if (!sourceFolder.mkdir()) throw new IOException("Cannot prepare map behavior.");
+                    try (InputStream input = resolver.openInputStream(behavior.uri); OutputStream file = new FileOutputStream(new File(sourceFolder, behavior.name))) { copy(input, file, PATCH_LIMIT, cancel); }
+                }
             }
             Entry sky = child(map.uri, "Skybox");
             if (sky != null) {

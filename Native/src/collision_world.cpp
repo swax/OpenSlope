@@ -94,7 +94,7 @@ std::optional<ShapeContact> body_ray(Vec3 centre,double radius,const Transform& 
 }
 struct CollisionWorld::Data {
     struct Object{std::size_t instance{};int mode{},surface=-1,effect=-1;double mass{},bounce{};bool response=false;Transform world,inverse;Bounds box;std::shared_ptr<Proxy> proxy;std::shared_ptr<Body> body;Principal principal;};
-    std::vector<Object> objects;std::vector<Bounds> boxes;Tree tree;std::size_t triangle_count{},body_count{};
+    std::vector<Object> objects;std::vector<Bounds> boxes;std::vector<std::uint8_t> flags;Tree tree;std::size_t triangle_count{},body_count{};
     std::optional<ShapeContact> hit(const Object& object,ProbeSphere start,ProbeSphere end) const {
         if(object.mode==2)return swept_box(object.box,object.world,start,end);
         if(object.mode==1){const auto a=transform_point(object.inverse,start.centre),b=transform_point(object.inverse,end.centre);Bounds box;box.add(a);box.add(b);double factor=0;for(unsigned i=0;i<3;++i)factor+=object.inverse[i]*object.inverse[i]+object.inverse[4+i]*object.inverse[4+i]+object.inverse[8+i]*object.inverse[8+i];box=expanded(box,std::max(start.radius,end.radius)*std::sqrt(factor));std::vector<std::size_t> candidates;object.proxy->tree.query(box,candidates);std::optional<ShapeContact> best;
@@ -131,16 +131,17 @@ CollisionWorld CollisionWorld::load(const std::filesystem::path& root){
 std::vector<WorldContact> CollisionWorld::sweep(std::span<const ProbeSphere> start,std::span<const ProbeSphere> end) const {
     if(start.empty()||start.size()!=end.size()||start.size()>19)throw std::runtime_error("Invalid rider probe volume");Bounds query;for(std::size_t i=0;i<start.size();++i){if(!finite(start[i].centre)||!finite(end[i].centre)||start[i].radius<0||end[i].radius<0||!std::isfinite(start[i].radius)||!std::isfinite(end[i].radius))throw std::runtime_error("Invalid collision sphere");if(i==0&&start.size()>1)continue;const auto radius=std::max(start[i].radius,end[i].radius);query.add(expanded(Bounds{start[i].centre,start[i].centre},radius).min);query.add(expanded(Bounds{start[i].centre,start[i].centre},radius).max);query.add(expanded(Bounds{end[i].centre,end[i].centre},radius).min);query.add(expanded(Bounds{end[i].centre,end[i].centre},radius).max);}
     std::vector<std::size_t> candidates;data_->tree.query(query,candidates);std::map<std::size_t,WorldContact> contacts;
-    for(const auto index:candidates){const auto& object=data_->objects[index];if(!overlaps(query,data_->boxes[index]))continue;const auto first=object.mode==3&&start.size()>1?1u:0u,limit=object.mode==2?1u:unsigned(start.size());if(object.mode==3&&!sphere(start[0],end[0],transform_point(object.world,object.body->centre),object.body->levels[0].radius,object.principal))continue;
+    for(const auto index:candidates){const auto& object=data_->objects[index];if((!data_->flags.empty()&&!(data_->flags[object.instance]&2))||!overlaps(query,data_->boxes[index]))continue;const auto first=object.mode==3&&start.size()>1?1u:0u,limit=object.mode==2?1u:unsigned(start.size());if(object.mode==3&&!sphere(start[0],end[0],transform_point(object.world,object.body->centre),object.body->levels[0].radius,object.principal))continue;
         for(unsigned j=first;j<limit;++j)if(const auto hit=data_->hit(object,start[j],end[j])){WorldContact contact;static_cast<ShapeContact&>(contact)=*hit;contact.instance=object.instance;contact.mass=object.mass;contact.bounce=object.bounce;contact.surface=object.surface;contact.effect=object.effect;contact.response=object.response;const auto old=contacts.find(object.instance);if(old==contacts.end()||hit->t<old->second.t)contacts[object.instance]=contact;}
     }
     std::vector<WorldContact> result;for(const auto& [id,contact]:contacts){static_cast<void>(id);result.push_back(contact);}std::stable_sort(result.begin(),result.end(),[](const auto& a,const auto& b){return a.t<b.t;});return result;
 }
 std::optional<WorldContact> CollisionWorld::ray(Vec3 start,Vec3 end,bool rideable) const {
     if(!finite(start)||!finite(end))throw std::runtime_error("Invalid collision ray");Bounds query;query.add(start);query.add(end);std::vector<std::size_t> candidates;data_->tree.query(query,candidates);std::optional<WorldContact> result;
-    for(const auto index:candidates){const auto& object=data_->objects[index];if(!object.response||(rideable&&(object.surface<0||object.surface==17)))continue;
+    for(const auto index:candidates){const auto& object=data_->objects[index];if((!data_->flags.empty()&&!(data_->flags[object.instance]&2))||!object.response||(rideable&&(object.surface<0||object.surface==17)))continue;
         if(const auto hit=data_->ray_hit(object,start,end);hit&&(!result||hit->t<result->t)){WorldContact contact;static_cast<ShapeContact&>(contact)=*hit;contact.instance=object.instance;contact.surface=object.surface;contact.effect=object.effect;contact.mass=object.mass;contact.bounce=object.bounce;contact.response=object.response;if(dot(contact.normal,end-start)>0)contact.normal=-contact.normal;result=contact;}
     }return result;
 }
 std::size_t CollisionWorld::objects() const {return data_->objects.size();}std::size_t CollisionWorld::triangles() const {return data_->triangle_count;}std::size_t CollisionWorld::bodies() const {return data_->body_count;}
+void CollisionWorld::instance_flags(std::span<const std::uint8_t> flags){if(!flags.empty())for(const auto& object:data_->objects)if(object.instance>=flags.size())throw std::invalid_argument("World instance flags do not cover collision objects");data_->flags.assign(flags.begin(),flags.end());}
 }

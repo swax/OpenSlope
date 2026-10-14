@@ -17,8 +17,9 @@ AIP/SOP course paths, collision proxies/physics bodies, configured sound/music a
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
 authored prop contacts for bounce, ride surfaces and pass-through events. Animated crash recovery,
 analytic rails, timed runs, spin/flip/rail scoring and the visible stick figure are implemented. Quest starts on foot
-beside the board, with walking/jumping and nearby mounting. Live prop behavior, executable audio
-resolvers, grabs, pickups/uber tiers, AI races and multiplayer remain later stages. See
+beside the board, with walking/jumping and nearby mounting. Authored reset volumes, multiplier pickups, mode hides and graph-triggered sound
+now run through the shared world logic. Full live prop behavior, executable audio
+resolvers, grabs, uber tiers, AI races and multiplayer remain later stages. See
 [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 ## Build and try on Windows
@@ -56,6 +57,11 @@ authored respawn path, with safe course/trail fallbacks for custom maps. They
 preserve the run clock and banked score. See [course recovery](docs/course-recovery.md)
 for the supported placement rules, shared desktop/VR hold and fade, and remaining
 world-trigger work.
+Authored world contacts now dispatch portable effect graphs, including Showoff
+gems, course reset, mode hides/rail toggles, waits and sound. Existing native
+imports use their saved behavior sidecar without re-import. See
+[world logic](docs/world-logic.md) for compatibility, verification and remaining
+property/region lifecycle work.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

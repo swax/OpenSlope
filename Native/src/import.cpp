@@ -5,6 +5,7 @@
 #include "openslope/rails.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/collision.hpp"
+#include "openslope/world_logic.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <array>
@@ -203,7 +204,7 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     // model format, with its own art bank and no world-placement linker.
     const bool sky=files.contains(stem+"_SKY.PBD")||files.contains(stem+"_SKY.SSH");
     if(sky){notify("Converting camera-centred sky panorama");const auto& geometry=member(files,stem+"_SKY.PBD");pbd_header(Bytes{geometry});const auto art=import_detail::decode_ssh(member(files,stem+"_SKY.SSH"),false,cancelled);std::filesystem::create_directories(output/"Skybox/Textures");for(const auto& image:art)import_detail::write_png(output/"Skybox/Textures"/(image.name+".png"),image);import_detail::write_props(geometry,{},art,nullptr,output/"Skybox",cancelled,true);outputs.push_back("Skybox");}
-    if(behavior!=files.end()){notify("Converting authored collision and physics pools");import_detail::write_collision(behavior->second,output,cancelled);outputs.push_back("Collision");outputs.push_back("Physics.json");}
+    if(behavior!=files.end()){notify("Converting authored collision, physics and effect graphs");import_detail::write_collision(behavior->second,output,cancelled);import_detail::write_logic(behavior->second,output,stem,cancelled);outputs.push_back("Collision");outputs.push_back("Physics.json");outputs.push_back("Effects.json");}
     for(const auto kind:{"AIP","SOP"}){const auto it=files.find(stem+"."+kind);if(it!=files.end()){notify(std::string("Converting ")+kind+" paths");const auto name=std::string(kind)+".json";import_detail::write_paths(it->second,output/name,cancelled);outputs.push_back(name);}}
     notify("Converting course audio");const auto audio=import_detail::write_course_audio(disc,stem,files,output,progress,cancelled);if(audio)outputs.push_back("Audio");
     const auto directories=disc_directory(disc,"DATA");if(std::any_of(directories.begin(),directories.end(),[](const auto& e){return e.directory&&upper(e.name)=="TEXTURES";})){
@@ -219,6 +220,6 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     std::filesystem::create_directory(output/"Source");for(const auto& [name,bytes]:files){notify("Saving source "+name);std::ofstream stream(output/"Source"/name,std::ios::binary);stream.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));if(!stream)throw std::runtime_error("Cannot write source sidecar");}
     Json deferred={"live-object-effects","effects","world","audio-resolvers","audio-runtime"};if(behavior==files.end())deferred.push_back("rail-candidacy");if(!sky)deferred.push_back("skybox");if(!audio)deferred.push_back("audio-assets");
     write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",outputs},{"Deferred",deferred}});
-    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));static_cast<void>(World::load(output));static_cast<void>(Rails::load(output));static_cast<void>(CoursePaths::load(output));static_cast<void>(CollisionWorld::load(output));cleanup.complete=true;
+    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));static_cast<void>(World::load(output));static_cast<void>(Rails::load(output));static_cast<void>(CoursePaths::load(output));static_cast<void>(CollisionWorld::load(output));static_cast<void>(WorldLogic::load(output));cleanup.complete=true;
 }
 }

@@ -20,6 +20,8 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes,bool lightmap,
 void write_png(const std::filesystem::path& path,const Image& image);
 void write_paths(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const ImportCancel& cancelled);
 void write_collision(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const ImportCancel& cancelled);
+std::string logic_document(std::span<const std::uint8_t> bytes,const std::string& course,const ImportCancel& cancelled={});
+void write_logic(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const std::string& course,const ImportCancel& cancelled);
 void write_rails(const std::vector<std::uint8_t>& geometry,const std::vector<std::uint8_t>& linker,const std::vector<std::uint8_t>* behavior,const std::filesystem::path& output,const ImportCancel& cancelled);
 void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,
                  const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,

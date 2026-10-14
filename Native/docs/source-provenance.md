@@ -104,3 +104,10 @@ fallback/boundary choices, post-placement fade-in and clock-expiry policy are
 explicit in course-recovery.md, alongside the remaining viewport effect and
 world triggers. The shared Vulkan fade uses standard shader colour scaling.
 Local course files supply validation data only.
+
+World logic is independently authored from clean 150/230/390 and first-party
+Effects v1 interfaces and public behavioral tests. Source words and typed node
+payloads are compared only against generated Maps data; no decoder source is
+consulted. Integer-encoded payload words retain their portable data contract.
+The bounded scheduler, runtime instance flags, collision ordering, Vulkan prop
+filter and sound dispatch are new native code. See world-logic.md for scope.

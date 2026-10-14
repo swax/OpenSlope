@@ -57,7 +57,8 @@ refused. This terminal transition is an application policy that avoids revealing
 the old unsafe position after a partial fade. Positive score results survive
 zero-point terrain skips, resets and event expiry.
 
-The original world grid death plane, bounce/hard-impact accumulators, authored reset-node dispatch,
+Authored reset-node dispatch is connected in 0.24; see world-logic.md. The
+original world grid death plane, bounce/hard-impact accumulators,
 AI path-selection/rubber-banding and multi-rider forward bias remain outstanding.
 On-foot falling retains its existing application recovery. Path selection here is
 an independently authored geometric player tracker, not the complete AI tracker.

@@ -25,9 +25,9 @@ std::vector<unsigned char> read_capture(VulkanRenderer& renderer,const std::file
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
 }
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={},float fade=0) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={},float fade=0,std::span<const std::uint8_t> flags={}) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet,{},fade);return read_capture(renderer,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet,{},fade,flags);return read_capture(renderer,output);
 }
 void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array<int,3> expected) {
     const auto x=unsigned((.1+.8*u)*128),y=unsigned((.1+.8*v)*128);
@@ -146,6 +146,10 @@ int main(int argc,char** argv) {
                 for(const auto* pixels:{&a,&b}){std::size_t partial=0;for(std::size_t p=0;p<pixels->size();p+=3)if((*pixels)[p]>90&&(*pixels)[p]<240)++partial;++checks;if((first.samples()>1)!=(partial>0))throw std::runtime_error("MSAA resolve did not produce expected geometric edge coverage");}
                 first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,1);capture(first,root/"aa-recreated.ppm",camera);
                 continue;
+            }
+            if(std::string(name)=="props")for(auto* renderer:{&first,&second}){
+                const std::array<std::uint8_t,5> hidden{};const auto pixels=capture(*renderer,root/"runtime-hidden.ppm",camera,{},{},{},{},0,hidden);pixel(pixels,.25,.5,{40,80,120});pixel(pixels,.75,.5,{40,80,120});++checks;if(renderer->stats().visible_props||renderer->stats().prop_draws)throw std::runtime_error("Tombstoned props still draw");
+                bool refused=false;try{const std::array<std::uint8_t,1> bad{};capture(*renderer,root/"bad-flags.ppm",camera,{},{},{},{},0,bad);}catch(const std::invalid_argument&){refused=true;}++checks;if(!refused)throw std::runtime_error("Short runtime flags were accepted");capture(*renderer,root/"runtime-restored.ppm",camera);
             }
             for(const auto* pixels:{&a,&b}) {
                 if(std::string(name)=="minification") {

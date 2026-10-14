@@ -9,8 +9,10 @@
 #include "score.hpp"
 #include "vr_controls.hpp"
 #include "course_recovery.hpp"
+#include "world_logic.hpp"
 #include <deque>
 #include <map>
+#include <set>
 #include <functional>
 
 namespace openslope {
@@ -70,6 +72,8 @@ public:
     const RidingEffects& effects() const {return effects_;}
     const CollisionWorld& world() const {return world_;}
     const std::vector<ContactEvent>& contacts() const {return contact_events_;}
+    const WorldLogic& logic() const {return logic_;}
+    const std::vector<WorldAction>& world_actions() const {return world_actions_;}
     Vec3 camera_position(Vec3 desired) const;
     void observe_ticks(std::function<void(const Player&,const Rider&)> observer){tick_observer_=std::move(observer);}
     std::uint64_t placement_serial() const {return placement_serial_;}
@@ -94,6 +98,12 @@ private:
     CollisionWorld world_;
     Rails rails_;
     CourseRun run_;
+    WorldLogic logic_;
+    std::vector<WorldAction> world_actions_;
+    void apply_world_actions();
+    std::set<std::size_t> logic_contacts_;
+    void dispatch_world_contact(const WorldContact& contact,double speed);
+    bool request_course_recovery(bool manual,bool authored);
     CourseRecovery course_recovery_;
     std::optional<RecoveryPose> last_recovery_;
     struct RecoveryPlacement {RecoveryPose target;Vec3 point,normal;bool foot=false;};

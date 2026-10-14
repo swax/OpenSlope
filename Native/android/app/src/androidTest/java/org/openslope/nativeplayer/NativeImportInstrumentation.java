@@ -43,6 +43,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(extracted, "Textures/particle-spry.png").isFile(), "JNI imports named spray sheet art");
             require(new File(extracted, "Patches.json").isFile() && new File(extracted, "Textures/0000.png").isFile(), "JNI writes canonical map files");
             require(new File(extracted, "Splines.json").isFile(), "JNI imports spline geometry and behavior candidacy");
+            require(new File(extracted, "Effects.json").isFile(), "JNI imports portable effect graphs and instance bindings");
             require(new File(extracted, "Skybox/Meshes/0.obj").isFile() && new File(extracted, "Skybox/Textures/0000.png").isFile(), "JNI imports separate sky geometry and texture bank");
             try (OutputStream file = new FileOutputStream(new File(extracted, "World.json"))) { file.write("{\"Schema\":\"openslope-world/v1\",\"SkyColor\":[90,110,130],\"Fog\":{\"Enabled\":false}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
             try (OutputStream file = new FileOutputStream(new File(extracted, "RiderAnimations.json"))) { file.write("{\"Schema\":\"openslope-rider-animation/v1\",\"GetUp\":[{\"Time\":0,\"Standing\":0,\"Crouch\":1,\"Height\":0.3},{\"Time\":1,\"Standing\":1,\"Crouch\":0,\"Height\":0,\"Event\":\"get-up-finished\"}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
@@ -75,6 +76,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(prepared,"Slopesmith.json").isFile(),"SAF cache preserves authored lap and showoff settings");
             require(new File(prepared, "Collision/0.obj").isFile() && new File(prepared, "Collision/1.obj").isFile(), "SAF cache includes every collision payload");
             require(new File(prepared, "Physics.json").isFile(), "SAF cache includes independent physics metadata");
+            require(new File(prepared, "Effects.json").isFile(), "SAF cache preserves the playable effect graphs");
             require(new File(prepared, "RidingEffects.json").isFile() && new File(prepared, "Textures/particle-part.png").isFile(), "SAF cache includes referenced riding sprite assets");
             require(new File(prepared, "Textures/particle-tral.png").isFile(), "SAF cache includes the referenced wake texture");
             require(new File(prepared, "Textures/particle-spry.png").isFile(), "SAF cache includes the referenced spray sheet texture");
@@ -94,6 +96,11 @@ public final class NativeImportInstrumentation extends Instrumentation {
             final int[] probes = {0}; rejected = false; String cancelled = "Cancelled " + UUID.randomUUID();
             try { documents.publish(cancelled, extracted, () -> { if (++probes[0] > 3) throw new IOException("cancelled"); }); } catch (IOException e) { rejected = true; }
             require(rejected && !documents.exists(cancelled), "Cancelled SAF import is not published");
+            MapLibrary.Entry effects = documents.child(selected.uri, "Effects.json");
+            require(effects != null && DocumentsContract.deleteDocument(getContext().getContentResolver(), effects.uri), "Remove authored graph fixture to exercise old-import fallback");
+            File oldPrepared = documents.prepare(selected, temporary, () -> {});
+            require(new File(oldPrepared, "Source/FIXTURE.SSF").isFile() && new File(oldPrepared, "Source").list().length == 1, "Old SAF import caches only its bounded behavior sidecar");
+            invoke(activity, "nativeValidate", new Class<?>[]{String.class}, oldPrepared.getAbsolutePath());
             DocumentsContract.deleteDocument(getContext().getContentResolver(), selected.uri);
             results.putString("stream", "PASS: " + checks + " device-side JNI, custom-library and SAF checks\n");
         } catch (Throwable e) { results.putString("stream", "FAIL: " + e + "\n"); code=Activity.RESULT_CANCELED; }

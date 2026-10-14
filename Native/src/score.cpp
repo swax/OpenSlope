@@ -32,7 +32,7 @@ void TrickScore::land(){
     preview();status_.banked+=status_.preview;
     // The shared play profile fills from rounded, unmultiplied style points only.
     status_.meter=std::clamp(status_.meter+double(style_points(status_.style,1))/10000,0.,1.);
-    if(status_.preview>0){status_.result=status_.preview;status_.bailed=false;status_.loss=ScoreLoss::None;status_.result_age=0;++status_.resolution;}clear_combo(true);
+    const bool scored=status_.preview>0;if(scored){status_.result=status_.preview;status_.bailed=false;status_.loss=ScoreLoss::None;status_.result_age=0;++status_.resolution;}clear_combo(scored);
 }
 void TrickScore::lose(ScoreLoss reason,double penalty){
     if(!std::isfinite(penalty)||penalty<0||penalty>1)throw std::invalid_argument("Invalid score penalty");if(!status_.active)return;
@@ -48,6 +48,7 @@ std::int64_t TrickScore::finish(){
 std::string score_readout(const TrickScore& score){
     const auto& s=score.status();std::string text="SCORE "+std::to_string(s.banked);
     if(s.preview)text+=" +"+std::to_string(s.preview);else if(s.resolution&&s.result_age<3)text+=s.bailed?" LOST "+std::to_string(s.result):" BANKED "+std::to_string(s.result);
+    if(s.multiplier>1)text+=" X"+std::to_string(s.multiplier);
     return text;
 }
 }

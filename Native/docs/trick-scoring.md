@@ -32,14 +32,14 @@ from rounded **unmultiplied style points / 10000**. Consequently a 360 adds exac
 0.17, irrespective of its gem tier. Flat big-air points fill nothing. This matches
 those public examples; it does not claim the complete clean 360 character-stat
 formula, flip divisor, passive airborne bleed or uber/infinite tier escalation.
-Those remain explicit work. Multiplier arithmetic is tested, but collecting,
-mode-gating, hiding and sounding actual gems requires the unfinished world-logic
-consumer. Named tricks, held-board grabs/flat hold tiers, live rail energy
+Those remain explicit work. Actual gems now collect through authored shape
+contacts, apply the Showoff gate, tombstone draw/collision and chime through the
+MAIN bank; see world-logic.md. Unscored hops preserve the tier until a scored bank. Named tricks, held-board grabs/flat hold tiers, live rail energy
 registration, trick/boost audio, score pickups, score targets and a complete HUD
 remain outstanding. The existing application air-boost aiming also remains a
 separate parity gap.
 
-Validation: 60 portable checks include production analytic touchdown, bad landing,
+Validation: 62 portable checks include production analytic touchdown, bad landing,
 manual reset, countdown/restart, on-foot exclusion, empty-meter physics gating and
 VR readouts. Four production Vulkan replays render 1311 frames through bank,
 crash, manual reset and midair timed finish, checking frozen results and energy.

@@ -46,8 +46,10 @@ physical response separately. A zero-mass or bounce-disabled shape can emit an
 event without changing velocity. A crossed trigger emits begin, followed by end
 on the next clear tick; continuing overlap emits stay rather than repeated begin.
 Reset/warp clears contact history. Audio consumes the event stream through
-portable map routes. Executable sound resolution, authored graphs, reset-volume
-logic, pickups, break/rearm and live rigid-body activation remain outstanding.
+portable map routes. Authored graphs now drive reset volumes, multiplier pickups,
+mode hides/rail toggles and direct sounds; shared tombstones filter draw and
+collision together. See world-logic.md. Executable sound resolution, full
+property/region lifecycle, break/rearm and live rigid-body activation remain.
 
 The specified hard-impact threshold enters motion 5 / control 19. Ordinary drive,
 charge and airborne trick input stop, while velocity and surface contact continue.
@@ -55,8 +57,9 @@ The desktop title shows wipeout/recovery and get-up progress. A first-party
 pose now animates the shared tumble/relative get-up path, and the get-up track
 emits completion to restore control. Hard landings and unrideable-surface triggers are also connected; see
 [crash recovery](crash-recovery.md) for provisional thresholds, pose tuning and
-run gating. Original character/tumble fidelity and full path/fade reset remain
-outstanding. R still exits explicitly.
+run gating. Nearby path/fade recovery and authored reset entry are implemented;
+see course-recovery.md. Original character/tumble fidelity and remaining reset
+triggers are still outstanding. R still exits explicitly.
 
 The desktop chase camera shortens its arm against terrain and solid prop rays,
 with 15 cm clearance. This is a point-ray obstruction check; camera-radius
