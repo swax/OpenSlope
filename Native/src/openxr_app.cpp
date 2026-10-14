@@ -195,7 +195,7 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
                     const auto up=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,1,0}));
                     if(i==0)audio.listener({eye_position,forward,up});
                     const auto matrix=projection(std::tan(camera.fov.angleLeft),std::tan(camera.fov.angleRight),std::tan(camera.fov.angleDown),std::tan(camera.fov.angleUp))*view(eye_position,forward,up);
-                    eye.renderer->render(image,matrix,board_transform(body,player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,{},{},eye_position,player.effects().sprites(),player.effects().wake(),player.effects().sheet());
+                    eye.renderer->render(image,matrix,board_transform(player.render_board_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,{},{},eye_position,player.effects().sprites(),player.effects().wake(),player.effects().sheet());
                     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};xr_check(xrReleaseSwapchainImage(eye.swapchain,&release),"Release eye image");
                     projections[i].pose=camera.pose;projections[i].fov=camera.fov;projections[i].subImage.swapchain=eye.swapchain;projections[i].subImage.imageRect.extent={std::int32_t(eye.width),std::int32_t(eye.height)};
                 }

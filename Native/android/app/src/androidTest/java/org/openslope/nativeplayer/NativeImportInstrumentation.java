@@ -43,6 +43,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(extracted, "Patches.json").isFile() && new File(extracted, "Textures/0000.png").isFile(), "JNI writes canonical map files");
             require(new File(extracted, "Skybox/Meshes/0.obj").isFile() && new File(extracted, "Skybox/Textures/0000.png").isFile(), "JNI imports separate sky geometry and texture bank");
             try (OutputStream file = new FileOutputStream(new File(extracted, "World.json"))) { file.write("{\"Schema\":\"openslope-world/v1\",\"SkyColor\":[90,110,130],\"Fog\":{\"Enabled\":false}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            try (OutputStream file = new FileOutputStream(new File(extracted, "RiderAnimations.json"))) { file.write("{\"Schema\":\"openslope-rider-animation/v1\",\"GetUp\":[{\"Time\":0,\"Standing\":0,\"Crouch\":1,\"Height\":0.3},{\"Time\":1,\"Standing\":1,\"Crouch\":0,\"Height\":0,\"Event\":\"get-up-finished\"}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
             File local = new File(temporary, "Maps"); local.mkdir();
             MapLibrary direct = new MapLibrary(context.getContentResolver(), local, null); direct.publish("Custom course", extracted, () -> {});
             require(direct.maps().size() == 1, "Custom maps discovered without ISO selection");
@@ -61,6 +62,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(prepared, "Meshes/0.obj").isFile(), "SAF cache includes imported prop geometry");
             for (String metadata : new String[]{"Models.json", "Materials.json"}) require(new File(prepared, "Skybox/" + metadata).isFile(), "SAF cache includes model-only sky metadata");
             require(new File(prepared, "World.json").isFile() && new File(prepared, "Skybox/Meshes/0.obj").isFile() && new File(prepared, "Skybox/Textures/0000.png").isFile(), "SAF cache retains authored world settings and nested sky assets");
+            require(new File(prepared, "RiderAnimations.json").isFile(), "SAF cache retains authored pose tracks and completion events");
             require(new File(prepared, "Collision/0.obj").isFile() && new File(prepared, "Collision/1.obj").isFile(), "SAF cache includes every collision payload");
             require(new File(prepared, "Physics.json").isFile(), "SAF cache includes independent physics metadata");
             require(new File(prepared, "RidingEffects.json").isFile() && new File(prepared, "Textures/particle-part.png").isFile(), "SAF cache includes referenced riding sprite assets");

@@ -21,7 +21,7 @@ declares both activity modes and Horizon OS 69+ hybrid support, following
 
 Document URIs are opaque identifiers, never converted to guessed filesystem paths. Folder listing
 and publication use `DocumentsContract`. For playback, the selected `Patches.json`, optional complete
-prop JSON set, optional AIP/SOP, Physics/SSFLogic and World metadata, optional model-only Skybox tables, and only their referenced `Textures/`, `Lightmaps/`, `Meshes/`, `Collision/` and `Skybox/Textures`/`Skybox/Meshes` assets are copied
+prop JSON set, optional AIP/SOP, Physics/SSFLogic, World and RiderAnimations metadata, optional model-only Skybox tables, and only their referenced `Textures/`, `Lightmaps/`, `Meshes/`, `Collision/` and `Skybox/Textures`/`Skybox/Meshes` assets are copied
 into an isolated application cache directory. C++ readers provide the reference list, keeping
 Java independent of map-record parsing. Separate encoded image/geometry budgets are 256 MiB each;
 render meshes and collision proxies share the geometry budget.

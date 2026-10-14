@@ -3,19 +3,23 @@
 #include "terrain.hpp"
 #include "collision.hpp"
 #include "riding_effects.hpp"
+#include "animation.hpp"
 #include <deque>
 #include <map>
 #include <functional>
 
 namespace openslope {
 struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; }; // Left steer; positive posture is tuck/forward flip.
-enum class Motion {Air=1,Ground=2,Wipeout=5};
-enum class Control {Cruise=3,Release=10,Air=13,Charge=14,Launched=16,Wipeout=19};
+enum class Motion {Air=1,Ground=2,Wipeout=5,RecoverContact=6};
+enum class Control {Cruise=3,Release=10,Air=13,Charge=14,Launched=16,Wipeout=19,RecoverWait=20};
+enum class CrashCause {None,PropImpact,Landing,Unrideable};
 struct PlayTuning {
     // Desktop application defaults where the clean specification is open.
     double charge_rate=2.5,brake_acceleration=18,flip_recovery_rate=720;
     unsigned jump_stat=255;
     double body_radius=.85;
+    double hard_landing_speed=28,unrideable_speed=5;
+    double tumble_ground_drag=8,tumble_air_drag=1.2,settle_angular_speed=.9,settle_normal_speed=1.5,settle_hold=.2;
 };
 struct Rider {
     Vec3 position,previous_position,velocity,forward{0,0,-1},normal{0,1,0},smoothed_up{0,1,0},board_up{0,1,0};
@@ -25,6 +29,8 @@ struct Rider {
     int surface=1;
     bool grounded=false;
     unsigned world_contacts{},bounces{},hard_impacts{};
+    unsigned crashes{},recoveries{};CrashCause crash_cause=CrashCause::None;
+    double crash_age{},crash_contact_age{},recovery_standing{},recovery_height{};
     std::optional<std::size_t> ground_instance;
 };
 enum class ContactPhase {Begin,Stay,End};
@@ -39,6 +45,7 @@ public:
     void tick(const RideInput& input);
     void advance(double seconds,const RideInput& input);
     Vec3 render_position() const;
+    Vec3 render_board_position() const;
     Vec3 render_forward() const;
     Vec3 render_up() const;
     Vec3 camera_forward() const;
@@ -53,6 +60,9 @@ public:
     Vec3 camera_position(Vec3 desired) const;
     void observe_ticks(std::function<void(const Player&,const Rider&)> observer){tick_observer_=std::move(observer);}
     std::uint64_t placement_serial() const {return placement_serial_;}
+    bool recovering() const {return rider_.control==Control::Wipeout||rider_.control==Control::RecoverWait;}
+    void run_active(bool active){run_active_=active;}
+    bool run_active() const {return run_active_;}
 private:
     Terrain terrain_;
     CollisionWorld world_;
@@ -60,9 +70,13 @@ private:
     FixedClock clock_;
     Rider rider_;
     RidingEffects effects_;
+    PoseAnimation get_up_;
     PlayTuning tuning_;
     Vec3 spawn_position_,spawn_forward_;
     Vec3 flight_heading_{0,0,-1};
+    Vec3 recovery_forward_{0,0,-1},recovery_camera_{0,0,-1},tumble_velocity_{},get_up_forward_{0,0,-1},get_up_up_{0,1,0};
+    double settled_=0;
+    bool run_active_=false;
     bool jump_held_=false,reset_held_=false;
     double jump_cooldown_=0,air_grace_=0;
     std::deque<bool> jump_edges_;
@@ -78,6 +92,9 @@ private:
     void sample_input(const RideInput& input);
     void land(const GroundContact& hit);
     void enter_air();
+    void crash(CrashCause cause,Vec3 normal);
+    void begin_recovery();
+    bool update_recovery();
     void notify_tick(const Rider& before);
 };
 }

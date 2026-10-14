@@ -243,6 +243,8 @@ rails/races/tricks, presentation, audio/effects and graphics/performance remain 
 desktop-parity.md matrix. The user reports successful initial Quest play on 0.14.0.
 Targeted headset checks continue alongside desktop implementation. Sky import,
 camera-centred panorama and fog are described in [world appearance](docs/world-appearance.md).
+Hard landings, prop crashes and animated relative get-up are described in
+[crash recovery](docs/crash-recovery.md), including provisional pose/physics tuning.
 Keep platform file access behind the application host,
 so the readers and gameplay core can also be compiled for desktop tools or WebAssembly.
 

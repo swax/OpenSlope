@@ -45,16 +45,18 @@ Begin/stay/end events retain instance, effect slot, surface, shape contact and
 physical response separately. A zero-mass or bounce-disabled shape can emit an
 event without changing velocity. A crossed trigger emits begin, followed by end
 on the next clear tick; continuing overlap emits stay rather than repeated begin.
-Reset/warp clears contact history. The event stream is ready for effect/audio
-consumers; authored graphs, contact sounds, reset-volume logic, pickups,
-break/rearm and live rigid-body activation are not implemented by these events.
+Reset/warp clears contact history. Audio consumes the event stream through
+portable map routes. Executable sound resolution, authored graphs, reset-volume
+logic, pickups, break/rearm and live rigid-body activation remain outstanding.
 
 The specified hard-impact threshold enters motion 5 / control 19. Ordinary drive,
 charge and airborne trick input stop, while velocity and surface contact continue.
-The desktop title displays `Wipeout - R to reset`. The visible rider, tumble pose,
-relative get-up and animation-completion recovery remain outstanding. There is no
-timer standing in for the get-up clip. Hard landings and unrideable-surface crash
-triggers remain separate missing cases. R is the current explicit exit.
+The desktop title shows wipeout/recovery and get-up progress. A first-party
+pose now animates the shared tumble/relative get-up path, and the get-up track
+emits completion to restore control. Hard landings and unrideable-surface triggers are also connected; see
+[crash recovery](crash-recovery.md) for provisional thresholds, pose tuning and
+run gating. Original character/tumble fidelity and full path/fade reset remain
+outstanding. R still exits explicitly.
 
 The desktop chase camera shortens its arm against terrain and solid prop rays,
 with 15 cm clearance. This is a point-ray obstruction check; camera-radius
