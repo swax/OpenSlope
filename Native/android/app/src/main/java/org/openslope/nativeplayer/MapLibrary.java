@@ -83,11 +83,22 @@ final class MapLibrary {
             Entry patches = child(map.uri, "Patches.json");
             if (patches == null || patches.directory) throw new IOException("This map has no Patches.json.");
             try (InputStream input = resolver.openInputStream(patches.uri); OutputStream file = new FileOutputStream(new File(output, "Patches.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
-            for (String name : new String[]{"Models.json", "Instances.json", "Materials.json", "AIP.json", "SOP.json", "RidingEffects.json", "Physics.json", "SSFLogic.json"}) {
+            for (String name : new String[]{"Models.json", "Instances.json", "Materials.json", "AIP.json", "SOP.json", "RidingEffects.json", "Physics.json", "SSFLogic.json", "World.json"}) {
                 cancel.check(); Entry metadata = child(map.uri, name);
                 if (metadata == null) continue;
                 if (metadata.directory) throw new IOException("Map metadata is a folder: " + name);
                 try (InputStream input = resolver.openInputStream(metadata.uri); OutputStream file = new FileOutputStream(new File(output, name))) { copy(input, file, PATCH_LIMIT, cancel); }
+            }
+            Entry sky = child(map.uri, "Skybox");
+            if (sky != null) {
+                if (!sky.directory) throw new IOException("Skybox must be a folder.");
+                File skyFolder = new File(output, "Skybox");
+                if (!skyFolder.mkdir()) throw new IOException("Cannot prepare sky backdrop.");
+                for (String name : new String[]{"Models.json", "Materials.json"}) {
+                    cancel.check(); Entry metadata = child(sky.uri, name);
+                    if (metadata == null || metadata.directory) throw new IOException("Missing sky metadata: " + name);
+                    try (InputStream input = resolver.openInputStream(metadata.uri); OutputStream file = new FileOutputStream(new File(skyFolder, name))) { copy(input, file, PATCH_LIMIT, cancel); }
+                }
             }
             Entry audio = child(map.uri, "Audio");
             if (audio != null) {
@@ -110,23 +121,26 @@ final class MapLibrary {
                 cancel.check(); String relative;
                 try { relative = images.getString(i); } catch (JSONException e) { throw new IOException("Invalid map image reference.", e); }
                 String[] parts = relative.split("/", -1);
-                if (parts.length != 2 || !(parts[0].equals("Textures") || parts[0].equals("Lightmaps") || parts[0].equals("Meshes") || parts[0].equals("Collision")) || !safeName(parts[1])) throw new IOException("Unsafe map asset reference.");
-                Map<String, Entry> files = folders.get(parts[0]);
+                boolean skyAsset = parts.length == 3 && parts[0].equals("Skybox") && (parts[1].equals("Textures") || parts[1].equals("Meshes"));
+                boolean worldAsset = parts.length == 2 && (parts[0].equals("Textures") || parts[0].equals("Lightmaps") || parts[0].equals("Meshes") || parts[0].equals("Collision"));
+                if (!(skyAsset || worldAsset) || !safeName(parts[parts.length - 1])) throw new IOException("Unsafe map asset reference.");
+                String folderName = skyAsset ? parts[0] + "/" + parts[1] : parts[0], filename = parts[parts.length - 1];
+                Map<String, Entry> files = folders.get(folderName);
                 if (files == null) {
-                    files = new HashMap<>(); Entry folder = child(map.uri, parts[0]);
+                    files = new HashMap<>(); Entry folder = child(skyAsset ? sky.uri : map.uri, skyAsset ? parts[1] : parts[0]);
                     if (folder != null) {
-                        if (!folder.directory) throw new IOException(parts[0] + " must be a folder.");
+                        if (!folder.directory) throw new IOException(folderName + " must be a folder.");
                         for (Entry entry : children(folder.uri)) files.put(entry.name, entry);
                     }
-                    folders.put(parts[0], files);
+                    folders.put(folderName, files);
                 }
-                Entry image = files.get(parts[1]);
-                if (image == null) { if (parts[0].equals("Meshes") || parts[0].equals("Collision")) throw new IOException("Missing map mesh: " + parts[1]); continue; }
-                if (image.directory) throw new IOException("Map image is a folder: " + parts[1]);
-                File directory = new File(output, parts[0]);
+                boolean mesh = (skyAsset ? parts[1] : parts[0]).equals("Meshes") || parts[0].equals("Collision");
+                Entry image = files.get(filename);
+                if (image == null) { if (mesh) throw new IOException("Missing map mesh: " + relative); continue; }
+                if (image.directory) throw new IOException("Map asset is a folder: " + relative);
+                File directory = new File(output, folderName);
                 if (!directory.isDirectory() && !directory.mkdir()) throw new IOException("Cannot prepare map images.");
-                boolean mesh = parts[0].equals("Meshes") || parts[0].equals("Collision");
-                try (InputStream input = resolver.openInputStream(image.uri); OutputStream file = new FileOutputStream(new File(directory, parts[1]))) { long copied = copy(input, file, Math.min(IMAGE_LIMIT, IMAGE_BUDGET - (mesh ? meshes : total)), cancel); if (mesh) meshes += copied; else total += copied; }
+                try (InputStream input = resolver.openInputStream(image.uri); OutputStream file = new FileOutputStream(new File(directory, filename))) { long copied = copy(input, file, Math.min(IMAGE_LIMIT, IMAGE_BUDGET - (mesh ? meshes : total)), cancel); if (mesh) meshes += copied; else total += copied; }
             }
             cancel.check();
             return output;

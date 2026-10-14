@@ -22,7 +22,7 @@ void write_paths(const std::vector<std::uint8_t>& bytes,const std::filesystem::p
 void write_collision(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const ImportCancel& cancelled);
 void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,
                  const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,
-                 const std::filesystem::path& output,const ImportCancel& cancelled);
+                 const std::filesystem::path& output,const ImportCancel& cancelled,bool anonymous=false);
 bool write_course_audio(const DiscInput& disc,const std::string& course,
                         const std::map<std::string,std::vector<std::uint8_t>>& files,
                         const std::filesystem::path& output,const ImportProgress& progress,

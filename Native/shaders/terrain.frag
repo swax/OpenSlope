@@ -4,9 +4,10 @@ layout(location=1) in vec2 textureUV;
 layout(location=2) in vec2 lightmapUV;
 layout(location=3) flat in vec4 lightmapTile;
 layout(location=4) in float effectAlpha;
+layout(location=5) in vec3 worldPosition;
 layout(set=0,binding=0) uniform sampler2D diffuseImage;
 layout(set=0,binding=1) uniform sampler2D lightmapImage;
-layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; } transform;
+layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; } transform;
 layout(location=0) out vec4 colour;
 void main() {
     vec3 displayColour=vertexColour;
@@ -30,6 +31,12 @@ void main() {
             vec4 lighting=texture(lightmapImage,uv);
             displayColour=clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
         }
+    }
+    if(transform.options.x!=7&&transform.eyeEnd.w>transform.fogColourStart.w){
+        float fog=clamp((length(worldPosition-transform.eyeEnd.xyz)-transform.fogColourStart.w)/(transform.eyeEnd.w-transform.fogColourStart.w),0.0,1.0);
+        if(transform.options.x==4||transform.options.x==6)displayColour*=1.0-fog;
+        else if(transform.options.x==5)alpha*=1.0-fog;
+        else displayColour=mix(displayColour,transform.fogColourStart.rgb,fog);
     }
     // Byte-domain terrain blend above; convert only for an sRGB attachment,
     // whose hardware write converts linear output back to display values.

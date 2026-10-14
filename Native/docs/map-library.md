@@ -21,7 +21,7 @@ declares both activity modes and Horizon OS 69+ hybrid support, following
 
 Document URIs are opaque identifiers, never converted to guessed filesystem paths. Folder listing
 and publication use `DocumentsContract`. For playback, the selected `Patches.json`, optional complete
-prop JSON set, optional AIP/SOP and Physics/SSFLogic metadata, and only their referenced `Textures/`, `Lightmaps/`, `Meshes/` and `Collision/` assets are copied
+prop JSON set, optional AIP/SOP, Physics/SSFLogic and World metadata, optional model-only Skybox tables, and only their referenced `Textures/`, `Lightmaps/`, `Meshes/`, `Collision/` and `Skybox/Textures`/`Skybox/Meshes` assets are copied
 into an isolated application cache directory. C++ readers provide the reference list, keeping
 Java independent of map-record parsing. Separate encoded image/geometry budgets are 256 MiB each;
 render meshes and collision proxies share the geometry budget.
@@ -34,7 +34,10 @@ routing sidecar when present. See audio-playback.md. Maps without prop tables
 remain valid terrain-only courses.
 
 The alternative app Maps root is `Android/data/org.openslope.nativeplayer/files/Maps` in external
-application storage. Courses copied there over USB/ADB are listed with the same rule. The system
+application storage. Courses written there by the application are listed with the same rule. ADB
+may not create app-readable files in this directory on Quest firmware; use a
+public Downloads ISO and the app's normal import flow, or a selected SAF Maps
+folder, when direct transfer is restricted. The system
 folder picker cannot choose Android/data on current Android versions, so **Use app Maps folder**
 selects this root directly. Missing/moved folders and revoked grants ask the user to choose again.
 
@@ -64,6 +67,7 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Instances.json` | Model IDs, names, raw placement TRS/matrix, lighting, authored visibility, collision/response flags, mass/bounce/surface, proxy paths, physics index and effect slot. When ADL is present, serialized manifest hashes join `IncludeSound`/`Sounds` and typed external emitters. |
 | `Collision/*.obj`, `Physics.json` | All SSF pool payloads; raw proxy positions and normals, preserved physics centre/inertia, level records and raw/RLE mask bytes. Models carry source local `CollisionBounds`. Older exported physics data in `SSFLogic.json` also loads. |
 | `Materials.json` | Static base-texture references and flags; neutral labels, with remaining material behavior fields deferred. |
+| `Skybox/` (when present) | Separate model/material/OBJ/PNG panorama. Camera-local rendering needs no placement or ring metadata; see world-appearance.md. |
 | `AIP.json`, `SOP.json` (when present) | Existing start-slot, AI/race-line and event contracts; expanded displacement steps, raw seeds, DTF and path attributes. Runtime retains the seed vertex and uses the middle start slot. |
 | `RidingEffects.json`, `Textures/particle-*.png` (when the shared particle bank is present) | Native optional profile and named particle art. Playback references independent optional puff/wake/sheet slots; the cache copies their images and metadata. Sprite registration-index mapping and full effect runtime remain deferred. |
 | `Audio/` (when configured) | Complete assigned sound banks, loop slices, placed fixed-environment banks, preserved configs, course music graphs/chunks and configured async banks/intro stems. Empty slots stay empty. Executable collision/board indexes, dynamic chants and speech remain deferred; see audio-import.md. |
@@ -72,8 +76,8 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Import.json` | Explicit stage report: `Complete` is false, with emitted and deferred stage names. |
 
 This imports canonical terrain, static-prop rendering, collision data, AIP/SOP paths and configured audio assets; complete course conversion
-remains to be implemented. Live object behavior, rail splines, world, effects, complete audio routing/runtime and skybox
-contracts remain deferred. A folder already produced by a compatible extractor or Slopesmith
+remains to be implemented. Live object behavior, rail splines, original world settings, effects and complete audio routing/runtime
+remain deferred. A folder already produced by a compatible extractor or Slopesmith
 is also accepted. Rendering those systems is separate from converting them.
 The implemented terrain appearance contract is described in [terrain appearance](terrain-appearance.md).
 See [static props](static-props.md) for geometry, lighting, alpha behavior, culling and limitations.

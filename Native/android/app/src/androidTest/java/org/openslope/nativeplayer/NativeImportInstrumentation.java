@@ -41,6 +41,8 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(extracted, "Textures/particle-tral.png").isFile(), "JNI imports named wake art");
             require(new File(extracted, "Textures/particle-spry.png").isFile(), "JNI imports named spray sheet art");
             require(new File(extracted, "Patches.json").isFile() && new File(extracted, "Textures/0000.png").isFile(), "JNI writes canonical map files");
+            require(new File(extracted, "Skybox/Meshes/0.obj").isFile() && new File(extracted, "Skybox/Textures/0000.png").isFile(), "JNI imports separate sky geometry and texture bank");
+            try (OutputStream file = new FileOutputStream(new File(extracted, "World.json"))) { file.write("{\"Schema\":\"openslope-world/v1\",\"SkyColor\":[90,110,130],\"Fog\":{\"Enabled\":false}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
             File local = new File(temporary, "Maps"); local.mkdir();
             MapLibrary direct = new MapLibrary(context.getContentResolver(), local, null); direct.publish("Custom course", extracted, () -> {});
             require(direct.maps().size() == 1, "Custom maps discovered without ISO selection");
@@ -57,6 +59,8 @@ public final class NativeImportInstrumentation extends Instrumentation {
             for (String metadata : new String[]{"Models.json", "Instances.json", "Materials.json"}) require(new File(prepared, metadata).isFile(), "SAF cache includes prop metadata " + metadata);
             for (String metadata : new String[]{"AIP.json", "SOP.json"}) require(new File(prepared, metadata).isFile(), "SAF cache includes authored start and course paths " + metadata);
             require(new File(prepared, "Meshes/0.obj").isFile(), "SAF cache includes imported prop geometry");
+            for (String metadata : new String[]{"Models.json", "Materials.json"}) require(new File(prepared, "Skybox/" + metadata).isFile(), "SAF cache includes model-only sky metadata");
+            require(new File(prepared, "World.json").isFile() && new File(prepared, "Skybox/Meshes/0.obj").isFile() && new File(prepared, "Skybox/Textures/0000.png").isFile(), "SAF cache retains authored world settings and nested sky assets");
             require(new File(prepared, "Collision/0.obj").isFile() && new File(prepared, "Collision/1.obj").isFile(), "SAF cache includes every collision payload");
             require(new File(prepared, "Physics.json").isFile(), "SAF cache includes independent physics metadata");
             require(new File(prepared, "RidingEffects.json").isFile() && new File(prepared, "Textures/particle-part.png").isFile(), "SAF cache includes referenced riding sprite assets");

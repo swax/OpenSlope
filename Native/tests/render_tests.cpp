@@ -19,9 +19,9 @@ struct Target {
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=type;vk_check(vkAllocateMemory(context.device,&allocation,nullptr,&memory),"Allocate test image");vk_check(vkBindImageMemory(context.device,image,memory,0),"Bind test image");
     }
 };
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={}) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={}) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},sprites,wake,sheet);renderer.capture(0,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet);renderer.capture(0,output);
     std::ifstream file(output,std::ios::binary);std::string magic;unsigned width,height,maximum;file>>magic>>width>>height>>maximum;file.get();
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
@@ -40,7 +40,7 @@ std::vector<SprayVertex> spray_sheet(double z,float alpha=.5f){
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
@@ -52,6 +52,32 @@ int main(int argc,char** argv) {
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
             VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128,samples);
             const auto camera=std::string(name)=="handedness"?projection(-1,1,-1,1)*view({0,0,0},{0,0,-1}):Matrix::identity();
+            if(std::string(name).ends_with("_fog")){
+                for(auto* renderer:{&first,&second}){
+                    const auto plain=capture(*renderer,root/"effects-fog-plain.ppm",camera);pixel(plain,.5,.5,{200,40,20});
+                    if(std::string(name)=="props_fog"){pixel(plain,.25,.5,{200,40,20});pixel(plain,.75,.5,{200,40,20});continue;}
+                    const std::array<Sprite,1> sprites{{{{0,0,.25},.2f,.25f,0}}};const auto wake=ribbon(.25);const auto sheet=spray_sheet(.25);
+                    const auto drawn=capture(*renderer,root/"effects-fog-drawn.ppm",camera,std::string(name)=="sprites_fog"?std::span<const Sprite>(sprites):std::span<const Sprite>{},std::string(name)=="wake_fog"?std::span<const WakeVertex>(wake):std::span<const WakeVertex>{},std::string(name)=="sheet_fog"?std::span<const SprayVertex>(sheet):std::span<const SprayVertex>{});
+                    ++checks;if(drawn!=plain)throw std::runtime_error("Fog injects colour into fully attenuated riding effects");
+                }continue;
+            }
+            if(std::string(name).starts_with("sky")){
+                const auto sky_camera=std::string(name)=="sky_foreground"?camera:projection(-1,1,-1,1)*view({},{0,0,-1});
+                const auto a=capture(first,root/"sky-unorm.ppm",sky_camera),b=capture(second,root/"sky-srgb.ppm",sky_camera);
+                for(const auto* pixels:{&a,&b}){
+                    if(std::string(name)=="sky_foreground"){pixel(*pixels,.5,.5,{40,80,120});pixel(*pixels,1.1,.5,{80,20,40});}
+                    else {pixel(*pixels,.15,.5,{20,40,80});pixel(*pixels,.85,.5,{80,20,40});pixel(*pixels,.5,.01,std::string(name)=="sky_authored"?std::array<int,3>{90,110,130}:std::array<int,3>{120,160,200});}
+                }
+                if(std::string(name)!="sky_foreground"){
+                    for(const auto eye:std::array<Vec3,3>{{{5,3,-7},{-.032,0,0},{.032,0,0}}}){const auto moved=projection(-1,1,-1,1)*view(eye,{0,0,-1});++checks;if(capture(first,root/"sky-translated.ppm",moved,{},{},{},eye)!=a)throw std::runtime_error("Camera or stereo eye translation parallaxes the backdrop");}
+                    const auto turned=projection(-1,1,-1,1)*view({},{0,0,1});++checks;if(capture(first,root/"sky-rotated.ppm",turned)==a)throw std::runtime_error("Sky ignores camera orientation");
+                }
+                first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);++checks;if(capture(first,root/"sky-recreated.ppm",sky_camera)!=a)throw std::runtime_error("Sky changed after target recreation");continue;
+            }
+            if(std::string(name)=="fog"){
+                for(auto* renderer:{&first,&second}){const auto pixels=capture(*renderer,root/"fog.ppm",camera);pixel(pixels,.5,.5,{120,60,70});pixel(pixels,.01,.01,{200,40,20});pixel(pixels,1.1,.5,{23,61,127});}
+                first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);pixel(capture(first,root/"fog-recreated.ppm",camera),.5,.5,{120,60,70});continue;
+            }
             if(std::string(name)=="sheet"){
                 const auto plain=capture(first,root/"sheet-plain.ppm",camera);const auto front=spray_sheet(.25),behind=spray_sheet(.75);
                 ++checks;if(capture(first,root/"sheet-hidden.ppm",camera,{},{},behind)!=plain)throw std::runtime_error("Spray sheet ignores scene depth");

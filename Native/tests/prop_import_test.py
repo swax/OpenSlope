@@ -96,9 +96,21 @@ def main():
         root = Path(directory)
         image = root / "authored.iso"
         files = members()
+        sky = bytearray(files['fixture.pbd']); struct.pack_into('<I',sky,12,0)
+        files['fixture_sky.pbd'] = bytes(sky)
+        files['fixture_sky.ssh'] = files['fixture.ssh']
         image.write_bytes(iso(big(files)))
         run(executable, "extract", image, "FIXTURE", root / "Maps")
         output = root / "Maps/FIXTURE"
+        backdrop = output / 'Skybox'
+        assert json.loads((backdrop / 'Models.json').read_text())['Models'][0]['ModelName'] == 'MODELS 0'
+        assert json.loads((backdrop / 'Instances.json').read_text())['Instances'] == []
+        assert (backdrop / 'Meshes/0.obj').is_file() and (backdrop / 'Textures/0000.png').is_file()
+        assert 'Skybox' in json.loads((output / 'Import.json').read_text())['Outputs']
+        assert 'skybox' not in json.loads((output / 'Import.json').read_text())['Deferred']
+        broken = files.copy(); del broken['fixture_sky.ssh']; image.write_bytes(iso(big(broken)))
+        run(executable, 'extract', image, 'FIXTURE', root / 'partial-sky', succeeds=False)
+        assert not list((root / 'partial-sky').iterdir())
         models = json.loads((output / "Models.json").read_text())["Models"]
         instances = json.loads((output / "Instances.json").read_text())["Instances"]
         assert len(models) == 1 and len(instances) == 2

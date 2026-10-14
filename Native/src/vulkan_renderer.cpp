@@ -11,8 +11,8 @@
 
 namespace openslope {
 namespace {
-struct DrawPush {Matrix mvp;std::array<std::int32_t,4> options{};};
-static_assert(sizeof(DrawPush)==80);
+struct DrawPush {Matrix mvp;std::array<std::int32_t,4> options{};std::array<float,4> fog_colour_start{},eye_end{};};
+static_assert(sizeof(DrawPush)==112);
 constexpr auto draw_stages=VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
 }
 void vk_check(VkResult result,const char* operation) {
@@ -117,6 +117,7 @@ void VulkanRenderer::clear_targets() {
     if(pipeline_)vkDestroyPipeline(context_.device,pipeline_,nullptr);if(blend_pipeline_)vkDestroyPipeline(context_.device,blend_pipeline_,nullptr);if(layout_)vkDestroyPipelineLayout(context_.device,layout_,nullptr);
     if(sprite_pipeline_)vkDestroyPipeline(context_.device,sprite_pipeline_,nullptr);sprite_pipeline_={};
     if(wake_pipeline_)vkDestroyPipeline(context_.device,wake_pipeline_,nullptr);wake_pipeline_={};
+    if(sky_pipeline_)vkDestroyPipeline(context_.device,sky_pipeline_,nullptr);sky_pipeline_={};
     if(pass_)vkDestroyRenderPass(context_.device,pass_,nullptr);pipeline_={};blend_pipeline_={};layout_={};pass_={};
 }
 void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height,unsigned requested_samples) {
@@ -168,7 +169,8 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
     if(pipeline_result==VK_SUCCESS){blend.blendEnable=VK_TRUE;blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.colorBlendOp=VK_BLEND_OP_ADD;blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.alphaBlendOp=VK_BLEND_OP_ADD;blend_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&blend_pipeline_);}
     VkResult sprite_result=blend_result;if(blend_result==VK_SUCCESS){blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE;blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE;depth_state.depthWriteEnable=VK_FALSE;sprite_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&sprite_pipeline_);}
     VkResult wake_result=sprite_result;if(sprite_result==VK_SUCCESS){blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;wake_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&wake_pipeline_);}
-    vkDestroyShaderModule(context_.device,vertex,nullptr);vkDestroyShaderModule(context_.device,fragment,nullptr);vk_check(pipeline_result,"Create terrain pipeline");vk_check(blend_result,"Create prop blend pipeline");vk_check(sprite_result,"Create additive sprite pipeline");
+    VkResult sky_result=wake_result;if(wake_result==VK_SUCCESS){blend.blendEnable=VK_FALSE;sky_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&sky_pipeline_);}
+    vkDestroyShaderModule(context_.device,vertex,nullptr);vkDestroyShaderModule(context_.device,fragment,nullptr);vk_check(pipeline_result,"Create terrain pipeline");vk_check(blend_result,"Create prop blend pipeline");vk_check(sprite_result,"Create additive sprite pipeline");vk_check(sky_result,"Create sky panorama pipeline");
     vk_check(wake_result,"Create alpha wake pipeline");
     for(auto image:images) {
         targets_.push_back({});auto& target=targets_.back();target.colour=image;
@@ -251,21 +253,28 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vk_check(vkBeginCommandBuffer(command_,&begin),"Begin draw command");
     if(timing_){vkCmdResetQueryPool(command_,timing_,0,2);vkCmdWriteTimestamp(command_,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,timing_,0);}
-    std::array<VkClearValue,2> clear{};clear[0].color={{.065f,.11f,.18f,1}};clear[1].depthStencil={1,0};
+    const bool srgb=format_==VK_FORMAT_R8G8B8A8_SRGB||format_==VK_FORMAT_B8G8R8A8_SRGB;
+    std::array<VkClearValue,2> clear{};for(unsigned c=0;c<3;++c){const auto v=scene_->world_.sky_colour[c];clear[0].color.float32[c]=srgb?(v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f)):v;}clear[0].color.float32[3]=1;clear[1].depthStencil={1,0};
     VkRenderPassBeginInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};pass.renderPass=pass_;pass.framebuffer=targets_.at(image).framebuffer;pass.renderArea.extent={width_,height_};pass.clearValueCount=2;pass.pClearValues=clear.data();
     vkCmdBeginRenderPass(command_,&pass,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
     const VkViewport viewport{0,0,float(width_),float(height_),0,1};const VkRect2D scissor{{0,0},{width_,height_}};
     vkCmdSetViewport(command_,0,1,&viewport);vkCmdSetScissor(command_,0,1,&scissor);
     const VkDeviceSize offset=0;vkCmdBindVertexBuffers(command_,0,1,&scene_->vertices_.buffer,&offset);vkCmdBindIndexBuffer(command_,scene_->indices_.buffer,0,VK_INDEX_TYPE_UINT32);
-    DrawPush push{camera,{0,format_==VK_FORMAT_R8G8B8A8_SRGB||format_==VK_FORMAT_B8G8R8A8_SRGB?1:0,0,0}};
+    DrawPush push{camera,{0,srgb?1:0,0,0},{scene_->world_.fog_colour[0],scene_->world_.fog_colour[1],scene_->world_.fog_colour[2],scene_->world_.fog_start},{float(eye.x),float(eye.y),float(eye.z),scene_->world_.fog_end}};
+    if(!scene_->sky_draws_.empty()){
+        // [Trailmap: 400-backdrop] Cancel each eye's translation independently.
+        auto centre=Matrix::identity();centre.values[12]=float(eye.x);centre.values[13]=float(eye.y);centre.values[14]=float(eye.z);push.mvp=camera*centre;push.options[0]=7;vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,sky_pipeline_);
+        for(const auto& draw:scene_->sky_draws_){vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,1,draw.first,0,0);}push.mvp=camera;vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
+    }
     if(compact&&!packed_indices_.empty())vkCmdBindIndexBuffer(command_,visible_indices_.buffer,0,VK_INDEX_TYPE_UINT32);
     for(const auto& visible:terrain_draws_){const auto& draw=scene_->draws_[visible.material];
         push.options[0]=draw.mode;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);
         vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,visible.count,1,visible.first,0,0);
     }
     vkCmdBindIndexBuffer(command_,scene_->indices_.buffer,0,VK_INDEX_TYPE_UINT32);
+    const auto world_eye=push.eye_end;const auto relative=eye-Vec3{board.values[12],board.values[13],board.values[14]};for(unsigned c=0;c<3;++c)push.eye_end[c]=float(dot(relative,{board.values[c*4],board.values[c*4+1],board.values[c*4+2]}));
     push.mvp=camera*board;push.options[0]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->board_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,6,1,scene_->board_first_,0,0);
-    push.mvp=camera;push.options[0]=3;bool blending=false;
+    push.eye_end=world_eye;push.mvp=camera;push.options[0]=3;bool blending=false;
     for(const auto& visible:prop_draws){const auto& draw=scene_->prop_draws_[visible.part];if(draw.alpha==2&&!blending){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,blend_pipeline_);blending=true;}push.options[2]=draw.alpha;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,visible.count,draw.first,0,visible.first);}
     if(!wake_mesh_.empty()){
         vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,wake_pipeline_);vkCmdBindVertexBuffers(command_,0,1,&wake_vertices_.buffer,&offset);push.mvp=camera;push.options[0]=5;push.options[2]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->wake_set_,0,nullptr);

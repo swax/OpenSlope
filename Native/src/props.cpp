@@ -22,11 +22,11 @@ std::filesystem::path asset(const std::filesystem::path& root,const std::string&
 Json json_file(const std::filesystem::path& path){if(std::filesystem::file_size(path)>64*1024*1024)throw std::runtime_error("Prop JSON exceeds 64 MiB");std::ifstream stream(path);return Json::parse(stream);}
 struct Tables {Json models,instances,materials;};
 std::string texture_name(const Json& material){const auto& name=material.at("TexturePath");return name.is_null()?std::string{}:name.get<std::string>();}
-Tables tables(const std::filesystem::path& root){
+Tables tables(const std::filesystem::path& root,bool model_only=false){
     if(root.empty())return {};
-    unsigned present=0;for(const auto name:{"Models.json","Instances.json","Materials.json"})present+=std::filesystem::is_regular_file(root/name)?1:0;
-    if(!present)return {};if(present!=3)throw std::runtime_error("A prop map needs Models.json, Instances.json and Materials.json together");
-    Tables t{json_file(asset(root,"Models.json")).at("Models"),json_file(asset(root,"Instances.json")).at("Instances"),json_file(asset(root,"Materials.json")).at("Materials")};
+    unsigned present=0;for(const auto name:{"Models.json","Instances.json","Materials.json"})if(!model_only||std::string_view(name)!="Instances.json")present+=std::filesystem::is_regular_file(root/name)?1:0;
+    if(!present)return {};if(present!=(model_only?2u:3u))throw std::runtime_error("Incomplete model/placement/material tables");
+    Tables t{json_file(asset(root,"Models.json")).at("Models"),model_only?Json::array():json_file(asset(root,"Instances.json")).at("Instances"),json_file(asset(root,"Materials.json")).at("Materials")};
     if(!t.models.is_array()||t.models.size()>4000||!t.instances.is_array()||t.instances.size()>100000||!t.materials.is_array()||t.materials.size()>65535)throw std::runtime_error("Invalid prop table counts");return t;
 }
 Transform row_pose(const Json& row){
@@ -114,13 +114,13 @@ std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::pa
         }result.push_back(std::move(objects));
     }return result;
 }
-std::vector<std::string> prop_files(const std::filesystem::path& root){
-    const auto t=tables(root);if(t.models.is_null())return {};std::set<std::string> names;
+std::vector<std::string> prop_files(const std::filesystem::path& root,bool model_only){
+    const auto t=tables(root,model_only);if(t.models.is_null())return {};std::set<std::string> names;
     for(const auto& model:t.models)for(const auto& object:model.at("ModelObjects"))for(const auto& part:object.at("MeshData")){names.insert("Meshes/"+safe(part.at("MeshPath")));const auto id=part.at("MaterialID").get<std::size_t>();const auto name=texture_name(t.materials.at(id));if(!name.empty())names.insert("Textures/"+safe(name));}
     return {names.begin(),names.end()};
 }
-Props Props::load(const std::filesystem::path& root){
-    Props result;const auto t=tables(root);if(t.models.is_null())return result;result.models.resize(t.models.size());result.geometry.map_root=root;
+Props Props::load(const std::filesystem::path& root,bool model_only){
+    Props result;const auto t=tables(root,model_only);if(t.models.is_null())return result;result.models.resize(t.models.size());result.geometry.map_root=root;
     for(std::size_t model=0;model<t.models.size();++model){
         const auto& objects=t.models[model].at("ModelObjects");if(!objects.is_array()||objects.size()>256)throw std::runtime_error("Invalid model object count");std::vector<Transform> rest(objects.size());std::vector<unsigned> state(objects.size());
         std::function<Transform(std::size_t)> resolve=[&](std::size_t i){if(state[i]==1)throw std::runtime_error("Model hierarchy contains a cycle");if(state[i]==2)return rest[i];state[i]=1;auto m=object_pose(objects[i]);const auto parent=objects[i].value("ParentID",-1);if(parent< -1)throw std::runtime_error("Invalid model parent");if(parent>=0){if(std::size_t(parent)>=objects.size())throw std::runtime_error("Invalid model parent");m=multiply(resolve(std::size_t(parent)),m);}state[i]=2;return rest[i]=m;};

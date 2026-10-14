@@ -3,7 +3,9 @@
 The active objective is feature parity with playing in Slopesmith, including
 sound, music, effects, collisions, culling, anti-aliasing, graphical improvements,
 performance work and the VR path. Desktop behavior is the current verification
-target. Headset behavior remains unverified until hardware is available. This
+target. The user reports successful Quest play with build 0.14.0 after the
+APK/ISO transfer. This establishes initial device play; individual features,
+comfort, lifecycle and frame budgets still need targeted headset checks. This
 matrix tracks the full scope; a committed milestone is not completion of the goal.
 
 Slopesmith's gameplay controls, public contracts and tests establish the feature
@@ -31,10 +33,10 @@ checks apply to every milestone. The shared ride contract is retained unchanged.
 | AI riders and other players | Outstanding: AI path following/field behavior and shared play-session movement. These are not satisfied by rendering static props. |
 | Sound / music | Independent codecs, PCM mixer, Windows/Quest output, Maps sound routes, contact/ambient/board gates and queued music graph playback have CPU and actual-host evidence. Normal ISO import stages config-driven banks, ADL bindings, fixed/crowd routes, music triplets and intro stems; all eleven local imports compare against existing output. See audio-playback.md and audio-import.md. Executable collision/board resolver extraction, dynamic chants, regional route verification, exact signal/pitch/ambient parity, race/intro/trick lifecycle, async layers, speech/announcer and wider platform/device behavior remain outstanding. No retail media may enter source control or the application package. |
 | Effects | Fixed-tick carve, powder and landing/skid clouds use extracted sprite art and a shared additive Vulkan pass; see riding-effects.md. A bounded paired wake follows terrain/rideable props and draws in two alpha passes; see carved-wake.md. Connected four-rail spray now throws outward during a carve and curls/fades over 0.9 s; see spray-sheet.md for application tuning and validation. Per-surface chunks/sparks, airborne puffs, exact sheet/wake bindings, boost afterimages, crash/pickup/breakable effects and authored effect lifecycle remain outstanding. |
-| World graphics | Outstanding: sky/background, fog, celestial/glare, snow, billboards and texture animation. |
+| World graphics | Independent ISO sky conversion, model-only existing/custom sky loading, camera-centred stereo backdrop, open-top seam colour and distance fog have portable and actual Vulkan evidence; see world-appearance.md. Original executable colour recovery, full world settings, celestial/glare, snow, billboards and texture animation remain outstanding. |
 | Culling / anti-aliasing / image quality | Prop distance/frustum culling exists. Diffuse mipmaps/trilinear minification pass portable and actual Vulkan checks. Desktop MSAA has actual geometric edge/resolve evidence at 1x/4x; see graphics-quality.md. Hierarchical terrain frustum selection and adaptive index submission have all-course pixel-equivalence evidence; see terrain-culling.md. Terrain LOD/stitching, prop spatial gathering, atlas-safe lightmap filtering, anisotropy, cutout coverage, configurable quality UI and hardware VR validation remain. |
 | Performance | Timestamp samples and shared stereo geometry exist. Terrain submission has two-course fixed-replay measurements and a reproducible benchmark. Whole-frame baselines, memory profiling, reduced stalls, batching/upload work and wider trajectory measurements remain. |
-| VR | OpenXR hosts compile; shared core and controller mapping need continued build checks. Stereo comfort, rendering quality, input, performance and lifecycle need hardware verification. |
+| VR | User reports successful initial Quest play on 0.14.0. OpenXR hosts and shared core/controller mapping compile. New sky/fog code has simulated stereo GPU evidence and an ARM64 APK; targeted hardware comfort, image quality, input, performance and lifecycle checks remain. |
 
 Milestones use a descriptive commit subject and bullet-point body. Each milestone
 records its supported behavior, tests, comparison evidence and remaining limits.

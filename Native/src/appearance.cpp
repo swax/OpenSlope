@@ -2,6 +2,7 @@
 #include "openslope/import.hpp"
 #include "openslope/props.hpp"
 #include "openslope/riding_effects.hpp"
+#include "openslope/world.hpp"
 #include <lodepng.h>
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,10 @@ std::vector<std::string> image_names(std::span<const MeshBatch> batches) {
     for(const auto& batch:batches){if(!batch.texture.empty())names.insert(diffuse_file(batch.texture));if(batch.lightmap>=0)names.insert(lightmap_file(batch.lightmap));}
     return {names.begin(),names.end()};
 }
+std::vector<std::string> scene_images(const std::filesystem::path& root,std::span<const MeshBatch> batches) {
+    auto names=image_names(batches);for(const auto& name:skybox_files(root))if(name.starts_with("Skybox/Textures/"))names.push_back(name);
+    std::sort(names.begin(),names.end());names.erase(std::unique(names.begin(),names.end()),names.end());return names;
+}
 std::vector<MeshBatch> terrain_batches(const Terrain& terrain) {
     std::vector<MeshBatch> batches;
     for(const auto& patch:terrain.patches())batches.push_back({0,0,patch.texture,patch.lightmap_rect[2]>0&&patch.lightmap_rect[3]>0?patch.lightmap:-1});
@@ -49,13 +54,13 @@ RgbaImage read_png(const std::filesystem::path& path) {
     return image;
 }
 std::vector<std::string> referenced_images(const Terrain& terrain) {
-    return image_names(terrain_batches(terrain));
+    return scene_images(terrain.map_root(),terrain_batches(terrain));
 }
 Appearance Appearance::load(const Terrain& terrain) {return load(terrain.map_root(),terrain_batches(terrain));}
 Appearance Appearance::load(const std::filesystem::path& root,std::span<const MeshBatch> batches) {
     Appearance result;if(root.empty())return result;
     std::size_t total=0;const auto base=std::filesystem::weakly_canonical(root);
-    for(const auto& name:image_names(batches)) {
+    for(const auto& name:scene_images(root,batches)) {
         const auto path=std::filesystem::weakly_canonical(base/name);const auto relative=path.lexically_relative(base);
         if(relative.empty()||relative.is_absolute()||*relative.begin()=="..")throw std::runtime_error("Map image resolves outside its course folder");
         if(!std::filesystem::is_regular_file(path)){result.missing.push_back(name);continue;}

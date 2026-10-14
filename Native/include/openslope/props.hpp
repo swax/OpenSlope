@@ -29,10 +29,10 @@ struct Props {
     std::vector<PropPart> parts;
     std::vector<PropModel> models;
     std::vector<PropInstance> instances;
-    static Props load(const std::filesystem::path& root);
+    static Props load(const std::filesystem::path& root,bool model_only=false);
 };
 // Metadata-only references used by document providers before mesh loading.
-std::vector<std::string> prop_files(const std::filesystem::path& root);
+std::vector<std::string> prop_files(const std::filesystem::path& root,bool model_only=false);
 bool prop_visible(const Bounds& bounds,std::span<const float,16> camera,Vec3 eye,double range=300);
 std::array<double,3> prop_light(Vec3 normal,const PropPose& pose);
 }

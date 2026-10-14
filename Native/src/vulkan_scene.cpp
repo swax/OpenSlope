@@ -67,7 +67,7 @@ VulkanScene::~VulkanScene() {
     if(!context_.device)return;vkDeviceWaitIdle(context_.device);
     if(descriptor_pool_)vkDestroyDescriptorPool(context_.device,descriptor_pool_,nullptr);
     if(descriptors_)vkDestroyDescriptorSetLayout(context_.device,descriptors_,nullptr);
-    if(repeat_)vkDestroySampler(context_.device,repeat_,nullptr);if(clamp_)vkDestroySampler(context_.device,clamp_,nullptr);
+    if(repeat_)vkDestroySampler(context_.device,repeat_,nullptr);if(clamp_)vkDestroySampler(context_.device,clamp_,nullptr);if(sky_sampler_)vkDestroySampler(context_.device,sky_sampler_,nullptr);
     for(auto& value:images_){if(value.view)vkDestroyImageView(context_.device,value.view,nullptr);if(value.image)vkDestroyImage(context_.device,value.image,nullptr);if(value.memory)vkFreeMemory(context_.device,value.memory,nullptr);}
     for(auto* value:{&vertices_,&indices_,&poses_}){if(value->buffer)vkDestroyBuffer(context_.device,value->buffer,nullptr);if(value->memory)vkFreeMemory(context_.device,value->memory,nullptr);}
 }
@@ -89,12 +89,12 @@ void VulkanScene::upload(const Mesh& source) {
         if(cursor!=source.indices.size())throw std::runtime_error("Terrain visibility ranges do not cover the source mesh");
         terrain_visibility_.build(boxes);terrain_ranges_=source.terrain_ranges;terrain_indices_=source.indices;
     }
-    props_=Props::load(source.map_root);auto batches=source.batches;
+    props_=Props::load(source.map_root);world_=World::load(source.map_root);auto batches=source.batches;
     for(const auto& part:props_.parts)batches.push_back({0,0,part.texture,-1});
     const auto sprite=riding_sprite(source.map_root);if(!sprite.empty())batches.push_back({0,0,sprite,-1});
     const auto wake=riding_sprite(source.map_root,"Wake");if(!wake.empty())batches.push_back({0,0,wake,-1});
     const auto sheet=riding_sprite(source.map_root,"Sheet");if(!sheet.empty())batches.push_back({0,0,sheet,-1});
-    auto appearance=Appearance::load(source.map_root,batches);
+    auto appearance=Appearance::load(source.map_root,batches);world_.fit_colours(appearance);
     if(!appearance.missing.empty())std::cerr<<"OpenSlope: "<<appearance.missing.size()<<" referenced map images are missing; using available textures or terrain colours\n";
     VkFormatProperties format;vkGetPhysicalDeviceFormatProperties(context_.physical,VK_FORMAT_R8G8B8A8_UNORM,&format);
     if(!(format.optimalTilingFeatures&VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))throw std::runtime_error("GPU cannot linearly sample RGBA map images");
@@ -103,19 +103,19 @@ void VulkanScene::upload(const Mesh& source) {
     images_.reserve(appearance.images.size()+2);images_.push_back(image({1,1,{255,255,255,255}},upload.pool));images_.push_back(image({1,1,{0,0,0,255}},upload.pool));
     std::map<std::string,std::size_t> names;
     std::map<std::string,bool> fractional;
-    for(auto& [name,pixels]:appearance.images){bool smooth=false;for(std::size_t p=3;p<pixels.pixels.size();p+=4)if(pixels.pixels[p]>0&&pixels.pixels[p]<255){smooth=true;break;}fractional[name]=smooth;names.emplace(name,images_.size());images_.push_back(image(pixels,upload.pool,name.starts_with("Textures/")));pixels.pixels.clear();pixels.pixels.shrink_to_fit();}
+    for(auto& [name,pixels]:appearance.images){bool smooth=false;for(std::size_t p=3;p<pixels.pixels.size();p+=4)if(pixels.pixels[p]>0&&pixels.pixels[p]<255){smooth=true;break;}fractional[name]=smooth;names.emplace(name,images_.size());images_.push_back(image(pixels,upload.pool,!name.starts_with("Lightmaps/")));pixels.pixels.clear();pixels.pixels.shrink_to_fit();}
     pose_capacity_=1;for(const auto& instance:props_.instances)pose_capacity_+=props_.models[instance.model].parts.size();
     VkPhysicalDeviceProperties limits;vkGetPhysicalDeviceProperties(context_.physical,&limits);
     if(pose_capacity_>1000000||pose_capacity_*sizeof(PropPose)>limits.limits.maxStorageBufferRange)throw std::runtime_error("Prop instance buffer exceeds this GPU's limit");
     poses_=buffer(pose_capacity_*sizeof(PropPose),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,nullptr);
     VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};sampler.magFilter=sampler.minFilter=VK_FILTER_LINEAR;sampler.mipmapMode=VK_SAMPLER_MIPMAP_MODE_LINEAR;sampler.maxLod=VK_LOD_CLAMP_NONE;sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&repeat_),"Create diffuse sampler");sampler.maxLod=0;sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&clamp_),"Create lightmap sampler");
+    vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&repeat_),"Create diffuse sampler");sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&sky_sampler_),"Create sky sampler");sampler.maxLod=0;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&clamp_),"Create lightmap sampler");
     const std::array<VkDescriptorSetLayoutBinding,3> bindings{{{0,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{2,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_VERTEX_BIT,nullptr}}};
     VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};layout.bindingCount=3;layout.pBindings=bindings.data();vk_check(vkCreateDescriptorSetLayout(context_.device,&layout,nullptr,&descriptors_),"Create map descriptor layout");
-    const auto count=std::uint32_t(batches.size()+2);const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,count*2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,count}}};VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};descriptor_pool.maxSets=count;descriptor_pool.poolSizeCount=2;descriptor_pool.pPoolSizes=sizes.data();vk_check(vkCreateDescriptorPool(context_.device,&descriptor_pool,nullptr,&descriptor_pool_),"Create map descriptor pool");
-    const auto descriptor=[&](std::size_t diffuse,std::size_t lightmap){
+    const auto count=std::uint32_t(batches.size()+world_.sky.parts.size()+2);const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,count*2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,count}}};VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};descriptor_pool.maxSets=count;descriptor_pool.poolSizeCount=2;descriptor_pool.pPoolSizes=sizes.data();vk_check(vkCreateDescriptorPool(context_.device,&descriptor_pool,nullptr,&descriptor_pool_),"Create map descriptor pool");
+    const auto descriptor=[&](std::size_t diffuse,std::size_t lightmap,bool sky=false){
         VkDescriptorSet set{};VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};allocate.descriptorPool=descriptor_pool_;allocate.descriptorSetCount=1;allocate.pSetLayouts=&descriptors_;vk_check(vkAllocateDescriptorSets(context_.device,&allocate,&set),"Allocate map descriptor");
-        const std::array<VkDescriptorImageInfo,2> images{{{repeat_,images_[diffuse].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},{clamp_,images_[lightmap].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}};std::array<VkWriteDescriptorSet,3> writes{};
+        const std::array<VkDescriptorImageInfo,2> images{{{sky?sky_sampler_:repeat_,images_[diffuse].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},{clamp_,images_[lightmap].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}};std::array<VkWriteDescriptorSet,3> writes{};
         for(unsigned i=0;i<2;++i){writes[i]={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};writes[i].dstSet=set;writes[i].dstBinding=i;writes[i].descriptorCount=1;writes[i].descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;writes[i].pImageInfo=&images[i];}
         const VkDescriptorBufferInfo pose{poses_.buffer,0,pose_capacity_*sizeof(PropPose)};writes[2]={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};writes[2].dstSet=set;writes[2].dstBinding=2;writes[2].descriptorCount=1;writes[2].descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;writes[2].pBufferInfo=&pose;vkUpdateDescriptorSets(context_.device,3,writes.data(),0,nullptr);return set;
     };
@@ -132,6 +132,8 @@ void VulkanScene::upload(const Mesh& source) {
     for(const auto& part:props_.parts){const auto name="Textures/"+part.texture;const auto found=names.find(name);const auto alpha=(part.flags&(1u<<18))?(fractional[name]?2:1):0;prop_draws_.push_back({part.first+prop_first,part.count,descriptor(found==names.end()?0:found->second,1),alpha});}
     // Geometry is uploaded once; CPU retained data is only bounds and placements.
     props_.geometry={};
+    const auto sky_first=std::uint32_t(mesh.indices.size()),sky_vertex=std::uint32_t(mesh.vertices.size());mesh.vertices.insert(mesh.vertices.end(),world_.sky.geometry.vertices.begin(),world_.sky.geometry.vertices.end());for(const auto i:world_.sky.geometry.indices)mesh.indices.push_back(i+sky_vertex);
+    for(const auto& part:world_.sky.parts){const auto found=names.find("Skybox/Textures/"+part.texture);sky_draws_.push_back({part.first+sky_first,part.count,descriptor(found==names.end()?0:found->second,1,true),7});}world_.sky={};
     board_first_=std::uint32_t(mesh.indices.size());const auto offset=std::uint32_t(mesh.vertices.size());
     mesh.vertices.insert(mesh.vertices.end(),{{-.18f,0,-.8f,.05f,.65f,.6f},{.18f,0,-.8f,.05f,.65f,.6f},{.18f,0,.8f,.05f,.65f,.6f},{-.18f,0,.8f,.05f,.65f,.6f}});mesh.indices.insert(mesh.indices.end(),{offset,offset+1,offset+2,offset,offset+2,offset+3});board_set_=descriptor(0,1);
     vertices_=buffer(mesh.vertices.size()*sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,mesh.vertices.data());indices_=buffer(mesh.indices.size()*sizeof(std::uint32_t),VK_BUFFER_USAGE_INDEX_BUFFER_BIT,mesh.indices.data());

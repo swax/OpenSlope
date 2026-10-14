@@ -1,6 +1,7 @@
 """Authored PNG/map fixtures; no disc or external game-format decoder required."""
 import json
 import pathlib
+import shutil
 import struct
 import subprocess
 import sys
@@ -34,6 +35,35 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    for name in ('sky', 'sky_foreground', 'sky_authored'):
+        folder = course(root, name, 'base.png')
+        (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [40,80,120,255]))
+        if name != 'sky_foreground':
+            document = json.loads((folder / 'Patches.json').read_text())
+            for p in document['Patches'][0]['Points']: p[0] += 10000
+            (folder / 'Patches.json').write_text(json.dumps(document))
+        sky = folder / 'Skybox'
+        (sky / 'Textures').mkdir(parents=True)
+        (sky / 'Meshes').mkdir()
+        (sky / 'Meshes/ring.obj').write_text('v -200 200 -60\nv 200 200 -60\nv 200 200 60\nv -200 200 60\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nf 1/1 2/2 3/3 4/4\n')
+        (sky / 'Models.json').write_text(json.dumps(dict(Models=[dict(ModelObjects=[dict(ParentID=-1, MeshData=[dict(MeshPath='ring.obj', MaterialID=0)])])])))
+        (sky / 'Materials.json').write_text(json.dumps(dict(Materials=[dict(TexturePath='sky.png')])))
+        (sky / 'Textures/sky.png').write_bytes(rgba(4,4,[c for y in range(4) for x in range(4) for c in ([120,160,200,255] if y==0 else [20,40,80,255] if x<2 else [80,20,40,255])]))
+        # No instance table: the panorama is already camera-local model geometry.
+        (folder / 'World.json').write_text(json.dumps(dict(Schema='openslope-world/v1', Fog=dict(Enabled=False), **(dict(SkyColor=[90,110,130]) if name=='sky_authored' else {}))))
+    fog = course(root, 'fog', 'base.png')
+    (fog / 'Textures/base.png').write_bytes(rgba(1,1,[40,80,120,255]))
+    (fog / 'World.json').write_text(json.dumps(dict(Schema='openslope-world/v1', SkyColor=[23,61,127], Fog=dict(Start=0, End=1, Color=[200,40,20]))))
+    for name, profile in [('fog_bad_range', dict(Fog=dict(Start=3,End=2))), ('world_bad_colour', dict(SkyColor=[0,256,0])), ('world_bad_schema', {})]:
+        folder = course(root,name,'')
+        (folder / 'World.json').write_text(json.dumps(dict(Schema='invalid' if name=='world_bad_schema' else 'openslope-world/v1', **profile)))
+    incomplete = course(root, 'sky_incomplete', '')
+    (incomplete / 'Skybox').mkdir()
+    (incomplete / 'Skybox/Models.json').write_text('{"Models":[]}')
+    unsafe = course(root, 'sky_unsafe', '')
+    (unsafe / 'Skybox').mkdir()
+    (unsafe / 'Skybox/Models.json').write_text(json.dumps(dict(Models=[dict(ModelObjects=[dict(MeshData=[dict(MeshPath='../escape.obj',MaterialID=0)])])])))
+    (unsafe / 'Skybox/Materials.json').write_text('{"Materials":[{"TexturePath":"sky.png"}]}')
     sheet = course(root, 'sheet', 'background.png')
     (sheet / 'Textures/background.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
     (sheet / 'Textures/sheet.png').write_bytes(rgba(1, 1, [255,255,255,128]))
@@ -104,6 +134,10 @@ def fixtures(root):
             instances = [dict(ModelID=0, Location=[0, -25, 0], Visable=True)]
         for filename, key, rows in (("Models.json", "Models", models), ("Materials.json", "Materials", materials), ("Instances.json", "Instances", instances)):
             (folder / filename).write_text(json.dumps({key: rows}), encoding="utf-8")
+    for name in ('sprites', 'wake', 'sheet', 'props'):
+        folder = root / (name + '_fog')
+        shutil.copytree(root / name, folder)
+        (folder / 'World.json').write_text(json.dumps(dict(Schema='openslope-world/v1', Fog=dict(Start=0, End=.2, Color=[200,40,20]))))
 
 
 if __name__ == "__main__":

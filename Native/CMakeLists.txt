@@ -26,7 +26,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ../Contracts/exte
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../Contracts/external-sound-banks-v1.json" EXTERNAL_SOUND_HEX HEX)
 string(REGEX REPLACE "(..)" "0x\\1," EXTERNAL_SOUND_BYTES "${EXTERNAL_SOUND_HEX}")
 configure_file(cmake/external_sounds.hpp.in generated/external_sounds.hpp @ONLY)
-add_library(openslope_core src/terrain.cpp src/riding_effects.cpp src/visibility.cpp src/ride.cpp src/player.cpp src/disc.cpp src/import.cpp src/textures.cpp src/appearance.cpp src/props.cpp src/prop_import.cpp src/paths.cpp src/path_import.cpp src/replay.cpp src/collision_import.cpp src/collision_geometry.cpp src/collision_world.cpp src/audio_pcm.cpp src/audio_mixer.cpp src/audio_data.cpp src/music.cpp src/audio_program.cpp src/audio_scene.cpp src/audio_import.cpp)
+add_library(openslope_core src/terrain.cpp src/world.cpp src/riding_effects.cpp src/visibility.cpp src/ride.cpp src/player.cpp src/disc.cpp src/import.cpp src/textures.cpp src/appearance.cpp src/props.cpp src/prop_import.cpp src/paths.cpp src/path_import.cpp src/replay.cpp src/collision_import.cpp src/collision_geometry.cpp src/collision_world.cpp src/audio_pcm.cpp src/audio_mixer.cpp src/audio_data.cpp src/music.cpp src/audio_program.cpp src/audio_scene.cpp src/audio_import.cpp)
 target_include_directories(openslope_core PUBLIC include PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(openslope_core PRIVATE nlohmann_json::nlohmann_json openslope_png)
 if(MSVC)

@@ -240,7 +240,9 @@ check also requires the tracked ride contract and independent fixtures to match 
 
 Authored prop contacts now run in desktop gameplay. Recovery, authored world logic,
 rails/races/tricks, presentation, audio/effects and graphics/performance remain in the
-desktop-parity.md matrix. Headset checks are deferred while desktop implementation continues.
+desktop-parity.md matrix. The user reports successful initial Quest play on 0.14.0.
+Targeted headset checks continue alongside desktop implementation. Sky import,
+camera-centred panorama and fog are described in [world appearance](docs/world-appearance.md).
 Keep platform file access behind the application host,
 so the readers and gameplay core can also be compiled for desktop tools or WebAssembly.
 

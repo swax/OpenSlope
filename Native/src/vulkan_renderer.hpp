@@ -3,6 +3,7 @@
 #include "openslope/terrain.hpp"
 #include "render_math.hpp"
 #include "openslope/props.hpp"
+#include "openslope/world.hpp"
 #include "openslope/visibility.hpp"
 #include "openslope/riding_effects.hpp"
 #include <filesystem>
@@ -36,9 +37,10 @@ private:
     VisibilityTree terrain_visibility_;std::uint64_t terrain_total_indices_{};
     struct PropDraw {std::uint32_t first{},count{};VkDescriptorSet set{};int alpha{};};
     Props props_;std::vector<PropDraw> prop_draws_;std::size_t pose_capacity_{};
+    World world_;std::vector<Draw> sky_draws_;
     std::uint32_t board_first_{};VkDescriptorSet board_set_{};
     VkDescriptorSetLayout descriptors_{};VkDescriptorPool descriptor_pool_{};
-    VkSampler repeat_{},clamp_{};
+    VkSampler repeat_{},clamp_{},sky_sampler_{};
     VkDeviceSize image_bytes_{};
     VkDescriptorSet effect_set_{},wake_set_{},sheet_set_{};
     Image image(const struct RgbaImage& pixels,VkCommandPool pool,bool mipmapped=true);
@@ -67,7 +69,7 @@ private:
     std::uint32_t width_{},height_{};VkFormat format_{};
     VkSampleCountFlagBits samples_=VK_SAMPLE_COUNT_1_BIT;
     VkCommandPool pool_{};VkCommandBuffer command_{};VkFence fence_{};
-    VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{},blend_pipeline_{},sprite_pipeline_{},wake_pipeline_{};
+    VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{},blend_pipeline_{},sprite_pipeline_{},wake_pipeline_{},sky_pipeline_{};
     Stats stats_;VkQueryPool timing_{};double timestamp_period_{};unsigned timestamp_bits_{};
     bool terrain_culling_=true;Buffer visible_indices_;std::size_t index_capacity_{};
     std::vector<std::size_t> visible_ranges_;std::vector<std::uint32_t> packed_indices_;

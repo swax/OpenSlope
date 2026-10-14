@@ -8,7 +8,8 @@
 namespace openslope::import_detail {
 namespace {
 using Json=nlohmann::json;
-std::vector<std::string> names(Bytes linker,const std::string& section,std::size_t count){
+std::vector<std::string> names(Bytes linker,const std::string& section,std::size_t count,bool anonymous){
+    if(anonymous){std::vector<std::string> result;for(std::size_t i=0;i<count;++i)result.push_back(section+" "+std::to_string(i));return result;}
     if(!count)return {};std::istringstream input(linker.text(0,linker.data.size()));std::string line;bool active=false;std::vector<std::string> result;
     while(std::getline(input,line)){
         if(!active){if(line.find(section+" BEGIN")!=std::string::npos)active=true;continue;}
@@ -67,7 +68,7 @@ Json animation(Bytes b,std::size_t p){
     return a;
 }
 }
-void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,const std::filesystem::path& output,const ImportCancel& cancel){
+void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,const std::filesystem::path& output,const ImportCancel& cancel,bool anonymous){
     // [Trailmap: 120-tables, 220-instance, 220-model-header, 220-chunk-layout,
     // 220-strips, 220-material-block, 230-joins, 230-props] Independent readers.
     Bytes b{pbd};const auto material_count=b.le(20),block_count=b.le(24),model_count=b.le(44),instance_count=b.le(12);
@@ -75,7 +76,7 @@ void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uin
     for(unsigned i=0;i<block_count;++i){const auto count=b.le(block);block+=4;if(count>65535)throw std::runtime_error("Invalid material block length");b.range(block,std::size_t(count)*4);std::vector<std::uint32_t> row;for(unsigned j=0;j<count;++j){const auto id=b.le(block+j*4);if(id>=material_count)throw std::runtime_error("Material block references a missing material");row.push_back(id);}blocks.push_back(row);block+=count*4;}
     b.range(b.le(80),std::size_t(material_count)*72);
     for(unsigned i=0;i<material_count;++i){const auto p=b.le(80)+i*72;const auto texture=b.signed16(p);if(texture< -1||(texture>=0&&std::size_t(texture)>=textures.size()))throw std::runtime_error("Object material references a missing texture");materials.push_back({{"MaterialName","Material "+std::to_string(i)},{"TexturePath",texture<0?Json(nullptr):Json(textures[std::size_t(texture)].name+".png")},{"UnknownInt18",b.le(p+64)}});}
-    const auto model_names=names(Bytes{linker},"MODELS",model_count),instance_names=names(Bytes{linker},"INSTANCES",instance_count);std::filesystem::create_directory(output/"Meshes");std::vector<std::uint32_t> model_blocks;std::size_t mesh_id=0;b.range(b.le(104),std::size_t(model_count)*4);
+    const auto model_names=names(Bytes{linker},"MODELS",model_count,anonymous),instance_names=names(Bytes{linker},"INSTANCES",instance_count,anonymous);std::filesystem::create_directory(output/"Meshes");std::vector<std::uint32_t> model_blocks;std::size_t mesh_id=0;b.range(b.le(104),std::size_t(model_count)*4);
     for(unsigned i=0;i<model_count;++i){check_cancel(cancel);const auto start=std::size_t(b.le(108))+b.le(b.le(104)+i*4);const auto length=b.le(start),object_count=b.le(start+4);b.range(start,length);if(length<56||object_count>256)throw std::runtime_error("Invalid model record");Bytes model{b.data.subspan(start,length)};const auto material_block=model.le(12);if(material_block>=blocks.size())throw std::runtime_error("Model references a missing material block");model_blocks.push_back(material_block);Vec3 extent{model.number(24),model.number(28),model.number(32)};if(!extent.x)extent.x=1;if(!extent.y)extent.y=1;if(!extent.z)extent.z=1;Json objects=Json::array();const auto object_table=model.le(8);model.range(object_table,std::size_t(object_count)*24);
         for(unsigned j=0;j<object_count;++j){const auto o=object_table+j*24;Json object={{"ObjectName","Model Object "+std::to_string(j)},{"ParentID",static_cast<std::int32_t>(model.le(o))},{"MeshData",Json::array()},{"IncludeMatrix",false},{"IncludeAnimation",false},{"Position",nullptr},{"Rotation",nullptr},{"Scale",nullptr},{"Animation",nullptr}};
             const auto matrix_offset=static_cast<std::int32_t>(model.le(o+20));if(matrix_offset>=0){const auto value=pose(matrix(model,o+std::size_t(matrix_offset)));object["Position"]=value.at("Location");object["Rotation"]=value.at("Rotation");object["Scale"]=value.at("Scale");object["TransformMatrix"]=value.at("TransformMatrix");object["IncludeMatrix"]=true;}
