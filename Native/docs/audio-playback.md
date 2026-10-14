@@ -31,10 +31,11 @@ Useful independent tools:
 ```
 
 Large archives are indexed with bounded table reads; individual members are read
-without loading the entire music archive. Normal ISO import in the app does not
-yet invoke these audio stages. Complete automatic extraction, boot-executable
-resolver normalization, ADL binding and config-driven song/intro staging remain
-required follow-up work. Existing populated Maps folders supply their audio data.
+without loading the entire music archive. Normal ISO import now invokes bank,
+ADL attachment, config-driven song/intro and async-bank extraction; see
+audio-import.md. Boot-executable collision/board resolver normalization, dynamic
+chants and speech extraction remain required follow-up work. Existing populated
+Maps folders continue to supply their audio data.
 
 `Audio/SoundIndex.json` (`openslope-sound-index/v1`) supplies bank groups and
 collision-event clip routes. Missing event/slot data stays silent. A prop's

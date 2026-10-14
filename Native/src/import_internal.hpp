@@ -3,6 +3,7 @@
 #include <bit>
 #include <cmath>
 #include <stdexcept>
+#include <map>
 
 namespace openslope::import_detail {
 struct Bytes {
@@ -22,5 +23,9 @@ void write_collision(const std::vector<std::uint8_t>& bytes,const std::filesyste
 void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,
                  const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,
                  const std::filesystem::path& output,const ImportCancel& cancelled);
+bool write_course_audio(const DiscInput& disc,const std::string& course,
+                        const std::map<std::string,std::vector<std::uint8_t>>& files,
+                        const std::filesystem::path& output,const ImportProgress& progress,
+                        const ImportCancel& cancelled);
 inline void check_cancel(const ImportCancel& cancelled){if(cancelled&&cancelled())throw std::runtime_error("Import cancelled");}
 }

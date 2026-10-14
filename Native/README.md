@@ -11,10 +11,10 @@ The desktop player starts on an original procedural slope, or reads a local `Map
 The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
 ISO to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
 The importer currently converts terrain, textures, lightmaps, static prop geometry/placements,
-AIP/SOP course paths, collision proxies/physics bodies and provenance. The player renders textured
+AIP/SOP course paths, collision proxies/physics bodies, configured sound/music assets and provenance. The player renders textured
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
 authored prop contacts for bounce, ride surfaces and pass-through events. Live prop behavior,
-animation-driven crash recovery, effects, automatic ISO audio staging, rails, races and multiplayer remain
+animation-driven crash recovery, effects, executable audio resolvers, rails, races and multiplayer remain
 later stages. See [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 ## Build and try on Windows
@@ -45,7 +45,9 @@ contact and ambient routes, and complete music graphs. M mutes; pause and focus
 loss also pause audio. `--no-audio` disables device playback. Old music graphs
 without variable-remap data need re-import with the independent audio utility.
 See [native audio](docs/audio-playback.md) for supported contracts, capture/testing
-commands, extraction tools and the remaining automatic ISO/music/speech work.
+commands, extraction tools and remaining music/speech work. A fresh ISO import now
+stages the configured banks, music graph/chunks, loop banks and intro stems;
+see [audio import](docs/audio-import.md) for the remaining resolver limits.
 
 Courses with AIP/SOP metadata use the middle authored start-row slot and its down-course heading.
 Fallbacks use the staging anchor, race line and finally the highest rideable patch. The desktop

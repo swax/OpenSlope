@@ -1,0 +1,7 @@
+#pragma once
+#include <string_view>
+namespace openslope {
+inline constexpr unsigned char external_sound_bytes[] = {@EXTERNAL_SOUND_BYTES@};
+inline const std::string_view external_sound_contract{
+    reinterpret_cast<const char*>(external_sound_bytes),sizeof(external_sound_bytes)};
+}

@@ -38,6 +38,8 @@ std::vector<std::int16_t> decode_audio_frames(std::span<const std::uint8_t> sour
 void write_wave(const std::filesystem::path& path,const PcmClip& clip){
     if(clip.channels<1||clip.channels>2||clip.rate<8000||clip.rate>192000||clip.samples.size()%clip.channels||clip.samples.size()>32*1024*1024)throw std::runtime_error("Invalid output PCM");std::ofstream file(path,std::ios::binary);const auto le=[&](std::uint32_t value,unsigned width){for(unsigned i=0;i<width;++i)file.put(char((value>>(8*i))&255));};
     file<<"RIFF";le(std::uint32_t(clip.samples.size()*2+36),4);file<<"WAVEfmt ";le(16,4);le(1,2);le(clip.channels,2);le(clip.rate,4);le(clip.rate*clip.channels*2,4);le(clip.channels*2,2);le(16,2);file<<"data";le(std::uint32_t(clip.samples.size()*2),4);
-    for(const auto sample:clip.samples){if(!std::isfinite(sample))throw std::runtime_error("Non-finite output audio sample");const auto value=std::clamp(std::lround(double(sample)*32768),-32768l,32767l);le(static_cast<std::uint16_t>(value),2);}if(!file)throw std::runtime_error("Cannot write PCM WAV");
+    std::array<char,65536> buffer{};std::size_t used=0;
+    for(const auto sample:clip.samples){if(!std::isfinite(sample))throw std::runtime_error("Non-finite output audio sample");const auto value=static_cast<std::uint16_t>(std::clamp(std::lround(double(sample)*32768),-32768l,32767l));buffer[used++]=char(value&255);buffer[used++]=char(value>>8);if(used==buffer.size()){file.write(buffer.data(),static_cast<std::streamsize>(used));used=0;}}
+    if(used)file.write(buffer.data(),static_cast<std::streamsize>(used));if(!file)throw std::runtime_error("Cannot write PCM WAV");
 }
 }

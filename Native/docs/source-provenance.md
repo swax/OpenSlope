@@ -7,6 +7,7 @@ other components' implementation sources are outside this implementation boundar
 | Importer part | Implementation authority |
 |---|---|
 | Primary ISO9660 directory access | [Trailmap: 200-iso]; bounded, seekable document/file reads. |
+| Automatic Audio import | Clean 190/200/260/270/420 bodies and the shared fixed-environment identifier contract; independently authored config matching, variable-stride ADL reads, serialized manifest-hash joins and bounded asset staging. All eleven generated courses/WAVs are comparison data only. Executable collision/board rows remain unresolved and are not compiled into the importer. |
 | Archive table and compression | [Trailmap: 200-c0fb, 200-bigf, 200-refpack-header, 200-refpack-commands]. Format identifiers and byte-command equations are interoperability facts. |
 | Terrain records and names | [Trailmap: 200-map-manifest, 220-header, 220-patch, 220-power-basis]; the public OpenSlope patch contract. |
 | Runtime coordinate conversion | Proper -90 degree X rotation and centimetre scale, preserving the observed course turns. The disputed extra reflection in chapter 002 is documented in spec-alignment.md; output maps remain in their canonical raw frame. |

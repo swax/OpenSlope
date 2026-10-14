@@ -34,9 +34,9 @@ public final class NativeImportInstrumentation extends Instrumentation {
                 invoke(activity, "nativeExtract", new Class<?>[]{int.class, long.class, String.class, String.class}, descriptor.getFd(), image.length(), "FIXTURE", extracted.getAbsolutePath());
             }
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, extracted.getAbsolutePath());
-            File audioBank = new File(extracted, "Audio/SFX/authored"); require(audioBank.mkdirs(), "Create authored audio fixture");
-            try (InputStream input = getContext().getAssets().open("tone.wav"); OutputStream output = new FileOutputStream(new File(audioBank, "000.wav"))) { MapLibrary.copy(input, output, MapLibrary.IMAGE_LIMIT, () -> {}); }
-            try (Writer output = new OutputStreamWriter(new FileOutputStream(new File(extracted, "Audio/SoundIndex.json")), "UTF-8")) { output.write("{\"Schema\":\"openslope-sound-index/v1\",\"Banks\":{\"2\":\"authored\"},\"CollisionEvents\":{}}"); }
+            require(new File(extracted, "Audio/SFX/tone/000.wav").isFile(), "JNI imports audio from the selected ISO");
+            require(new File(extracted, "Audio/Music/song/chunk_000.wav").isFile(), "JNI imports graph-addressed music chunks");
+            require(new File(extracted, "Audio/Intro/Quiet-A.wav").isFile(), "JNI imports configured intro stems");
             require(new File(extracted, "Patches.json").isFile() && new File(extracted, "Textures/0000.png").isFile(), "JNI writes canonical map files");
             File local = new File(temporary, "Maps"); local.mkdir();
             MapLibrary direct = new MapLibrary(context.getContentResolver(), local, null); direct.publish("Custom course", extracted, () -> {});
@@ -56,8 +56,9 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(prepared, "Meshes/0.obj").isFile(), "SAF cache includes imported prop geometry");
             require(new File(prepared, "Collision/0.obj").isFile() && new File(prepared, "Collision/1.obj").isFile(), "SAF cache includes every collision payload");
             require(new File(prepared, "Physics.json").isFile(), "SAF cache includes independent physics metadata");
-            require(new File(prepared, "Audio/SFX/authored/000.wav").isFile(), "SAF cache includes nested audio clips");
+            require(new File(prepared, "Audio/SFX/tone/000.wav").isFile(), "SAF cache includes nested audio clips");
             require(new File(prepared, "Audio/SoundIndex.json").isFile(), "SAF cache includes audio routing metadata");
+            require(new File(prepared, "Audio/Music/song/loops/loop/000.loop.wav").isFile(), "SAF cache includes configured async-bank assets");
             for (int i = 0; i < references.length(); ++i) {
                 String relative = references.getString(i);
                 require(new File(prepared, relative).isFile(), "SAF play cache includes " + relative);

@@ -1,6 +1,8 @@
 #include "openslope/audio_data.hpp"
 #include "import_internal.hpp"
 #include <map>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace openslope {
 namespace {
@@ -21,10 +23,23 @@ AudioBank decode_audio_bank(std::span<const std::uint8_t> source){
     // [Trailmap: 260-bnk, 260-bnk-sound, 260-bnk-data] Entry offsets are
     // self-relative; channel offsets are absolute within this bank.
     Bytes b{source};b.range(0,12);if(b.text(0,4)!="BNKl")throw std::runtime_error("Invalid sound bank signature");const auto version=b.le(4,1),count=b.le(6,2);const std::size_t table=version==2?12:version==4||version==5?20:0;if(!table||count>4096)throw std::runtime_error("Unsupported sound bank version/count");b.range(table,count*4);AudioBank result;result.slots.resize(count);
-    for(unsigned i=0;i<count;++i){const auto entry=table+i*4;const auto relative=b.le(entry);if(!relative)continue;std::size_t p=entry+relative;const auto fields=patches(b,p);auto clip=format(fields);const auto samples=fields.contains(0x85)?fields.at(0x85):0;if(!samples)continue;if(samples>16*1024*1024)throw std::runtime_error("Sound bank sample count exceeds its limit");const auto codec=fields.contains(0xa0)?fields.at(0xa0):5;
+    std::size_t decoded_samples=0;
+    for(unsigned i=0;i<count;++i){const auto entry=table+i*4;const auto relative=b.le(entry);if(!relative)continue;std::size_t p=entry+relative;const auto fields=patches(b,p);auto clip=format(fields);const auto samples=fields.contains(0x85)?fields.at(0x85):0;if(!samples)continue;if(samples>16*1024*1024||std::size_t(samples)*clip.channels>32*1024*1024-decoded_samples)throw std::runtime_error("Sound bank sample count exceeds its limit");decoded_samples+=std::size_t(samples)*clip.channels;const auto codec=fields.contains(0xa0)?fields.at(0xa0):5;
         std::array<std::vector<std::int16_t>,2> channels;for(unsigned c=0;c<clip.channels;++c){const auto key=c?0x89u:0x88u;if(!fields.contains(key))throw std::runtime_error("Sound bank lacks a channel offset");const auto offset=fields.at(key);b.range(offset,0);AdpcmState history;channels[c]=decode_audio_frames(source.subspan(offset),codec,samples,history);}interleave(clip,channels);
         if(fields.contains(0x86)&&fields.contains(0x87)){clip.loop_start=fields.at(0x86);clip.loop_end=fields.at(0x87);if(clip.loop_start>=clip.loop_end||clip.loop_end>clip.frames())throw std::runtime_error("Invalid sound bank loop range");}result.slots[i]=std::move(clip);
     }return result;
+}
+void write_audio_bank(const std::filesystem::path& output,const AudioBank& bank,const std::function<void()>& checkpoint){
+    if(!std::filesystem::create_directory(output))throw std::runtime_error("Audio bank destination already exists");
+    nlohmann::json rows=nlohmann::json::array();
+    for(std::size_t i=0;i<bank.slots.size();++i){
+        if(checkpoint)checkpoint();if(!bank.slots[i]){rows.push_back(nullptr);continue;}
+        const auto& clip=*bank.slots[i];auto number=std::to_string(i);while(number.size()<3)number.insert(number.begin(),'0');
+        const auto name=number+".wav";write_wave(output/name,clip);
+        rows.push_back({{"Clip",name},{"Rate",clip.rate},{"Channels",clip.channels},{"Frames",clip.frames()},{"LoopStart",clip.loop_start},{"LoopEnd",clip.loop_end},{"Priority",clip.priority}});
+        if(clip.loop_end){PcmClip loop;loop.rate=clip.rate;loop.channels=clip.channels;loop.samples={clip.samples.begin()+clip.loop_start*clip.channels,clip.samples.begin()+clip.loop_end*clip.channels};write_wave(output/(number+".loop.wav"),loop);}
+    }
+    std::ofstream file(output/"bank.json");file<<nlohmann::json({{"Schema","openslope-audio-bank/v1"},{"Slots",rows}}).dump()<<'\n';if(!file)throw std::runtime_error("Cannot write audio bank metadata");
 }
 AudioStream decode_audio_stream(std::span<const std::uint8_t> source,std::size_t offset){
     // [Trailmap: 260-schl-chunks, 260-pt, 260-scdl-eaxa] Histories are

@@ -61,16 +61,17 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Textures/<name>.png` | SSH directory names; decoded RGBA and modulate2x colour conversion. Associated-alpha inference uses the strict normalized colour bound, as described in the source-provenance notes. |
 | `Lightmaps/<name>.png` | Raw full-range RGBA; both lighting blend terms retained, without colour brightening. |
 | `Models.json`, `Meshes/*.obj` | Shared model hierarchy, raw mesh positions, authored UV/normal splits, material IDs, rest poses and animation records. Optional exact affine matrix extension; rendering samples animation at time zero. |
-| `Instances.json` | Model IDs, names, raw placement TRS/matrix, lighting, authored visibility, collision/response flags, mass/bounce/surface, proxy paths, physics index and effect slot. |
+| `Instances.json` | Model IDs, names, raw placement TRS/matrix, lighting, authored visibility, collision/response flags, mass/bounce/surface, proxy paths, physics index and effect slot. When ADL is present, serialized manifest hashes join `IncludeSound`/`Sounds` and typed external emitters. |
 | `Collision/*.obj`, `Physics.json` | All SSF pool payloads; raw proxy positions and normals, preserved physics centre/inertia, level records and raw/RLE mask bytes. Models carry source local `CollisionBounds`. Older exported physics data in `SSFLogic.json` also loads. |
 | `Materials.json` | Static base-texture references and flags; neutral labels, with remaining material behavior fields deferred. |
 | `AIP.json`, `SOP.json` (when present) | Existing start-slot, AI/race-line and event contracts; expanded displacement steps, raw seeds, DTF and path attributes. Runtime retains the seed vertex and uses the middle start slot. |
+| `Audio/` (when configured) | Complete assigned sound banks, loop slices, placed fixed-environment banks, preserved configs, course music graphs/chunks and configured async banks/intro stems. Empty slots stay empty. Executable collision/board indexes, dynamic chants and speech remain deferred; see audio-import.md. |
 | `Origin.json` | Existing `openslope-origin/v1`, `retail`, course name and `retail-extract` reason. |
 | `Source/` | Decompressed level archive sidecars retained locally for later conversion stages. Not a portable runtime contract. |
 | `Import.json` | Explicit stage report: `Complete` is false, with emitted and deferred stage names. |
 
-This imports canonical terrain, static-prop rendering, collision data and AIP/SOP course paths; complete course conversion
-remains to be implemented. Live object behavior, rail splines, world, effects, audio and skybox
+This imports canonical terrain, static-prop rendering, collision data, AIP/SOP paths and configured audio assets; complete course conversion
+remains to be implemented. Live object behavior, rail splines, world, effects, complete audio routing/runtime and skybox
 contracts remain deferred. A folder already produced by a compatible extractor or Slopesmith
 is also accepted. Rendering those systems is separate from converting them.
 The implemented terrain appearance contract is described in [terrain appearance](terrain-appearance.md).
