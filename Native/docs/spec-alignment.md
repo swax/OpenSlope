@@ -116,3 +116,9 @@ Shared draw/collision poses retain clean 400 ordering/lighting and existing
 contact authority. The sparse 100 m/300 m activation fallback, matrix
 interpolation and rotational CCD approximations are explicit application
 choices. See prop-animations.md; full LTG and graph playback remain unfinished.
+
+Detached spline movers use clean 150/230 for independent draw-node ownership,
+arc-spaced copies, cursor/end modes, tangent-only orientation, stop flags and
+cable lines. Host placement/collision remains authored. Route-aware cell gathering,
+quadrature/inversion, explicit constructor re-arm and presentation snapping are
+application choices, documented with evidence and limits in spline-movers.md.

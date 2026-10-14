@@ -12,7 +12,8 @@ layout(location=0) out vec4 colour;
 void main() {
     vec3 displayColour=vertexColour;
     float alpha=1.0;
-    if(transform.options.x>0) {
+    if(transform.options.x==8)alpha=effectAlpha;
+    if(transform.options.x>0&&transform.options.x!=8) {
         vec4 base=texture(diffuseImage,textureUV);
         if(transform.options.x==3) {
             if(transform.options.z==1&&base.a<0.5)discard;

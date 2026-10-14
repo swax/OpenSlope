@@ -1,6 +1,6 @@
 #pragma once
 #include "course_run.hpp"
-#include "model_animation.hpp"
+#include "spline_motion.hpp"
 #include <memory>
 #include <span>
 
@@ -19,6 +19,7 @@ public:
     std::span<const std::uint8_t> flags() const;
     std::vector<WorldAction> take_actions();
     std::span<const PropMotion> motions() const;
+    std::span<const PropRouteMotion> route_motions() const;
     std::size_t active_regions() const;
     std::size_t chains() const;
     std::size_t unsupported() const;

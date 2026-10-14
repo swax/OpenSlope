@@ -118,3 +118,11 @@ matching moving collision/support are independently authored from clean
 standard transform/BVH math. Existing exported Models/Effects data supply only
 validation inputs. The source LTG grid is not decoded; cell/range choices and
 temporal/rotational approximations are explicit in prop-animations.md.
+
+Spline-path drawing is independently authored from clean 150/230, first-party
+public cursor/orientation/lifecycle behavioral examples and standard quadrature,
+root bracketing and affine transforms. No separately licensed decoder or runtime
+code supplies the sampler, cursor, scheduler or Vulkan cable/copy path. Existing
+course geometry/behavior data is used only for interoperability and local renders.
+Application bounds and unsupported collision/lifecycle profiles remain explicit
+in spline-movers.md.

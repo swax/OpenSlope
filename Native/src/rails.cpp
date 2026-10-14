@@ -40,12 +40,13 @@ bool Rails::accepts(const RailHit& hit,bool entry,double blend) const {blend=std
 void Rails::enable(std::size_t spline,bool value){splines_.at(spline).enabled=value;}
 void Rails::reset(){for(std::size_t i=0;i<splines_.size();++i)splines_[i].enabled=initial_[i];}
 int Rails::surface(std::size_t spline) const {return splines_.at(spline).surface;}
-Rails Rails::load(const std::filesystem::path& root){
-    if(root.empty()||!std::filesystem::exists(root/"Splines.json"))return Rails();const auto base=std::filesystem::weakly_canonical(root),file=std::filesystem::weakly_canonical(root/"Splines.json"),relative=file.lexically_relative(base);if(relative.empty()||relative.is_absolute()||*relative.begin()==".."||std::filesystem::file_size(file)>64*1024*1024)throw std::runtime_error("Invalid rail metadata path/size");std::ifstream input(file);const auto doc=nlohmann::json::parse(input);const auto& rows=doc.at("Splines");if(!rows.is_array()||rows.size()>10000)throw std::runtime_error("Invalid spline table");std::vector<RailSpline> splines;std::size_t total=0;
+std::vector<RailSpline> spline_paths(const std::filesystem::path& root){
+    if(root.empty()||!std::filesystem::exists(root/"Splines.json"))return {};const auto base=std::filesystem::weakly_canonical(root),file=std::filesystem::weakly_canonical(root/"Splines.json"),relative=file.lexically_relative(base);if(relative.empty()||relative.is_absolute()||*relative.begin()==".."||std::filesystem::file_size(file)>64*1024*1024)throw std::runtime_error("Invalid rail metadata path/size");std::ifstream input(file);const auto doc=nlohmann::json::parse(input);const auto& rows=doc.at("Splines");if(!rows.is_array()||rows.size()>10000)throw std::runtime_error("Invalid spline table");std::vector<RailSpline> splines;std::size_t total=0;
     for(const auto& row:rows){RailSpline spline;spline.surface=row.value("SplineStyle",13);spline.enabled=(row.value("U1",1)&1)!=0;const auto& segments=row.at("Segments");if(!segments.is_array()||total+segments.size()>100000)throw std::runtime_error("Invalid rail segment table");total+=segments.size();
         for(const auto& part:segments){const auto& values=part.at("Points");if(!values.is_array()||values.size()!=4)throw std::runtime_error("A rail segment needs four controls");std::array<Vec3,4> p{};for(unsigned i=0;i<4;++i)p[i]=raw(values[i]);RailCurve curve;curve.power={-p[0]+p[1]*3-p[2]*3+p[3],p[0]*3-p[1]*6+p[2]*3,(p[1]-p[0])*3,p[0]};
             if(part.contains("PowerCoefficients")){const auto& power=part.at("PowerCoefficients");if(!power.is_array()||power.size()!=4)throw std::runtime_error("Invalid cubic rail coefficients");RailCurve stored;for(unsigned i=0;i<4;++i)stored.power[i]=raw(power[i]);const auto expected=controls(stored);bool unchanged=true;for(unsigned i=0;i<4;++i)unchanged&=length(expected[i]-p[i])<=.0001;if(unchanged)curve=stored;}
             spline.curves.push_back(curve);}splines.push_back(std::move(spline));
-    }return Rails(std::move(splines));
+    }return splines;
 }
+Rails Rails::load(const std::filesystem::path& root){return Rails(spline_paths(root));}
 }

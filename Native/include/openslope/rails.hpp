@@ -11,6 +11,7 @@ struct RailCurve {
     Vec3 tangent(double t) const;
 };
 struct RailSpline {int surface=13;bool enabled=true;std::vector<RailCurve> curves;};
+std::vector<RailSpline> spline_paths(const std::filesystem::path& root);
 struct RailHit {std::size_t spline{},segment{};double parameter{},distance{};Vec3 point,tangent,up,right,offset;};
 // Cubic geometry and authored candidacy are separate from the visible prop.
 class Rails {

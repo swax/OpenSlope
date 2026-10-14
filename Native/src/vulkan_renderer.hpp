@@ -1,5 +1,5 @@
 #pragma once
-#include "openslope/model_animation.hpp"
+#include "openslope/spline_motion.hpp"
 #include <volk.h>
 #include "openslope/terrain.hpp"
 #include "render_math.hpp"
@@ -49,7 +49,7 @@ private:
 };
 class VulkanRenderer {
 public:
-    struct Stats {unsigned avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},wait_ms{},gpu_ms=-1;};
+    struct Stats {unsigned route_copies{},route_lines{},line_draws{},avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},wait_ms{},gpu_ms=-1;};
     explicit VulkanRenderer(VulkanContext& context):context_(context){}
     ~VulkanRenderer();
     VulkanRenderer(const VulkanRenderer&)=delete;
@@ -61,7 +61,7 @@ public:
     void deferred(bool enabled){deferred_=enabled;}
     void finish();
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
-        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={},std::span<const PropMotion> motions={},double alpha=1);
+        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={},std::span<const PropMotion> motions={},double alpha=1,std::span<const PropRouteMotion> routes={});
     const Stats& stats() const {return stats_;}
     void capture(unsigned image,const std::filesystem::path& output);
     void clear_targets();
@@ -72,10 +72,10 @@ private:
     std::uint32_t width_{},height_{};VkFormat format_{};
     VkSampleCountFlagBits samples_=VK_SAMPLE_COUNT_1_BIT;
     VkCommandPool pool_{};VkCommandBuffer command_{};VkFence fence_{};
-    VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{},blend_pipeline_{},sprite_pipeline_{},wake_pipeline_{},sky_pipeline_{};
+    VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{},blend_pipeline_{},sprite_pipeline_{},wake_pipeline_{},sky_pipeline_{},line_pipeline_{};
     Stats stats_;VkQueryPool timing_{};double timestamp_period_{};unsigned timestamp_bits_{};
     bool deferred_=false,pending_=false;
-    Buffer poses_;VkDescriptorSetLayout pose_layout_{};VkDescriptorPool pose_pool_{};VkDescriptorSet pose_set_{};
+    Buffer poses_;std::size_t pose_capacity_=0;VkDescriptorSetLayout pose_layout_{};VkDescriptorPool pose_pool_{};VkDescriptorSet pose_set_{};
     bool terrain_culling_=true;Buffer visible_indices_;std::size_t index_capacity_{};
     std::vector<std::size_t> visible_ranges_;std::vector<std::uint32_t> packed_indices_;
     struct TerrainDraw {std::uint32_t first{},count{};std::size_t material{};};std::vector<TerrainDraw> terrain_draws_;
@@ -83,11 +83,13 @@ private:
     std::vector<Vertex> sprite_mesh_;
     Buffer wake_vertices_;std::size_t wake_capacity_{};std::vector<Vertex> wake_mesh_;
     Buffer avatar_vertices_;std::size_t avatar_capacity_{};
+    Buffer line_vertices_;std::size_t line_capacity_=0;std::vector<Vertex> line_mesh_;
     Buffer sheet_vertices_;std::size_t sheet_capacity_{};std::vector<Vertex> sheet_mesh_;
     struct Target { VkImage colour{},depth{},multisample{};VkDeviceMemory depth_memory{},multisample_memory{};VkImageView colour_view{},depth_view{},multisample_view{};VkFramebuffer framebuffer{}; };
     std::vector<Target> targets_;
     Buffer create_buffer(VkDeviceSize size,VkBufferUsageFlags usage,const void* data);
     std::uint32_t memory_type(std::uint32_t bits,VkMemoryPropertyFlags flags) const;
     void destroy_buffer(Buffer& buffer);
+    void reserve_poses(std::size_t count);
 };
 }

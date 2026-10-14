@@ -64,6 +64,8 @@ imports use their saved behavior sidecar without re-import. See
 [world logic](docs/world-logic.md) for compatibility, verification and remaining
 property/region lifecycle work. [Prop animations](docs/prop-animations.md) covers
 per-instance clocks, budget/combo controls, region/end latches and moving contacts.
+[Spline movers](docs/spline-movers.md) adds detached subway/chairlift copies,
+arc-spaced playback, route-aware activation and one-pixel running cables.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

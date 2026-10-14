@@ -103,7 +103,8 @@ or Quest performance measurements.
 python Native/tests/prop_animation_replay_test.py temp/native/Release/openslope_player.exe
 ```
 
-Spline-path movers, thrown rigid bodies, break/rearm twins and debris, UV and
+Detached spline-path drawing is now implemented in 0.26; see spline-movers.md.
+Thrown rigid bodies, break/rearm twins and debris, UV and
 material animation, counters/flags, pads and the other unsupported graph nodes
 still need consumers. The first-party application's timed pickup grow-back,
 animation auto-return and general 30-second reset profile also remain separate
