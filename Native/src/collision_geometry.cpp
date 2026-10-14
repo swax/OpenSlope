@@ -53,7 +53,7 @@ std::vector<std::uint8_t> occupancy_masks(std::span<const std::uint8_t> input,un
 }
 CollisionResponse collision_response(const WorldContact& c,Vec3 velocity,Vec3 board_up){
     CollisionResponse result{{},velocity,0,false};if(!c.response)return result;const auto normal=normalized(c.normal);result.position_delta=normal*(std::max(0.0,c.depth)*.1);
-    const auto closing=-dot(velocity,normal);if(closing<=0)return result;
+    const auto closing=-dot(velocity-c.surface_velocity,normal);if(closing<=0)return result;
     if(c.surface>=0){result.velocity+=normal*closing;result.impulse=closing;return result;}
     // [Trailmap: 130-contact-state, 370-depenetrate, 370-bounce] Exactly
     // zero response mass and flag-off contact are handled before this helper.

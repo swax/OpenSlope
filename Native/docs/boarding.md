@@ -79,3 +79,9 @@ course is absent. It checks activity lifetime and reports which source it used;
 activity launch alone does not establish live stereo frames, button interaction,
 body joint motion or VR comfort. Those remain worn-headset checks. The optional
 body tracker and high-fidelity request are accepted on this Quest; see avatar.md.
+
+Model-object moving supports now carry the walker and parked board. Rider
+velocity retains world momentum while grounded walking control uses motion
+relative to the support. Mount/dismount and walking/mounted jumps inherit the
+carrier once. The animation runtime suite covers these paths; see
+[prop animations](prop-animations.md) for evidence and dynamic collision limits.

@@ -1,4 +1,5 @@
 #pragma once
+#include "openslope/model_animation.hpp"
 #include <volk.h>
 #include "openslope/terrain.hpp"
 #include "render_math.hpp"
@@ -60,7 +61,7 @@ public:
     void deferred(bool enabled){deferred_=enabled;}
     void finish();
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
-        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={});
+        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={},std::span<const PropMotion> motions={},double alpha=1);
     const Stats& stats() const {return stats_;}
     void capture(unsigned image,const std::filesystem::path& output);
     void clear_targets();

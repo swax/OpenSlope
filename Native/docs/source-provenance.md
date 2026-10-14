@@ -111,3 +111,10 @@ payloads are compared only against generated Maps data; no decoder source is
 consulted. Integer-encoded payload words retain their portable data contract.
 The bounded scheduler, runtime instance flags, collision ordering, Vulkan prop
 filter and sound dispatch are new native code. See world-logic.md for scope.
+
+Model-object animation, per-instance clocks, persistent region dispatch and
+matching moving collision/support are independently authored from clean
+120/150/230/400, first-party public animation/lifecycle behavioral examples and
+standard transform/BVH math. Existing exported Models/Effects data supply only
+validation inputs. The source LTG grid is not decoded; cell/range choices and
+temporal/rotational approximations are explicit in prop-animations.md.

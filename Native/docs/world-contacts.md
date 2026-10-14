@@ -89,3 +89,9 @@ simulation averaged 0.039 ms/tick, render wall 2.163 ms/frame and GPU 1.816 ms/f
 on the local desktop. This short sample contains no prop impacts and establishes
 only a startup/riding baseline; the authored replays supply the impact evidence.
 It is not a whole-course or Quest performance result.
+
+Build 0.25 applies model-object animation deltas to render and collision together,
+refits changed BVH leaves/ancestors and reports surface velocity for relative
+response. Grounded controls and launch strength preserve carrier momentum;
+walking and parked boards follow support transforms. See prop-animations.md
+for shared-player checks and the remaining rotational/time-interval limits.

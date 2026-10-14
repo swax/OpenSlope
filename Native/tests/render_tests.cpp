@@ -25,9 +25,9 @@ std::vector<unsigned char> read_capture(VulkanRenderer& renderer,const std::file
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
 }
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={},float fade=0,std::span<const std::uint8_t> flags={}) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={},float fade=0,std::span<const std::uint8_t> flags={},std::span<const PropMotion> motions={},double alpha=1) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet,{},fade,flags);return read_capture(renderer,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet,{},fade,flags,motions,alpha);return read_capture(renderer,output);
 }
 void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array<int,3> expected) {
     const auto x=unsigned((.1+.8*u)*128),y=unsigned((.1+.8*v)*128);
@@ -146,6 +146,19 @@ int main(int argc,char** argv) {
                 for(const auto* pixels:{&a,&b}){std::size_t partial=0;for(std::size_t p=0;p<pixels->size();p+=3)if((*pixels)[p]>90&&(*pixels)[p]<240)++partial;++checks;if((first.samples()>1)!=(partial>0))throw std::runtime_error("MSAA resolve did not produce expected geometric edge coverage");}
                 first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,1);capture(first,root/"aa-recreated.ppm",camera);
                 continue;
+            }
+            if(std::string(name)=="props"){
+                auto identity=identity_transform(),translated=identity;translated[12]=.6;PropMotion motion{0,{identity},{translated}};
+                const auto sample=[&](VulkanRenderer& renderer,const PropMotion& pose,double alpha){return capture(renderer,root/"moving-prop.ppm",camera,{},{},{},{},0,{},std::span(&pose,1),alpha);};
+                ++checks;if(sample(first,motion,0)!=a)throw std::runtime_error("Animation alpha zero changes the previous pose");
+                auto half=identity;half[12]=.3;const PropMotion halfway{0,{half},{half}};++checks;if(sample(first,motion,.5)!=sample(first,halfway,1))throw std::runtime_error("Interpolated translation differs from its sampled midpoint");
+                const auto moved=sample(first,motion,1);++checks;if(moved==a)throw std::runtime_error("Current animated placement does not move pixels");pixel(moved,.75,.5,{255,160,60});
+                auto opposite=identity;opposite[12]=-.6;const PropMotion other{0,{identity},{opposite}};const auto second_moved=sample(second,other,1);
+                first.deferred(true);second.deferred(true);auto board=Matrix::identity();board.values[12]=10;
+                for(unsigned frame=0;frame<4;++frame){const auto submit=[&](VulkanRenderer& renderer,const PropMotion& pose){renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},{},{},{},{},0,{},std::span(&pose,1),1);};if(frame%2){submit(second,other);submit(first,motion);}else{submit(first,motion);submit(second,other);}checks+=2;if(read_capture(first,root/"moving-first.ppm")!=moved||read_capture(second,root/"moving-second.ppm")!=second_moved)throw std::runtime_error("Queued eye renderers overwrite animated placements");}
+                first.deferred(false);second.deferred(false);
+                for(const auto failure:{0u,1u,2u}){bool refused=false;try{auto bad=motion;if(failure==0)bad.current.clear();if(failure==1)bad.current[0][0]=0;sample(first,bad,failure==2?1.1:1);}catch(const std::invalid_argument&){refused=true;}catch(const std::runtime_error&){refused=true;}++checks;if(!refused)throw std::runtime_error("Malformed animation was accepted");++checks;if(capture(first,root/"motion-after-invalid.ppm",camera)!=a)throw std::runtime_error("Invalid animation corrupts the next frame");}
+                capture(second,root/"motion-restored-second.ppm",camera);
             }
             if(std::string(name)=="props")for(auto* renderer:{&first,&second}){
                 const std::array<std::uint8_t,5> hidden{};const auto pixels=capture(*renderer,root/"runtime-hidden.ppm",camera,{},{},{},{},0,hidden);pixel(pixels,.25,.5,{40,80,120});pixel(pixels,.75,.5,{40,80,120});++checks;if(renderer->stats().visible_props||renderer->stats().prop_draws)throw std::runtime_error("Tombstoned props still draw");

@@ -35,11 +35,13 @@ The implemented graph operations are:
   main 26 detaches the rider. The caller continues. The first matching named
   function wins. Repeated IDs, unresolved references and cycles do not become
   unbounded recursion.
-- Property sub 2 debounces contact. Positive time expires; zero holds until
-  region teardown, and negative time holds until level teardown. Region
-  teardown is not implemented yet, so zero also currently holds for this run.
-- Property sub 5 supports destruction/tombstoning and restoring authored state;
-  the broader pause, node ownership and region lifetime remain partial.
+- Property sub 2 debounces contact. Positive time requests node-end; zero holds
+  until ordinary region teardown, and negative time holds until level teardown.
+- Properties 256/257/258 play model-object clips in real time, on a granted
+  budget or as a triggered combo. Main 3/9 dispatch implemented controls to the
+  installed player; property sub 5 destroys/restores, pauses or tombstones.
+  Persistent activation and populated region/end latches now retain ownership.
+  See [prop animations](prop-animations.md) for exact scope and motion limits.
 - Main 13/14 reset or collect, main 8 plays course audio, and main 25 changes
   rail candidacy. Warping preserves those runtime rail toggles; restart restores
   initial candidacy and re-applies the mode graph.
@@ -102,16 +104,11 @@ checks. ARM64 app/test APKs build and Android lint reports zero errors with four
 existing warnings. Versioned 0.24 artifacts are saved in the ignored build tree;
 the Quest remains on 0.22 for the user's steering test.
 
-The public first-party Effects v1 validator accepts all eleven native exports.
-Final GPU suites pass 1,190 appearance/visibility checks and 84 avatar/HUD
-checks. ARM64 app/test APKs build and Android lint reports zero errors with four
-existing warnings. Versioned 0.24 artifacts are saved in the ignored build tree;
-the Quest remains on 0.22 for the user's steering test.
-
-Persistent region activation, property-node animation/ownership, node-end and
-deferred-trigger continuations, complete hide/rearm lifetimes, breakable twins
-and debris, particle effects, speed/trick/directional pads, counters, teleport,
-remaining score/time opcodes and moving props still need consumers. Collected
+Build 0.25 adds persistent regions, model-animation ownership, installed-player
+controls and region/node-end continuations. See prop-animations.md for evidence.
+Deferred triggers, complete hide/rearm lifetimes, breakable twins and debris,
+particle effects, speed/trick/directional pads, counters, teleport, remaining
+score/time opcodes and spline-path/rigid-body movers still need consumers. Collected
 gems use clean 390's run-long tombstone; Slopesmith's application pickup grow-back
 and breakable timers are a separate play-profile gap. Full LTG/world-grid import,
 exact mode coverage, reset sound and wedge/death-plane triggers also remain.

@@ -108,3 +108,11 @@ function ownership, waits/gates/debounce, reset/multiplier/audio and tombstones.
 Mode functions and rail toggles share runtime instance state across desktop/OpenXR.
 Application script bounds, mode fallback and remaining region/property lifecycles
 are explicit in world-logic.md; full graph playback is not yet complete.
+
+Model-object playback uses clean 120 for absolute cubic channels, parent/local
+composition and rest rules, and clean 150/230 for properties 256/257/258,
+budget/combo controls, persistent activation and populated region/end latches.
+Shared draw/collision poses retain clean 400 ordering/lighting and existing
+contact authority. The sparse 100 m/300 m activation fallback, matrix
+interpolation and rotational CCD approximations are explicit application
+choices. See prop-animations.md; full LTG and graph playback remain unfinished.

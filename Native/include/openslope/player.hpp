@@ -13,6 +13,7 @@
 #include <deque>
 #include <map>
 #include <set>
+#include <stdexcept>
 #include <functional>
 
 namespace openslope {
@@ -42,7 +43,7 @@ struct Rider {
     std::optional<std::size_t> rail_spline;
     std::size_t rail_segment{};double rail_parameter{},rail_age{},rail_spin{},rail_spin_rate{};
     int rail_direction=1,rail_trick=-1;unsigned grinds{},rail_transfers{},rail_exits{};
-    std::optional<std::size_t> ground_instance;
+    std::optional<std::size_t> ground_instance,ground_object;Vec3 ground_velocity;
 };
 enum class ContactPhase {Begin,Stay,End};
 struct ContactEvent {WorldContact contact;ContactPhase phase=ContactPhase::Begin;CollisionResponse response;};
@@ -72,6 +73,8 @@ public:
     const RidingEffects& effects() const {return effects_;}
     const CollisionWorld& world() const {return world_;}
     const std::vector<ContactEvent>& contacts() const {return contact_events_;}
+    double frame_alpha() const {return clock_.alpha();}
+    void world_view(Vec3 position){if(!finite(position))throw std::invalid_argument("Invalid world view");world_view_=position;}
     const WorldLogic& logic() const {return logic_;}
     const std::vector<WorldAction>& world_actions() const {return world_actions_;}
     Vec3 camera_position(Vec3 desired) const;
@@ -99,6 +102,7 @@ private:
     Rails rails_;
     CourseRun run_;
     WorldLogic logic_;
+    std::optional<Vec3> world_view_;
     std::vector<WorldAction> world_actions_;
     void apply_world_actions();
     std::set<std::size_t> logic_contacts_;
@@ -129,8 +133,8 @@ private:
     bool restart_held_=false,restart_pending_=false;
     double jump_cooldown_=0,air_grace_=0,rail_cooldown_=0;
     std::deque<bool> jump_edges_;
-    struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance;};
-    struct LooseBoard {Vec3 position,previous,velocity,forward{0,0,-1},up{0,1,0};bool grounded=true;int lead=1;double age=0;} loose_board_;
+    struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance{},object{};Vec3 velocity{};};
+    struct LooseBoard {Vec3 position,previous,velocity,forward{0,0,-1},up{0,1,0};bool grounded=true;int lead=1;double age=0;std::optional<std::size_t> ground_object{};Vec3 ground_velocity{};} loose_board_;
     bool on_foot_=false,start_on_foot_=false,mount_held_=false,mount_pending_=false;
     double walk_phase_=0;
     void place_foot(Vec3 position,Vec3 forward,Vec3 velocity={});

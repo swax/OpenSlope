@@ -15,13 +15,15 @@ struct PropPose {
     std::array<std::array<float,4>,3> direction{},colour{};
 };
 static_assert(sizeof(PropPose)==176);
-struct PropPart {std::uint32_t first{},count{};std::string texture;std::uint32_t flags{};};
+struct PropPart {std::uint32_t first{},count{};std::string texture;std::uint32_t flags{};std::size_t object=0;Bounds bounds;};
 struct PropModel {std::vector<std::size_t> parts;Bounds bounds;};
 struct PropObjectLayout {Transform rest;Bounds box;bool has_geometry=false,has_box=false;};
 std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root,std::span<const std::size_t> box_models);
 std::vector<Transform> prop_placements(const std::filesystem::path& root);
 Transform map_transform(Transform raw);
 Transform inverse_transform(const Transform& matrix);
+Transform interpolate_transform(const Transform& previous,const Transform& current,double alpha);
+PropPose moved_prop_pose(const PropPose& pose,const Transform& model_delta);
 Vec3 transform_normal(const Transform& matrix,Vec3 normal);
 struct PropInstance {std::size_t model{};PropPose pose;Bounds bounds;bool visible=true;};
 struct Props {

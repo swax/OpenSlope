@@ -18,7 +18,8 @@ terrain and shared world props, supports charged jumps, spins/flips and switch l
 authored prop contacts for bounce, ride surfaces and pass-through events. Animated crash recovery,
 analytic rails, timed runs, spin/flip/rail scoring and the visible stick figure are implemented. Quest starts on foot
 beside the board, with walking/jumping and nearby mounting. Authored reset volumes, multiplier pickups, mode hides and graph-triggered sound
-now run through the shared world logic. Full live prop behavior, executable audio
+now run through the shared world logic. Persistent model-object animations move
+rendered parts and matching collision/support. Full live prop behavior, executable audio
 resolvers, grabs, uber tiers, AI races and multiplayer remain later stages. See
 [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
@@ -61,7 +62,8 @@ Authored world contacts now dispatch portable effect graphs, including Showoff
 gems, course reset, mode hides/rail toggles, waits and sound. Existing native
 imports use their saved behavior sidecar without re-import. See
 [world logic](docs/world-logic.md) for compatibility, verification and remaining
-property/region lifecycle work.
+property/region lifecycle work. [Prop animations](docs/prop-animations.md) covers
+per-instance clocks, budget/combo controls, region/end latches and moving contacts.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

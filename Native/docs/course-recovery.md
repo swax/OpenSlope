@@ -82,11 +82,3 @@ are verified, and Android lint reports zero errors with four existing warnings.
 The native source-boundary audit passes. Immutable desktop/APK artifacts are
 saved under the ignored `temp/native` build tree. The installed Quest build
 remains 0.22.0 for the user's steering test.
-
-Build 0.23.0 passes all 20 portable suites (66 recovery and 60 scoring checks),
-the replay checks above, 1,158 Vulkan appearance/fade checks and 84 avatar/HUD
-GPU checks. Both ARM64 debug/test APKs build; signatures, version and notices
-are verified, and Android lint reports zero errors with four existing warnings.
-The native source-boundary audit passes. Immutable desktop/APK artifacts are
-saved under the ignored `temp/native` build tree. The installed Quest build
-remains 0.22.0 for the user's steering test.

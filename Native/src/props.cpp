@@ -1,4 +1,5 @@
 #include "openslope/props.hpp"
+#include "openslope/model_animation.hpp"
 #include "openslope/import.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -36,20 +37,15 @@ Transform row_pose(const Json& row){
     const auto s=row.contains("Scale")&&!row.at("Scale").is_null()?vector3(row.at("Scale")):Vec3{1,1,1};
     const auto q=row.contains("Rotation")&&!row.at("Rotation").is_null()?row.at("Rotation").get<std::array<double,4>>():std::array<double,4>{0,0,0,1};return placement(p,q,s);
 }
-Transform object_pose(const Json& row){
-    if(!row.value("IncludeAnimation",false)||!row.contains("Animation")||row.at("Animation").is_null())return row_pose(row);
-    // [Trailmap: 120-anim-base, 120-euler-order] Static snapshot at clip time zero.
-    const auto& a=row.at("Animation");std::array<double,6> values{a.value("U1",0.),a.value("U2",0.),a.value("U3",0.),0,0,0};
-    const auto mask=a.value("AnimationAction",0u);if(mask>63||a.at("AnimationEntries").size()!=std::size_t(std::popcount(mask)))throw std::runtime_error("Invalid static animation channels");unsigned entry=0;
-    for(unsigned channel=0;channel<6;++channel)if(mask&(1u<<channel)){
-        const auto& segments=a.at("AnimationEntries").at(entry++).at("AnimationMaths");if(segments.empty())continue;
-        const auto& s=segments.front();const auto start=s.at("Value5").get<double>(),end=s.at("Value6").get<double>();if(!std::isfinite(start)||!std::isfinite(end)||start>end)throw std::runtime_error("Invalid static animation time window");const auto time=std::clamp(0.0,start,end);
-        values[channel]=((s.at("Value1").get<double>()*time+s.at("Value2").get<double>())*time+s.at("Value3").get<double>())*time+s.at("Value4").get<double>();
-    }
-    const auto x=values[3]*pi/360,y=values[4]*pi/360,z=values[5]*pi/360;
-    const auto sx=std::sin(x),cx=std::cos(x),sy=std::sin(y),cy=std::cos(y),sz=std::sin(z),cz=std::cos(z);
-    return placement({values[0],values[1],values[2]},{sx*cy*cz-cx*sy*sz,cx*sy*cz+sx*cy*sz,cx*cy*sz-sx*sy*cz,cx*cy*cz+sx*sy*sz},{1,1,1});
+PropObjectMotion motion_object(const Json& row){
+    PropObjectMotion result;result.rest=row_pose(row);result.parent=row.value("ParentID",-1);
+    result.animated=row.value("IncludeAnimation",false)&&row.contains("Animation")&&!row.at("Animation").is_null();if(!result.animated)return result;
+    const auto& animation=row.at("Animation");result.base={animation.value("U1",0.),animation.value("U2",0.),animation.value("U3",0.)};if(!finite(result.base))throw std::runtime_error("Invalid prop animation base");
+    const auto mask=animation.value("AnimationAction",0u);if(mask>63||animation.at("AnimationEntries").size()!=std::size_t(std::popcount(mask)))throw std::runtime_error("Invalid animation channels");unsigned entry=0;
+    for(unsigned channel=0;channel<6;++channel)if(mask&(1u<<channel)){const auto& segments=animation.at("AnimationEntries").at(entry++).at("AnimationMaths");if(!segments.is_array()||segments.size()>100000)throw std::runtime_error("Invalid animation curve count");for(const auto& segment_row:segments){PropCurveSegment segment;for(unsigned i=0;i<4;++i)segment.coefficient[i]=segment_row.at("Value"+std::to_string(i+1));segment.start=segment_row.at("Value5");segment.end=segment_row.at("Value6");for(const auto value:segment.coefficient)if(!std::isfinite(value))throw std::runtime_error("Invalid prop curve coefficient");if(!std::isfinite(segment.start)||!std::isfinite(segment.end)||segment.start>segment.end)throw std::runtime_error("Invalid prop curve window");result.channels[channel].push_back(segment);}}
+    return result;
 }
+Transform object_pose(const Json& row){return motion_object(row).pose(0);}
 Vec3 normal_transform(const Transform& m,Vec3 n){
     const Vec3 a{m[0],m[1],m[2]},b{m[4],m[5],m[6]},c{m[8],m[9],m[10]};const auto determinant=dot(a,cross(b,c));
     if(std::abs(determinant)<1e-12)throw std::runtime_error("Singular model rest transform");
@@ -101,6 +97,12 @@ Transform inverse_transform(const Transform& m){
     const auto x=cross(b,c)/det,y=cross(c,a)/det,z=cross(a,b)/det;auto result=identity_transform();result[0]=x.x;result[4]=x.y;result[8]=x.z;result[1]=y.x;result[5]=y.y;result[9]=y.z;result[2]=z.x;result[6]=z.y;result[10]=z.z;
     const auto p=transform_point(result,{m[12],m[13],m[14]});result[12]=-p.x;result[13]=-p.y;result[14]=-p.z;return result;
 }
+Transform interpolate_transform(const Transform& a,const Transform& b,double alpha){
+    if(!std::isfinite(alpha)||alpha<0||alpha>1)throw std::invalid_argument("Invalid prop interpolation");Transform result;for(unsigned i=0;i<16;++i)result[i]=std::lerp(a[i],b[i],alpha);const Vec3 x{result[0],result[1],result[2]},y{result[4],result[5],result[6]},z{result[8],result[9],result[10]};if(std::abs(dot(x,cross(y,z)))<1e-9)return alpha<.5?a:b;return result;
+}
+PropPose moved_prop_pose(const PropPose& original,const Transform& delta){
+    auto result=original;Transform base;for(unsigned i=0;i<16;++i)base[i]=original.matrix[i];const auto world=multiply(base,delta);for(unsigned i=0;i<16;++i)result.matrix[i]=float(world[i]);const auto inverse=inverse_transform(delta);for(unsigned light=0;light<3;++light){const auto& d=original.direction[light];const auto v=axes({d[0],d[1],d[2]});const auto rotated=transform_point(inverse,v)-transform_point(inverse,{});result.direction[light]={float(rotated.x),float(-rotated.z),float(rotated.y),d[3]};}return result;
+}
 Vec3 transform_normal(const Transform& m,Vec3 n){return normal_transform(m,n);}
 std::vector<Transform> prop_placements(const std::filesystem::path& root){std::vector<Transform> result;if(root.empty()||!std::filesystem::exists(root/"Instances.json"))return result;const auto doc=json_file(asset(root,"Instances.json"));for(const auto& row:doc.at("Instances"))result.push_back(map_transform(row_pose(row)));return result;}
 std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root,std::span<const std::size_t> box_models){
@@ -127,7 +129,7 @@ Props Props::load(const std::filesystem::path& root,bool model_only){
         for(std::size_t i=0;i<objects.size();++i)resolve(i);
         for(std::size_t i=0;i<objects.size();++i)for(const auto& data:objects[i].at("MeshData")){
             const auto material=data.at("MaterialID").get<std::size_t>();const auto& mat=t.materials.at(material);PropPart part;part.texture=texture_name(mat);if(!part.texture.empty())safe(part.texture);part.flags=mat.value("UnknownInt18",0u);
-            mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,result.models[model].bounds);if(!part.count)continue;
+            part.object=i;mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,part.bounds);if(!part.count)continue;result.models[model].bounds.add(part.bounds.min);result.models[model].bounds.add(part.bounds.max);
             result.models[model].parts.push_back(result.parts.size());result.parts.push_back(std::move(part));
         }
     }
@@ -151,4 +153,26 @@ bool prop_visible(const Bounds& b,std::span<const float,16> camera,Vec3 eye,doub
 std::array<double,3> prop_light(Vec3 normal,const PropPose& pose){
     std::array<double,3> result{pose.ambient[0],pose.ambient[1],pose.ambient[2]};for(unsigned key=0;key<3;++key){const auto& d=pose.direction[key];const auto amount=std::max(0.0,dot(normal,{d[0],d[1],d[2]}));for(unsigned c=0;c<3;++c)result[c]+=amount*pose.colour[key][c];}for(auto& c:result)c=std::clamp(c,0.0,255./128);return result;
 }
+Transform PropObjectMotion::pose(double seconds) const {
+    if(!std::isfinite(seconds)||std::abs(seconds)>1e6)throw std::invalid_argument("Invalid model clip time");if(!animated)return rest;
+    std::array<double,6> values{base.x,base.y,base.z,0,0,0};
+    for(unsigned channel=0;channel<6;++channel){const auto& curve=channels[channel];if(curve.empty())continue;const PropCurveSegment* segment=&curve.back();for(const auto& candidate:curve)if(seconds<=candidate.end){segment=&candidate;break;}const auto time=std::clamp(seconds,segment->start,segment->end);const auto& c=segment->coefficient;values[channel]=((c[0]*time+c[1])*time+c[2])*time+c[3];if(!std::isfinite(values[channel]))throw std::runtime_error("Prop curve exceeds numeric limits");}
+    const auto x=values[3]*pi/360,y=values[4]*pi/360,z=values[5]*pi/360;const auto sx=std::sin(x),cx=std::cos(x),sy=std::sin(y),cy=std::cos(y),sz=std::sin(z),cz=std::cos(z);
+    return placement({values[0],values[1],values[2]},{sx*cy*cz-cx*sy*sz,cx*sy*cz+sx*cy*sz,cx*cy*sz-sx*sy*cz,cx*cy*cz+sx*sy*sz},{1,1,1});
+}
+PropClips::PropClips(std::vector<PropClip> clips):clips_(std::move(clips)){
+    order_.resize(clips_.size());inverse_rest_.resize(clips_.size());for(std::size_t m=0;m<clips_.size();++m){const auto& clip=clips_[m];if(!std::isfinite(clip.frames)||clip.frames<0||clip.frames>1e6||clip.objects.size()>256)throw std::runtime_error("Invalid prop clip");std::vector<unsigned> state(clip.objects.size());std::function<void(std::size_t)> visit=[&](std::size_t i){if(state[i]==2)return;if(state[i]==1)throw std::runtime_error("Cyclic prop clip hierarchy");state[i]=1;const auto parent=clip.objects[i].parent;if(parent< -1||parent>=int(clip.objects.size()))throw std::runtime_error("Invalid prop clip parent");if(parent>=0)visit(std::size_t(parent));state[i]=2;order_[m].push_back(i);};for(std::size_t i=0;i<clip.objects.size();++i)visit(i);for(const auto& rest:sample(m,0))inverse_rest_[m].push_back(inverse_transform(rest));}
+}
+PropClips PropClips::load(const std::filesystem::path& root){
+    if(root.empty()||!std::filesystem::is_regular_file(root/"Models.json"))return PropClips{};const auto doc=json_file(asset(root,"Models.json"));const auto& models=doc.at("Models");if(!models.is_array()||models.size()>4000)throw std::runtime_error("Invalid prop clip model count");std::vector<PropClip> clips;for(const auto& row:models){PropClip clip;clip.frames=row.value("AnimTime",0.);const auto& objects=row.at("ModelObjects");if(!objects.is_array()||objects.size()>256)throw std::runtime_error("Invalid prop clip object count");for(const auto& object:objects)clip.objects.push_back(motion_object(object));clips.push_back(std::move(clip));}return PropClips(std::move(clips));
+}
+std::size_t PropClips::objects(std::size_t model) const {return model<clips_.size()?clips_[model].objects.size():0;}
+double PropClips::frames(std::size_t model) const {return model<clips_.size()?clips_[model].frames:0;}
+std::vector<Transform> PropClips::sample(std::size_t model,double frame,std::optional<double> basis) const {
+    if(model>=clips_.size()||!std::isfinite(frame)||frame<0||frame>1e6)throw std::invalid_argument("Invalid model frame sample");const auto& clip=clips_[model];std::vector<Transform> raw(clip.objects.size());for(const auto i:order_[model]){raw[i]=clip.objects[i].pose(frame/30);if(basis&&clip.objects[i].animated)raw[i]=multiply(clip.objects[i].pose(*basis/30),raw[i]);const auto parent=clip.objects[i].parent;if(parent>=0)raw[i]=multiply(raw[std::size_t(parent)],raw[i]);}for(auto& transform:raw)transform=map_transform(transform);return raw;
+}
+std::vector<Transform> PropClips::delta(std::size_t model,double frame,std::optional<double> basis) const {
+    auto current=sample(model,frame,basis);for(std::size_t i=0;i<current.size();++i)current[i]=multiply(current[i],inverse_rest_[model][i]);return current;
+}
+
 }
