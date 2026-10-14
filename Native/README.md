@@ -14,7 +14,7 @@ The importer currently converts terrain, textures, lightmaps, static prop geomet
 AIP/SOP course paths, collision proxies/physics bodies and provenance. The player renders textured
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
 authored prop contacts for bounce, ride surfaces and pass-through events. Live prop behavior,
-animation-driven crash recovery, effects, world and audio conversion, rails, races and multiplayer remain
+animation-driven crash recovery, effects, automatic ISO audio staging, rails, races and multiplayer remain
 later stages. See [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 ## Build and try on Windows
@@ -39,6 +39,13 @@ focus; an uncommitted jump charge is cancelled. A course can be opened directly:
 ./temp/native/Release/openslope_player.exe --map Maps/GARI
 ./temp/native/Release/openslope_inspect.exe Maps/GARI
 ```
+
+Populated Maps audio plays through the native mixer: board/landing sounds, admitted
+contact and ambient routes, and complete music graphs. M mutes; pause and focus
+loss also pause audio. `--no-audio` disables device playback. Old music graphs
+without variable-remap data need re-import with the independent audio utility.
+See [native audio](docs/audio-playback.md) for supported contracts, capture/testing
+commands, extraction tools and the remaining automatic ISO/music/speech work.
 
 Courses with AIP/SOP metadata use the middle authored start-row slot and its down-course heading.
 Fallbacks use the staging anchor, race line and finally the highest rideable patch. The desktop

@@ -18,6 +18,11 @@ struct DiscCourse { std::string name;std::uint64_t archive_bytes{}; };
 using ImportProgress=std::function<void(const std::string&)>;
 using ImportCancel=std::function<bool()>;
 DiscInput open_disc(const std::filesystem::path& path);
+struct DiscEntry {std::string name;std::uint64_t bytes{};bool directory=false;};
+std::vector<DiscEntry> disc_directory(const DiscInput& disc,const std::string& path);
+std::vector<std::uint8_t> disc_file(const DiscInput& disc,const std::string& path);
+std::vector<DiscEntry> disc_archive_directory(const DiscInput& disc,const std::string& path);
+std::vector<std::uint8_t> disc_archive_file(const DiscInput& disc,const std::string& path,const std::string& member);
 std::vector<DiscCourse> disc_courses(const DiscInput& disc,const ImportCancel& cancelled={});
 // Writes a NEW directory only. A failed/cancelled import removes only that
 // directory. The host publishes it to Maps after this returns successfully.

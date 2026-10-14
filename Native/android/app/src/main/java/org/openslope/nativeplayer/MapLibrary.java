@@ -14,6 +14,7 @@ final class MapLibrary {
     static final long FILE_LIMIT = 128L * 1024 * 1024;
     static final long IMAGE_LIMIT = 64L * 1024 * 1024;
     static final long IMAGE_BUDGET = 256L * 1024 * 1024;
+    static final long AUDIO_BUDGET = 512L * 1024 * 1024;
     static native String nativeAssetFiles(String path);
     static final String DIRECTORY = DocumentsContract.Document.MIME_TYPE_DIR;
     interface Cancel { void check() throws IOException; }
@@ -88,6 +89,19 @@ final class MapLibrary {
                 if (metadata.directory) throw new IOException("Map metadata is a folder: " + name);
                 try (InputStream input = resolver.openInputStream(metadata.uri); OutputStream file = new FileOutputStream(new File(output, name))) { copy(input, file, PATCH_LIMIT, cancel); }
             }
+            Entry audio = child(map.uri, "Audio");
+            if (audio != null) {
+                if (!audio.directory) throw new IOException("Audio must be a folder.");
+                File audioFolder = new File(output, "Audio");
+                if (!audioFolder.mkdir()) throw new IOException("Cannot prepare map audio.");
+                copyAudio(audio.uri, audioFolder, cancel, new long[]{0, 0}, 0);
+                if (!new File(audioFolder, "BoardSoundIndex.json").isFile()) {
+                    Entry shared = child(root, "Shared");
+                    Entry sharedAudio = shared != null && shared.directory ? child(shared.uri, "Audio") : null;
+                    Entry routing = sharedAudio != null && sharedAudio.directory ? child(sharedAudio.uri, "BoardSoundIndex.json") : null;
+                    if (routing != null && !routing.directory) try (InputStream input = resolver.openInputStream(routing.uri); OutputStream file = new FileOutputStream(new File(audioFolder, "BoardSoundIndex.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
+                }
+            }
             JSONArray images;
             try { images = new JSONArray(nativeAssetFiles(output.getAbsolutePath())); }
             catch (JSONException e) { throw new IOException("Cannot read map image references.", e); }
@@ -117,6 +131,22 @@ final class MapLibrary {
             cancel.check();
             return output;
         } catch (Exception e) { deleteLocal(output); throw e; }
+    }
+    private void copyAudio(Uri source, File destination, Cancel cancel, long[] budget, int depth) throws IOException {
+        if (depth > 5) throw new IOException("Audio folder nesting exceeds its limit.");
+        for (Entry entry : children(source)) {
+            cancel.check(); if (!safeName(entry.name)) throw new IOException("Unsafe audio filename.");
+            if (++budget[1] > 20000) throw new IOException("Audio library contains too many files.");
+            File target = new File(destination, entry.name);
+            if (entry.directory) {
+                if (!target.mkdir()) throw new IOException("Cannot prepare audio folder.");
+                copyAudio(entry.uri, target, cancel, budget, depth + 1);
+            } else {
+                String name = entry.name.toLowerCase(Locale.ROOT);
+                if (!(name.endsWith(".wav") || name.endsWith(".json") || name.endsWith(".inf"))) continue;
+                try (InputStream input = resolver.openInputStream(entry.uri); OutputStream file = new FileOutputStream(target)) { budget[0] += copy(input, file, Math.min(IMAGE_LIMIT, AUDIO_BUDGET - budget[0]), cancel); }
+            }
+        }
     }
     void publish(String name, File source, Cancel cancel) throws IOException {
         if (!safeName(name) || exists(name)) throw new IOException("A map named " + name + " already exists. Existing maps are kept.");

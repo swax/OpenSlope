@@ -20,7 +20,7 @@ void Player::release_inputs(){
 }
 void Player::warp(Vec3 position,Vec3 forward,Vec3 velocity,Vec3 up){
     if(!finite(position)||!finite(forward)||!finite(velocity)||!finite(up)||length(forward)<1e-9||length(cross(forward,up))<1e-9)throw std::runtime_error("Invalid rider placement");
-    rider_={};previous_contacts_.clear();contact_events_.clear();rider_.position=rider_.previous_position=position;rider_.velocity=velocity;rider_.forward=normalized(forward);rider_.board_up=normalized(project(up,rider_.forward));
+    ++placement_serial_;rider_={};previous_contacts_.clear();contact_events_.clear();rider_.position=rider_.previous_position=position;rider_.velocity=velocity;rider_.forward=normalized(forward);rider_.board_up=normalized(project(up,rider_.forward));
     if(const auto hit=trace_ground(position+Vec3{0,2,0},position-Vec3{0,1,0})){
         rider_.normal=hit->normal;rider_.surface=hit->surface;rider_.contact_error=dot(position-hit->point,hit->normal);
         rider_.ground_instance=hit->instance;
@@ -77,7 +77,7 @@ void Player::tick(const RideInput& input){
     }
     const auto hit=probe(rider_.position);bool just_landed=false;
     if(hit){
-        if(hit->surface==0){reset();return;}
+        if(hit->surface==0){reset();if(tick_observer_)tick_observer_(*this,before_pose);return;}
         const auto lateral=normalized(cross(rider_.normal,rider_.forward*double(rider_.lead)));const auto error=dot(rider_.position+lateral*rider_.slide-hit->point,hit->normal);
         rider_.normal=hit->normal;rider_.surface=hit->surface;rider_.ground_instance=hit->instance;
         if(rider_.grounded){
@@ -129,7 +129,7 @@ void Player::tick(const RideInput& input){
     if(launch){const auto tangent=normalized(project(rider_.velocity,rider_.normal),rider_.forward*double(rider_.lead));rider_.velocity+=contract_.jump_impulse(rider_.normal,tangent,length(rider_.velocity),std::max(0.0,rider_.release_snapshot-rider_.release_remaining),tuning_.jump_stat);enter_air();rider_.control=Control::Launched;rider_.charge=0;++rider_.launches;jump_cooldown_=.35;air_grace_=contract_.value("pose","orientationGrace");}
     rider_.speed_cap=(!rider_.grounded||active.boost)?contract_.value("speed","boostCap"):approach(rider_.speed_cap,contract_.value("speed","defaultCap"),contract_.value("speed","capDecay")*dt);
     const auto destination=rider_.position+rider_.velocity*dt;rider_.velocity+=acceleration*dt;const auto speed=length(rider_.velocity);if(speed>rider_.speed_cap)rider_.velocity*=rider_.speed_cap/speed;
-    if(!move_world(before_pose,destination,!ground&&!launch&&air_grace_<=0))return;
+    if(!move_world(before_pose,destination,!ground&&!launch&&air_grace_<=0)){if(tick_observer_)tick_observer_(*this,before_pose);return;}
     if(ground&&!launch&&rider_.motion!=Motion::Wipeout){
         const auto forward=normalized(project(rider_.forward,rider_.normal),rider_.forward)*double(rider_.lead);const auto speed_now=length(rider_.velocity);const auto downhill=normalized(project(Vec3{0,-1,0},rider_.normal),forward);
         const auto slip=speed_now>1e-6?dot(cross(rider_.velocity,forward),rider_.normal)/speed_now:0;
@@ -138,6 +138,7 @@ void Player::tick(const RideInput& input){
     }
     const auto crouch=rider_.control==Control::Charge?rider_.charge:!rider_.grounded?.3:posture>0?1.0:posture<0?.55:0.0;rider_.crouch=approach(rider_.crouch,crouch,(crouch>rider_.crouch?6:18)*dt);
     if(!finite(rider_.position)||!finite(rider_.velocity)||rider_.position.y<terrain_.bounds().min.y-30)reset();
+    if(tick_observer_)tick_observer_(*this,before_pose);
 }
 void Player::advance(double seconds,const RideInput& input){
     sample_input(input);if(input.reset&&!reset_held_){reset();reset_held_=true;return;}reset_held_=input.reset;

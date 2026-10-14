@@ -27,8 +27,11 @@ Java independent of map-record parsing. Separate encoded image/geometry budgets 
 render meshes and collision proxies share the geometry budget.
 The native host receives that path; the cache is removed when the game activity ends. The source
 library remains authoritative. Missing optional images use the renderer's fallback. Copy failure
-or cancellation removes the newly created cache. Missing meshes reject playback. Audio and import
-sidecars are not copied. Maps without prop tables remain valid terrain-only courses.
+or cancellation removes the newly created cache. Missing meshes reject playback. Import source
+sidecars are not copied. The optional Audio library copies WAV/JSON/INF bank,
+program and music assets under its own 512 MiB budget, plus the shared board
+routing sidecar when present. See audio-playback.md. Maps without prop tables
+remain valid terrain-only courses.
 
 The alternative app Maps root is `Android/data/org.openslope.nativeplayer/files/Maps` in external
 application storage. Courses copied there over USB/ADB are listed with the same rule. The system

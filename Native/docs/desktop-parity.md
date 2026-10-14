@@ -29,7 +29,7 @@ checks apply to every milestone. The shared ride contract is retained unchanged.
 | On-foot / boarding | Outstanding: walking, crouch/jump/flight, stepping off and recalling/mounting/handling the board. |
 | Camera and input | Tests confirm trick rotation stays out of the camera frame; desktop chase-camera rays avoid solid props/terrain. Mouse look, orbit/zoom, camera-radius/smoothing, gamepad, HUD/control help and settings remain. |
 | AI riders and other players | Outstanding: AI path following/field behavior and shared play-session movement. These are not satisfied by rendering static props. |
-| Sound / music | Outstanding: portable decoding, playback/spatialization, board/collision/world sounds, race soundtrack, interactive music and announcer behavior. No retail media may enter source control or the application package. |
+| Sound / music | Independent codecs, PCM mixer, Windows/Quest output, Maps sound routes, contact/ambient/board gates and queued music graph playback now have CPU and actual-host audio evidence; see audio-playback.md. Automatic ISO audio stages/resolver extraction, exact signal/pitch/ambient parity, race/intro/trick lifecycle, async layers, speech/announcer and wider platform/device behavior remain outstanding. No retail media may enter source control or the application package. |
 | Effects | Outstanding: snow spray, carve wake, boost afterimages, landing/crash bursts, pickups, breakables and authored effect lifecycle. |
 | World graphics | Outstanding: sky/background, fog, celestial/glare, snow, billboards and texture animation. |
 | Culling / anti-aliasing / image quality | Prop distance/frustum culling exists. Terrain culling/LOD, mipmaps/filtering, anti-aliasing and configurable quality remain. |

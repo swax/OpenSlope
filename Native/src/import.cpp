@@ -19,6 +19,19 @@ using Json=nlohmann::json;
 std::string upper(std::string s){for(auto& c:s)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));return s;}
 std::string trim(std::string s){while(!s.empty()&&(s.back()==' '||s.back()=='\r'))s.pop_back();return s;}
 struct Extent {std::string name;std::uint64_t offset{},size{};bool directory{};};
+std::vector<Extent> archive_index(const DiscInput& disc,const Extent& extent){
+    const auto header=disc.read(extent.offset,static_cast<std::size_t>(std::min<std::uint64_t>(extent.size,16)));Bytes h{header};
+    const bool compact=header.size()>=6&&h.be(0,2)==0xc0fb;
+    if(!compact&&(header.size()<16||(h.text(0,4)!="BIGF"&&h.text(0,4)!="BIG4")))throw std::runtime_error("Unsupported audio archive");
+    const unsigned width=compact?3:4;const std::size_t end=compact?h.be(2,2)+4:h.be(12),start=compact?6:16;
+    if(end<start||end>extent.size||end>4*1024*1024)throw std::runtime_error("Invalid archive index extent");
+    const auto table=disc.read(extent.offset,end);Bytes b{table};std::vector<Extent> result;std::set<std::string> names;
+    for(std::size_t p=start;p<end;){if(result.size()>=65535||end-p<2*width+1)throw std::runtime_error("Invalid archive index count");const auto offset=b.be(p,width),size=b.be(p+width,width);p+=2*width;const auto begin=p;
+        while(p<end&&table[p])++p;if(p==end||p-begin>512)throw std::runtime_error("Invalid archive member name");auto name=b.text(begin,p-begin);++p;std::replace(name.begin(),name.end(),'\\','/');if(name.empty()||name.front()=='/')throw std::runtime_error("Unsafe archive member");
+        std::istringstream path(name);std::string segment;while(std::getline(path,segment,'/'))if(segment!="*"&&!valid_map_name(segment))throw std::runtime_error("Unsafe archive member segment");if(!offset||name.find('*')!=std::string::npos)continue;
+        if(offset<end||offset>extent.size||size>extent.size-offset||!names.insert(upper(name)).second)throw std::runtime_error("Invalid or duplicate archive member");result.push_back({name,extent.offset+offset,size,false});
+    }return result;
+}
 // [Trailmap: 200-iso] ISO9660 primary directory records, logical sectors of 2048 bytes.
 class Iso {
     const DiscInput& disc_;
@@ -150,6 +163,18 @@ std::vector<DiscCourse> disc_courses(const DiscInput& disc,const ImportCancel& c
     }
     if(result.empty())throw std::runtime_error("No supported SSX Tricky PS2 courses were found");
     std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return a.name<b.name;});return result;
+}
+std::vector<DiscEntry> disc_directory(const DiscInput& disc,const std::string& path){
+    Iso iso(disc);std::vector<DiscEntry> result;for(const auto& entry:iso.children(iso.find(path)))result.push_back({entry.name,entry.size,entry.directory});return result;
+}
+std::vector<std::uint8_t> disc_file(const DiscInput& disc,const std::string& path){
+    Iso iso(disc);const auto entry=iso.find(path);if(entry.directory)throw std::runtime_error("Disc path names a directory");return disc.read(entry.offset,static_cast<std::size_t>(entry.size));
+}
+std::vector<DiscEntry> disc_archive_directory(const DiscInput& disc,const std::string& path){
+    Iso iso(disc);std::vector<DiscEntry> result;for(const auto& entry:archive_index(disc,iso.find(path)))result.push_back({entry.name,entry.size,false});return result;
+}
+std::vector<std::uint8_t> disc_archive_file(const DiscInput& disc,const std::string& path,const std::string& member_name){
+    Iso iso(disc);const auto entries=archive_index(disc,iso.find(path));const auto it=std::find_if(entries.begin(),entries.end(),[&](const auto& entry){return upper(entry.name)==upper(member_name);});if(it==entries.end())throw std::runtime_error("Archive member not found: "+member_name);return decode_refpack(disc.read(it->offset,static_cast<std::size_t>(it->size)));
 }
 void extract_course(const DiscInput& disc,const std::string& course,const std::filesystem::path& output,const ImportProgress& progress,const ImportCancel& cancelled) {
     const auto stem=upper(course);if(!valid_map_name(stem))throw std::runtime_error("Invalid course name");

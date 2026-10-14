@@ -1,4 +1,5 @@
 #include "openxr_app.hpp"
+#include "audio_device.hpp"
 #include "vulkan_renderer.hpp"
 #ifdef __ANDROID__
 #include <jni.h>
@@ -164,11 +165,12 @@ struct State {
 }
 int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
     State state;state.create(platform,player.terrain().mesh());
+    AudioScene audio(player.terrain().map_root());audio.mixer().paused(true);AudioDevice audio_device(audio.mixer());AudioService audio_service(audio);player.observe_ticks([&](const Player& p,const Rider& before){audio.tick(p,before);});
     const auto started=std::chrono::steady_clock::now();auto next_stats=started+std::chrono::seconds(5);XrTime previous_time=0;
     while(!state.quit) {
         if(platform.process_events&&!platform.process_events())break;
         if(seconds>0&&std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count()>=seconds)break;
-        state.events();if(state.quit)break;
+        state.events();audio.mixer().paused(!state.running||!state.focused);if(state.quit)break;
         if(!state.running){previous_time=0;std::this_thread::sleep_for(std::chrono::milliseconds(10));continue;}
         XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};XrFrameState frame{XR_TYPE_FRAME_STATE};xr_check(xrWaitFrame(state.session,&wait,&frame),"Wait for VR frame");
         XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};xr_check(xrBeginFrame(state.session,&begin),"Begin VR frame");
@@ -191,6 +193,7 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
                     const auto eye_position=body+quaternion_rotate(body_rotation,{camera.pose.position.x,camera.pose.position.y,camera.pose.position.z})+Vec3{0,state.floor_space?0:1.65,0};
                     const auto forward=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,0,-1}));
                     const auto up=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,1,0}));
+                    if(i==0)audio.listener({eye_position,forward,up});
                     const auto matrix=projection(std::tan(camera.fov.angleLeft),std::tan(camera.fov.angleRight),std::tan(camera.fov.angleDown),std::tan(camera.fov.angleUp))*view(eye_position,forward,up);
                     eye.renderer->render(image,matrix,board_transform(body,player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,{},{},eye_position);
                     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};xr_check(xrReleaseSwapchainImage(eye.swapchain,&release),"Release eye image");
@@ -216,6 +219,6 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
             next_stats=now+std::chrono::seconds(5);
         }
     }
-    return 0;
+    player.observe_ticks({});return 0;
 }
 }

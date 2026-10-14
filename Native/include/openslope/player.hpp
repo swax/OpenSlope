@@ -4,6 +4,7 @@
 #include "collision.hpp"
 #include <deque>
 #include <map>
+#include <functional>
 
 namespace openslope {
 struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; }; // Left steer; positive posture is tuck/forward flip.
@@ -48,6 +49,8 @@ public:
     const CollisionWorld& world() const {return world_;}
     const std::vector<ContactEvent>& contacts() const {return contact_events_;}
     Vec3 camera_position(Vec3 desired) const;
+    void observe_ticks(std::function<void(const Player&,const Rider&)> observer){tick_observer_=std::move(observer);}
+    std::uint64_t placement_serial() const {return placement_serial_;}
 private:
     Terrain terrain_;
     CollisionWorld world_;
@@ -63,6 +66,8 @@ private:
     struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance;};
     std::map<std::size_t,WorldContact> previous_contacts_;
     std::vector<ContactEvent> contact_events_;
+    std::function<void(const Player&,const Rider&)> tick_observer_;
+    std::uint64_t placement_serial_=0;
     std::optional<GroundContact> trace_ground(Vec3 start,Vec3 end) const;
     std::optional<GroundContact> probe(Vec3 position) const;
     std::vector<ProbeSphere> volume(const Rider& pose,bool airborne) const;
