@@ -13,7 +13,7 @@ layout(location=2) out vec2 lightmapUV;
 layout(location=3) flat out vec4 lightmapTile;
 layout(location=4) out float effectAlpha;
 layout(location=5) out vec3 worldPosition;
-layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; } transform;
+layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; vec4 presentation; } transform;
 void main() {
     worldPosition=position;
     vertexColour=colour;

@@ -15,6 +15,8 @@ Tiny flights below the application profile's 0.15-second grace discard their
 preview without consuming a multiplier. Crashes, board release and placement
 discard pending points while retaining banked points. Timed finish/expiry freezes
 banked plus live preview; restarting creates a fresh score and quarter boost bar.
+Zero-point skips, placements and finishes preserve the last positive bank/loss
+readout; only a real scored trick creates a new result.
 
 Held boost drains 0.045 per second and is unavailable at zero during an active
 scored run. Walking/running does not spend board energy. Crash costs 0.1; manual
@@ -37,7 +39,7 @@ registration, trick/boost audio, score pickups, score targets and a complete HUD
 remain outstanding. The existing application air-boost aiming also remains a
 separate parity gap.
 
-Validation: 54 portable checks include production analytic touchdown, bad landing,
+Validation: 60 portable checks include production analytic touchdown, bad landing,
 manual reset, countdown/restart, on-foot exclusion, empty-meter physics gating and
 VR readouts. Four production Vulkan replays render 1311 frames through bank,
 crash, manual reset and midair timed finish, checking frozen results and energy.

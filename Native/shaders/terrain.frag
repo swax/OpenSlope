@@ -7,7 +7,7 @@ layout(location=4) in float effectAlpha;
 layout(location=5) in vec3 worldPosition;
 layout(set=0,binding=0) uniform sampler2D diffuseImage;
 layout(set=0,binding=1) uniform sampler2D lightmapImage;
-layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; } transform;
+layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; vec4 presentation; } transform;
 layout(location=0) out vec4 colour;
 void main() {
     vec3 displayColour=vertexColour;
@@ -38,6 +38,7 @@ void main() {
         else if(transform.options.x==5)alpha*=1.0-fog;
         else displayColour=mix(displayColour,transform.fogColourStart.rgb,fog);
     }
+    displayColour*=transform.presentation.x;
     // Byte-domain terrain blend above; convert only for an sRGB attachment,
     // whose hardware write converts linear output back to display values.
     if(transform.options.y!=0)displayColour=mix(displayColour/12.92,pow((displayColour+0.055)/1.055,vec3(2.4)),greaterThan(displayColour,vec3(0.04045)));

@@ -36,7 +36,7 @@ void Player::start_on_foot(){
 }
 double Player::board_distance(Vec3 room_offset) const {return on_foot_?length(rider_.position+project(room_offset,{0,1,0})-loose_board_.position):0;}
 bool Player::interact_board(Vec3 room_offset){
-    if(!finite(room_offset)||length(room_offset)>10)throw std::invalid_argument("Invalid room offset");if(recovering())return false;
+    if(!finite(room_offset)||length(room_offset)>10)throw std::invalid_argument("Invalid room offset");if(recovering()||reset_pending())return false;
     if(on_foot_){if(board_distance(room_offset)>1.6)return false;const auto board=loose_board_;warp(board.position,board.forward,board.velocity,board.up);rider_.lead=board.lead;return true;}
     const auto position=render_board_position(),forward=render_forward(),up=render_up(),heading=camera_forward();const auto velocity=rider_.velocity;const bool grounded=rider_.grounded;const auto lead=rider_.lead;
     loose_board_={position,position,velocity,forward,up,grounded,lead,0};auto feet=position;

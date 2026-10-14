@@ -96,3 +96,11 @@ unimplemented recovered fields are explicit in trick-scoring.md. VR controls use
 first-party public head-steer/XR tests and documented tuning values, with new
 fixed-tick input/seat integration; see vr-steering.md. No other runtime or decoder
 source supplies these implementations.
+
+Course recovery uses clean 250/300/390, portable path data and first-party public
+course-reset behavioral examples. Projection, candidate ranking, support checks,
+bounded trail history and trap handling are authored independently. The application
+fallback/boundary choices, post-placement fade-in and clock-expiry policy are
+explicit in course-recovery.md, alongside the remaining viewport effect and
+world triggers. The shared Vulkan fade uses standard shader colour scaling.
+Local course files supply validation data only.

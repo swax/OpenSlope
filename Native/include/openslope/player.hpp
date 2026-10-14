@@ -8,6 +8,7 @@
 #include "course_run.hpp"
 #include "score.hpp"
 #include "vr_controls.hpp"
+#include "course_recovery.hpp"
 #include <deque>
 #include <map>
 #include <functional>
@@ -15,7 +16,7 @@
 namespace openslope {
 struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{};bool run_restart=false;VrInput vr{}; }; // Left steer; positive posture is tuck/forward flip.
 enum class Motion {Air=1,Ground=2,Rail=3,Wipeout=5,RecoverContact=6,OnFoot=100};
-enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20,OnFoot=100};
+enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20,ResetWarp=22,OnFoot=100};
 enum class CrashCause {None,PropImpact,Landing,Unrideable};
 struct PlayTuning {
     // Desktop application defaults where the clean specification is open.
@@ -50,6 +51,10 @@ class Player {
 public:
     explicit Player(Terrain terrain,PlayTuning tuning={});
     void reset(bool manual=false);
+    bool recover_course(bool manual=false);
+    bool reset_pending() const {return recovery_target_.has_value();}
+    float reset_fade() const {return float(recovery_target_?std::clamp(reset_age_/.5,0.,1.):std::clamp(reset_fade_in_/.2,0.,1.));}
+    const std::optional<RecoveryPose>& last_course_recovery() const {return last_recovery_;}
     void tick(const RideInput& input);
     void advance(double seconds,const RideInput& input);
     Vec3 render_position() const;
@@ -89,6 +94,13 @@ private:
     CollisionWorld world_;
     Rails rails_;
     CourseRun run_;
+    CourseRecovery course_recovery_;
+    std::optional<RecoveryPose> last_recovery_;
+    struct RecoveryPlacement {RecoveryPose target;Vec3 point,normal;bool foot=false;};
+    std::optional<RecoveryPlacement> recovery_target_;
+    double reset_age_=0,reset_fade_in_=0;
+    Vec3 reset_camera_forward_{0,0,-1};
+    void finish_course_recovery();
     TrickScore score_;
     bool score_started_=false;
     double held_boost_=0;

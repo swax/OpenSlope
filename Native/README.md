@@ -51,6 +51,11 @@ Head mode uses look-to-carve with a neutral zone; the stick takes priority when
 deflected. See [VR steering](docs/vr-steering.md) for controls, view carry and
 remaining headset validation. Timed runs now bank spin/flip and rail tricks and
 spend/refill boost; see [trick scoring](docs/trick-scoring.md) for exact scope.
+Manual reset and the existing active-run recovery triggers now prefer a nearby
+authored respawn path, with safe course/trail fallbacks for custom maps. They
+preserve the run clock and banked score. See [course recovery](docs/course-recovery.md)
+for the supported placement rules, shared desktop/VR hold and fade, and remaining
+world-trigger work.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

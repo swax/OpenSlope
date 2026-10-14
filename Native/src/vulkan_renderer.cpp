@@ -11,8 +11,8 @@
 
 namespace openslope {
 namespace {
-struct DrawPush {Matrix mvp;std::array<std::int32_t,4> options{};std::array<float,4> fog_colour_start{},eye_end{};};
-static_assert(sizeof(DrawPush)==112);
+struct DrawPush {Matrix mvp;std::array<std::int32_t,4> options{};std::array<float,4> fog_colour_start{},eye_end{},presentation{1,0,0,0};};
+static_assert(sizeof(DrawPush)==128);
 constexpr auto draw_stages=VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
 }
 void vk_check(VkResult result,const char* operation) {
@@ -201,7 +201,8 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
         vk_check(vkCreateFramebuffer(context_.device,&framebuffer,nullptr,&target.framebuffer),"Create framebuffer");
     }
 }
-void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet,std::span<const Vertex> avatar) {
+void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet,std::span<const Vertex> avatar,float fade) {
+    if(!std::isfinite(fade)||fade<0||fade>1)throw std::invalid_argument("Invalid scene fade");const auto visibility=1-fade;
     const auto started=std::chrono::steady_clock::now();finish();const auto previous_gpu=stats_.gpu_ms;stats_={};if(deferred_)stats_.gpu_ms=previous_gpu;stats_.wait_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
     vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
     const auto cull_start=std::chrono::steady_clock::now();terrain_draws_.clear();packed_indices_.clear();
@@ -269,7 +270,7 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     vk_check(vkBeginCommandBuffer(command_,&begin),"Begin draw command");
     if(timing_){vkCmdResetQueryPool(command_,timing_,0,2);vkCmdWriteTimestamp(command_,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,timing_,0);}
     const bool srgb=format_==VK_FORMAT_R8G8B8A8_SRGB||format_==VK_FORMAT_B8G8R8A8_SRGB;
-    std::array<VkClearValue,2> clear{};for(unsigned c=0;c<3;++c){const auto v=scene_->world_.sky_colour[c];clear[0].color.float32[c]=srgb?(v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f)):v;}clear[0].color.float32[3]=1;clear[1].depthStencil={1,0};
+    std::array<VkClearValue,2> clear{};for(unsigned c=0;c<3;++c){const auto v=scene_->world_.sky_colour[c]*visibility;clear[0].color.float32[c]=srgb?(v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f)):v;}clear[0].color.float32[3]=1;clear[1].depthStencil={1,0};
     VkRenderPassBeginInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};pass.renderPass=pass_;pass.framebuffer=targets_.at(image).framebuffer;pass.renderArea.extent={width_,height_};pass.clearValueCount=2;pass.pClearValues=clear.data();
     vkCmdBeginRenderPass(command_,&pass,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
     vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,1,1,&pose_set_,0,nullptr);
@@ -277,6 +278,7 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     vkCmdSetViewport(command_,0,1,&viewport);vkCmdSetScissor(command_,0,1,&scissor);
     const VkDeviceSize offset=0;vkCmdBindVertexBuffers(command_,0,1,&scene_->vertices_.buffer,&offset);vkCmdBindIndexBuffer(command_,scene_->indices_.buffer,0,VK_INDEX_TYPE_UINT32);
     DrawPush push{camera,{0,srgb?1:0,0,0},{scene_->world_.fog_colour[0],scene_->world_.fog_colour[1],scene_->world_.fog_colour[2],scene_->world_.fog_start},{float(eye.x),float(eye.y),float(eye.z),scene_->world_.fog_end}};
+    push.presentation[0]=visibility;
     if(!scene_->sky_draws_.empty()){
         // [Trailmap: 400-backdrop] Cancel each eye's translation independently.
         auto centre=Matrix::identity();centre.values[12]=float(eye.x);centre.values[13]=float(eye.y);centre.values[14]=float(eye.z);push.mvp=camera*centre;push.options[0]=7;vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,sky_pipeline_);

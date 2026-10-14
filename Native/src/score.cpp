@@ -29,21 +29,21 @@ void TrickScore::land(){
     if(!status_.active||!open_)return;
     // Ignore tiny terrain skips; preserve a collected multiplier for a real trick.
     if(!rail_&&status_.airtime<.15){clear_combo(false);return;}
-    preview();status_.result=status_.preview;status_.banked+=status_.preview;
+    preview();status_.banked+=status_.preview;
     // The shared play profile fills from rounded, unmultiplied style points only.
     status_.meter=std::clamp(status_.meter+double(style_points(status_.style,1))/10000,0.,1.);
-    status_.bailed=false;status_.loss=ScoreLoss::None;status_.result_age=0;++status_.resolution;clear_combo(true);
+    if(status_.preview>0){status_.result=status_.preview;status_.bailed=false;status_.loss=ScoreLoss::None;status_.result_age=0;++status_.resolution;}clear_combo(true);
 }
 void TrickScore::lose(ScoreLoss reason,double penalty){
     if(!std::isfinite(penalty)||penalty<0||penalty>1)throw std::invalid_argument("Invalid score penalty");if(!status_.active)return;
-    if(open_){preview();status_.result=status_.preview;status_.bailed=true;status_.loss=reason;status_.result_age=0;++status_.resolution;}
+    if(open_){preview();if(status_.preview>0){status_.result=status_.preview;status_.bailed=true;status_.loss=reason;status_.result_age=0;++status_.resolution;}}
     status_.meter=std::clamp(status_.meter-penalty,0.,1.);clear_combo(true);
 }
 void TrickScore::spend(double seconds,bool held){duration(seconds);if(status_.active&&held)status_.meter=std::max(0.,status_.meter-.045*seconds);}
 void TrickScore::multiplier(unsigned tier){if(tier!=2&&tier!=3&&tier!=5)throw std::invalid_argument("Invalid score multiplier");if(status_.active){status_.multiplier=std::max(status_.multiplier,tier);preview();}}
 unsigned TrickScore::meter_segments() const {return unsigned(std::floor(std::clamp(status_.meter,0.,1.)*15+1e-9));}
 std::int64_t TrickScore::finish(){
-    if(status_.active){preview();status_.banked+=status_.preview;status_.result=status_.preview;clear_combo(true);status_.active=false;status_.finished=true;}return status_.total();
+    if(status_.active){preview();status_.banked+=status_.preview;if(status_.preview>0){status_.result=status_.preview;status_.bailed=false;status_.loss=ScoreLoss::None;status_.result_age=0;++status_.resolution;}clear_combo(true);status_.active=false;status_.finished=true;}return status_.total();
 }
 std::string score_readout(const TrickScore& score){
     const auto& s=score.status();std::string text="SCORE "+std::to_string(s.banked);

@@ -25,9 +25,9 @@ std::vector<unsigned char> read_capture(VulkanRenderer& renderer,const std::file
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
 }
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={}) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={},float fade=0) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet);return read_capture(renderer,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet,{},fade);return read_capture(renderer,output);
 }
 void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array<int,3> expected) {
     const auto x=unsigned((.1+.8*u)*128),y=unsigned((.1+.8*v)*128);
@@ -134,6 +134,9 @@ int main(int argc,char** argv) {
                     checks+=2;if(read_capture(first,root/"queued-first.ppm")!=a||read_capture(second,root/"queued-second.ppm")!=shifted_b)throw std::runtime_error("Queued stereo views overwrite each other's placements or buffers");
                 }
                 first.deferred(false);second.deferred(false);capture(first,root/"restored-first.ppm",camera);capture(second,root/"restored-second.ppm",camera);
+            }
+            if(std::string(name)=="orientation")for(auto* renderer:{&first,&second}){
+                const auto faded=capture(*renderer,root/"half-fade.ppm",camera,{},{},{},{},.5f);pixel(faded,.15,.15,{120,10,20});pixel(faded,.85,.15,{20,30,115});const auto black=capture(*renderer,root/"opaque-fade.ppm",camera,{},{},{},{},1);++checks;if(std::any_of(black.begin(),black.end(),[](auto value){return value!=0;}))throw std::runtime_error("Opaque course fade leaves scene or clear pixels visible");
             }
             if(std::string(name)=="visibility"){
                 ++checks;if(visibility.visible_terrain!=2||visibility.terrain_patches!=8||visibility.terrain_indices*4!=visibility.terrain_total_indices||visibility.terrain_draws!=2)throw std::runtime_error("Terrain compaction did not retain two visible material groups");

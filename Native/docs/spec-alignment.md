@@ -94,3 +94,11 @@ flip divisor, airborne bleed and uber tiers remain explicit in trick-scoring.md.
 VR head/stick selection and seat carry are application controls from first-party
 behavioral tests, outside the original game's recovered inputs. They retain the
 shared 330 carve and desktop 350 rail paths; see vr-steering.md.
+
+Course recovery consumes clean 250-reset-events, 300's Control 22 and 390-reset-path/placement with
+horizontal stations, six respawn paths, lookahead ranking, window handling and
+support-aligned 30 km/h drop-in. First-party trail/trap fallbacks and the geometric
+tracker are application choices. The 0.8-second hold and 0.5-second fade-out are
+implemented in desktop and OpenXR; the 0.2-second fade-in and completion across
+clock expiry are application choices. The separate viewport effect, field bias
+and remaining world/reset triggers are still required; see course-recovery.md.
