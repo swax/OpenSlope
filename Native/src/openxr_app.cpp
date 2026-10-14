@@ -1,5 +1,7 @@
 #include "openxr_app.hpp"
 #include "audio_device.hpp"
+#include "openslope/avatar.hpp"
+#include "body_tracking_compat.hpp"
 #include "vulkan_renderer.hpp"
 #ifdef __ANDROID__
 #include <jni.h>
@@ -29,6 +31,13 @@ template<class T> T function(XrInstance instance,const char* name) {
 Vec3 quaternion_rotate(XrQuaternionf q,Vec3 v) {
     const Vec3 axis{q.x,q.y,q.z};return v+cross(axis,v)*(2*q.w)+cross(axis,cross(axis,v))*2;
 }
+void tracking_log(const std::string& message){
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"OpenSlopeNative","%s",message.c_str());
+#else
+    std::cout<<message<<'\n';
+#endif
+}
 struct Eye {
     XrSwapchain swapchain{};
     std::unique_ptr<VulkanRenderer> renderer;
@@ -36,12 +45,21 @@ struct Eye {
 };
 struct State {
     XrInstance instance{};XrSystemId system{};XrSession session{};XrSpace space{};
-    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{};
+    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{},grip{};
+    std::array<XrPath,2> hands{};std::array<XrSpace,2> grips{};
+    XrPath touch_profile{};
+    XrBodyTrackerFB body_tracker{};PFN_xrDestroyBodyTrackerFB destroy_body{};PFN_xrLocateBodyJointsFB locate_body{};
+    bool body_extension=false,full_extension=false,fidelity_extension=false,full_body=false,fidelity_supported=false;
+    bool anchored=false;Vec3 origin{};double reference_yaw=0;std::uint64_t anchor_serial=0;XrTime reference_change=0;
+    int tracking_mode=-1,actual_fidelity=-1;
+    Avatar avatar;
     VulkanContext vulkan;
     std::vector<Eye> eyes;
     bool floor_space=false,running=false,focused=false,quit=false;
     ~State() {
         for(auto& eye:eyes){eye.renderer.reset();if(eye.swapchain)xrDestroySwapchain(eye.swapchain);}
+        if(body_tracker&&destroy_body)destroy_body(body_tracker);
+        for(auto grip_space:grips)if(grip_space)xrDestroySpace(grip_space);
         if(space)xrDestroySpace(space);if(session)xrDestroySession(session);
         if(actions)xrDestroyActionSet(actions);if(instance)xrDestroyInstance(instance);
     }
@@ -65,6 +83,13 @@ struct State {
 #endif
         for(auto name:requested) if(std::none_of(extensions.begin(),extensions.end(),[&](const auto& e){return std::strcmp(e.extensionName,name)==0;}))
             throw std::runtime_error(std::string("Runtime lacks required OpenXR extension: ")+name);
+        const auto available=[&](const char* name){return std::any_of(extensions.begin(),extensions.end(),[&](const auto& e){return std::strcmp(e.extensionName,name)==0;});};
+        body_extension=available(XR_FB_BODY_TRACKING_EXTENSION_NAME);
+        full_extension=body_extension&&available(XR_META_BODY_TRACKING_FULL_BODY_EXTENSION_NAME);
+        fidelity_extension=body_extension&&available(XR_META_BODY_TRACKING_FIDELITY_EXTENSION_NAME);
+        if(body_extension)requested.push_back(XR_FB_BODY_TRACKING_EXTENSION_NAME);
+        if(full_extension)requested.push_back(XR_META_BODY_TRACKING_FULL_BODY_EXTENSION_NAME);
+        if(fidelity_extension)requested.push_back(XR_META_BODY_TRACKING_FIDELITY_EXTENSION_NAME);
         XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};std::strcpy(create.applicationInfo.applicationName,"OpenSlope Native");create.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);
         create.enabledExtensionCount=std::uint32_t(requested.size());create.enabledExtensionNames=requested.data();
 #ifdef __ANDROID__
@@ -101,6 +126,7 @@ struct State {
         XrReferenceSpaceCreateInfo reference{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};reference.referenceSpaceType=floor_space?XR_REFERENCE_SPACE_TYPE_STAGE:XR_REFERENCE_SPACE_TYPE_LOCAL;reference.poseInReferenceSpace.orientation.w=1;
         xr_check(xrCreateReferenceSpace(session,&reference,&space),"Create play space");
         create_input();
+        create_body();
         std::uint32_t view_count=0;xr_check(xrEnumerateViewConfigurationViews(instance,system,XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,0,&view_count,nullptr),"Enumerate stereo views");
         if(view_count!=2)throw std::runtime_error("Prototype requires a two-view stereo headset");
         std::vector<XrViewConfigurationView> views(view_count,{XR_TYPE_VIEW_CONFIGURATION_VIEW});
@@ -130,10 +156,55 @@ struct State {
         const auto action=[&](const char* name,XrActionType type,XrAction& result){
             XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};info.actionType=type;std::strcpy(info.actionName,name);std::strcpy(info.localizedActionName,name);xr_check(xrCreateAction(actions,&info,&result),"Create riding action");};
         action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("boost",XR_ACTION_TYPE_FLOAT_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);action("rail_exit",XR_ACTION_TYPE_BOOLEAN_INPUT,rail_exit);
-        const std::array<XrActionSuggestedBinding,5> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")}}};
+        touch_profile=path("/interaction_profiles/oculus/touch_controller");
+        hands={path("/user/hand/left"),path("/user/hand/right")};
+        XrActionCreateInfo pose{XR_TYPE_ACTION_CREATE_INFO};pose.actionType=XR_ACTION_TYPE_POSE_INPUT;std::strcpy(pose.actionName,"grip_pose");std::strcpy(pose.localizedActionName,"Controller grip");pose.countSubactionPaths=2;pose.subactionPaths=hands.data();xr_check(xrCreateAction(actions,&pose,&grip),"Create controller poses");
+        const std::array<XrActionSuggestedBinding,7> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")},{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")}}};
         XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};suggested.interactionProfile=path("/interaction_profiles/oculus/touch_controller");suggested.countSuggestedBindings=std::uint32_t(bindings.size());suggested.suggestedBindings=bindings.data();
         xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest Touch-compatible bindings");
+        const std::array<XrActionSuggestedBinding,4> simple{{{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{reset,path("/user/hand/left/input/menu/click")},{jump,path("/user/hand/right/input/select/click")}}};
+        suggested.interactionProfile=path("/interaction_profiles/khr/simple_controller");suggested.countSuggestedBindings=std::uint32_t(simple.size());suggested.suggestedBindings=simple.data();xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest simple controller bindings");
         XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};attach.countActionSets=1;attach.actionSets=&actions;xr_check(xrAttachSessionActionSets(session,&attach),"Attach riding input");
+        for(unsigned i=0;i<2;++i){XrActionSpaceCreateInfo info{XR_TYPE_ACTION_SPACE_CREATE_INFO};info.action=grip;info.subactionPath=hands[i];info.poseInActionSpace.orientation.w=1;xr_check(xrCreateActionSpace(session,&info,&grips[i]),"Create controller grip space");}
+    }
+    void create_body(){
+        if(!body_extension){tracking_log("Avatar: procedural body; runtime has no body extension");return;}
+        XrSystemBodyTrackingPropertiesFB body{XR_TYPE_SYSTEM_BODY_TRACKING_PROPERTIES_FB};
+        XrSystemPropertiesBodyTrackingFullBodyMETA full{XR_TYPE_SYSTEM_PROPERTIES_BODY_TRACKING_FULL_BODY_META};
+        XrSystemPropertiesBodyTrackingFidelityMETA fidelity{XR_TYPE_SYSTEM_PROPERTIES_BODY_TRACKING_FIDELITY_META};
+        if(full_extension){body.next=&full;if(fidelity_extension)full.next=&fidelity;}else if(fidelity_extension)body.next=&fidelity;
+        XrSystemProperties properties{XR_TYPE_SYSTEM_PROPERTIES};properties.next=&body;
+        if(XR_FAILED(xrGetSystemProperties(instance,system,&properties))||!body.supportsBodyTracking){tracking_log("Avatar: body tracking unavailable; using head/controller pose");return;}
+        try{
+            const auto create_body=function<PFN_xrCreateBodyTrackerFB>(instance,"xrCreateBodyTrackerFB");destroy_body=function<PFN_xrDestroyBodyTrackerFB>(instance,"xrDestroyBodyTrackerFB");locate_body=function<PFN_xrLocateBodyJointsFB>(instance,"xrLocateBodyJointsFB");
+            full_body=full_extension&&full.supportsFullBodyTracking;XrBodyTrackerCreateInfoFB info{XR_TYPE_BODY_TRACKER_CREATE_INFO_FB};info.bodyJointSet=full_body?XR_BODY_JOINT_SET_FULL_BODY_META:XR_BODY_JOINT_SET_DEFAULT_FB;
+            auto result=create_body(session,&info,&body_tracker);
+            if(XR_FAILED(result)&&full_body){full_body=false;info.bodyJointSet=XR_BODY_JOINT_SET_DEFAULT_FB;result=create_body(session,&info,&body_tracker);}
+            if(XR_FAILED(result)){body_tracker=XR_NULL_HANDLE;tracking_log("Avatar: body tracker creation failed ("+std::to_string(result)+"); using head/controller pose");return;}
+            fidelity_supported=fidelity_extension&&fidelity.supportsBodyTrackingFidelity;
+            if(fidelity_supported){const auto request=function<PFN_xrRequestBodyTrackingFidelityMETA>(instance,"xrRequestBodyTrackingFidelityMETA");const auto requested=request(body_tracker,XR_BODY_TRACKING_FIDELITY_HIGH_META);tracking_log("Avatar: high body fidelity request result "+std::to_string(requested));}
+            tracking_log(full_body?"Avatar: full body tracker ready (runtime legs)":"Avatar: upper body tracker ready (procedural legs)");
+        }catch(const std::exception& error){tracking_log(std::string("Avatar: optional tracking setup: ")+error.what());}
+    }
+    AvatarTracking tracking(XrTime time,const XrPosef& head,Vec3 body,XrQuaternionf rotation){
+        AvatarTracking result;const auto point=[&](XrVector3f p){return body+quaternion_rotate(rotation,Vec3{p.x,p.y,p.z}-origin);};
+        const auto direction=[&](XrQuaternionf q,Vec3 v){return quaternion_rotate(rotation,quaternion_rotate(q,v));};
+        result.head=point(head.position);result.forward=direction(head.orientation,{0,0,-1});result.up=direction(head.orientation,{0,1,0});
+        if(focused)for(unsigned i=0;i<2;++i){XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};get.action=grip;get.subactionPath=hands[i];XrActionStatePose pose{XR_TYPE_ACTION_STATE_POSE};if(XR_FAILED(xrGetActionStatePose(session,&get,&pose))||!pose.isActive)continue;
+            XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};const auto valid=XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+            if(XR_SUCCEEDED(xrLocateSpace(grips[i],space,time,&location))&&(location.locationFlags&valid)==valid){auto& c=result.controllers[i];c.valid=true;c.position=point(location.pose.position);c.right=direction(location.pose.orientation,{1,0,0});c.up=direction(location.pose.orientation,{0,1,0});c.forward=direction(location.pose.orientation,{0,0,-1});XrInteractionProfileState profile{XR_TYPE_INTERACTION_PROFILE_STATE};c.touch=XR_SUCCEEDED(xrGetCurrentInteractionProfile(session,hands[i],&profile))&&profile.interactionProfile==touch_profile;}
+        }
+        if(focused&&body_tracker){std::array<XrBodyJointLocationFB,XR_FULL_BODY_JOINT_COUNT_META> joints{};XrBodyJointsLocateInfoFB info{XR_TYPE_BODY_JOINTS_LOCATE_INFO_FB};info.baseSpace=space;info.time=time;
+            XrBodyJointLocationsFB locations{XR_TYPE_BODY_JOINT_LOCATIONS_FB};locations.jointCount=full_body?XR_FULL_BODY_JOINT_COUNT_META:XR_BODY_JOINT_COUNT_FB;locations.jointLocations=joints.data();XrBodyTrackingFidelityStatusMETA fidelity{XR_TYPE_BODY_TRACKING_FIDELITY_STATUS_META};if(fidelity_supported)locations.next=&fidelity;
+            if(XR_SUCCEEDED(locate_body(body_tracker,&info,&locations))&&locations.isActive){
+                if(fidelity_supported&&int(fidelity.fidelity)!=actual_fidelity){actual_fidelity=int(fidelity.fidelity);tracking_log("Avatar: actual body fidelity "+std::to_string(actual_fidelity)+" (1 low / 2 high)");}
+                result.body_active=true;result.full_body=full_body;result.confidence=locations.confidence;
+                const std::array<unsigned,avatar_joint_count> mapping{XR_BODY_JOINT_HIPS_FB,XR_BODY_JOINT_SPINE_LOWER_FB,XR_BODY_JOINT_CHEST_FB,XR_BODY_JOINT_NECK_FB,XR_BODY_JOINT_HEAD_FB,XR_BODY_JOINT_LEFT_ARM_UPPER_FB,XR_BODY_JOINT_LEFT_ARM_LOWER_FB,XR_BODY_JOINT_LEFT_HAND_WRIST_FB,XR_BODY_JOINT_RIGHT_ARM_UPPER_FB,XR_BODY_JOINT_RIGHT_ARM_LOWER_FB,XR_BODY_JOINT_RIGHT_HAND_WRIST_FB,XR_FULL_BODY_JOINT_LEFT_UPPER_LEG_META,XR_FULL_BODY_JOINT_LEFT_LOWER_LEG_META,XR_FULL_BODY_JOINT_LEFT_FOOT_ANKLE_META,XR_FULL_BODY_JOINT_LEFT_FOOT_BALL_META,XR_FULL_BODY_JOINT_RIGHT_UPPER_LEG_META,XR_FULL_BODY_JOINT_RIGHT_LOWER_LEG_META,XR_FULL_BODY_JOINT_RIGHT_FOOT_ANKLE_META,XR_FULL_BODY_JOINT_RIGHT_FOOT_BALL_META};
+                for(unsigned i=0;i<mapping.size();++i){const auto j=mapping[i];if(j<locations.jointCount&&(joints[j].locationFlags&XR_SPACE_LOCATION_POSITION_VALID_BIT)){result.valid[i]=true;result.joints[i]=point(joints[j].pose.position);}}
+            }
+        }
+        const auto mode=result.body_active&&std::isfinite(result.confidence)&&result.confidence>.05f?(result.full_body?2:1):0;if(mode!=tracking_mode){tracking_mode=mode;tracking_log(mode==2?"Avatar pose: full body / runtime legs":mode==1?"Avatar pose: upper body / procedural legs":"Avatar pose: head/controllers / procedural body");}
+        return result;
     }
     RideInput input() const {
         if(!focused)return {};
@@ -151,11 +222,12 @@ struct State {
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};XrResult result;
         while((result=xrPollEvent(instance,&event))==XR_SUCCESS) {
             if(event.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING)quit=true;
+            if(event.type==XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING)reference_change=reinterpret_cast<const XrEventDataReferenceSpaceChangePending*>(&event)->changeTime;
             if(event.type==XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED) {
                 const auto state=reinterpret_cast<XrEventDataSessionStateChanged*>(&event)->state;
                 focused=state==XR_SESSION_STATE_FOCUSED;
                 if(state==XR_SESSION_STATE_READY){XrSessionBeginInfo begin{XR_TYPE_SESSION_BEGIN_INFO};begin.primaryViewConfigurationType=XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;xr_check(xrBeginSession(session,&begin),"Begin VR session");running=true;}
-                if(state==XR_SESSION_STATE_STOPPING){xr_check(xrEndSession(session),"End VR session");running=false;}
+                if(state==XR_SESSION_STATE_STOPPING){xr_check(xrEndSession(session),"End VR session");running=false;anchored=false;}
                 if(state==XR_SESSION_STATE_EXITING||state==XR_SESSION_STATE_LOSS_PENDING)quit=true;
             }
             event={XR_TYPE_EVENT_DATA_BUFFER};
@@ -186,17 +258,21 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
             const auto valid=XR_VIEW_STATE_POSITION_VALID_BIT|XR_VIEW_STATE_ORIENTATION_VALID_BIT;
             if(count==2&&(view_state.viewStateFlags&valid)==valid) {
                 const auto body=player.render_position();
-                const auto facing=player.camera_forward();const auto yaw=std::atan2(-facing.x,-facing.z);const XrQuaternionf body_rotation{0,float(std::sin(yaw*.5)),0,float(std::cos(yaw*.5))};
+                XrPosef head=views[0].pose;head.position.x=(views[0].pose.position.x+views[1].pose.position.x)*.5f;head.position.y=(views[0].pose.position.y+views[1].pose.position.y)*.5f;head.position.z=(views[0].pose.position.z+views[1].pose.position.z)*.5f;
+                if(state.reference_change&&frame.predictedDisplayTime>=state.reference_change){state.anchored=false;state.reference_change=0;}
+                if(!state.anchored||state.anchor_serial!=player.placement_serial()){state.origin={head.position.x,state.floor_space?0:head.position.y-1.65,head.position.z};const auto direction=quaternion_rotate(head.orientation,{0,0,-1});state.reference_yaw=std::atan2(-direction.x,-direction.z);state.anchor_serial=player.placement_serial();state.anchored=true;}
+                const auto facing=player.camera_forward();const auto yaw=std::atan2(-facing.x,-facing.z)-state.reference_yaw;const XrQuaternionf body_rotation{0,float(std::sin(yaw*.5)),0,float(std::cos(yaw*.5))};
+                const auto tracked=state.tracking(frame.predictedDisplayTime,head,body,body_rotation);const auto pose=avatar_pose(player,&tracked);const auto avatar_mesh=state.avatar.mesh(pose,true,true,tracked.head);
                 for(unsigned i=0;i<2;++i) {
                     auto& eye=state.eyes[i];std::uint32_t image=0;XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};xr_check(xrAcquireSwapchainImage(eye.swapchain,&acquire,&image),"Acquire eye image");
                     XrSwapchainImageWaitInfo image_wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};image_wait.timeout=XR_INFINITE_DURATION;xr_check(xrWaitSwapchainImage(eye.swapchain,&image_wait),"Wait for eye image");
                     const auto& camera=views[i];
-                    const auto eye_position=body+quaternion_rotate(body_rotation,{camera.pose.position.x,camera.pose.position.y,camera.pose.position.z})+Vec3{0,state.floor_space?0:1.65,0};
+                    const auto eye_position=body+quaternion_rotate(body_rotation,Vec3{camera.pose.position.x,camera.pose.position.y,camera.pose.position.z}-state.origin);
                     const auto forward=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,0,-1}));
                     const auto up=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,1,0}));
                     if(i==0)audio.listener({eye_position,forward,up});
                     const auto matrix=projection(std::tan(camera.fov.angleLeft),std::tan(camera.fov.angleRight),std::tan(camera.fov.angleDown),std::tan(camera.fov.angleUp))*view(eye_position,forward,up);
-                    eye.renderer->render(image,matrix,board_transform(player.render_board_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,{},{},eye_position,player.effects().sprites(),player.effects().wake(),player.effects().sheet());
+                    eye.renderer->render(image,matrix,board_transform(player.render_board_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,{},{},eye_position,player.effects().sprites(),player.effects().wake(),player.effects().sheet(),avatar_mesh);
                     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};xr_check(xrReleaseSwapchainImage(eye.swapchain,&release),"Release eye image");
                     projections[i].pose=camera.pose;projections[i].fov=camera.fov;projections[i].subImage.swapchain=eye.swapchain;projections[i].subImage.imageRect.extent={std::int32_t(eye.width),std::int32_t(eye.height)};
                 }

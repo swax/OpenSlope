@@ -134,3 +134,8 @@ not an isolated performance baseline or evidence of headset performance.
 Rail controls: A/D slews deck spin, Shift adds tangent boost, Space retains the
 shared charged jump, and E exits carrying velocity. VR uses left-stick steering,
 right trigger boost, A jump and left-stick click exit. See rails.md.
+
+The stick figure follows crouch and board presentation. F/V selects first person;
+hold C to look down at the body and board. `--first-person` / `--look-down` also
+work for offline captures. VR shows grip-tracked controller models with labels;
+see avatar.md for optional body tracking and fallback behavior.

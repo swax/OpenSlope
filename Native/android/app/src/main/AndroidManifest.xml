@@ -4,6 +4,8 @@
     <metavr:uses-metavr-sdk metavr:minSdkVersion="69" metavr:targetSdkVersion="207" />
     <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="true" />
     <uses-feature android:name="android.hardware.faketouch" android:required="false" />
+    <uses-feature android:name="com.oculus.software.body_tracking" android:required="false" />
+    <uses-permission android:name="com.oculus.permission.BODY_TRACKING" />
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
     <queries>

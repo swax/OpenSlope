@@ -99,6 +99,7 @@ VulkanRenderer::~VulkanRenderer() {
     destroy_buffer(visible_indices_);
     destroy_buffer(sprite_vertices_);
     destroy_buffer(wake_vertices_);
+    destroy_buffer(avatar_vertices_);
     destroy_buffer(sheet_vertices_);
 }
 void VulkanRenderer::clear_targets() {
@@ -193,7 +194,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
         vk_check(vkCreateFramebuffer(context_.device,&framebuffer,nullptr,&target.framebuffer),"Create framebuffer");
     }
 }
-void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet) {
+void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye,std::span<const Sprite> sprites,std::span<const WakeVertex> wake,std::span<const SprayVertex> sheet,std::span<const Vertex> avatar) {
     const auto started=std::chrono::steady_clock::now();stats_={};
     vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Wait for previous frame");vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
     const auto cull_start=std::chrono::steady_clock::now();terrain_draws_.clear();packed_indices_.clear();
@@ -233,6 +234,13 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
         if(wake_mesh_.size()>wake_capacity_){destroy_buffer(wake_vertices_);wake_capacity_=std::min(std::size_t(594),std::max(wake_mesh_.size(),wake_capacity_*2));wake_vertices_=create_buffer(wake_capacity_*sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,nullptr);}
         void* mapped;vk_check(vkMapMemory(context_.device,wake_vertices_.memory,0,wake_mesh_.size()*sizeof(Vertex),0,&mapped),"Map wake vertices");std::memcpy(mapped,wake_mesh_.data(),wake_mesh_.size()*sizeof(Vertex));vkUnmapMemory(context_.device,wake_vertices_.memory);stats_.wake_segments=unsigned(wake.size()/6);
     }
+    if(avatar.size()>60000||avatar.size()%3)throw std::runtime_error("Avatar submission exceeds bounds");
+    for(const auto& v:avatar)if(!finite({v.x,v.y,v.z})||!std::isfinite(v.r)||!std::isfinite(v.g)||!std::isfinite(v.b))throw std::runtime_error("Invalid avatar vertex");
+    if(!avatar.empty()){
+        if(avatar.size()>avatar_capacity_){destroy_buffer(avatar_vertices_);avatar_capacity_=std::min(std::size_t(60000),std::max(avatar.size(),avatar_capacity_*2));avatar_vertices_=create_buffer(avatar_capacity_*sizeof(Vertex),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,nullptr);}
+        void* mapped;vk_check(vkMapMemory(context_.device,avatar_vertices_.memory,0,avatar.size()*sizeof(Vertex),0,&mapped),"Map avatar vertices");std::memcpy(mapped,avatar.data(),avatar.size()*sizeof(Vertex));vkUnmapMemory(context_.device,avatar_vertices_.memory);
+    }
+    stats_.avatar_triangles=unsigned(avatar.size()/3);
     sheet_mesh_.clear();
     if(scene_->sheet_set_&&!sheet.empty()){
         if(sheet.size()>2286||sheet.size()%18)throw std::runtime_error("Spray sheet submission exceeds its column limit");sheet_mesh_.reserve(sheet.size());
@@ -274,7 +282,9 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     vkCmdBindIndexBuffer(command_,scene_->indices_.buffer,0,VK_INDEX_TYPE_UINT32);
     const auto world_eye=push.eye_end;const auto relative=eye-Vec3{board.values[12],board.values[13],board.values[14]};for(unsigned c=0;c<3;++c)push.eye_end[c]=float(dot(relative,{board.values[c*4],board.values[c*4+1],board.values[c*4+2]}));
     push.mvp=camera*board;push.options[0]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->board_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,6,1,scene_->board_first_,0,0);
-    push.eye_end=world_eye;push.mvp=camera;push.options[0]=3;bool blending=false;
+    push.eye_end=world_eye;push.mvp=camera;push.options[0]=0;
+    if(!avatar.empty()){vkCmdBindVertexBuffers(command_,0,1,&avatar_vertices_.buffer,&offset);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDraw(command_,std::uint32_t(avatar.size()),1,0,0);vkCmdBindVertexBuffers(command_,0,1,&scene_->vertices_.buffer,&offset);}
+    push.options[0]=3;bool blending=false;
     for(const auto& visible:prop_draws){const auto& draw=scene_->prop_draws_[visible.part];if(draw.alpha==2&&!blending){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,blend_pipeline_);blending=true;}push.options[2]=draw.alpha;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,visible.count,draw.first,0,visible.first);}
     if(!wake_mesh_.empty()){
         vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,wake_pipeline_);vkCmdBindVertexBuffers(command_,0,1,&wake_vertices_.buffer,&offset);push.mvp=camera;push.options[0]=5;push.options[2]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->wake_set_,0,nullptr);

@@ -13,6 +13,8 @@ elseif(ANDROID)
 endif()
 
 if(OPENSLOPE_BUILD_TESTS AND NOT ANDROID)
+  add_executable(openslope_avatar_render_tests tests/avatar_render_tests.cpp)
+  target_link_libraries(openslope_avatar_render_tests PRIVATE openslope_graphics)
   add_executable(openslope_render_tests tests/render_tests.cpp)
   target_link_libraries(openslope_render_tests PRIVATE openslope_graphics)
   # Invoked explicitly on a Vulkan-capable host; portable CI need not have a GPU.

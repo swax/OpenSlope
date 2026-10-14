@@ -18,3 +18,6 @@ Electronic Arts Inc. This project is independent and unofficial.
 Build dependencies retain their own terms. See ThirdPartyNotices/README.md and the
 complete upstream license texts beside it. Downloads are pinned and remain outside
 tracked source; shader binaries are generated from repository-authored GLSL.
+
+Bundled stick figure avatar: Copyright 2026 swax, Apache-2.0.
+The unchanged first-party asset originates in Slopesmith. See assets/NOTICE.txt.

@@ -74,3 +74,9 @@ Splines.json keys and standard cubic/BVH math. The own power-to-control transfor
 uses double accumulation; generated JSON supplies comparison data only. Exact
 source coefficients remain available to runtime nearest queries. See rails.md
 for declared control-rounding bounds and unresolved lifecycle details.
+
+The stick figure is the unchanged Apache-2.0 first-party Slopesmith asset, with
+its original attribution retained. Native independently loads its rigid GLB
+skin and authors procedural posing, generic controllers and text geometry.
+OpenXR body/full-body/fidelity integration follows public Meta/Khronos ABI and
+API documentation; clean Trailmap gameplay state remains separate. See avatar.md.

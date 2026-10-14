@@ -7,8 +7,8 @@ android {
         applicationId 'org.openslope.nativeplayer'
         minSdk 29
         targetSdk 35
-        versionCode 18
-        versionName '0.17.0'
+        versionCode 19
+        versionName '0.18.0'
         testInstrumentationRunner 'org.openslope.nativeplayer.NativeImportInstrumentation'
         ndk { abiFilters 'arm64-v8a' }
         externalNativeBuild {
@@ -27,6 +27,7 @@ android {
 }
 tasks.register('prepareLicenseAssets', Copy) {
     from '../../LICENSE', '../../NOTICE'
+    from('../../assets/NOTICE.txt') { rename { 'stick-figure-NOTICE.txt' } }
     into "$buildDir/generated/licenseAssets"
 }
 tasks.named('preBuild').configure { dependsOn 'prepareLicenseAssets' }

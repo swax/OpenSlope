@@ -250,3 +250,8 @@ so the readers and gameplay core can also be compiled for desktop tools or WebAs
 
 See [NOTICE](NOTICE) and [third-party notices](ThirdPartyNotices/README.md).
 See [source provenance](docs/source-provenance.md) for the implementation and dependency boundary.
+
+The desktop and VR player now use the first-party stick figure avatar. F/V switches
+to first person; hold C to look down. VR controller models show control labels,
+and supported Quest runtimes can supply upper-body/full-body joints. See
+[avatar presentation](docs/avatar.md) for API support, fallbacks and validation.

@@ -65,3 +65,8 @@ matrix and independent fixtures as each later specification slice lands.
 Rails align with clean 140, 220, 230 and 350: candidacy, exact cubic nearest,
 Motion 3 / Control 15, tangent forces, snap, spin, masks and jump/exit. Unresolved
 axes/post-grace blend and independent tuning are explicit in rails.md.
+
+User-directed stick figure and controller presentation uses the existing
+first-party asset and new procedural posing. Clean 300/340/350/370/400 retain
+state, pose/camera and depth authority. Optional platform tracking does not
+change recovered physical controls. See avatar.md for application choices.
