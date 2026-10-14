@@ -17,6 +17,7 @@ void main() {
             if(transform.options.z==2){if(base.a<=1.0/255.0)discard;alpha=base.a;}
         }else if(base.a<=1.0/255.0)discard;
         displayColour=base.rgb;
+        if(transform.options.x==4){displayColour=base.rgb*vertexColour;alpha=base.a*lightmapTile.x;}
         if(transform.options.x==3)displayColour=clamp(base.rgb*vertexColour,0.0,1.0);
         if(transform.options.x==2) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]

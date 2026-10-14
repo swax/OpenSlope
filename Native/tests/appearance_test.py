@@ -34,6 +34,10 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    sprites = course(root, "sprites", "background.png")
+    (sprites / "Textures/background.png").write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+    (sprites / "Textures/puff.png").write_bytes(rgba(1, 1, [255, 255, 255, 255]))
+    (sprites / "RidingEffects.json").write_text(json.dumps(dict(Schema='openslope-riding-effects/v1', Puff='puff.png')))
     miniature = course(root, "minification", "checker.png", uv=((0, 0), (0, 256), (256, 0), (256, 256)))
     (miniature / "Textures/checker.png").write_bytes(rgba(128, 128, [channel for y in range(128) for x in range(128) for channel in ([255,255,255,255] if (x+y)%2 else [0,0,0,255])]))
     pixels = bytes([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 64])

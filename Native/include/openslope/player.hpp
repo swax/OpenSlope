@@ -2,6 +2,7 @@
 #include "ride.hpp"
 #include "terrain.hpp"
 #include "collision.hpp"
+#include "riding_effects.hpp"
 #include <deque>
 #include <map>
 #include <functional>
@@ -46,6 +47,7 @@ public:
     const Rider& rider() const { return rider_; }
     const Terrain& terrain() const { return terrain_; }
     const RideContract& contract() const { return contract_; }
+    const RidingEffects& effects() const {return effects_;}
     const CollisionWorld& world() const {return world_;}
     const std::vector<ContactEvent>& contacts() const {return contact_events_;}
     Vec3 camera_position(Vec3 desired) const;
@@ -57,6 +59,7 @@ private:
     RideContract contract_;
     FixedClock clock_;
     Rider rider_;
+    RidingEffects effects_;
     PlayTuning tuning_;
     Vec3 spawn_position_,spawn_forward_;
     Vec3 flight_heading_{0,0,-1};
@@ -75,5 +78,6 @@ private:
     void sample_input(const RideInput& input);
     void land(const GroundContact& hit);
     void enter_air();
+    void notify_tick(const Rider& before);
 };
 }

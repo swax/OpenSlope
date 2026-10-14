@@ -91,6 +91,7 @@ void VulkanScene::upload(const Mesh& source) {
     }
     props_=Props::load(source.map_root);auto batches=source.batches;
     for(const auto& part:props_.parts)batches.push_back({0,0,part.texture,-1});
+    const auto sprite=riding_sprite(source.map_root);if(!sprite.empty())batches.push_back({0,0,sprite,-1});
     auto appearance=Appearance::load(source.map_root,batches);
     if(!appearance.missing.empty())std::cerr<<"OpenSlope: "<<appearance.missing.size()<<" referenced map images are missing; using available textures or terrain colours\n";
     VkFormatProperties format;vkGetPhysicalDeviceFormatProperties(context_.physical,VK_FORMAT_R8G8B8A8_UNORM,&format);
@@ -109,13 +110,14 @@ void VulkanScene::upload(const Mesh& source) {
     vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&repeat_),"Create diffuse sampler");sampler.maxLod=0;sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&clamp_),"Create lightmap sampler");
     const std::array<VkDescriptorSetLayoutBinding,3> bindings{{{0,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{2,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_VERTEX_BIT,nullptr}}};
     VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};layout.bindingCount=3;layout.pBindings=bindings.data();vk_check(vkCreateDescriptorSetLayout(context_.device,&layout,nullptr,&descriptors_),"Create map descriptor layout");
-    const auto count=std::uint32_t(batches.size()+1);const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,count*2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,count}}};VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};descriptor_pool.maxSets=count;descriptor_pool.poolSizeCount=2;descriptor_pool.pPoolSizes=sizes.data();vk_check(vkCreateDescriptorPool(context_.device,&descriptor_pool,nullptr,&descriptor_pool_),"Create map descriptor pool");
+    const auto count=std::uint32_t(batches.size()+2);const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,count*2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,count}}};VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};descriptor_pool.maxSets=count;descriptor_pool.poolSizeCount=2;descriptor_pool.pPoolSizes=sizes.data();vk_check(vkCreateDescriptorPool(context_.device,&descriptor_pool,nullptr,&descriptor_pool_),"Create map descriptor pool");
     const auto descriptor=[&](std::size_t diffuse,std::size_t lightmap){
         VkDescriptorSet set{};VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};allocate.descriptorPool=descriptor_pool_;allocate.descriptorSetCount=1;allocate.pSetLayouts=&descriptors_;vk_check(vkAllocateDescriptorSets(context_.device,&allocate,&set),"Allocate map descriptor");
         const std::array<VkDescriptorImageInfo,2> images{{{repeat_,images_[diffuse].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},{clamp_,images_[lightmap].view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}};std::array<VkWriteDescriptorSet,3> writes{};
         for(unsigned i=0;i<2;++i){writes[i]={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};writes[i].dstSet=set;writes[i].dstBinding=i;writes[i].descriptorCount=1;writes[i].descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;writes[i].pImageInfo=&images[i];}
         const VkDescriptorBufferInfo pose{poses_.buffer,0,pose_capacity_*sizeof(PropPose)};writes[2]={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};writes[2].dstSet=set;writes[2].dstBinding=2;writes[2].descriptorCount=1;writes[2].descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;writes[2].pBufferInfo=&pose;vkUpdateDescriptorSets(context_.device,3,writes.data(),0,nullptr);return set;
     };
+    if(const auto found=names.find("Textures/"+sprite);!sprite.empty()&&found!=names.end())effect_set_=descriptor(found->second,1);
     for(const auto& batch:source.batches){
         auto diffuse=names.find("Textures/"+batch.texture);std::ostringstream page;page<<"Lightmaps/"<<std::setfill('0')<<std::setw(4)<<batch.lightmap<<".png";auto lightmap=names.find(page.str());
         const bool base=diffuse!=names.end(),lit=batch.lightmap>=0&&lightmap!=names.end();

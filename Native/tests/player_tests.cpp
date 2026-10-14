@@ -54,4 +54,11 @@ void paths(){
     sequence["Steps"][0]["Ticks"]=216001;write_replay();rejects([&]{static_cast<void>(Replay::load(root/"replay.json"));},"Reject unbounded replay durations");
 }
 }
-int main(){try{helpers();controls();paths();std::cout<<"PASS: "<<checks<<" desktop control, flight, landing and path checks\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
+int main(){try{helpers();controls();paths();
+    RidingEffects effects;Rider a,b;a.grounded=b.grounded=true;a.motion=b.motion=Motion::Ground;b.velocity={0,0,-18};b.position={0,0,-1};
+    effects.tick(a,b,1./60);require(effects.sprites().empty(),"Standard straight riding does not create a carve plume");b.lean=.5;effects.tick(a,b,1./60);require(effects.carve_emitted()==1&&!effects.sprites().empty(),"Ground carve emits by traveled distance");
+    const auto birth=effects.sprites()[0].position;b.grounded=false;b.motion=Motion::Air;b.position={100,0,0};effects.tick(a,b,1./60);require(effects.carve_emitted()==1&&std::abs(effects.sprites()[0].position.x-birth.x)<1e-9,"Air stops carve emission and retains old world origins");
+    effects.reset();b.grounded=true;b.motion=Motion::Ground;b.surface=3;b.lean=0;effects.tick(a,b,1./60);require(effects.powder_count()>0,"Powder cloud does not require lean");const auto size=effects.sprites().size();effects.tick(a,b,0);require(effects.sprites().size()==size,"Paused effect time does not advance");
+    effects.reset();a.grounded=false;a.motion=Motion::Air;a.velocity={0,-14,-3};a.landings=0;b.surface=1;b.landings=1;b.position={};effects.tick(a,b,1./60);require(effects.landing_emitted()>=2&&effects.landing_emitted()<=8,"Touchdown produces an immediate bounded cloud burst");
+    b.grounded=false;b.motion=Motion::Air;for(unsigned i=0;i<130;++i)effects.tick(b,b,1./60);require(effects.sprites().empty(),"Old puffs expire in two seconds");effects.reset();require(effects.sprites().empty()&&effects.landing_emitted()==0,"Reset clears particles and activity");
+    std::cout<<"PASS: "<<checks<<" desktop control, flight, landing, effects and path checks\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

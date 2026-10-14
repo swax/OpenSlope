@@ -199,6 +199,13 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     if(behavior!=files.end()){notify("Converting authored collision and physics pools");import_detail::write_collision(behavior->second,output,cancelled);outputs.push_back("Collision");outputs.push_back("Physics.json");}
     for(const auto kind:{"AIP","SOP"}){const auto it=files.find(stem+"."+kind);if(it!=files.end()){notify(std::string("Converting ")+kind+" paths");const auto name=std::string(kind)+".json";import_detail::write_paths(it->second,output/name,cancelled);outputs.push_back(name);}}
     notify("Converting course audio");const auto audio=import_detail::write_course_audio(disc,stem,files,output,progress,cancelled);if(audio)outputs.push_back("Audio");
+    const auto directories=disc_directory(disc,"DATA");if(std::any_of(directories.begin(),directories.end(),[](const auto& e){return e.directory&&upper(e.name)=="TEXTURES";})){
+        const auto textures=disc_directory(disc,"DATA/TEXTURES");if(std::any_of(textures.begin(),textures.end(),[](const auto& e){return !e.directory&&upper(e.name)=="PARTICLE.SSH";})){
+            notify("Converting shared particle sprites");const auto sprites=import_detail::decode_ssh(disc_file(disc,"DATA/TEXTURES/PARTICLE.SSH"),false,cancelled,true);Json bank=Json::object();bool puff=false;
+            for(const auto& sprite:sprites){notify("Particle sprite "+sprite.name);const auto name="particle-"+sprite.name+".png";if(std::filesystem::exists(output/"Textures"/name))throw std::runtime_error("Particle sprite conflicts with a course texture");import_detail::write_png(output/"Textures"/name,sprite);bank[sprite.name]=name;puff|=sprite.name=="part";}
+            if(puff){write_json(output/"RidingEffects.json",{{"Schema","openslope-riding-effects/v1"},{"Enabled",true},{"Puff","particle-part.png"},{"SpriteBank",bank},{"Profile","native-riding-clouds/v1"}});outputs.push_back("RidingEffects.json");}
+        }
+    }
     write_json(output/"Origin.json",{{"Schema","openslope-origin/v1"},{"Origin","retail"},{"Course",stem},{"RetailData",true},{"Reasons",{"retail-extract"}}});
     // Lossless local source sidecars support later importer stages without
     // reselecting the ISO. They are not a replacement for portable contracts.

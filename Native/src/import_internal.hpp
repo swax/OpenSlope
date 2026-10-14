@@ -16,7 +16,7 @@ struct Bytes {
     std::string text(std::size_t offset,std::size_t length) const {range(offset,length);return {reinterpret_cast<const char*>(data.data()+offset),length};}
 };
 struct Image {std::string name;unsigned width{},height{};std::vector<std::uint8_t> rgba;};
-std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes,bool lightmap,const ImportCancel& cancelled);
+std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes,bool lightmap,const ImportCancel& cancelled,bool particle=false);
 void write_png(const std::filesystem::path& path,const Image& image);
 void write_paths(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const ImportCancel& cancelled);
 void write_collision(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const ImportCancel& cancelled);

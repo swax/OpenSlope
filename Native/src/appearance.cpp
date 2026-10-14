@@ -1,6 +1,7 @@
 #include "openslope/appearance.hpp"
 #include "openslope/import.hpp"
 #include "openslope/props.hpp"
+#include "openslope/riding_effects.hpp"
 #include <lodepng.h>
 #include <algorithm>
 #include <cmath>
@@ -30,6 +31,7 @@ std::vector<MeshBatch> terrain_batches(const Terrain& terrain) {
     std::vector<MeshBatch> batches;
     for(const auto& patch:terrain.patches())batches.push_back({0,0,patch.texture,patch.lightmap_rect[2]>0&&patch.lightmap_rect[3]>0?patch.lightmap:-1});
     for(const auto& name:prop_files(terrain.map_root()))if(name.starts_with("Textures/"))batches.push_back({0,0,name.substr(9),-1});
+    const auto sprite=riding_sprite(terrain.map_root());if(!sprite.empty())batches.push_back({0,0,sprite,-1});
     return batches;
 }
 }

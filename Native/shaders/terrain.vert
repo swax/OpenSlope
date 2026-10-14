@@ -15,6 +15,16 @@ layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; } transform;
 void main() {
     gl_Position=transform.mvp*vec4(position,1.0);
     vertexColour=colour;
+    if(transform.options.x==4){
+        vec3 forward=vec3(transform.mvp[0][3],transform.mvp[1][3],transform.mvp[2][3]);
+        forward=length(forward)>0.00001?normalize(forward):vec3(0,0,-1);
+        vec3 rowX=vec3(transform.mvp[0][0],transform.mvp[1][0],transform.mvp[2][0]);
+        vec3 rowY=-vec3(transform.mvp[0][1],transform.mvp[1][1],transform.mvp[2][1]);
+        vec3 right=normalize(rowX-forward*dot(rowX,forward));vec3 up=normalize(rowY-forward*dot(rowY,forward));
+        vec2 offset=vec2(diffuseUV.x*2-1,1-diffuseUV.y*2)*lightUV.x;
+        float c=cos(lightUV.y),s=sin(lightUV.y);offset=mat2(c,s,-s,c)*offset;
+        gl_Position=transform.mvp*vec4(position+right*offset.x+up*offset.y,1.0);
+    }
     if(transform.options.x==3) {
         Pose pose=poses[gl_InstanceIndex];gl_Position=transform.mvp*pose.matrix*vec4(position,1.0);
         vec3 light=pose.ambient.rgb;

@@ -29,7 +29,7 @@ void chunk(std::ofstream& file,const char* type,std::span<const std::uint8_t> by
 }
 // [Trailmap: 210-directory, 210-chunk, 210-types, 210-palette, 210-swizzle,
 // 210-alpha, 210-color] All reads are bounded by directory/chunk extents.
-std::vector<Image> decode_ssh(std::span<const std::uint8_t> data,bool lightmap,const ImportCancel& cancelled) {
+std::vector<Image> decode_ssh(std::span<const std::uint8_t> data,bool lightmap,const ImportCancel& cancelled,bool particle) {
     Bytes bank{data};bank.range(0,16);
     if(bank.text(0,4)!="SHPS"||bank.le(4)!=data.size())throw std::runtime_error("Unsupported or truncated PS2 SSH texture bank");
     const auto count=bank.le(8);if(!count||count>4096)throw std::runtime_error("Invalid SSH image count");bank.range(16,std::size_t(count)*8);
@@ -70,7 +70,15 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> data,bool lightmap,c
             if(type==5)std::copy_n(image.data.begin()+static_cast<std::ptrdiff_t>(pixels_offset+p*4),4,decoded.rgba.begin()+static_cast<std::ptrdiff_t>(p*4));
             else {image.range(pixels_offset+source/(type==1?2:1),1);const auto packed=image.data[pixels_offset+source/(type==1?2:1)];const std::size_t index=type==1?((packed>>((source&1)*4))&15):packed;if(index>=palette_count)throw std::runtime_error("SSH pixel references missing palette entry");std::copy_n(palette.begin()+static_cast<std::ptrdiff_t>(index*4),4,decoded.rgba.begin()+static_cast<std::ptrdiff_t>(p*4));}
         }
-        if(!lightmap)finish_texture(decoded);result.push_back(std::move(decoded));
+        if(particle){
+            // [Trailmap: 180-bank] The shared bank mixes full/half-bright art.
+            // This explicit bank profile infers half range from RGB bounds and
+            // keeps sprite alpha straight; course alpha inference is separate.
+            bool half=true;for(std::size_t p=0;p<decoded.rgba.size();p+=4)for(unsigned c=0;c<3;++c)if(decoded.rgba[p+c]>128)half=false;
+            if(half)for(std::size_t p=0;p<decoded.rgba.size();p+=4)for(unsigned c=0;c<3;++c)decoded.rgba[p+c]=std::uint8_t(std::clamp(int(decoded.rgba[p+c])*2-1,0,255));
+            bool associated=true,fractional=false;for(std::size_t p=0;p<decoded.rgba.size();p+=4){const auto a=decoded.rgba[p+3];if(!a||a==255)continue;fractional=true;for(unsigned c=0;c<3;++c)if(decoded.rgba[p+c]>a)associated=false;}
+            if(associated&&fractional)for(std::size_t p=0;p<decoded.rgba.size();p+=4){const auto a=decoded.rgba[p+3];if(!a||a==255)continue;for(unsigned c=0;c<3;++c)decoded.rgba[p+c]=std::uint8_t((unsigned(decoded.rgba[p+c])*255u+a/2u)/a);}
+        }else if(!lightmap)finish_texture(decoded);result.push_back(std::move(decoded));
     }
     return result;
 }

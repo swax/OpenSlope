@@ -19,9 +19,9 @@ struct Target {
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=type;vk_check(vkAllocateMemory(context.device,&allocation,nullptr,&memory),"Allocate test image");vk_check(vkBindImageMemory(context.device,image,memory,0),"Bind test image");
     }
 };
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={}) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);renderer.capture(0,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},sprites);renderer.capture(0,output);
     std::ifstream file(output,std::ios::binary);std::string magic;unsigned width,height,maximum;file>>magic>>width>>height>>maximum;file.get();
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
@@ -34,7 +34,7 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
@@ -46,6 +46,14 @@ int main(int argc,char** argv) {
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
             VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128,samples);
             const auto camera=std::string(name)=="handedness"?projection(-1,1,-1,1)*view({0,0,0},{0,0,-1}):Matrix::identity();
+            if(std::string(name)=="sprites"){
+                const std::array<Sprite,1> front{{{{0,0,.25},.2f,.25f,0}}},behind{{{{0,0,.75},.2f,.25f,0}}};
+                const auto plain=capture(first,root/"sprite-plain.ppm",camera),hidden=capture(first,root/"sprite-hidden.ppm",camera,behind);++checks;if(plain!=hidden)throw std::runtime_error("Sprite depth test failed");
+                const auto additive=capture(first,root/"sprite-add.ppm",camera,front);pixel(additive,.5,.5,{104,144,184});++checks;if(first.stats().sprites!=1)throw std::runtime_error("Sprite draw was not submitted");
+                const std::array<Sprite,2> stacked{{front[0],{{0,0,.35},.2f,.25f,0}}};pixel(capture(first,root/"sprite-stack.ppm",camera,stacked),.5,.5,{168,208,248});
+                const auto cleared=capture(first,root/"sprite-cleared.ppm",camera);++checks;if(cleared!=plain)throw std::runtime_error("Sprite pass left stale geometry");
+                const auto encoded=capture(second,root/"sprite-srgb.ppm",camera,front);pixel(encoded,.5,.5,{142,156,177});continue;
+            }
             const auto a=capture(first,root/(std::string(name)+"-unorm.ppm"),camera),b=capture(second,root/(std::string(name)+"-srgb.ppm"),camera);
             const auto visibility=first.stats();first.cull_terrain(false);second.cull_terrain(false);
             const auto baseline_a=capture(first,root/"baseline-unorm.ppm",camera),baseline_b=capture(second,root/"baseline-srgb.ppm",camera);checks+=2;if(a!=baseline_a||b!=baseline_b)throw std::runtime_error("Culled pixels differ from complete terrain submission");first.cull_terrain(true);second.cull_terrain(true);

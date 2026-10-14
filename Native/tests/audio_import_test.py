@@ -5,7 +5,7 @@ import struct
 import sys
 import tempfile
 import wave
-from import_test import record, both, big, run
+from import_test import record, both, big, run, ssh, png_pixels
 from prop_import_test import members
 from audio_container_test import bank, stream
 
@@ -104,6 +104,7 @@ def fixture(course=None):
         'DATA/AUDIO/AUDIO.BIG': archive({'tone.bnk': bank(), 'Coyote.bnk': bank()}),
         'DATA/AUDIO/MUSIC.BIG': archive({'song.mpf': graph(), 'song.mus': stream(), 'loop.bnk': bank()}),
         'DATA/AUDIO/INTRO.BIG': archive({'Quiet-A': stream(), 'end': stream()}),
+        'DATA/TEXTURES/PARTICLE.SSH': ssh().replace(b'TEST0000', b'TESTpart'),
     }
 
 
@@ -116,6 +117,9 @@ def main():
         run(executable, 'extract', image, 'FIXTURE', root / 'Maps')
         output = root / 'Maps/FIXTURE'
         audio = output / 'Audio'
+        assert json.loads((output / 'RidingEffects.json').read_text())['Puff'] == 'particle-part.png'
+        assert (output / 'Textures/particle-part.png').exists()
+        assert png_pixels(output / 'Textures/particle-part.png') == bytes([10,20,30,255,128,128,128,255,200,50,0,128,0,0,0,0]), 'Full-bright particle art uses its own colour profile'
         index = json.loads((audio / 'SoundIndex.json').read_text())
         assert index['Banks'] == {'0': 'tone', '1': 'tone', '2': 'tone', '3': 'tone'}
         assert index['CollisionEvents'] == {} and index['ResolverState'] == 'Deferred'
@@ -136,6 +140,10 @@ def main():
         assert len(json.loads((audio / 'Intro/stems.json').read_text())) == 2
         with wave.open(str(audio / 'Music/song/chunk_000.wav')) as wav:
             assert wav.getnchannels() == 2 and wav.getnframes() == 28
+        associated = fixture()
+        associated['DATA/TEXTURES/PARTICLE.SSH'] = ssh(palette_override=bytes([15,15,15,16,200,200,200,220,0,0,0,0,250,250,250,255])).replace(b'TEST0000', b'TESTpart')
+        image.write_bytes(disc(associated));run(executable, 'extract', image, 'FIXTURE', root / 'associated')
+        assert png_pixels(root / 'associated/FIXTURE/Textures/particle-part.png') == bytes([239,239,239,16,232,232,232,220,0,0,0,0,250,250,250,255]), 'Associated full-range particle colour becomes straight alpha without a second brighten'
         # Audio errors must roll back the entire course, including terrain/props.
         for name, mutate in [
             ('ambiguous', lambda f: f.update({'DATA/CONFIG/BANKS.INF': f['DATA/CONFIG/BANKS.INF'] + b'[FIXTURE OTHER]\nBANK="tone.bnk"\n'})),

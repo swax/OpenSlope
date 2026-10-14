@@ -38,6 +38,10 @@ focus; an uncommitted jump charge is cancelled.
 Desktop rendering defaults to 4x MSAA, falling back to a supported colour/depth
 sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
 The OpenXR host keeps 1x until headset performance is validated.
+Configured Maps now render fixed-tick carve, powder and landing/skid cloud
+sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
+existing maps can provide the same profile and their own PNG. See
+[riding effects](docs/riding-effects.md) for the implemented layers and limits.
 Terrain now uses hierarchical frustum selection and adaptive index submission.
 `--no-terrain-culling` provides a desktop comparison path; see
 [terrain culling](docs/terrain-culling.md) for measurements and remaining limits.
