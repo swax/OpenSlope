@@ -34,13 +34,21 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification"}) {
-            auto scene=std::make_shared<VulkanScene>(context);scene->upload(Terrain::load(root/name).mesh(4));
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing"}) {
+            auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
+            if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
+            else mesh=Terrain::load(root/name).mesh(4);
+            scene->upload(mesh);
             // The same scene is used by two renderers, just like the stereo host.
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
-            VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128);
+            VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128,samples);
             const auto camera=std::string(name)=="handedness"?projection(-1,1,-1,1)*view({0,0,0},{0,0,-1}):Matrix::identity();
             const auto a=capture(first,root/(std::string(name)+"-unorm.ppm"),camera),b=capture(second,root/(std::string(name)+"-srgb.ppm"),camera);
+            if(std::string(name)=="antialiasing"){
+                for(const auto* pixels:{&a,&b}){std::size_t partial=0;for(std::size_t p=0;p<pixels->size();p+=3)if((*pixels)[p]>90&&(*pixels)[p]<240)++partial;++checks;if((first.samples()>1)!=(partial>0))throw std::runtime_error("MSAA resolve did not produce expected geometric edge coverage");}
+                first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,1);capture(first,root/"aa-recreated.ppm",camera);
+                continue;
+            }
             for(const auto* pixels:{&a,&b}) {
                 if(std::string(name)=="minification") {
                     for(const auto u:{.15,.35,.5,.65,.85})for(const auto v:{.15,.35,.5,.65,.85})pixel(*pixels,u,v,{128,128,128});

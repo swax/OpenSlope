@@ -103,23 +103,36 @@ void VulkanRenderer::clear_targets() {
         if(target.depth_view)vkDestroyImageView(context_.device,target.depth_view,nullptr);
         if(target.depth)vkDestroyImage(context_.device,target.depth,nullptr);
         if(target.depth_memory)vkFreeMemory(context_.device,target.depth_memory,nullptr);
+        if(target.multisample_view)vkDestroyImageView(context_.device,target.multisample_view,nullptr);
+        if(target.multisample)vkDestroyImage(context_.device,target.multisample,nullptr);
+        if(target.multisample_memory)vkFreeMemory(context_.device,target.multisample_memory,nullptr);
     }
     targets_.clear();
     if(pipeline_)vkDestroyPipeline(context_.device,pipeline_,nullptr);if(blend_pipeline_)vkDestroyPipeline(context_.device,blend_pipeline_,nullptr);if(layout_)vkDestroyPipelineLayout(context_.device,layout_,nullptr);
     if(pass_)vkDestroyRenderPass(context_.device,pass_,nullptr);pipeline_={};blend_pipeline_={};layout_={};pass_={};
 }
-void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height) {
+void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height,unsigned requested_samples) {
     if(!scene_)throw std::runtime_error("Upload map assets before creating render targets");
+    if(requested_samples!=1&&requested_samples!=2&&requested_samples!=4&&requested_samples!=8)throw std::runtime_error("MSAA must be 1, 2, 4 or 8");
     clear_targets();width_=width;height_=height;format_=format;
+    VkPhysicalDeviceProperties properties;vkGetPhysicalDeviceProperties(context_.physical,&properties);
+    VkImageFormatProperties colour_support{},depth_support{};
+    vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical,format,VK_IMAGE_TYPE_2D,VK_IMAGE_TILING_OPTIMAL,VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,0,&colour_support),"Query colour sample counts");
+    vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical,VK_FORMAT_D32_SFLOAT,VK_IMAGE_TYPE_2D,VK_IMAGE_TILING_OPTIMAL,VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,0,&depth_support),"Query depth sample counts");
+    if(images.empty()||!width||!height||width>std::min(colour_support.maxExtent.width,depth_support.maxExtent.width)||height>std::min(colour_support.maxExtent.height,depth_support.maxExtent.height))throw std::runtime_error("Invalid render target dimensions/count");
+    const auto supported=properties.limits.framebufferColorSampleCounts&properties.limits.framebufferDepthSampleCounts&colour_support.sampleCounts&depth_support.sampleCounts;
+    samples_=VK_SAMPLE_COUNT_1_BIT;for(const auto count:{8u,4u,2u,1u})if(count<=requested_samples&&(supported&count)){samples_=static_cast<VkSampleCountFlagBits>(count);break;}
     VkAttachmentDescription colour{};colour.format=format;colour.samples=VK_SAMPLE_COUNT_1_BIT;colour.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;colour.storeOp=VK_ATTACHMENT_STORE_OP_STORE;colour.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;colour.finalLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentDescription depth{};depth.format=VK_FORMAT_D32_SFLOAT;depth.samples=VK_SAMPLE_COUNT_1_BIT;depth.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;depth.storeOp=VK_ATTACHMENT_STORE_OP_DONT_CARE;depth.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;depth.finalLayout=VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    const std::array<VkAttachmentDescription,2> attachments{colour,depth};
+    auto resolve=colour;resolve.loadOp=VK_ATTACHMENT_LOAD_OP_DONT_CARE;colour.samples=depth.samples=samples_;if(samples_!=VK_SAMPLE_COUNT_1_BIT)colour.storeOp=VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    const std::array<VkAttachmentDescription,3> attachments{colour,depth,resolve};
     VkAttachmentReference colour_ref{0,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},depth_ref{1,VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
     VkSubpassDescription subpass{};subpass.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS;subpass.colorAttachmentCount=1;subpass.pColorAttachments=&colour_ref;subpass.pDepthStencilAttachment=&depth_ref;
+    const VkAttachmentReference resolve_ref{2,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};if(samples_!=VK_SAMPLE_COUNT_1_BIT)subpass.pResolveAttachments=&resolve_ref;
     VkSubpassDependency dependency{};dependency.srcSubpass=VK_SUBPASS_EXTERNAL;dependency.dstSubpass=0;
-    dependency.srcStageMask=dependency.dstStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT|VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.srcStageMask=dependency.dstStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT|VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     dependency.dstAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    VkRenderPassCreateInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};pass.attachmentCount=2;pass.pAttachments=attachments.data();pass.subpassCount=1;pass.pSubpasses=&subpass;pass.dependencyCount=1;pass.pDependencies=&dependency;
+    VkRenderPassCreateInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};pass.attachmentCount=samples_==VK_SAMPLE_COUNT_1_BIT?2:3;pass.pAttachments=attachments.data();pass.subpassCount=1;pass.pSubpasses=&subpass;pass.dependencyCount=1;pass.pDependencies=&dependency;
     vk_check(vkCreateRenderPass(context_.device,&pass,nullptr,&pass_),"Create terrain render pass");
     VkPushConstantRange push{draw_stages,0,sizeof(DrawPush)};
     VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};layout.pushConstantRangeCount=1;layout.pPushConstantRanges=&push;layout.setLayoutCount=1;layout.pSetLayouts=&scene_->descriptors_;
@@ -135,7 +148,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
     VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};assembly.topology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};viewport.viewportCount=1;viewport.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};raster.polygonMode=VK_POLYGON_MODE_FILL;raster.cullMode=VK_CULL_MODE_NONE;raster.lineWidth=1;
-    VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};multisample.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};multisample.rasterizationSamples=samples_;
     VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depth_state.depthTestEnable=VK_TRUE;depth_state.depthWriteEnable=VK_TRUE;depth_state.depthCompareOp=VK_COMPARE_OP_LESS_OR_EQUAL;
     VkPipelineColorBlendAttachmentState blend{};blend.colorWriteMask=15;
     VkPipelineColorBlendStateCreateInfo blend_state{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};blend_state.attachmentCount=1;blend_state.pAttachments=&blend;
@@ -150,15 +163,20 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
         targets_.push_back({});auto& target=targets_.back();target.colour=image;
         VkImageViewCreateInfo view_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};view_info.image=image;view_info.viewType=VK_IMAGE_VIEW_TYPE_2D;view_info.format=format;view_info.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
         vk_check(vkCreateImageView(context_.device,&view_info,nullptr,&target.colour_view),"Create colour view");
-        VkImageCreateInfo depth_info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};depth_info.imageType=VK_IMAGE_TYPE_2D;depth_info.format=VK_FORMAT_D32_SFLOAT;depth_info.extent={width,height,1};depth_info.mipLevels=1;depth_info.arrayLayers=1;depth_info.samples=VK_SAMPLE_COUNT_1_BIT;depth_info.tiling=VK_IMAGE_TILING_OPTIMAL;depth_info.usage=VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        VkImageCreateInfo depth_info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};depth_info.imageType=VK_IMAGE_TYPE_2D;depth_info.format=VK_FORMAT_D32_SFLOAT;depth_info.extent={width,height,1};depth_info.mipLevels=1;depth_info.arrayLayers=1;depth_info.samples=samples_;depth_info.tiling=VK_IMAGE_TILING_OPTIMAL;depth_info.usage=VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         vk_check(vkCreateImage(context_.device,&depth_info,nullptr,&target.depth),"Create depth image");
         VkMemoryRequirements memory;vkGetImageMemoryRequirements(context_.device,target.depth,&memory);
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=memory.size;allocation.memoryTypeIndex=memory_type(memory.memoryTypeBits,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         vk_check(vkAllocateMemory(context_.device,&allocation,nullptr,&target.depth_memory),"Allocate depth memory");vk_check(vkBindImageMemory(context_.device,target.depth,target.depth_memory,0),"Bind depth memory");
         view_info.image=target.depth;view_info.format=VK_FORMAT_D32_SFLOAT;view_info.subresourceRange.aspectMask=VK_IMAGE_ASPECT_DEPTH_BIT;
         vk_check(vkCreateImageView(context_.device,&view_info,nullptr,&target.depth_view),"Create depth view");
-        const std::array<VkImageView,2> views{target.colour_view,target.depth_view};
-        VkFramebufferCreateInfo framebuffer{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};framebuffer.renderPass=pass_;framebuffer.attachmentCount=2;framebuffer.pAttachments=views.data();framebuffer.width=width;framebuffer.height=height;framebuffer.layers=1;
+        if(samples_!=VK_SAMPLE_COUNT_1_BIT){
+            auto info=depth_info;info.format=format;info.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            vk_check(vkCreateImage(context_.device,&info,nullptr,&target.multisample),"Create multisample colour");vkGetImageMemoryRequirements(context_.device,target.multisample,&memory);allocation.allocationSize=memory.size;allocation.memoryTypeIndex=memory_type(memory.memoryTypeBits,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            vk_check(vkAllocateMemory(context_.device,&allocation,nullptr,&target.multisample_memory),"Allocate multisample colour");vk_check(vkBindImageMemory(context_.device,target.multisample,target.multisample_memory,0),"Bind multisample colour");view_info.image=target.multisample;view_info.format=format;view_info.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;vk_check(vkCreateImageView(context_.device,&view_info,nullptr,&target.multisample_view),"Create multisample colour view");
+        }
+        const std::array<VkImageView,3> views{samples_==VK_SAMPLE_COUNT_1_BIT?target.colour_view:target.multisample_view,target.depth_view,target.colour_view};
+        VkFramebufferCreateInfo framebuffer{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};framebuffer.renderPass=pass_;framebuffer.attachmentCount=pass.attachmentCount;framebuffer.pAttachments=views.data();framebuffer.width=width;framebuffer.height=height;framebuffer.layers=1;
         vk_check(vkCreateFramebuffer(context_.device,&framebuffer,nullptr,&target.framebuffer),"Create framebuffer");
     }
 }

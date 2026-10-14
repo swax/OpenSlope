@@ -33,7 +33,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 
 A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
 F/V switches first/chase camera, P pauses and Escape exits. Input pauses when the preview loses
-focus; an uncommitted jump charge is cancelled. A course can be opened directly:
+focus; an uncommitted jump charge is cancelled.
+
+Desktop rendering defaults to 4x MSAA, falling back to a supported colour/depth
+sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
+The OpenXR host keeps 1x until headset performance is validated.
+See [graphics quality](docs/graphics-quality.md) for verification and limits.
+A course can be opened directly:
 
 ```powershell
 ./temp/native/Release/openslope_player.exe --map Maps/GARI

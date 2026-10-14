@@ -47,7 +47,8 @@ public:
     VulkanRenderer(const VulkanRenderer&)=delete;
     void upload(const Mesh& mesh);
     void use_scene(std::shared_ptr<VulkanScene> scene);
-    void targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height);
+    void targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height,unsigned requested_samples=1);
+    unsigned samples() const {return unsigned(samples_);}
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
         VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={});
     const Stats& stats() const {return stats_;}
@@ -58,10 +59,11 @@ private:
     struct Buffer { VkBuffer buffer{};VkDeviceMemory memory{}; };
     std::shared_ptr<VulkanScene> scene_;
     std::uint32_t width_{},height_{};VkFormat format_{};
+    VkSampleCountFlagBits samples_=VK_SAMPLE_COUNT_1_BIT;
     VkCommandPool pool_{};VkCommandBuffer command_{};VkFence fence_{};
     VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{},blend_pipeline_{};
     Stats stats_;VkQueryPool timing_{};double timestamp_period_{};unsigned timestamp_bits_{};
-    struct Target { VkImage colour{},depth{};VkDeviceMemory depth_memory{};VkImageView colour_view{},depth_view{};VkFramebuffer framebuffer{}; };
+    struct Target { VkImage colour{},depth{},multisample{};VkDeviceMemory depth_memory{},multisample_memory{};VkImageView colour_view{},depth_view{},multisample_view{};VkFramebuffer framebuffer{}; };
     std::vector<Target> targets_;
     Buffer create_buffer(VkDeviceSize size,VkBufferUsageFlags usage,const void* data);
     std::uint32_t memory_type(std::uint32_t bits,VkMemoryPropertyFlags flags) const;
