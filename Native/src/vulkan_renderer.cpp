@@ -3,6 +3,9 @@
 #include "terrain_frag.hpp"
 #include <cstring>
 #include <cstddef>
+#include <chrono>
+#include <map>
+#include <algorithm>
 #include <fstream>
 #include <stdexcept>
 
@@ -84,10 +87,13 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     vk_check(vkAllocateCommandBuffers(context_.device,&allocate,&command_),"Allocate draw command");
     VkFenceCreateInfo fence{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};fence.flags=VK_FENCE_CREATE_SIGNALED_BIT;
     vk_check(vkCreateFence(context_.device,&fence,nullptr,&fence_),"Create render fence");
+    std::uint32_t families=0;vkGetPhysicalDeviceQueueFamilyProperties(context_.physical,&families,nullptr);std::vector<VkQueueFamilyProperties> properties(families);vkGetPhysicalDeviceQueueFamilyProperties(context_.physical,&families,properties.data());timestamp_bits_=properties.at(context_.family).timestampValidBits;
+    if(timestamp_bits_){VkPhysicalDeviceProperties device;vkGetPhysicalDeviceProperties(context_.physical,&device);timestamp_period_=device.limits.timestampPeriod;VkQueryPoolCreateInfo query{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};query.queryType=VK_QUERY_TYPE_TIMESTAMP;query.queryCount=2;vk_check(vkCreateQueryPool(context_.device,&query,nullptr,&timing_),"Create frame timestamp queries");}
 }
 VulkanRenderer::~VulkanRenderer() {
     if(!context_.device)return;vkDeviceWaitIdle(context_.device);clear_targets();
     if(fence_)vkDestroyFence(context_.device,fence_,nullptr);if(pool_)vkDestroyCommandPool(context_.device,pool_,nullptr);
+    if(timing_)vkDestroyQueryPool(context_.device,timing_,nullptr);
 }
 void VulkanRenderer::clear_targets() {
     if(targets_.empty()&&!pass_)return;vkDeviceWaitIdle(context_.device);
@@ -99,8 +105,8 @@ void VulkanRenderer::clear_targets() {
         if(target.depth_memory)vkFreeMemory(context_.device,target.depth_memory,nullptr);
     }
     targets_.clear();
-    if(pipeline_)vkDestroyPipeline(context_.device,pipeline_,nullptr);if(layout_)vkDestroyPipelineLayout(context_.device,layout_,nullptr);
-    if(pass_)vkDestroyRenderPass(context_.device,pass_,nullptr);pipeline_={};layout_={};pass_={};
+    if(pipeline_)vkDestroyPipeline(context_.device,pipeline_,nullptr);if(blend_pipeline_)vkDestroyPipeline(context_.device,blend_pipeline_,nullptr);if(layout_)vkDestroyPipelineLayout(context_.device,layout_,nullptr);
+    if(pass_)vkDestroyRenderPass(context_.device,pass_,nullptr);pipeline_={};blend_pipeline_={};layout_={};pass_={};
 }
 void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height) {
     if(!scene_)throw std::runtime_error("Upload map assets before creating render targets");
@@ -124,20 +130,22 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
     stages[0]={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT;stages[0].module=vertex;stages[0].pName="main";
     stages[1]={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT;stages[1].module=fragment;stages[1].pName="main";
     VkVertexInputBindingDescription binding{0,sizeof(Vertex),VK_VERTEX_INPUT_RATE_VERTEX};
-    const std::array<VkVertexInputAttributeDescription,5> attributes{{{0,0,VK_FORMAT_R32G32B32_SFLOAT,offsetof(Vertex,x)},{1,0,VK_FORMAT_R32G32B32_SFLOAT,offsetof(Vertex,r)},{2,0,VK_FORMAT_R32G32_SFLOAT,offsetof(Vertex,s)},{3,0,VK_FORMAT_R32G32_SFLOAT,offsetof(Vertex,ls)},{4,0,VK_FORMAT_R32G32B32A32_SFLOAT,offsetof(Vertex,lx)}}};
-    VkPipelineVertexInputStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};input.vertexBindingDescriptionCount=1;input.pVertexBindingDescriptions=&binding;input.vertexAttributeDescriptionCount=5;input.pVertexAttributeDescriptions=attributes.data();
+    const std::array<VkVertexInputAttributeDescription,6> attributes{{{0,0,VK_FORMAT_R32G32B32_SFLOAT,offsetof(Vertex,x)},{1,0,VK_FORMAT_R32G32B32_SFLOAT,offsetof(Vertex,r)},{2,0,VK_FORMAT_R32G32_SFLOAT,offsetof(Vertex,s)},{3,0,VK_FORMAT_R32G32_SFLOAT,offsetof(Vertex,ls)},{4,0,VK_FORMAT_R32G32B32A32_SFLOAT,offsetof(Vertex,lx)},{5,0,VK_FORMAT_R32G32B32_SFLOAT,offsetof(Vertex,nx)}}};
+    VkPipelineVertexInputStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};input.vertexBindingDescriptionCount=1;input.pVertexBindingDescriptions=&binding;input.vertexAttributeDescriptionCount=6;input.pVertexAttributeDescriptions=attributes.data();
     VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};assembly.topology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};viewport.viewportCount=1;viewport.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};raster.polygonMode=VK_POLYGON_MODE_FILL;raster.cullMode=VK_CULL_MODE_NONE;raster.lineWidth=1;
     VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};multisample.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
-    VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depth_state.depthTestEnable=VK_TRUE;depth_state.depthWriteEnable=VK_TRUE;depth_state.depthCompareOp=VK_COMPARE_OP_LESS;
+    VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depth_state.depthTestEnable=VK_TRUE;depth_state.depthWriteEnable=VK_TRUE;depth_state.depthCompareOp=VK_COMPARE_OP_LESS_OR_EQUAL;
     VkPipelineColorBlendAttachmentState blend{};blend.colorWriteMask=15;
     VkPipelineColorBlendStateCreateInfo blend_state{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};blend_state.attachmentCount=1;blend_state.pAttachments=&blend;
     const std::array<VkDynamicState,2> dynamic_states{VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};dynamic.dynamicStateCount=2;dynamic.pDynamicStates=dynamic_states.data();
     VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};pipeline.stageCount=2;pipeline.pStages=stages.data();pipeline.pVertexInputState=&input;pipeline.pInputAssemblyState=&assembly;pipeline.pViewportState=&viewport;pipeline.pRasterizationState=&raster;pipeline.pMultisampleState=&multisample;pipeline.pDepthStencilState=&depth_state;pipeline.pColorBlendState=&blend_state;pipeline.pDynamicState=&dynamic;pipeline.layout=layout_;pipeline.renderPass=pass_;
     const auto pipeline_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&pipeline_);
-    vkDestroyShaderModule(context_.device,vertex,nullptr);vkDestroyShaderModule(context_.device,fragment,nullptr);vk_check(pipeline_result,"Create terrain pipeline");
+    VkResult blend_result=pipeline_result;
+    if(pipeline_result==VK_SUCCESS){blend.blendEnable=VK_TRUE;blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.colorBlendOp=VK_BLEND_OP_ADD;blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;blend.alphaBlendOp=VK_BLEND_OP_ADD;blend_result=vkCreateGraphicsPipelines(context_.device,{},1,&pipeline,nullptr,&blend_pipeline_);}
+    vkDestroyShaderModule(context_.device,vertex,nullptr);vkDestroyShaderModule(context_.device,fragment,nullptr);vk_check(pipeline_result,"Create terrain pipeline");vk_check(blend_result,"Create prop blend pipeline");
     for(auto image:images) {
         targets_.push_back({});auto& target=targets_.back();target.colour=image;
         VkImageViewCreateInfo view_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};view_info.image=image;view_info.viewType=VK_IMAGE_VIEW_TYPE_2D;view_info.format=format;view_info.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
@@ -154,10 +162,22 @@ void VulkanRenderer::targets(std::span<const VkImage> images,VkFormat format,std
         vk_check(vkCreateFramebuffer(context_.device,&framebuffer,nullptr,&target.framebuffer),"Create framebuffer");
     }
 }
-void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal) {
+void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,VkSemaphore wait,VkSemaphore signal,Vec3 eye) {
+    const auto started=std::chrono::steady_clock::now();stats_={};
     vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Wait for previous frame");vk_check(vkResetFences(context_.device,1,&fence_),"Reset render fence");vk_check(vkResetCommandBuffer(command_,0),"Reset draw command");
+    struct VisibleDraw {std::size_t part;std::uint32_t first,count;};std::vector<VisibleDraw> prop_draws;std::vector<PropPose> poses;
+    std::map<std::pair<bool,std::size_t>,std::vector<std::size_t>> groups;
+    struct Translucent {std::size_t part,instance;int depth;};std::vector<Translucent> transparent;
+    for(std::size_t i=0;i<scene_->props_.instances.size();++i){const auto& instance=scene_->props_.instances[i];const auto& model=scene_->props_.models[instance.model];if(!instance.visible||model.parts.empty()||!prop_visible(instance.bounds,camera.values,eye))continue;++stats_.visible_props;
+        for(const auto part:model.parts){if(scene_->prop_draws_[part].alpha==2){const auto& m=instance.pose.matrix;const auto depth=camera.values[3]*m[12]+camera.values[7]*m[13]+camera.values[11]*m[14]+camera.values[15];transparent.push_back({part,i,int(std::clamp(depth*1023/400,0.f,1023.f))});}else groups[{(scene_->props_.parts[part].flags&(1u<<17))!=0,part}].push_back(i);}
+    }
+    for(const auto& [key,instances]:groups){const auto first=std::uint32_t(poses.size());for(const auto i:instances)poses.push_back(scene_->props_.instances[i].pose);prop_draws.push_back({key.second,first,std::uint32_t(instances.size())});}
+    std::stable_sort(transparent.begin(),transparent.end(),[](const auto& a,const auto& b){return a.depth>b.depth;});
+    for(const auto& draw:transparent){prop_draws.push_back({draw.part,std::uint32_t(poses.size()),1});poses.push_back(scene_->props_.instances[draw.instance].pose);}
+    if(!poses.empty()){if(poses.size()>scene_->pose_capacity_)throw std::runtime_error("Visible instance buffer exceeds capacity");void* mapped;vk_check(vkMapMemory(context_.device,scene_->poses_.memory,0,poses.size()*sizeof(PropPose),0,&mapped),"Map visible placements");std::memcpy(mapped,poses.data(),poses.size()*sizeof(PropPose));vkUnmapMemory(context_.device,scene_->poses_.memory);}stats_.prop_draws=unsigned(prop_draws.size());
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vk_check(vkBeginCommandBuffer(command_,&begin),"Begin draw command");
+    if(timing_){vkCmdResetQueryPool(command_,timing_,0,2);vkCmdWriteTimestamp(command_,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,timing_,0);}
     std::array<VkClearValue,2> clear{};clear[0].color={{.065f,.11f,.18f,1}};clear[1].depthStencil={1,0};
     VkRenderPassBeginInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};pass.renderPass=pass_;pass.framebuffer=targets_.at(image).framebuffer;pass.renderArea.extent={width_,height_};pass.clearValueCount=2;pass.pClearValues=clear.data();
     vkCmdBeginRenderPass(command_,&pass,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
@@ -169,12 +189,16 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
         push.options[0]=draw.mode;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);
         vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,1,draw.first,0,0);
     }
-    push.mvp=camera*board;push.options[0]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->board_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,6,1,scene_->board_first_,0,0);vkCmdEndRenderPass(command_);
+    push.mvp=camera*board;push.options[0]=0;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&scene_->board_set_,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,6,1,scene_->board_first_,0,0);
+    push.mvp=camera;push.options[0]=3;bool blending=false;
+    for(const auto& visible:prop_draws){const auto& draw=scene_->prop_draws_[visible.part];if(draw.alpha==2&&!blending){vkCmdBindPipeline(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,blend_pipeline_);blending=true;}push.options[2]=draw.alpha;vkCmdBindDescriptorSets(command_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout_,0,1,&draw.set,0,nullptr);vkCmdPushConstants(command_,layout_,draw_stages,0,sizeof(push),&push);vkCmdDrawIndexed(command_,draw.count,visible.count,draw.first,0,visible.first);}
+    vkCmdEndRenderPass(command_);
     if(final_layout!=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};barrier.srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;barrier.dstAccessMask=final_layout==VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL?VK_ACCESS_TRANSFER_READ_BIT:0;
         barrier.oldLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;barrier.newLayout=final_layout;barrier.srcQueueFamilyIndex=barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;barrier.image=targets_[image].colour;barrier.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
         vkCmdPipelineBarrier(command_,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,final_layout==VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL?VK_PIPELINE_STAGE_TRANSFER_BIT:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,0,nullptr,0,nullptr,1,&barrier);
     }
+    if(timing_)vkCmdWriteTimestamp(command_,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,timing_,1);
     vk_check(vkEndCommandBuffer(command_),"End draw command");
     const VkPipelineStageFlags stage=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.commandBufferCount=1;submit.pCommandBuffers=&command_;
@@ -183,6 +207,8 @@ void VulkanRenderer::render(unsigned image,const Matrix& camera,const Matrix& bo
     // Keep ownership simple for the first prototype: no image is released to XR
     // or reused by another eye before its draw has completed.
     vk_check(vkWaitForFences(context_.device,1,&fence_,VK_TRUE,UINT64_MAX),"Finish terrain frame");
+    if(timing_){std::array<std::uint64_t,2> ticks{};vk_check(vkGetQueryPoolResults(context_.device,timing_,0,2,sizeof(ticks),ticks.data(),sizeof(std::uint64_t),VK_QUERY_RESULT_64_BIT|VK_QUERY_RESULT_WAIT_BIT),"Read GPU frame timestamps");const auto mask=timestamp_bits_>=64?UINT64_MAX:(std::uint64_t(1)<<timestamp_bits_)-1;stats_.gpu_ms=double((ticks[1]-ticks[0])&mask)*timestamp_period_/1e6;}
+    stats_.cpu_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
 }
 void VulkanRenderer::capture(unsigned image,const std::filesystem::path& output) {
     auto buffer=create_buffer(VkDeviceSize(width_)*height_*4,VK_BUFFER_USAGE_TRANSFER_DST_BIT,nullptr);

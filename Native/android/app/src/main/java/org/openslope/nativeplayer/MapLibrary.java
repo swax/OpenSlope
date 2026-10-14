@@ -82,15 +82,21 @@ final class MapLibrary {
             Entry patches = child(map.uri, "Patches.json");
             if (patches == null || patches.directory) throw new IOException("This map has no Patches.json.");
             try (InputStream input = resolver.openInputStream(patches.uri); OutputStream file = new FileOutputStream(new File(output, "Patches.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
+            for (String name : new String[]{"Models.json", "Instances.json", "Materials.json"}) {
+                cancel.check(); Entry metadata = child(map.uri, name);
+                if (metadata == null) continue;
+                if (metadata.directory) throw new IOException("Map metadata is a folder: " + name);
+                try (InputStream input = resolver.openInputStream(metadata.uri); OutputStream file = new FileOutputStream(new File(output, name))) { copy(input, file, PATCH_LIMIT, cancel); }
+            }
             JSONArray images;
             try { images = new JSONArray(nativeImageFiles(output.getAbsolutePath())); }
             catch (JSONException e) { throw new IOException("Cannot read map image references.", e); }
-            Map<String, Map<String, Entry>> folders = new HashMap<>(); long total = 0;
+            Map<String, Map<String, Entry>> folders = new HashMap<>(); long total = 0, meshes = 0;
             for (int i = 0; i < images.length(); ++i) {
                 cancel.check(); String relative;
                 try { relative = images.getString(i); } catch (JSONException e) { throw new IOException("Invalid map image reference.", e); }
                 String[] parts = relative.split("/", -1);
-                if (parts.length != 2 || !(parts[0].equals("Textures") || parts[0].equals("Lightmaps")) || !safeName(parts[1])) throw new IOException("Unsafe map image reference.");
+                if (parts.length != 2 || !(parts[0].equals("Textures") || parts[0].equals("Lightmaps") || parts[0].equals("Meshes")) || !safeName(parts[1])) throw new IOException("Unsafe map asset reference.");
                 Map<String, Entry> files = folders.get(parts[0]);
                 if (files == null) {
                     files = new HashMap<>(); Entry folder = child(map.uri, parts[0]);
@@ -101,11 +107,12 @@ final class MapLibrary {
                     folders.put(parts[0], files);
                 }
                 Entry image = files.get(parts[1]);
-                if (image == null) continue; // Match native fallback for incomplete custom maps.
+                if (image == null) { if (parts[0].equals("Meshes")) throw new IOException("Missing map mesh: " + parts[1]); continue; }
                 if (image.directory) throw new IOException("Map image is a folder: " + parts[1]);
                 File directory = new File(output, parts[0]);
                 if (!directory.isDirectory() && !directory.mkdir()) throw new IOException("Cannot prepare map images.");
-                try (InputStream input = resolver.openInputStream(image.uri); OutputStream file = new FileOutputStream(new File(directory, parts[1]))) { total += copy(input, file, Math.min(IMAGE_LIMIT, IMAGE_BUDGET - total), cancel); }
+                boolean mesh = parts[0].equals("Meshes");
+                try (InputStream input = resolver.openInputStream(image.uri); OutputStream file = new FileOutputStream(new File(directory, parts[1]))) { long copied = copy(input, file, Math.min(IMAGE_LIMIT, IMAGE_BUDGET - (mesh ? meshes : total)), cancel); if (mesh) meshes += copied; else total += copied; }
             }
             cancel.check();
             return output;

@@ -68,6 +68,26 @@ def fixtures(root):
     course(root, "unsafe", "../rgb.png")
     corrupt = course(root, "corrupt", "base.png")
     (corrupt / "Textures/base.png").write_bytes(bad)
+    for name, flags, art in (("props", 0, [200, 160, 120, 64]),
+                              ("props_cutout", 1 << 18, [240, 100, 40, 0, 240, 100, 40, 255]),
+                              ("props_blend", 1 << 18, [200, 160, 120, 128])):
+        folder = course(root, name, "background.png")
+        (folder / "Textures/background.png").write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+        (folder / "Textures/prop.png").write_bytes(rgba(len(art) // 4, 1, art))
+        (folder / "Meshes").mkdir()
+        (folder / "Meshes/quad.obj").write_text("v -30 0 -30\nv 30 0 -30\nv 30 0 30\nv -30 0 30\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 1 0 0\nf 1/1/1 2/2/1 3/3/1 4/4/1\n")
+        models = [{"ModelName": "Authored shared quad", "ModelObjects": [{"ParentID": -1, "MeshData": [{"MeshPath": "quad.obj", "MaterialID": 0}]}]}]
+        materials = [{"TexturePath": "prop.png", "UnknownInt18": flags}]
+        if name == "props":
+            instances = [dict(ModelID=0, Location=[-40, -25, 0], Rotation=[0, 0, 0, 1], Scale=[.7, .7, .7], Visable=True, AmbentLightColour=[0, 0, 0, 128], LightVector1=[1, 0, 0, 0], LightColour1=[192, 128, 64, 0]),
+                         dict(ModelID=0, Location=[40, -25, 0], Rotation=[0, 1, 0, 0], Scale=[.7, .7, .7], Visable=True, AmbentLightColour=[0, 0, 0, 128], LightVector1=[1, 0, 0, 0], LightColour1=[384, 256, 128, 0]),
+                         dict(ModelID=0, Location=[0, -25, 0], Visable=False),
+                         dict(ModelID=0, Location=[100000, -25, 0], Visable=True),
+                         dict(ModelID=0, Location=[2000, -25, 0], Visable=True)]
+        else:
+            instances = [dict(ModelID=0, Location=[0, -25, 0], Visable=True)]
+        for filename, key, rows in (("Models.json", "Models", models), ("Materials.json", "Materials", materials), ("Instances.json", "Instances", instances)):
+            (folder / filename).write_text(json.dumps({key: rows}), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -38,7 +38,8 @@ and 256 MiB of decoded images per course. Android's document play cache also cap
 copies at 64 MiB each and 256 MiB total. A present corrupt image fails validation; an absent
 diffuse image uses surface/normal colours, while an absent lightmap leaves the diffuse image visible.
 An empty/default lightmap rectangle has no lighting page. A fully transparent diffuse texel is
-discarded; remaining terrain is opaque. General object transparency/material modes are later work.
+discarded; remaining terrain is opaque. Static prop materials have a separate
+[rendering path](static-props.md), including opaque, cutout and provisional alpha blending.
 
 The Vulkan scene owns geometry, sampled images, samplers and per-material descriptors. Both
 OpenXR eye renderers retain the same scene, so the map is decoded and uploaded once. Draws group
@@ -47,8 +48,9 @@ without uploading the scene again. Resource destruction waits for GPU completion
 remains serialized between eyes in this prototype.
 
 Folder providers supply opaque document URIs. The launcher copies terrain into a fresh private
-cache, asks C++ for its unique image references, and copies only those files from `Textures/`
-and `Lightmaps/`. Native validates the prepared images before launching the immersive activity.
+cache, asks C++ for its unique asset references, and copies only those files from `Textures/`,
+`Lightmaps/` and optional prop `Meshes/` contracts. Native validates the prepared terrain,
+props and images before launching the immersive activity.
 Direct app-storage maps load in place. Custom maps use this path without selecting an ISO.
 
 ## Validation

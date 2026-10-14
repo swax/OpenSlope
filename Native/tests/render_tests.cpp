@@ -34,7 +34,7 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto name:{"handedness","orientation","lighting","repeat"}) {
+        for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend"}) {
             auto scene=std::make_shared<VulkanScene>(context);scene->upload(Terrain::load(root/name).mesh(4));
             // The same scene is used by two renderers, just like the stereo host.
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
@@ -49,8 +49,15 @@ int main(int argc,char** argv) {
                 }else if(std::string(name)=="lighting") {
                     pixel(*pixels,.15,.15,{90,70,50});pixel(*pixels,.85,.15,{113,60,0});pixel(*pixels,.15,.85,{100,170,130});pixel(*pixels,.85,.85,{50,45,40});
                     pixel(*pixels,.01,.01,{90,70,50});pixel(*pixels,.99,.01,{113,60,0});pixel(*pixels,.01,.99,{100,170,130});pixel(*pixels,.99,.99,{50,45,40});
-                }else {
+                }else if(std::string(name)=="repeat") {
                     pixel(*pixels,.1,.1,{240,20,40});pixel(*pixels,.35,.1,{40,60,230});pixel(*pixels,.1,.35,{30,220,50});pixel(*pixels,.35,.35,{230,210,190});pixel(*pixels,.6,.6,{240,20,40});
+                }else if(std::string(name)=="props") {
+                    pixel(*pixels,.25,.5,{150,80,30});pixel(*pixels,.75,.5,{255,160,60});pixel(*pixels,.5,.5,{40,80,120});
+                    if(first.stats().visible_props!=2||first.stats().prop_draws!=1||second.stats().prop_draws!=1)throw std::runtime_error("Props are not culled/instanced as expected");
+                }else if(std::string(name)=="props_cutout") {
+                    pixel(*pixels,.40625,.5,{40,80,120});pixel(*pixels,.59375,.5,{240,100,40});
+                }else {
+                    pixel(*pixels,.5,.5,pixels==&a?std::array<int,3>{120,120,120}:std::array<int,3>{149,128,120});
                 }
             }
         }

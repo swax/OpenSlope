@@ -9,10 +9,15 @@ layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; } transform;
 layout(location=0) out vec4 colour;
 void main() {
     vec3 displayColour=vertexColour;
+    float alpha=1.0;
     if(transform.options.x>0) {
         vec4 base=texture(diffuseImage,textureUV);
-        if(base.a<=1.0/255.0)discard;
+        if(transform.options.x==3) {
+            if(transform.options.z==1&&base.a<0.5)discard;
+            if(transform.options.z==2){if(base.a<=1.0/255.0)discard;alpha=base.a;}
+        }else if(base.a<=1.0/255.0)discard;
         displayColour=base.rgb;
+        if(transform.options.x==3)displayColour=clamp(base.rgb*vertexColour,0.0,1.0);
         if(transform.options.x==2) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]
             // Keep bilinear sampling inside this patch's gutterless tile.
@@ -25,5 +30,5 @@ void main() {
     // Byte-domain terrain blend above; convert only for an sRGB attachment,
     // whose hardware write converts linear output back to display values.
     if(transform.options.y!=0)displayColour=mix(displayColour/12.92,pow((displayColour+0.055)/1.055,vec3(2.4)),greaterThan(displayColour,vec3(0.04045)));
-    colour=vec4(displayColour,1.0);
+    colour=vec4(displayColour,alpha);
 }

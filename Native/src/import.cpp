@@ -1,5 +1,6 @@
 #include "import_internal.hpp"
 #include "openslope/terrain.hpp"
+#include "openslope/props.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <array>
@@ -165,11 +166,13 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     notify("Converting terrain");const auto document=patches(member(files,stem+".PBD"),member(files,stem+".MAP"),images);
     for(const auto& row:document.at("Patches")){const auto id=row.at("LightmapID").get<int>();if(id<0||static_cast<std::size_t>(id)>=lightmaps.size())throw std::runtime_error("Terrain references a missing lightmap");}
     write_json(output/"Patches.json",document);
+    notify("Converting static object models and placements");const auto behavior=files.find(stem+".SSF");
+    import_detail::write_props(member(files,stem+".PBD"),member(files,stem+".MAP"),images,behavior==files.end()?nullptr:&behavior->second,output,cancelled);
     write_json(output/"Origin.json",{{"Schema","openslope-origin/v1"},{"Origin","retail"},{"Course",stem},{"RetailData",true},{"Reasons",{"retail-extract"}}});
     // Lossless local source sidecars support later importer stages without
     // reselecting the ISO. They are not a replacement for portable contracts.
     std::filesystem::create_directory(output/"Source");for(const auto& [name,bytes]:files){notify("Saving source "+name);std::ofstream stream(output/"Source"/name,std::ios::binary);stream.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));if(!stream)throw std::runtime_error("Cannot write source sidecar");}
-    write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",{"Patches.json","Origin.json","Textures","Lightmaps"}},{"Deferred",{"props","skybox","paths","effects","audio","world"}}});
-    notify("Validating map");static_cast<void>(Terrain::load(output));cleanup.complete=true;
+    write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",{"Patches.json","Origin.json","Textures","Lightmaps","Models.json","Instances.json","Materials.json","Meshes"}},{"Deferred",{"object-collision","live-object-effects","skybox","paths","effects","audio","world"}}});
+    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));cleanup.complete=true;
 }
 }

@@ -22,7 +22,7 @@ struct Patch {
     std::array<double,2> lightmap_uv(double u,double v) const;
     Bounds bounds() const;
 };
-struct Vertex { float x,y,z,r,g,b;float s=0,t=0,ls=0,lt=0,lx=0,ly=0,lw=0,lh=0; };
+struct Vertex { float x,y,z,r,g,b;float s=0,t=0,ls=0,lt=0,lx=0,ly=0,lw=0,lh=0;float nx=0,ny=0,nz=0; };
 struct MeshBatch {std::uint32_t first{},count{};std::string texture;int lightmap=-1;};
 struct Mesh { std::vector<Vertex> vertices;std::vector<std::uint32_t> indices;std::vector<MeshBatch> batches;std::filesystem::path map_root; };
 struct TerrainHit { Vec3 point,normal; double t,u,v; std::size_t patch; int surface; bool refined; };

@@ -1,5 +1,6 @@
 #include "openslope/appearance.hpp"
 #include "openslope/import.hpp"
+#include "openslope/props.hpp"
 #include <lodepng.h>
 #include <algorithm>
 #include <fstream>
@@ -27,6 +28,7 @@ std::vector<std::string> image_names(std::span<const MeshBatch> batches) {
 std::vector<MeshBatch> terrain_batches(const Terrain& terrain) {
     std::vector<MeshBatch> batches;
     for(const auto& patch:terrain.patches())batches.push_back({0,0,patch.texture,patch.lightmap_rect[2]>0&&patch.lightmap_rect[3]>0?patch.lightmap:-1});
+    for(const auto& name:prop_files(terrain.map_root()))if(name.starts_with("Textures/"))batches.push_back({0,0,name.substr(9),-1});
     return batches;
 }
 }

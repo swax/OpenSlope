@@ -7,7 +7,7 @@
 namespace openslope::import_detail {
 struct Bytes {
     std::span<const std::uint8_t> data;
-    void range(std::size_t offset,std::size_t length) const {if(offset>data.size()||length>data.size()-offset)throw std::runtime_error("Truncated or invalid course data");}
+    void range(std::size_t offset,std::size_t length) const {if(offset>data.size()||length>data.size()-offset)throw std::runtime_error("Truncated course data: offset "+std::to_string(offset)+", length "+std::to_string(length)+", extent "+std::to_string(data.size()));}
     std::uint32_t le(std::size_t offset,unsigned width=4) const {range(offset,width);std::uint32_t v=0;for(unsigned i=0;i<width;++i)v|=std::uint32_t(data[offset+i])<<(8*i);return v;}
     std::uint32_t be(std::size_t offset,unsigned width=4) const {range(offset,width);std::uint32_t v=0;for(unsigned i=0;i<width;++i)v=(v<<8)|data[offset+i];return v;}
     int signed16(std::size_t offset) const {return static_cast<std::int16_t>(le(offset,2));}
@@ -17,5 +17,8 @@ struct Bytes {
 struct Image {std::string name;unsigned width{},height{};std::vector<std::uint8_t> rgba;};
 std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes,bool lightmap,const ImportCancel& cancelled);
 void write_png(const std::filesystem::path& path,const Image& image);
+void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,
+                 const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,
+                 const std::filesystem::path& output,const ImportCancel& cancelled);
 inline void check_cancel(const ImportCancel& cancelled){if(cancelled&&cancelled())throw std::runtime_error("Import cancelled");}
 }

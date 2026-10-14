@@ -47,7 +47,9 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(selected != null, "Published SAF map discovered under opaque tree URI");
             File prepared = documents.prepare(selected, temporary, () -> {}); invoke(activity, "nativeValidate", new Class<?>[]{String.class}, prepared.getAbsolutePath());
             JSONArray references = new JSONArray(MapLibrary.nativeImageFiles(extracted.getAbsolutePath()));
-            require(references.length() >= 2, "Native manifest includes diffuse and lightmap references");
+            require(references.length() >= 4, "Native manifest includes diffuse, lightmap and shared-mesh references");
+            for (String metadata : new String[]{"Models.json", "Instances.json", "Materials.json"}) require(new File(prepared, metadata).isFile(), "SAF cache includes prop metadata " + metadata);
+            require(new File(prepared, "Meshes/0.obj").isFile(), "SAF cache includes imported prop geometry");
             for (int i = 0; i < references.length(); ++i) {
                 String relative = references.getString(i);
                 require(new File(prepared, relative).isFile(), "SAF play cache includes " + relative);

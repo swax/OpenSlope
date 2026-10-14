@@ -8,9 +8,10 @@
 
 namespace {
 using namespace openslope;
+Vec3 camera_eye(const Player& player,bool first_person=false){const auto p=player.render_position();return first_person?p+Vec3{0,1.65,0}:p-player.rider().forward*7+Vec3{0,3.5,0};}
 Matrix camera_for(const Player& player,double aspect,bool first_person=false) {
     const auto position=player.render_position(),forward=player.rider().forward;
-    const auto eye=first_person?position+Vec3{0,1.65,0}:position-forward*7+Vec3{0,3.5,0};
+    const auto eye=camera_eye(player,first_person);
     const auto direction=first_person?forward:position+forward*12-eye;
     const auto tangent=std::tan(70*pi/360);
     return projection(-tangent*aspect,tangent*aspect,-tangent,tangent)*view(eye,direction);
@@ -36,7 +37,8 @@ int capture(Player& player,const std::filesystem::path& output,double seconds) {
     for(unsigned i=0;i<unsigned(seconds*60);++i)player.tick({});
     VulkanContext context;context.create(false);Image image(context);image.create(1280,720);
     VulkanRenderer renderer(context);renderer.upload(player.terrain().mesh());renderer.targets(std::span(&image.image,1),VK_FORMAT_R8G8B8A8_UNORM,1280,720);
-    renderer.render(0,camera_for(player,1280.0/720),board_transform(player.render_position(),player.rider().forward,player.rider().normal),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    renderer.render(0,camera_for(player,1280.0/720),board_transform(player.render_position(),player.rider().forward,player.rider().normal),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},camera_eye(player));
+    const auto stats=renderer.stats();std::cout<<"Visible props: "<<stats.visible_props<<"; prop draws: "<<stats.prop_draws<<"; CPU frame: "<<stats.cpu_ms<<" ms; GPU frame: "<<stats.gpu_ms<<" ms\n";
     renderer.capture(0,output);std::cout<<"Vulkan capture: "<<output.string()<<'\n';return 0;
 }
 struct Window {
@@ -94,7 +96,7 @@ struct Window {
         std::uint32_t image=0;const auto acquired=vkAcquireNextImageKHR(context.device,swapchain,UINT64_MAX,available,{},&image);
         if(acquired==VK_ERROR_OUT_OF_DATE_KHR){resized=true;return;}
         if(acquired!=VK_SUBOPTIMAL_KHR)vk_check(acquired,"Acquire preview image");
-        renderer.render(image,camera_for(player,double(width)/height,first_person),board_transform(player.render_position(),player.rider().forward,player.rider().normal),VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,available,finished);
+        renderer.render(image,camera_for(player,double(width)/height,first_person),board_transform(player.render_position(),player.rider().forward,player.rider().normal),VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,available,finished,camera_eye(player,first_person));
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};present.waitSemaphoreCount=1;present.pWaitSemaphores=&finished;present.swapchainCount=1;present.pSwapchains=&swapchain;present.pImageIndices=&image;
         const auto result=vkQueuePresentKHR(context.queue,&present);
         if(result==VK_ERROR_OUT_OF_DATE_KHR||result==VK_SUBOPTIMAL_KHR)resized=true;else vk_check(result,"Present preview frame");
@@ -130,7 +132,8 @@ int main(int argc,char** argv) {
             if(key(VK_ESCAPE))break;
             const auto camera=key('F');if(camera&&!last_camera)first_person=!first_person;last_camera=camera;
             if(focused)player.advance(dt,{double(key('A'))-double(key('D')),key(VK_SPACE),key('R')});
-            std::wostringstream title;title<<L"OpenSlope Native | "<<int(length(player.rider().velocity)*3.6)<<L" km/h | A/D steer | Space boost | R reset | F camera";SetWindowTextW(window.handle,title.str().c_str());
+            const auto& stats=window.renderer.stats();
+            std::wostringstream title;title<<L"OpenSlope Native | "<<int(length(player.rider().velocity)*3.6)<<L" km/h | "<<stats.visible_props<<L" props / "<<stats.prop_draws<<L" draws | GPU "<<stats.gpu_ms<<L" ms | A/D steer | Space boost | R reset | F camera";SetWindowTextW(window.handle,title.str().c_str());
             window.draw(player,first_person);
             if(IsIconic(window.handle))std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }

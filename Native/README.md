@@ -10,8 +10,9 @@ This is not yet a complete Quest application or a full gameplay port.
 The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
 The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
 ISO to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
-The importer currently converts terrain, textures, lightmaps and provenance; the player renders
-textured terrain with baked RGBA lightmaps. Prop, path, effects, world and audio conversion, jumping,
+The importer currently converts terrain, textures, lightmaps, static prop geometry/placements and provenance;
+the player renders textured terrain and shared world props with baked lighting and visibility culling.
+Prop collision/live behavior, path, effects, world and audio conversion, jumping,
 rails, races and multiplayer remain later stages. See [the map-library contract](docs/map-library.md).
 
 ## Build and try on Windows
@@ -40,6 +41,8 @@ The first prototype chooses a skyward start on the highest rideable patch. This 
 spawn policy, not the authored start-gate implementation. Map courses load their referenced
 `Textures/*.png` and `Lightmaps/*.png`; missing diffuse images retain surface/normal colours,
 and a missing lightmap leaves the diffuse texture visible. See [terrain appearance](docs/terrain-appearance.md).
+Courses with the prop contracts also render their referenced `Meshes/*.obj` and textures with
+per-instance lighting. Props currently have no gameplay collision. See [static props](docs/static-props.md).
 
 Offline GPU validation requires no visible window or headset:
 
@@ -78,7 +81,7 @@ before any claim of headset performance. It does not request Meta-only rendering
 ## Android / Quest build path
 
 The Android host uses a Java map-library panel, `NativeActivity` and the Khronos loader. Selecting
-a course prepares its terrain and referenced PNGs, then starts the immersive player.
+a course prepares its terrain, prop tables, referenced meshes and PNGs, then starts the immersive player.
 The Gradle project targets ARM64, Android API 29+, NDK 28.1, CMake 3.31.6, and Android SDK 35.
 Use JDK 17 and Gradle 8.10.2 with Android Gradle Plugin 8.8.2. The SDK/NDK and Gradle are separate
 prerequisites; no system-wide installer is run by the host build.
@@ -115,13 +118,14 @@ After installation, find **OpenSlope Native** in the headset's sideloaded applic
 3. **Import SSX Tricky ISO** opens the system file picker, discovers supported courses, and lets
    you select which to import into the current Maps folder. Existing map names are kept. Cancel
    stops the current course; courses already imported remain available.
-4. **Play** validates the selected terrain and PNGs, then loads them into the immersive OpenXR activity. Left stick
+4. **Play** validates the selected terrain, props and PNGs, then loads them into the immersive OpenXR activity. Left stick
    steers, right trigger boosts, and left X resets. Returning from the game returns to the library.
 
 System document providers must support seekable ISO reads and writable/renameable folders for import.
 If the headset has no system document picker, custom maps can still be copied into the app Maps folder
 over USB/ADB. For development: `adb push Maps/GARI /sdcard/Android/data/org.openslope.nativeplayer/files/Maps/`.
-Terrain, diffuse textures and baked lightmaps are consumed by this prototype; no retail data belongs in the APK or a release.
+Terrain, static props, diffuse textures and baked lighting are consumed by this prototype;
+no retail data belongs in the APK or a release.
 
 The same importer can be checked on desktop without a headset:
 
@@ -129,6 +133,7 @@ The same importer can be checked on desktop without a headset:
 ./temp/native-core/Release/openslope_import.exe list "discs/SSX Tricky (USA).iso"
 ./temp/native-core/Release/openslope_import.exe extract "discs/SSX Tricky (USA).iso" GARI temp/native-import/Maps
 python tools/native-compare-maps.py temp/native-import/Maps/GARI Maps/GARI --point-tolerance-cm 0.1 --allow-texture-difference 0083.png --allow-texture-difference 0108.png
+python tools/native-compare-props.py temp/native-import/Maps/GARI Maps/GARI
 ```
 
 The comparison checks the implemented canonical stages against an existing reference map,
@@ -136,6 +141,8 @@ comparing decoded PNG pixels and JSON values rather than formatting or compressi
 claim equivalence for the deferred import stages.
 The GARI example explicitly records a 1 mm coordinate allowance and the two documented alpha-policy
 differences; the comparator's defaults remain strict. See [source provenance](docs/source-provenance.md).
+Previously imported terrain-only courses remain playable. To add extracted props, import into a
+fresh Maps root; existing course names are deliberately skipped rather than overwritten.
 
 Build the separate device-test APK with `Native/build-android.ps1 -Tests`. The authored synthetic
 ISO fixture is generated into ignored build assets and is included only in that test APK:
@@ -148,7 +155,7 @@ adb shell am instrument -w org.openslope.nativeplayer.test/org.openslope.nativep
 
 These tests exercise the actual ARM64 JNI importer, local custom-map discovery, and folder
 publication/playback/cancellation through a test document provider, including copying referenced
-textures and lightmaps and removing an interrupted play cache. They do not exercise the
+textures, lightmaps and prop meshes and removing an interrupted play cache. They do not exercise the
 headset's own picker UI or immersive rendering. Run them on a connected Quest before release.
 
 ## Portable checks
@@ -170,6 +177,8 @@ all RefPack commands, canonical patches, decoded RGBA PNGs, provenance, cancella
 inputs, map discovery and protection of existing courses. They require no retail disc or assets.
 Appearance checks cover PNG variants, corrupt/oversized images, image path bounds, diffuse corner
 pairing, transposed lightmap UVs, material grouping, and the RGB-residual/alpha lighting equation.
+Prop checks cover shared OBJ geometry, hierarchy, instance lighting/transforms, visibility/culling,
+static animation snapshots, material indirection and independently authored VIF packets.
 
 ## Specification alignment
 

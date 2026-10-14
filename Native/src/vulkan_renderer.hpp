@@ -2,6 +2,7 @@
 #include <volk.h>
 #include "openslope/terrain.hpp"
 #include "render_math.hpp"
+#include "openslope/props.hpp"
 #include <filesystem>
 #include <span>
 #include <memory>
@@ -25,10 +26,12 @@ public:
 private:
     friend class VulkanRenderer;
     VulkanContext& context_;
-    struct Buffer {VkBuffer buffer{};VkDeviceMemory memory{};} vertices_,indices_;
+    struct Buffer {VkBuffer buffer{};VkDeviceMemory memory{};} vertices_,indices_,poses_;
     struct Image {VkImage image{};VkDeviceMemory memory{};VkImageView view{};};
     struct Draw {std::uint32_t first{},count{};VkDescriptorSet set{};int mode{};};
     std::vector<Image> images_;std::vector<Draw> draws_;
+    struct PropDraw {std::uint32_t first{},count{};VkDescriptorSet set{};int alpha{};};
+    Props props_;std::vector<PropDraw> prop_draws_;std::size_t pose_capacity_{};
     std::uint32_t board_first_{};VkDescriptorSet board_set_{};
     VkDescriptorSetLayout descriptors_{};VkDescriptorPool descriptor_pool_{};
     VkSampler repeat_{},clamp_{};
@@ -37,6 +40,7 @@ private:
 };
 class VulkanRenderer {
 public:
+    struct Stats {unsigned visible_props{},prop_draws{};double cpu_ms{},gpu_ms=-1;};
     explicit VulkanRenderer(VulkanContext& context):context_(context){}
     ~VulkanRenderer();
     VulkanRenderer(const VulkanRenderer&)=delete;
@@ -44,7 +48,8 @@ public:
     void use_scene(std::shared_ptr<VulkanScene> scene);
     void targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height);
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
-        VkSemaphore wait={},VkSemaphore signal={});
+        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={});
+    const Stats& stats() const {return stats_;}
     void capture(unsigned image,const std::filesystem::path& output);
     void clear_targets();
 private:
@@ -53,7 +58,8 @@ private:
     std::shared_ptr<VulkanScene> scene_;
     std::uint32_t width_{},height_{};VkFormat format_{};
     VkCommandPool pool_{};VkCommandBuffer command_{};VkFence fence_{};
-    VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{};
+    VkRenderPass pass_{};VkPipelineLayout layout_{};VkPipeline pipeline_{},blend_pipeline_{};
+    Stats stats_;VkQueryPool timing_{};double timestamp_period_{};unsigned timestamp_bits_{};
     struct Target { VkImage colour{},depth{};VkDeviceMemory depth_memory{};VkImageView colour_view{},depth_view{};VkFramebuffer framebuffer{}; };
     std::vector<Target> targets_;
     Buffer create_buffer(VkDeviceSize size,VkBufferUsageFlags usage,const void* data);

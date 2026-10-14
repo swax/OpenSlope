@@ -15,6 +15,8 @@ other components' implementation sources are outside this implementation boundar
 | PNG output | Standard PNG RGBA8, CRC-32, Adler-32 and stored DEFLATE blocks; no image-conversion dependency. |
 | PNG input | Standalone LodePNG, checksum-pinned upstream revision with its complete license retained. No game-format readers are supplied by this dependency. |
 | Terrain appearance | [Trailmap: 110-uv-rotation, 160-tile, 160-luminance, 160-transpose, 400-double, 400-lighting]; first-party GLSL, UV evaluation, image bounds and Vulkan resource ownership. Synthetic PNGs and GPU pixel assertions are authored independently of course exports. |
+| Static prop decoding | Clean chapters 120, 170, 220 and 230; bounded independent PBD/VIF/SSF readers and standard OBJ output. Pointer origins are checked against source bytes and authored synthetic records, never another decoder's implementation. |
+| Prop placement/lighting/rendering | Clean chapters 120, 160, 170 and 400; standard affine/quaternion identities, first-party OBJ parser, model-local baked lighting and Vulkan instancing/culling. Generated outputs are comparison data only; see static-props.md for deliberate limits. |
 
 Texture association is not marked by the course bank. Native's application policy only infers
 associated alpha when there is at least one fractional texel and every fractional texel has all
@@ -45,3 +47,11 @@ The strict associated-alpha inference leaves `0083.png` and `0108.png` unchanged
 exporter's heuristic alters them. The other 119 course textures and all 16 raw lightmaps match
 decoded pixels exactly. These differences are explicit application-policy differences; they are
 not reported as exact extraction parity. No per-course texture-ID special cases enter the decoder.
+
+Static-prop comparison checks generated model/placement/material contracts and expanded triangle
+corners, including UVs, packed normals, winding, visibility and animation data. Different JSON
+decimal spellings are compared at recovered float32 precision for source locations/lighting/animation scalars.
+Mesh positions permit 0.001 raw cm; no per-course mesh exceptions are used. Material labels are
+neutral because linker names do not have an established PBD material-row correspondence.
+Exact source matrices are retained through an optional portable-contract extension. Deferred
+material/behavior fields are not reported as equivalent. See static-props.md for the comparison scope.

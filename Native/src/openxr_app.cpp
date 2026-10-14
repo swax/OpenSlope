@@ -2,6 +2,7 @@
 #include "vulkan_renderer.hpp"
 #ifdef __ANDROID__
 #include <jni.h>
+#include <android/log.h>
 #endif
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
@@ -161,7 +162,7 @@ struct State {
 }
 int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
     State state;state.create(platform,player.terrain().mesh());
-    const auto started=std::chrono::steady_clock::now();XrTime previous_time=0;
+    const auto started=std::chrono::steady_clock::now();auto next_stats=started+std::chrono::seconds(5);XrTime previous_time=0;
     while(!state.quit) {
         if(platform.process_events&&!platform.process_events())break;
         if(seconds>0&&std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count()>=seconds)break;
@@ -189,7 +190,7 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
                     const auto forward=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,0,-1}));
                     const auto up=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,1,0}));
                     const auto matrix=projection(std::tan(camera.fov.angleLeft),std::tan(camera.fov.angleRight),std::tan(camera.fov.angleDown),std::tan(camera.fov.angleUp))*view(eye_position,forward,up);
-                    eye.renderer->render(image,matrix,board_transform(body,rider.forward,rider.normal),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                    eye.renderer->render(image,matrix,board_transform(body,rider.forward,rider.normal),VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,{},{},eye_position);
                     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};xr_check(xrReleaseSwapchainImage(eye.swapchain,&release),"Release eye image");
                     projections[i].pose=camera.pose;projections[i].fov=camera.fov;projections[i].subImage.swapchain=eye.swapchain;projections[i].subImage.imageRect.extent={std::int32_t(eye.width),std::int32_t(eye.height)};
                 }
@@ -200,6 +201,18 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
         const XrCompositionLayerBaseHeader* layer_pointer=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
         XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};end.displayTime=frame.predictedDisplayTime;end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;end.layerCount=rendered?1:0;end.layers=rendered?&layer_pointer:nullptr;
         xr_check(xrEndFrame(state.session,&end),"Submit VR frame");
+        const auto now=std::chrono::steady_clock::now();
+        if(rendered&&now>=next_stats){
+            double cpu=0,gpu=0;unsigned visible=0,draws=0;bool timed=true;
+            for(const auto& eye:state.eyes){const auto& s=eye.renderer->stats();cpu+=s.cpu_ms;gpu+=s.gpu_ms;timed&=s.gpu_ms>=0;visible+=s.visible_props;draws+=s.prop_draws;}
+            // Serialized per-eye render wall time includes the GPU fence wait.
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"OpenSlopeNative","Frame sample: %u visible prop submissions, %u prop draws, render wall %.2f ms, GPU %.2f ms (both eyes)",visible,draws,cpu,timed?gpu:-1);
+#else
+            std::cout<<"Frame sample: "<<visible<<" visible prop submissions, "<<draws<<" prop draws, render wall "<<cpu<<" ms, GPU "<<(timed?gpu:-1)<<" ms (both eyes)\n";
+#endif
+            next_stats=now+std::chrono::seconds(5);
+        }
     }
     return 0;
 }
