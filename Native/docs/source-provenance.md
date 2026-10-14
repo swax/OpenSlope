@@ -19,6 +19,7 @@ other components' implementation sources are outside this implementation boundar
 | Prop placement/lighting/rendering | Clean chapters 120, 160, 170 and 400; standard affine/quaternion identities, first-party OBJ parser, model-local baked lighting and Vulkan instancing/culling. Generated outputs are comparison data only; see static-props.md for deliberate limits. |
 | Course path decoding | Clean chapter 250 and independent byte-layout fixtures. Relative section offsets, header shapes, displacement expansion and event retention are authored here. Generated AIP/SOP output supplies validation only. |
 | Desktop rider controls | Clean chapters 300, 330, 340 and 360 plus the unchanged shared contract. Slopesmith establishes the desktop feature/control vocabulary; Native's state, launch, contact and replay code are independently authored. Port tuning and presentation differences are explicit in desktop-controls.md. |
+| Authored collision foundation | Clean chapters 120, 130, 220, 230 and 370; independent pool/payload readers, retained source box bounds, portable proxy/body contracts, standard affine geometry and BVHs. Synthetic format and query fixtures establish supported cases; gameplay integration and provisional double-sided/ellipsoid behavior are recorded in collision-foundation.md. |
 
 Texture association is not marked by the course bank. Native's application policy only infers
 associated alpha when there is at least one fractional texel and every fractional texel has all

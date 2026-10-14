@@ -95,6 +95,25 @@ Transform placement(Vec3 p,std::array<double,4> q,Vec3 s){
     if(!finite(p)||!finite(s))throw std::runtime_error("Invalid prop placement");double length2=0;for(auto v:q){if(!std::isfinite(v))throw std::runtime_error("Invalid prop quaternion");length2+=v*v;}if(length2<1e-20)throw std::runtime_error("Zero prop quaternion");for(auto& v:q)v/=std::sqrt(length2);
     const auto x=q[0],y=q[1],z=q[2],w=q[3];auto m=identity_transform();m[0]=(1-2*(y*y+z*z))*s.x;m[1]=2*(x*y+w*z)*s.x;m[2]=2*(x*z-w*y)*s.x;m[4]=2*(x*y-w*z)*s.y;m[5]=(1-2*(x*x+z*z))*s.y;m[6]=2*(y*z+w*x)*s.y;m[8]=2*(x*z+w*y)*s.z;m[9]=2*(y*z-w*x)*s.z;m[10]=(1-2*(x*x+y*y))*s.z;m[12]=p.x;m[13]=p.y;m[14]=p.z;return m;
 }
+Transform map_transform(Transform raw){auto b=identity_transform();b[5]=b[10]=0;b[6]=-1;b[9]=1;auto inverse=b;inverse[6]=1;inverse[9]=-1;raw[12]/=100;raw[13]/=100;raw[14]/=100;return multiply(multiply(b,raw),inverse);}
+Transform inverse_transform(const Transform& m){
+    const Vec3 a{m[0],m[1],m[2]},b{m[4],m[5],m[6]},c{m[8],m[9],m[10]};const auto det=dot(a,cross(b,c));if(std::abs(det)<1e-12)throw std::runtime_error("Singular collision placement");
+    const auto x=cross(b,c)/det,y=cross(c,a)/det,z=cross(a,b)/det;auto result=identity_transform();result[0]=x.x;result[4]=x.y;result[8]=x.z;result[1]=y.x;result[5]=y.y;result[9]=y.z;result[2]=z.x;result[6]=z.y;result[10]=z.z;
+    const auto p=transform_point(result,{m[12],m[13],m[14]});result[12]=-p.x;result[13]=-p.y;result[14]=-p.z;return result;
+}
+Vec3 transform_normal(const Transform& m,Vec3 n){return normal_transform(m,n);}
+std::vector<Transform> prop_placements(const std::filesystem::path& root){std::vector<Transform> result;if(root.empty()||!std::filesystem::exists(root/"Instances.json"))return result;const auto doc=json_file(asset(root,"Instances.json"));for(const auto& row:doc.at("Instances"))result.push_back(map_transform(row_pose(row)));return result;}
+std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root){
+    std::vector<std::vector<PropObjectLayout>> result;if(root.empty()||!std::filesystem::exists(root/"Models.json"))return result;const auto doc=json_file(asset(root,"Models.json"));const auto& models=doc.at("Models");if(!models.is_array()||models.size()>4000)throw std::runtime_error("Invalid collision model count");
+    for(const auto& model:models){const auto& rows=model.at("ModelObjects");if(!rows.is_array()||rows.size()>256)throw std::runtime_error("Invalid collision object count");std::vector<PropObjectLayout> objects(rows.size());std::vector<unsigned> state(rows.size());
+        std::function<Transform(std::size_t)> resolve=[&](std::size_t i){if(state[i]==1)throw std::runtime_error("Cyclic collision hierarchy");if(state[i]==2)return objects[i].rest;state[i]=1;auto m=object_pose(rows[i]);const auto parent=rows[i].value("ParentID",-1);if(parent< -1||parent>=int(rows.size()))throw std::runtime_error("Invalid collision parent");if(parent>=0)m=multiply(resolve(std::size_t(parent)),m);state[i]=2;return objects[i].rest=m;};
+        for(std::size_t i=0;i<rows.size();++i){resolve(i);auto& object=objects[i];object.has_geometry=!rows[i].at("MeshData").empty();if(!object.has_geometry)continue;
+            Bounds raw;if(rows[i].contains("CollisionBounds")){raw.min=vector3(rows[i].at("CollisionBounds").at("Min"));raw.max=vector3(rows[i].at("CollisionBounds").at("Max"));if(raw.min.x>raw.max.x||raw.min.y>raw.max.y||raw.min.z>raw.max.z)throw std::runtime_error("Invalid authored collision bounds");}
+            else for(const auto& part:rows[i].at("MeshData")){const auto path=asset(root,"Meshes/"+safe(part.at("MeshPath")));if(std::filesystem::file_size(path)>64*1024*1024)throw std::runtime_error("Collision box source exceeds 64 MiB");std::ifstream file(path);std::string line;while(std::getline(file,line)){if(line.size()>1024*1024)throw std::runtime_error("Collision box line too long");std::istringstream input(line);std::string type;input>>type;if(type=="v"){Vec3 p;if(!(input>>p.x>>p.y>>p.z)||!finite(p))throw std::runtime_error("Invalid collision box vertex");raw.add(p);}}}
+            if(!finite(raw.min)||!finite(raw.max))throw std::runtime_error("Collision object has no local bounds");for(unsigned corner=0;corner<8;++corner)object.box.add(axes({corner&1?raw.max.x:raw.min.x,corner&2?raw.max.y:raw.min.y,corner&4?raw.max.z:raw.min.z})/100);
+        }result.push_back(std::move(objects));
+    }return result;
+}
 std::vector<std::string> prop_files(const std::filesystem::path& root){
     const auto t=tables(root);if(t.models.is_null())return {};std::set<std::string> names;
     for(const auto& model:t.models)for(const auto& object:model.at("ModelObjects"))for(const auto& part:object.at("MeshData")){names.insert("Meshes/"+safe(part.at("MeshPath")));const auto id=part.at("MaterialID").get<std::size_t>();const auto name=texture_name(t.materials.at(id));if(!name.empty())names.insert("Textures/"+safe(name));}

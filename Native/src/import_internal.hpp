@@ -18,6 +18,7 @@ struct Image {std::string name;unsigned width{},height{};std::vector<std::uint8_
 std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes,bool lightmap,const ImportCancel& cancelled);
 void write_png(const std::filesystem::path& path,const Image& image);
 void write_paths(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const ImportCancel& cancelled);
+void write_collision(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const ImportCancel& cancelled);
 void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,
                  const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,
                  const std::filesystem::path& output,const ImportCancel& cancelled);
