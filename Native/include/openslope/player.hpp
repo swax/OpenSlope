@@ -4,14 +4,15 @@
 #include "collision.hpp"
 #include "riding_effects.hpp"
 #include "animation.hpp"
+#include "rails.hpp"
 #include <deque>
 #include <map>
 #include <functional>
 
 namespace openslope {
-struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; }; // Left steer; positive posture is tuck/forward flip.
-enum class Motion {Air=1,Ground=2,Wipeout=5,RecoverContact=6};
-enum class Control {Cruise=3,Release=10,Air=13,Charge=14,Launched=16,Wipeout=19,RecoverWait=20};
+struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false; }; // Left steer; positive posture is tuck/forward flip.
+enum class Motion {Air=1,Ground=2,Rail=3,Wipeout=5,RecoverContact=6};
+enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20};
 enum class CrashCause {None,PropImpact,Landing,Unrideable};
 struct PlayTuning {
     // Desktop application defaults where the clean specification is open.
@@ -31,6 +32,9 @@ struct Rider {
     unsigned world_contacts{},bounces{},hard_impacts{};
     unsigned crashes{},recoveries{};CrashCause crash_cause=CrashCause::None;
     double crash_age{},crash_contact_age{},recovery_standing{},recovery_height{};
+    std::optional<std::size_t> rail_spline;
+    std::size_t rail_segment{};double rail_parameter{},rail_age{},rail_spin{},rail_spin_rate{};
+    int rail_direction=1,rail_trick=-1;unsigned grinds{},rail_transfers{},rail_exits{};
     std::optional<std::size_t> ground_instance;
 };
 enum class ContactPhase {Begin,Stay,End};
@@ -63,9 +67,12 @@ public:
     bool recovering() const {return rider_.control==Control::Wipeout||rider_.control==Control::RecoverWait;}
     void run_active(bool active){run_active_=active;}
     bool run_active() const {return run_active_;}
+    Rails& rails(){return rails_;}
+    const Rails& rails() const {return rails_;}
 private:
     Terrain terrain_;
     CollisionWorld world_;
+    Rails rails_;
     RideContract contract_;
     FixedClock clock_;
     Rider rider_;
@@ -78,7 +85,7 @@ private:
     double settled_=0;
     bool run_active_=false;
     bool jump_held_=false,reset_held_=false;
-    double jump_cooldown_=0,air_grace_=0;
+    double jump_cooldown_=0,air_grace_=0,rail_cooldown_=0;
     std::deque<bool> jump_edges_;
     struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance;};
     std::map<std::size_t,WorldContact> previous_contacts_;
@@ -87,7 +94,7 @@ private:
     std::uint64_t placement_serial_=0;
     std::optional<GroundContact> trace_ground(Vec3 start,Vec3 end) const;
     std::optional<GroundContact> probe(Vec3 position) const;
-    std::vector<ProbeSphere> volume(const Rider& pose,bool airborne) const;
+    std::vector<ProbeSphere> volume(const Rider& pose,bool airborne,bool rail=false) const;
     bool move_world(const Rider& before,Vec3 destination,bool landing_allowed);
     void sample_input(const RideInput& input);
     void land(const GroundContact& hit);
@@ -95,6 +102,9 @@ private:
     void crash(CrashCause cause,Vec3 normal);
     void begin_recovery();
     bool update_recovery();
+    bool update_jump();
+    void leave_rail(double cooldown=0);
+    void ride_rail(const RailHit& hit,const RideInput& input,const Rider& before);
     void notify_tick(const Rider& before);
 };
 }

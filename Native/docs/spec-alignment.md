@@ -61,3 +61,7 @@ standing-camera fallback are application choices. No retail character or trick r
 The conformance tests validate the named helpers and format/geometry boundaries. A playable native
 ride is not evidence of full state-machine, collision-object, rendering, or game parity. Expand the
 matrix and independent fixtures as each later specification slice lands.
+
+Rails align with clean 140, 220, 230 and 350: candidacy, exact cubic nearest,
+Motion 3 / Control 15, tangent forces, snap, spin, masks and jump/exit. Unresolved
+axes/post-grace blend and independent tuning are explicit in rails.md.

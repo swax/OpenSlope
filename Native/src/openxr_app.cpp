@@ -36,7 +36,7 @@ struct Eye {
 };
 struct State {
     XrInstance instance{};XrSystemId system{};XrSession session{};XrSpace space{};
-    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{};
+    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{};
     VulkanContext vulkan;
     std::vector<Eye> eyes;
     bool floor_space=false,running=false,focused=false,quit=false;
@@ -122,15 +122,15 @@ struct State {
             std::vector<VkImage> images;for(const auto& image:xr_images)images.push_back(image.image);
             eye.renderer=std::make_unique<VulkanRenderer>(vulkan);eye.renderer->use_scene(scene);eye.renderer->targets(images,format,eye.width,eye.height);
         }
-        std::cout<<"OpenXR stereo session prepared. Left stick: steer/posture; right trigger: boost; A: charged jump; X: reset.\n";
+        std::cout<<"OpenXR stereo session prepared. Left stick: steer/posture; right trigger: boost; A: charged jump; X: reset; left stick click: exit rail.\n";
     }
     void create_input() {
         XrActionSetCreateInfo set{XR_TYPE_ACTION_SET_CREATE_INFO};std::strcpy(set.actionSetName,"ride");std::strcpy(set.localizedActionSetName,"Riding");
         xr_check(xrCreateActionSet(instance,&set,&actions),"Create riding action set");
         const auto action=[&](const char* name,XrActionType type,XrAction& result){
             XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};info.actionType=type;std::strcpy(info.actionName,name);std::strcpy(info.localizedActionName,name);xr_check(xrCreateAction(actions,&info,&result),"Create riding action");};
-        action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("boost",XR_ACTION_TYPE_FLOAT_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);
-        const std::array<XrActionSuggestedBinding,4> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")}}};
+        action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("boost",XR_ACTION_TYPE_FLOAT_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);action("rail_exit",XR_ACTION_TYPE_BOOLEAN_INPUT,rail_exit);
+        const std::array<XrActionSuggestedBinding,5> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")}}};
         XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};suggested.interactionProfile=path("/interaction_profiles/oculus/touch_controller");suggested.countSuggestedBindings=std::uint32_t(bindings.size());suggested.suggestedBindings=bindings.data();
         xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest Touch-compatible bindings");
         XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};attach.countActionSets=1;attach.actionSets=&actions;xr_check(xrAttachSessionActionSets(session,&attach),"Attach riding input");
@@ -143,8 +143,9 @@ struct State {
         info.action=boost;XrActionStateFloat boosting{XR_TYPE_ACTION_STATE_FLOAT};xr_check(xrGetActionStateFloat(session,&info,&boosting),"Read boost");
         info.action=reset;XrActionStateBoolean resetting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&resetting),"Read reset");
         info.action=jump;XrActionStateBoolean jumping{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&jumping),"Read charged jump");
+        info.action=rail_exit;XrActionStateBoolean leaving{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&leaving),"Read rail exit");
         const auto y=steering.isActive&&std::abs(steering.currentState.y)>.1f&&std::abs(steering.currentState.y)>=std::abs(steering.currentState.x)?steering.currentState.y:0;
-        return {steering.isActive?-steering.currentState.x:0,boosting.isActive&&boosting.currentState>.5f,resetting.isActive&&resetting.changedSinceLastSync&&resetting.currentState,jumping.isActive&&jumping.currentState,y};
+        return {steering.isActive?-steering.currentState.x:0,boosting.isActive&&boosting.currentState>.5f,resetting.isActive&&resetting.changedSinceLastSync&&resetting.currentState,jumping.isActive&&jumping.currentState,y,leaving.isActive&&leaving.currentState};
     }
     void events() {
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};XrResult result;

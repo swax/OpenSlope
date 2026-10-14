@@ -2,6 +2,7 @@
 #include "openslope/terrain.hpp"
 #include "openslope/props.hpp"
 #include "openslope/world.hpp"
+#include "openslope/rails.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/collision.hpp"
 #include <nlohmann/json.hpp>
@@ -197,6 +198,7 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     notify("Converting static object models and placements");const auto behavior=files.find(stem+".SSF");
     import_detail::write_props(member(files,stem+".PBD"),member(files,stem+".MAP"),images,behavior==files.end()?nullptr:&behavior->second,output,cancelled);
     Json outputs={"Patches.json","Origin.json","Textures","Lightmaps","Models.json","Instances.json","Materials.json","Meshes"};
+    notify("Converting analytic rail splines");import_detail::write_rails(member(files,stem+".PBD"),member(files,stem+".MAP"),behavior==files.end()?nullptr:&behavior->second,output,cancelled);outputs.push_back("Splines.json");
     // [Trailmap: 220-model-header, 400-backdrop] The backdrop uses the same
     // model format, with its own art bank and no world-placement linker.
     const bool sky=files.contains(stem+"_SKY.PBD")||files.contains(stem+"_SKY.SSH");
@@ -215,8 +217,8 @@ void extract_course(const DiscInput& disc,const std::string& course,const std::f
     // Lossless local source sidecars support later importer stages without
     // reselecting the ISO. They are not a replacement for portable contracts.
     std::filesystem::create_directory(output/"Source");for(const auto& [name,bytes]:files){notify("Saving source "+name);std::ofstream stream(output/"Source"/name,std::ios::binary);stream.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));if(!stream)throw std::runtime_error("Cannot write source sidecar");}
-    Json deferred={"live-object-effects","rail-splines","effects","world","audio-resolvers","audio-runtime"};if(!sky)deferred.push_back("skybox");if(!audio)deferred.push_back("audio-assets");
+    Json deferred={"live-object-effects","effects","world","audio-resolvers","audio-runtime"};if(behavior==files.end())deferred.push_back("rail-candidacy");if(!sky)deferred.push_back("skybox");if(!audio)deferred.push_back("audio-assets");
     write_json(output/"Import.json",{{"Schema","openslope-native-import/v1"},{"Course",stem},{"Complete",false},{"Outputs",outputs},{"Deferred",deferred}});
-    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));static_cast<void>(World::load(output));static_cast<void>(CoursePaths::load(output));static_cast<void>(CollisionWorld::load(output));cleanup.complete=true;
+    notify("Validating map");static_cast<void>(Terrain::load(output));static_cast<void>(Props::load(output));static_cast<void>(World::load(output));static_cast<void>(Rails::load(output));static_cast<void>(CoursePaths::load(output));static_cast<void>(CollisionWorld::load(output));cleanup.complete=true;
 }
 }

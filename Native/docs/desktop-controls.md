@@ -130,3 +130,7 @@ half-spin, switch touchdown and continued riding. It checks the end-state counte
 and rendered board pixels. The existing 162 Vulkan appearance assertions also
 run against UNORM/sRGB attachments. Timing during these checks is diagnostic,
 not an isolated performance baseline or evidence of headset performance.
+
+Rail controls: A/D slews deck spin, Shift adds tangent boost, Space retains the
+shared charged jump, and E exits carrying velocity. VR uses left-stick steering,
+right trigger boost, A jump and left-stick click exit. See rails.md.

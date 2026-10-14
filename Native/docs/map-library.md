@@ -68,6 +68,7 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Collision/*.obj`, `Physics.json` | All SSF pool payloads; raw proxy positions and normals, preserved physics centre/inertia, level records and raw/RLE mask bytes. Models carry source local `CollisionBounds`. Older exported physics data in `SSFLogic.json` also loads. |
 | `Materials.json` | Static base-texture references and flags; neutral labels, with remaining material behavior fields deferred. |
 | `Skybox/` (when present) | Separate model/material/OBJ/PNG panorama. Camera-local rendering needs no placement or ring metadata; see world-appearance.md. |
+| `Splines.json` (when present) | Analytic rail curves, candidacy and style; optional exact source coefficients/arc/link metadata. Existing/custom Points-only curves are supported; see rails.md. |
 | `AIP.json`, `SOP.json` (when present) | Existing start-slot, AI/race-line and event contracts; expanded displacement steps, raw seeds, DTF and path attributes. Runtime retains the seed vertex and uses the middle start slot. |
 | `RidingEffects.json`, `Textures/particle-*.png` (when the shared particle bank is present) | Native optional profile and named particle art. Playback references independent optional puff/wake/sheet slots; the cache copies their images and metadata. Sprite registration-index mapping and full effect runtime remain deferred. |
 | `Audio/` (when configured) | Complete assigned sound banks, loop slices, placed fixed-environment banks, preserved configs, course music graphs/chunks and configured async banks/intro stems. Empty slots stay empty. Executable collision/board indexes, dynamic chants and speech remain deferred; see audio-import.md. |
@@ -76,7 +77,7 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Import.json` | Explicit stage report: `Complete` is false, with emitted and deferred stage names. |
 
 This imports canonical terrain, static-prop rendering, collision data, AIP/SOP paths and configured audio assets; complete course conversion
-remains to be implemented. Live object behavior, rail splines, original world settings, effects and complete audio routing/runtime
+remains to be implemented. Live object behavior, original world settings, effects and complete audio routing/runtime
 remain deferred. A folder already produced by a compatible extractor or Slopesmith
 is also accepted. Rendering those systems is separate from converting them.
 The implemented terrain appearance contract is described in [terrain appearance](terrain-appearance.md).
@@ -111,3 +112,7 @@ No reference output or retail fixture is tracked or packaged.
 The Android APK and its JNI exports are build-checked. Document picker behavior, provider grants,
 VR transitions, interruption, and controller behavior require a connected headset. A desktop
 extraction comparison does not establish that the headset UI or storage provider works.
+
+Run `python tools/native-compare-rails.py <native-course> <reference-course>` for
+spline contracts, exact retained source geometry and declared float32 control bounds.
+Fresh-root imports add rails; existing course folders are still protected.

@@ -68,3 +68,9 @@ Mesh positions permit 0.001 raw cm; no per-course mesh exceptions are used. Mate
 neutral because linker names do not have an established PBD material-row correspondence.
 Exact source matrices are retained through an optional portable-contract extension. Deferred
 material/behavior fields are not reported as equivalent. See static-props.md for the comparison scope.
+
+Rail conversion and gameplay use clean chapters 140, 220, 230 and 350, public
+Splines.json keys and standard cubic/BVH math. The own power-to-control transform
+uses double accumulation; generated JSON supplies comparison data only. Exact
+source coefficients remain available to runtime nearest queries. See rails.md
+for declared control-rounding bounds and unresolved lifecycle details.
