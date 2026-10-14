@@ -3,6 +3,7 @@
 #include "openslope/props.hpp"
 #include <lodepng.h>
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <set>
@@ -64,5 +65,21 @@ Appearance Appearance::load(const std::filesystem::path& root,std::span<const Me
 std::array<double,3> terrain_light(std::array<double,3> base,std::array<double,4> lightmap) {
     for(unsigned c=0;c<3;++c)base[c]=std::clamp((base[c]-lightmap[c])*lightmap[3],0.0,1.0);
     return base;
+}
+std::vector<RgbaImage> diffuse_mips(const RgbaImage& base) {
+    if(!base.width||!base.height||base.width>4096||base.height>4096||base.pixels.size()!=std::size_t(base.width)*base.height*4)throw std::runtime_error("Invalid diffuse mip input");
+    std::vector<RgbaImage> levels{base};
+    while(levels.back().width>1||levels.back().height>1){
+        const auto& source=levels.back();RgbaImage next{std::max(1u,source.width/2),std::max(1u,source.height/2),{}};next.pixels.resize(std::size_t(next.width)*next.height*4);
+        for(unsigned y=0;y<next.height;++y){for(unsigned x=0;x<next.width;++x){
+            const double left=double(x)*source.width/next.width,right=double(x+1)*source.width/next.width,top=double(y)*source.height/next.height,bottom=double(y+1)*source.height/next.height;
+            std::array<double,3> colour{};double alpha=0,area=0;
+            for(unsigned sy=unsigned(top);sy<unsigned(std::ceil(bottom));++sy)for(unsigned sx=unsigned(left);sx<unsigned(std::ceil(right));++sx){
+                const auto weight=(std::min(right,double(sx+1))-std::max(left,double(sx)))*(std::min(bottom,double(sy+1))-std::max(top,double(sy)));const auto p=(std::size_t(sy)*source.width+sx)*4;area+=weight;alpha+=weight*source.pixels[p+3];for(unsigned c=0;c<3;++c)colour[c]+=weight*source.pixels[p+c]*source.pixels[p+3];
+            }
+            const auto p=(std::size_t(y)*next.width+x)*4;for(unsigned c=0;c<3;++c)next.pixels[p+c]=std::uint8_t(std::clamp(std::lround(alpha>0?colour[c]/alpha:0),0l,255l));next.pixels[p+3]=std::uint8_t(std::clamp(std::lround(alpha/area),0l,255l));
+        }}
+        levels.push_back(std::move(next));
+    }return levels;
 }
 }

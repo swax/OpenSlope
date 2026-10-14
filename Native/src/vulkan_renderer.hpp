@@ -35,7 +35,8 @@ private:
     std::uint32_t board_first_{};VkDescriptorSet board_set_{};
     VkDescriptorSetLayout descriptors_{};VkDescriptorPool descriptor_pool_{};
     VkSampler repeat_{},clamp_{};
-    Image image(const struct RgbaImage& pixels,VkCommandPool pool);
+    VkDeviceSize image_bytes_{};
+    Image image(const struct RgbaImage& pixels,VkCommandPool pool,bool mipmapped=true);
     Buffer buffer(VkDeviceSize size,VkBufferUsageFlags usage,const void* data);
 };
 class VulkanRenderer {

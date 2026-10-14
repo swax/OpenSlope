@@ -34,7 +34,7 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend"}) {
+        for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification"}) {
             auto scene=std::make_shared<VulkanScene>(context);scene->upload(Terrain::load(root/name).mesh(4));
             // The same scene is used by two renderers, just like the stereo host.
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
@@ -42,7 +42,9 @@ int main(int argc,char** argv) {
             const auto camera=std::string(name)=="handedness"?projection(-1,1,-1,1)*view({0,0,0},{0,0,-1}):Matrix::identity();
             const auto a=capture(first,root/(std::string(name)+"-unorm.ppm"),camera),b=capture(second,root/(std::string(name)+"-srgb.ppm"),camera);
             for(const auto* pixels:{&a,&b}) {
-                if(std::string(name)=="handedness") {
+                if(std::string(name)=="minification") {
+                    for(const auto u:{.15,.35,.5,.65,.85})for(const auto v:{.15,.35,.5,.65,.85})pixel(*pixels,u,v,{128,128,128});
+                }else if(std::string(name)=="handedness") {
                     pixel(*pixels,.15,.15,{240,20,40});pixel(*pixels,.85,.15,{30,220,50});pixel(*pixels,.15,.85,{40,60,230});pixel(*pixels,.85,.85,{230,210,190});
                 }else if(std::string(name)=="orientation") {
                     pixel(*pixels,.15,.15,{240,20,40});pixel(*pixels,.85,.15,{40,60,230});pixel(*pixels,.15,.85,{30,220,50});pixel(*pixels,.85,.85,{230,210,190});

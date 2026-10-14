@@ -33,31 +33,34 @@ VulkanScene::Buffer VulkanScene::buffer(VkDeviceSize size,VkBufferUsageFlags usa
         return result;
     }catch(...){if(result.buffer)vkDestroyBuffer(context_.device,result.buffer,nullptr);if(result.memory)vkFreeMemory(context_.device,result.memory,nullptr);throw;}
 }
-VulkanScene::Image VulkanScene::image(const RgbaImage& pixels,VkCommandPool pool) {
+VulkanScene::Image VulkanScene::image(const RgbaImage& pixels,VkCommandPool pool,bool mipmapped) {
     VkPhysicalDeviceProperties properties;vkGetPhysicalDeviceProperties(context_.physical,&properties);
     if(pixels.width>properties.limits.maxImageDimension2D||pixels.height>properties.limits.maxImageDimension2D)throw std::runtime_error("Map image exceeds this GPU's texture size limit");
     Image result;Buffer staging;VkCommandBuffer command{};
     const auto cleanup=[&]{if(command)vkFreeCommandBuffers(context_.device,pool,1,&command);if(staging.buffer)vkDestroyBuffer(context_.device,staging.buffer,nullptr);if(staging.memory)vkFreeMemory(context_.device,staging.memory,nullptr);};
     try {
-        staging=buffer(pixels.pixels.size(),VK_BUFFER_USAGE_TRANSFER_SRC_BIT,pixels.pixels.data());
+        const auto levels=mipmapped?diffuse_mips(pixels):std::vector<RgbaImage>{pixels};std::vector<std::uint8_t> packed;std::vector<VkBufferImageCopy> copies;
+        for(std::size_t i=0;i<levels.size();++i){const auto& level=levels[i];VkBufferImageCopy copy{};copy.bufferOffset=packed.size();copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,std::uint32_t(i),0,1};copy.imageExtent={level.width,level.height,1};copies.push_back(copy);packed.insert(packed.end(),level.pixels.begin(),level.pixels.end());}
+        staging=buffer(packed.size(),VK_BUFFER_USAGE_TRANSFER_SRC_BIT,packed.data());
         // [Trailmap: 160-luminance, 400-lighting] Blend the exported byte domain;
         // automatic sRGB texture conversion would alter the residual subtraction.
-        VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};info.imageType=VK_IMAGE_TYPE_2D;info.format=VK_FORMAT_R8G8B8A8_UNORM;info.extent={pixels.width,pixels.height,1};info.mipLevels=1;info.arrayLayers=1;info.samples=VK_SAMPLE_COUNT_1_BIT;info.tiling=VK_IMAGE_TILING_OPTIMAL;info.usage=VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+        VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};info.imageType=VK_IMAGE_TYPE_2D;info.format=VK_FORMAT_R8G8B8A8_UNORM;info.extent={pixels.width,pixels.height,1};info.mipLevels=std::uint32_t(levels.size());info.arrayLayers=1;info.samples=VK_SAMPLE_COUNT_1_BIT;info.tiling=VK_IMAGE_TILING_OPTIMAL;info.usage=VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
         vk_check(vkCreateImage(context_.device,&info,nullptr,&result.image),"Create map image");
         VkMemoryRequirements requirements;vkGetImageMemoryRequirements(context_.device,result.image,&requirements);
+        if(requirements.size>512ull*1024*1024-image_bytes_)throw std::runtime_error("Map sampled images exceed the 512 MiB GPU budget");
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=memory_type(context_,requirements.memoryTypeBits,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         vk_check(vkAllocateMemory(context_.device,&allocation,nullptr,&result.memory),"Allocate map image");vk_check(vkBindImageMemory(context_.device,result.image,result.memory,0),"Bind map image");
         VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};allocate.commandPool=pool;allocate.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;allocate.commandBufferCount=1;
         vk_check(vkAllocateCommandBuffers(context_.device,&allocate,&command),"Allocate image upload command");
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;vk_check(vkBeginCommandBuffer(command,&begin),"Begin image upload");
-        VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};barrier.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED;barrier.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;barrier.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;barrier.srcQueueFamilyIndex=barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;barrier.image=result.image;barrier.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+        VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};barrier.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED;barrier.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;barrier.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;barrier.srcQueueFamilyIndex=barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;barrier.image=result.image;barrier.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,info.mipLevels,0,1};
         vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,0,nullptr,1,&barrier);
-        VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent=info.extent;vkCmdCopyBufferToImage(command,staging.buffer,result.image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&copy);
+        vkCmdCopyBufferToImage(command,staging.buffer,result.image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,std::uint32_t(copies.size()),copies.data());
         barrier.oldLayout=barrier.newLayout;barrier.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
         vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,nullptr,0,nullptr,1,&barrier);
         vk_check(vkEndCommandBuffer(command),"End image upload");VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.commandBufferCount=1;submit.pCommandBuffers=&command;vk_check(vkQueueSubmit(context_.queue,1,&submit,{}),"Submit image upload");vk_check(vkQueueWaitIdle(context_.queue),"Finish image upload");
         VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};view.image=result.image;view.viewType=VK_IMAGE_VIEW_TYPE_2D;view.format=info.format;view.subresourceRange=barrier.subresourceRange;
-        vk_check(vkCreateImageView(context_.device,&view,nullptr,&result.view),"Create map image view");cleanup();return result;
+        vk_check(vkCreateImageView(context_.device,&view,nullptr,&result.view),"Create map image view");image_bytes_+=requirements.size;cleanup();return result;
     }catch(...){vkDeviceWaitIdle(context_.device);cleanup();if(result.view)vkDestroyImageView(context_.device,result.view,nullptr);if(result.image)vkDestroyImage(context_.device,result.image,nullptr);if(result.memory)vkFreeMemory(context_.device,result.memory,nullptr);throw;}
 }
 VulkanScene::~VulkanScene() {
@@ -81,13 +84,13 @@ void VulkanScene::upload(const Mesh& source) {
     images_.reserve(appearance.images.size()+2);images_.push_back(image({1,1,{255,255,255,255}},upload.pool));images_.push_back(image({1,1,{0,0,0,255}},upload.pool));
     std::map<std::string,std::size_t> names;
     std::map<std::string,bool> fractional;
-    for(auto& [name,pixels]:appearance.images){bool smooth=false;for(std::size_t p=3;p<pixels.pixels.size();p+=4)if(pixels.pixels[p]>0&&pixels.pixels[p]<255){smooth=true;break;}fractional[name]=smooth;names.emplace(name,images_.size());images_.push_back(image(pixels,upload.pool));pixels.pixels.clear();pixels.pixels.shrink_to_fit();}
+    for(auto& [name,pixels]:appearance.images){bool smooth=false;for(std::size_t p=3;p<pixels.pixels.size();p+=4)if(pixels.pixels[p]>0&&pixels.pixels[p]<255){smooth=true;break;}fractional[name]=smooth;names.emplace(name,images_.size());images_.push_back(image(pixels,upload.pool,name.starts_with("Textures/")));pixels.pixels.clear();pixels.pixels.shrink_to_fit();}
     pose_capacity_=1;for(const auto& instance:props_.instances)pose_capacity_+=props_.models[instance.model].parts.size();
     VkPhysicalDeviceProperties limits;vkGetPhysicalDeviceProperties(context_.physical,&limits);
     if(pose_capacity_>1000000||pose_capacity_*sizeof(PropPose)>limits.limits.maxStorageBufferRange)throw std::runtime_error("Prop instance buffer exceeds this GPU's limit");
     poses_=buffer(pose_capacity_*sizeof(PropPose),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,nullptr);
-    VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};sampler.magFilter=sampler.minFilter=VK_FILTER_LINEAR;sampler.mipmapMode=VK_SAMPLER_MIPMAP_MODE_NEAREST;sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&repeat_),"Create diffuse sampler");sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&clamp_),"Create lightmap sampler");
+    VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};sampler.magFilter=sampler.minFilter=VK_FILTER_LINEAR;sampler.mipmapMode=VK_SAMPLER_MIPMAP_MODE_LINEAR;sampler.maxLod=VK_LOD_CLAMP_NONE;sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&repeat_),"Create diffuse sampler");sampler.maxLod=0;sampler.addressModeU=sampler.addressModeV=sampler.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;vk_check(vkCreateSampler(context_.device,&sampler,nullptr,&clamp_),"Create lightmap sampler");
     const std::array<VkDescriptorSetLayoutBinding,3> bindings{{{0,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr},{2,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_VERTEX_BIT,nullptr}}};
     VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};layout.bindingCount=3;layout.pBindings=bindings.data();vk_check(vkCreateDescriptorSetLayout(context_.device,&layout,nullptr,&descriptors_),"Create map descriptor layout");
     const auto count=std::uint32_t(batches.size()+1);const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,count*2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,count}}};VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};descriptor_pool.maxSets=count;descriptor_pool.poolSizeCount=2;descriptor_pool.pPoolSizes=sizes.data();vk_check(vkCreateDescriptorPool(context_.device,&descriptor_pool,nullptr,&descriptor_pool_),"Create map descriptor pool");

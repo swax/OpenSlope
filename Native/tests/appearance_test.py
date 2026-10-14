@@ -34,6 +34,8 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    miniature = course(root, "minification", "checker.png", uv=((0, 0), (0, 256), (256, 0), (256, 256)))
+    (miniature / "Textures/checker.png").write_bytes(rgba(128, 128, [channel for y in range(128) for x in range(128) for channel in ([255,255,255,255] if (x+y)%2 else [0,0,0,255])]))
     pixels = bytes([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 64])
     (root / "rgba.png").write_bytes(rgba(2, 2, pixels))
     palette = chunk(b"PLTE", bytes([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255])) + chunk(b"tRNS", bytes([255, 128, 0, 64]))

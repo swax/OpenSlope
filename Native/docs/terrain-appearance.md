@@ -55,6 +55,22 @@ Direct app-storage maps load in place. Custom maps use this path without selecti
 
 ## Validation
 
+Diffuse terrain/prop images now carry a complete mip chain with trilinear
+minification. CPU area averages include odd-sized edges and weight straight-alpha
+colour by coverage, avoiding transparent-colour fringes. Filtering stays in the
+exported byte domain; this is an image-quality policy, not a claim to reproduce
+the original hardware's texture filter. The same uploaded chain serves both eyes.
+Lightmap atlases retain base-level sampling to prevent unrelated patch tiles
+bleeding into each other. GPU sampled-image allocations, including driver padding,
+are capped at 512 MiB; the existing 256 MiB decoded base-image budget remains.
+Anisotropic filtering, mask coverage preservation, atlas-safe lightmap mips,
+anti-aliasing, terrain LOD/culling and upload batching remain outstanding.
+
+Portable fixtures cover odd/rectangular reductions, alpha fringes and invalid
+storage. Actual Vulkan captures minify a high-frequency checker to its area mean
+on UNORM/sRGB targets while retaining existing orientation, atlas-edge and prop
+alpha assertions.
+
 Portable checks cover diffuse corner binding, negative/repeating/mirrored UVs, asymmetric
 transposed tiles, draw grouping, RGB-residual/alpha intensity, PNG palette/transparency/interlace
 and metadata handling, invalid PNGs, missing files and path traversal.
