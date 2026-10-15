@@ -49,15 +49,23 @@ struct AvatarPose {
     std::array<Vec3, avatar_joint_count> joints{};
     std::array<ControllerPose, 2> controllers{};
     Vec3 forward{0, 0, -1}, up{0, 1, 0};
+    Vec3 head_forward{0, 0, -1}, head_up{0, 1, 0};
     bool tracked_body = false, tracked_legs = false, on_foot = false, controller_models = true;
     std::array<std::string, 3> run_text{};
     std::array<std::string, 3> score_text{};
     int score_result = 0;
 
     Vec3 joint(AvatarJoint j) const { return joints[unsigned(j)]; }
+
+    Vec3 eye() const { return joint(AvatarJoint::Head) + head_up * .105 + head_forward * .11; }
 };
 
-AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking = nullptr);
+struct AvatarLook {
+    Vec3 forward{0, 0, -1}, up{0, 1, 0};
+};
+
+AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking = nullptr,
+                       const AvatarLook* look = nullptr);
 
 // Bundled first-party rigid skin, posed independently of collision/physics state.
 class Avatar {

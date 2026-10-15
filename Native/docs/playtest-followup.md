@@ -4,8 +4,11 @@ The 0.35 desktop playtest supplies the following acceptance work for the active
 Slopesmith gameplay-parity goal. This list supplements desktop-parity.md; it does
 not replace its broader audio, world, performance and multiplayer requirements.
 
-- [ ] Body/head motion while playing: animate the first-party avatar and aim its
+- [x] Body/head motion while playing: animate the first-party avatar and aim its
   head coherently with movement/look, including walking, riding and switch.
+  Build 0.39 adds procedural balance, gait, arm inertia, landing compression,
+  head look and fixed switch bindings. Style selection, stature calibration and
+  worn Quest confirmation remain; see rider-motion.md.
 - [x] Desktop 0.36 test launchers start in third person.
 - [ ] Glass barriers render transparently and smash, disappear and play their
   configured break sound when crossed with an admitted impact.

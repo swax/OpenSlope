@@ -95,6 +95,7 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     trail_attachment_ = 0;
     ++placement_serial_;
     effects_.reset();
+    rider_motion_.reset();
     boost_trail_.reset();
     get_up_.stop();
     settled_ = 0;
@@ -530,6 +531,14 @@ void Player::notify_tick(const Rider& before) {
                           return WakeContact{hit->point, hit->normal, hit->surface};
                       return {};
                   });
+    const auto speed = length(project(rider_.velocity - rider_.ground_velocity, rider_.normal));
+    rider_motion_.step({on_foot_ ? rider_.position : deck, rider_.velocity, rider_.normal, rider_.lean, rider_.crouch,
+                        speed, rider_.release_snapshot, rider_.grounded, on_foot_,
+                        !on_foot_ && rider_.grounded && rider_.motion == Motion::Ground && speed > 4 &&
+                            std::abs(rider_.lean) < .2 && rider_.crouch < .1 && held_boost_ == 0 && !reset_pending() &&
+                            !recovering(),
+                        rider_.launches, rider_.landings, placement_serial_},
+                       dt);
     if (tick_observer_)
         tick_observer_(*this, placed ? rider_ : before);
 }

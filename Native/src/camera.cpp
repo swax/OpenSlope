@@ -43,8 +43,9 @@ void FollowCamera::step(const Player& p, double seconds, bool boosting, bool dra
     const auto forward = rotate(heading_, {0, 1, 0}, orbit_yaw_), right = normalized(cross(forward, {0, 1, 0}));
     const auto root = p.render_position(), target = root + Vec3{0, 1, 0};
     if (first_person) {
-        pose_.eye = avatar_pose(p).joint(AvatarJoint::Head) + Vec3{0, .105, 0};
         pose_.forward = normalized(rotate(forward, right, orbit_pitch_));
+        const AvatarLook look{pose_.forward, {0, 1, 0}};
+        pose_.eye = avatar_pose(p, nullptr, &look).eye();
     } else {
         const auto direction = rotate(forward, right, pitch_ + orbit_pitch_);
         const auto candidate = p.camera_position(target - direction * ((p.on_foot() ? 3.

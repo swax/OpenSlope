@@ -125,8 +125,55 @@ int main(int argc, char** argv) {
             return p;
         };
         render("desktop", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
-        render("desktop-down", avatar_pose(player), true,
-               avatar_pose(player).joint(AvatarJoint::Head) + Vec3{0, .105, 0}, {0, -1, -.22}, false);
+        const AvatarLook down_look{normalized(Vec3{0, -1, -.22}), {0, 1, 0}};
+        const auto down_pose = avatar_pose(player, nullptr, &down_look);
+        render("desktop-down", down_pose, true, down_pose.eye(), down_look.forward, false);
+        // Keep the torso and camera fixed to isolate all three head rotation axes.
+        auto head_pose = avatar_pose(player);
+        head_pose.head_forward = {0, 0, -1};
+        head_pose.head_up = {0, 1, 0};
+        const auto head_eye = head_pose.joint(AvatarJoint::Head) + Vec3{0, .18, -2};
+        const auto head_direction = head_pose.joint(AvatarJoint::Head) + Vec3{0, .10, 0} - head_eye;
+        const auto head_base = render("head-forward", head_pose, false, head_eye, head_direction, false);
+        const auto hidden_base = render("head-hidden-base", head_pose, true, head_eye, head_direction, false);
+        for (unsigned axis = 0; axis < 3; ++axis) {
+            auto turned = head_pose;
+            const Vec3 turn_axis = axis == 0 ? Vec3{0, 1, 0} : axis == 1 ? Vec3{1, 0, 0} : Vec3{0, 0, 1};
+            turned.head_forward = rotate(turned.head_forward, turn_axis, pi * .4);
+            turned.head_up = rotate(turned.head_up, turn_axis, pi * .4);
+            const auto name = "head-axis-" + std::to_string(axis);
+            const auto rotated_head = render(name, turned, false, head_eye, head_direction, false);
+            unsigned difference = 0;
+            for (std::size_t i = 0; i < head_base.size(); i += 3)
+                difference += std::abs(int(head_base[i]) - int(rotated_head[i])) +
+                                  std::abs(int(head_base[i + 1]) - int(rotated_head[i + 1])) +
+                                  std::abs(int(head_base[i + 2]) - int(rotated_head[i + 2])) >
+                              30;
+            check(difference > 300, "head yaw/pitch/roll changes real skinned pixels");
+            check(render(name + "-hidden", turned, true, head_eye, head_direction, false) == hidden_base,
+                  "own head remains hidden and head look leaves body pixels unchanged");
+        }
+        player.start_on_foot();
+        std::array<std::vector<unsigned char>, 2> walk_pixels;
+        for (unsigned phase = 0; phase < 2; ++phase) {
+            RideInput walk;
+            walk.posture = 1;
+            for (unsigned tick = 0; tick < 11; ++tick)
+                player.tick(walk);
+            auto pose = avatar_pose(player);
+            for (auto& joint : pose.joints)
+                joint -= player.render_position();
+            walk_pixels[phase] =
+                render("walk-phase-" + std::to_string(phase), pose, false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+        }
+        unsigned walking_change = 0;
+        for (std::size_t i = 0; i < walk_pixels[0].size(); i += 3)
+            walking_change += std::abs(int(walk_pixels[0][i]) - int(walk_pixels[1][i])) +
+                                  std::abs(int(walk_pixels[0][i + 1]) - int(walk_pixels[1][i + 1])) +
+                                  std::abs(int(walk_pixels[0][i + 2]) - int(walk_pixels[1][i + 2])) >
+                              30;
+        check(walking_change > 300, "walk gait changes real avatar pixels with root translation removed");
+        player.warp({0, 0, 0}, {0, 0, -1});
         auto fallback = avatar_pose(player, &tracking);
         auto labels = render("vr-help", fallback, true, tracking.head, {0, -.7, -1}, true);
         auto no_labels = render("vr-no-help", fallback, true, tracking.head, {0, -.7, -1}, false);

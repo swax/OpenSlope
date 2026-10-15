@@ -13,11 +13,12 @@ constexpr unsigned id(J j) { return unsigned(j); }
 
 Vec3 knee(Vec3 hip, Vec3 ankle, Vec3 bend, double upper, double lower) {
     const auto delta = ankle - hip;
-    const auto d = std::clamp(length(delta), .05, upper + lower - .001);
+    const auto d = std::clamp(length(delta), std::abs(upper - lower) + .001, upper + lower - .001);
     const auto axis = normalized(delta, {0, -1, 0});
     const auto along = (upper * upper - lower * lower + d * d) / (2 * d),
                height = std::sqrt(std::max(0., upper * upper - along * along));
-    return hip + axis * along + normalized(project(bend, axis), {0, 0, -1}) * height;
+    const auto fallback = normalized(cross(axis, std::abs(axis.x) < .8 ? Vec3{1, 0, 0} : Vec3{0, 1, 0}));
+    return hip + axis * along + normalized(project(bend, axis), fallback) * height;
 }
 
 Vec3 align(Vec3 v, Vec3 from, Vec3 to) {
@@ -129,7 +130,7 @@ BoneTarget target(std::string_view name, const AvatarPose& p) {
     if (name == "Neck")
         return pair(J::Neck, J::Head);
     if (name == "Head")
-        return {p.joint(J::Head), p.joint(J::Head) + p.up * .105};
+        return {p.joint(J::Head), p.joint(J::Head) + p.head_up * .105};
     const bool left = name.ends_with(".L");
     if (name.starts_with("Clavicle"))
         return pair(J::Neck, left ? J::LeftShoulder : J::RightShoulder);
@@ -161,14 +162,16 @@ ControllerPose controller_draw_pose(const ControllerPose& grip) {
     return c;
 }
 
-AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking) {
-    if (tracking && (!finite(tracking->head) || !finite(tracking->forward) || !finite(tracking->up)))
+AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking, const AvatarLook* look) {
+    if (tracking && (!finite(tracking->head) || !finite(tracking->forward) || !finite(tracking->up) ||
+                     length(cross(tracking->forward, tracking->up)) < .1))
         tracking = nullptr;
     AvatarPose p;
     p.on_foot = player.on_foot();
     const auto root = p.on_foot ? player.render_position() : player.render_board_position();
     const auto& rider = player.rider();
-    const auto crouch = std::clamp(rider.crouch, 0., 1.);
+    const auto motion = player.rider_motion();
+    const auto crouch = std::clamp(motion.crouch, 0., 1.);
     const auto& run = player.course_run().status();
     if (run.mode != RunMode::Freeride) {
         p.run_text[0] = std::string(run_name(run.mode)) + " " + run_clock(run.clock);
@@ -195,31 +198,95 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking) {
             p.score_text[2] += " X" + std::to_string(score.multiplier);
         p.score_result = score.preview ? 0 : score.resolution && score.result_age < 3 ? (score.bailed ? -1 : 1) : 0;
     }
-    p.up = p.on_foot ? Vec3{0, 1, 0} : player.render_up();
-    p.forward = p.on_foot ? rider.forward : normalized(rotate(player.render_forward(), p.up, -pi * .5 * rider.lead));
+    const auto nose = player.render_forward(), deck_up = player.render_up();
+    const auto bank = player.contract().value("steering", "bankMaxDeg") * pi / 180;
+    p.up = p.on_foot ? Vec3{0, 1, 0}
+                     : normalized(rotate(
+                           deck_up, nose,
+                           rider.motion == Motion::Ground ? bank * (rider.lean - motion.lean * .4) * rider.lead : 0));
+    // Anatomical left/right and bindings stay attached to the same deck ends in switch.
+    p.forward = p.on_foot ? normalized(project(rider.forward, p.up)) : normalized(rotate(nose, p.up, -pi * .5));
     const auto right = normalized(cross(p.forward, p.up));
-    const auto at = [&](double x, double y, double z) { return root + right * x + p.up * y + p.forward * z; };
-    p.joints[id(J::Hips)] = at(0, 1.0364 - .35 * crouch, .04 * crouch);
-    p.joints[id(J::Spine)] = p.joint(J::Hips) + p.up * .14 + p.forward * (.09 * crouch);
-    p.joints[id(J::Chest)] = p.joint(J::Spine) + p.up * .052 + p.forward * (.03 * crouch);
-    p.joints[id(J::Neck)] = p.joint(J::Chest) + p.up * .242;
-    p.joints[id(J::Head)] = p.joint(J::Neck) + p.up * .075;
+    const auto gait = motion.walking * std::sin(player.walk_phase());
+    const auto weight = Vec3{0, 9.8, 0} + motion.acceleration;
+    const auto balance = length(weight) > 1 ? normalized(weight) : p.up;
+    const auto grounded_balance = rider.grounded && !p.on_foot ? project(balance - p.up, p.up) : Vec3{};
+    const auto coil = crouch * (1 - .55 * std::abs(motion.lean));
+    const auto hip_height =
+        (p.on_foot ? 1.034 : .927 - .23 * std::abs(motion.lean)) - (p.on_foot ? .35 : .22) * coil + .097 * motion.pop;
+    auto hips = root + p.up * (hip_height + motion.hip_lag) + grounded_balance * .08;
+    if (p.on_foot)
+        hips += right * (gait * .015) + p.up * (motion.walking * .012 * std::cos(2 * player.walk_phase()));
+    else
+        hips -= p.forward * (.05 * motion.lean * rider.lead);
+    // Place the feet first, then lower the pelvis to keep both fixed-length legs in reach.
+    for (unsigned side = 0; side < 2; ++side) {
+        const auto sign = side ? 1. : -1.;
+        const auto stride = p.on_foot ? -sign * gait * .18 : 0.;
+        p.joints[id(side ? J::RightAnkle : J::LeftAnkle)] =
+            p.on_foot ? root + right * (sign * .105) + p.forward * stride + p.up * (.12 + std::max(0., stride) * .2)
+                      : root - nose * (sign * .27) + deck_up * .12;
+    }
+    for (unsigned side = 0; side < 2; ++side) {
+        const auto sign = side ? 1. : -1.;
+        const auto ankle = p.joint(side ? J::RightAnkle : J::LeftAnkle);
+        const auto offset = right * (sign * .105) - p.up * .087;
+        const auto delta = hips + offset - ankle;
+        constexpr double reach = .4165 + .4182 - .001;
+        const auto across = project(delta, p.up);
+        const auto allowed = std::sqrt(std::max(0., reach * reach - dot(across, across)));
+        hips -= p.up * std::max(0., dot(delta, p.up) - allowed);
+    }
+    const auto lumbar =
+        normalized(p.up + grounded_balance * .2 + p.forward * (.48 * coil + .06 * std::abs(motion.lean)));
+    const auto thoracic = normalized(p.up + grounded_balance * .45 + p.forward * (.30 * coil));
+    p.joints[id(J::Hips)] = hips;
+    p.joints[id(J::Spine)] = hips + lumbar * .14162;
+    p.joints[id(J::Chest)] = hips + lumbar * .194;
+    p.joints[id(J::Neck)] = p.joint(J::Chest) + thoracic * .244;
+    p.joints[id(J::Head)] = p.joint(J::Neck) + thoracic * .075;
+    p.head_forward = p.on_foot ? p.forward : nose * double(rider.lead);
+    const auto level = normalized(project(Vec3{0, 1, 0}, p.head_forward), p.up);
+    p.head_up = p.on_foot
+                    ? p.up
+                    : normalized(project(deck_up * (rider.grounded ? .2 : .35) + level * (rider.grounded ? .8 : .65),
+                                         p.head_forward),
+                                 p.up);
+    if (!p.on_foot)
+        p.head_forward = normalized(rotate(p.head_forward, p.head_up, motion.glance));
+    if (look && finite(look->forward) && finite(look->up) && length(cross(look->forward, look->up)) > .1) {
+        p.head_forward = normalized(look->forward);
+        p.head_up = normalized(project(look->up, p.head_forward));
+    }
     if (tracking) {
         p.up = {0, 1, 0};
         p.forward = normalized(project(tracking->forward, p.up), player.camera_forward());
+        // A held-out controller pair supplies a wearer frame even while looking over a shoulder.
+        const auto& left = tracking->controllers[0];
+        const auto& right_hand = tracking->controllers[1];
+        if (left.valid && right_hand.valid && finite(left.position) && finite(right_hand.position)) {
+            const auto span = project(right_hand.position - left.position, p.up);
+            const auto ahead = project((left.position + right_hand.position) * .5 - tracking->head, p.up);
+            const auto facing = normalized(cross(p.up, span));
+            if (length(span) > .2 && length(ahead) > .12 && dot(facing, normalized(ahead)) > .5)
+                p.forward = facing;
+        }
         const auto r = normalized(cross(p.forward, p.up));
         const auto h = tracking->head;
-        p.joints[id(J::Head)] = h - p.up * .105;
-        p.joints[id(J::Neck)] = h - p.up * .18;
-        p.joints[id(J::Chest)] = h - p.up * .422;
-        p.joints[id(J::Spine)] = h - p.up * .474;
-        p.joints[id(J::Hips)] = h - p.up * .614;
+        p.head_forward = normalized(tracking->forward, p.forward);
+        p.head_up = normalized(project(tracking->up, p.head_forward), p.up);
+        p.joints[id(J::Head)] = h - p.head_up * .105 - p.head_forward * .11;
+        p.joints[id(J::Neck)] = p.joint(J::Head) - p.up * .075;
+        p.joints[id(J::Chest)] = p.joint(J::Neck) - p.up * .244;
+        p.joints[id(J::Spine)] = p.joint(J::Chest) - p.up * .05238;
+        p.joints[id(J::Hips)] = p.joint(J::Chest) - p.up * .194;
         for (unsigned side = 0; side < 2; ++side)
             p.joints[id(side ? J::RightShoulder : J::LeftShoulder)] =
                 p.joint(J::Neck) + r * (side ? .165 : -.165) - p.up * .075;
         if (tracking->body_active && std::isfinite(tracking->confidence) && tracking->confidence > .05f) {
             for (unsigned i = 0; i < avatar_joint_count; ++i)
-                if (tracking->valid[i] && finite(tracking->joints[i]) && length(tracking->joints[i] - h) < 2.5) {
+                if (i != id(J::Head) && tracking->valid[i] && finite(tracking->joints[i]) &&
+                    length(tracking->joints[i] - h) < 2.5) {
                     p.joints[i] = tracking->joints[i];
                     p.tracked_body = true;
                 }
@@ -243,6 +310,9 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking) {
         p.controllers[side] = {h.position, h.right, h.up, h.forward, true, true};
     }
     const auto body_right = normalized(cross(p.forward, p.up));
+    const auto travel = p.on_foot ? p.forward : nose * double(rider.lead);
+    const auto chest_turn = std::atan2(dot(cross(p.forward, travel), p.up), dot(p.forward, travel)) * .25;
+    const auto shoulder_right = tracking ? body_right : normalized(rotate(body_right, p.up, chest_turn));
     for (unsigned side = 0; side < 2; ++side) {
         const bool r = side != 0;
         const auto sign = r ? 1. : -1.;
@@ -254,39 +324,55 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking) {
             return p.tracked_body && tracking->valid[id(j)] && finite(tracking->joints[id(j)]) &&
                    length(tracking->joints[id(j)] - tracking->head) < 2.5;
         };
-        if (!tracking)
-            p.joints[id(shoulder)] = p.joint(J::Neck) + body_right * (sign * .165) - p.up * .075;
+        if (!tracked(shoulder))
+            p.joints[id(shoulder)] = p.joint(J::Neck) + shoulder_right * (sign * .165) - p.up * .075;
         if (!tracked(wrist))
-            p.joints[id(wrist)] =
-                p.joint(shoulder) + body_right * (sign * .19) + p.forward * .10 - p.up * (.49 - .10 * crouch);
+            p.joints[id(wrist)] = p.joint(shoulder) + shoulder_right * (sign * .19) +
+                                  p.forward * (.10 + sign * gait * .16) - p.up * (.49 - .10 * crouch) + motion.hands;
         if (p.controllers[side].valid && finite(p.controllers[side].position) &&
-            length(p.controllers[side].position - p.joint(shoulder)) < 1.2)
+            length(p.controllers[side].position - p.joint(shoulder)) < 2.5) {
             p.joints[id(wrist)] = p.controllers[side].position;
-        else
+            if (!tracked(elbow)) {
+                const auto delta = p.joint(wrist) - p.joint(shoulder);
+                const auto distance = length(delta);
+                const auto reach = std::clamp(distance, .3162 - .2482 + .001, .3162 + .2482 - .001);
+                p.joints[id(shoulder)] = p.joint(wrist) - normalized(delta, -p.up) * reach;
+            }
+        } else
             p.controllers[side].valid = false;
+        if (!p.controllers[side].valid && !tracked(wrist)) {
+            const auto delta = p.joint(wrist) - p.joint(shoulder);
+            p.joints[id(wrist)] =
+                p.joint(shoulder) +
+                normalized(delta, -p.up) * std::clamp(length(delta), .3162 - .2482 + .001, .3162 + .2482 - .001);
+        }
         if (!tracked(elbow))
             p.joints[id(elbow)] = knee(p.joint(shoulder), p.joint(wrist), -p.forward + body_right * sign, .3162, .2482);
         if (!tracked(hip))
-            p.joints[id(hip)] = p.joint(J::Hips) + body_right * (sign * .105) - p.up * .08;
-        if (!tracked(ankle)) {
+            p.joints[id(hip)] = p.joint(J::Hips) + body_right * (sign * .105) - p.up * .087;
+        if (tracking && !tracked(ankle)) {
             const auto stride = p.on_foot && rider.grounded
                                     ? std::sin(player.walk_phase() + side * pi) *
                                           std::min(.18, length(project(rider.velocity, {0, 1, 0})) * .05)
                                     : 0.;
-            p.joints[id(ankle)] = at(sign * (p.on_foot ? .105 : .27), .12 + std::max(0., stride) * .2, stride);
-            if (tracking) {
-                const auto along = normalized(project(player.render_forward(), {0, 1, 0}), player.camera_forward());
-                p.joints[id(ankle)] =
-                    p.on_foot
-                        ? root + project(tracking->head - root, {0, 1, 0}) + body_right * (sign * .105) +
-                              p.forward * stride + Vec3{0, .12 + std::max(0., stride) * .2, 0}
-                        : root + project(tracking->head - root, {0, 1, 0}) + along * (-sign * .27) + Vec3{0, .12, 0};
-            }
+            const auto along = normalized(project(player.render_forward(), {0, 1, 0}), player.camera_forward());
+            p.joints[id(ankle)] =
+                p.on_foot ? root + project(tracking->head - root, {0, 1, 0}) + body_right * (sign * .105) +
+                                p.forward * stride + Vec3{0, .12 + std::max(0., stride) * .2, 0}
+                          : root + project(tracking->head - root, {0, 1, 0}) + along * (-sign * .27) + Vec3{0, .12, 0};
+        }
+        if (!tracked(hip)) {
+            const auto delta = p.joint(hip) - p.joint(ankle);
+            p.joints[id(hip)] =
+                p.joint(ankle) +
+                normalized(delta, p.up) * std::clamp(length(delta), .4182 - .4165 + .001, .4165 + .4182 - .001);
         }
         if (!tracked(k))
             p.joints[id(k)] = knee(p.joint(hip), p.joint(ankle), p.forward, .4165, .4182);
         if (!tracked(toe))
-            p.joints[id(toe)] = p.joint(ankle) + p.forward * .13 - p.up * .068;
+            p.joints[id(toe)] = p.joint(ankle) +
+                                rotate(p.forward, p.up, p.on_foot || tracking ? 0 : (r ? -3. : 15.) * pi / 180) * .13 -
+                                (tracking || p.on_foot ? p.up : deck_up) * .068;
     }
     p.tracked_legs = p.tracked_body && tracking->full_body;
     if (p.tracked_legs)
@@ -445,10 +531,10 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
         Vec3 origin, from, to, target;
         double scale;
         std::array<Vec3, 3> source{}, destination{};
-        bool hand = false;
+        bool framed = false;
 
         Vec3 map(Vec3 v) const {
-            if (hand)
+            if (framed)
                 return destination[0] * dot(v, source[0]) + destination[1] * dot(v, source[1]) +
                        destination[2] * dot(v, source[2]);
             return align(v, from, to);
@@ -468,11 +554,16 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
         if (b.name == "Hand.L" || b.name == "Hand.R") {
             const auto& c = p.controllers[b.name == "Hand.L" ? 0 : 1];
             if (c.valid) {
-                transform.hand = true;
+                transform.framed = true;
                 for (unsigned i = 0; i < 3; ++i)
                     transform.source[i] = basis(b.axes[i]);
                 transform.destination = {c.right, -c.up, c.forward};
             }
+        }
+        if (b.name == "Head") {
+            transform.framed = true;
+            transform.source = {basis({1, 0, 0}), basis({0, 1, 0}), basis({0, 0, 1})};
+            transform.destination = {normalized(cross(p.head_forward, p.head_up)), p.head_up, p.head_forward};
         }
         transforms.push_back(transform);
     }
@@ -484,7 +575,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
         const auto& t = transforms[v.bone];
         auto relative = basis(v.position - t.origin);
         const auto axis = normalized(t.from);
-        if (!t.hand)
+        if (!t.framed)
             relative += axis * (dot(relative, axis) * (t.scale - 1));
         posed.push_back(t.target + t.map(relative));
         const auto normal = normalized(t.map(basis(v.normal)));

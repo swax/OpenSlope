@@ -8,6 +8,7 @@
 #include "foot_motion.hpp"
 #include "rails.hpp"
 #include "ride.hpp"
+#include "rider_motion.hpp"
 #include "riding_effects.hpp"
 #include "score.hpp"
 #include "terrain.hpp"
@@ -197,6 +198,8 @@ public:
 
     double walk_phase() const { return walk_phase_; }
 
+    RiderMotionSample rider_motion() const { return rider_motion_.sample(frame_alpha()); }
+
     bool carrying_board() const { return carry_.held(); }
 
     std::optional<unsigned> carrying_hand() const { return carry_.hand(); }
@@ -261,6 +264,7 @@ private:
     FixedClock clock_;
     Rider rider_;
     RidingEffects effects_;
+    RiderMotion rider_motion_;
     BoostTrail boost_trail_;
     std::uint64_t game_frame_ = 0;
     PoseAnimation get_up_;

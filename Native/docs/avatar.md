@@ -47,7 +47,8 @@ do not declare it; its registered structure IDs are checked against Khronos.
 
 Every render frame starts with a fresh pose. Active body samples with confidence
 above 0.05 and finite, position-valid joints within 2.5 metres of the head replace
-individual fallback joints. Position-valid inferred leg joints are accepted
+individual fallback joints, except the head, whose HMD pose has priority.
+Position-valid inferred leg joints are accepted
 without requiring a tracked bit. Inactive, missing and outlier joints fall back
 individually; stale joints are not held. Controller grips remain the hand anchors.
 Procedural torso up remains world vertical while the user looks down. Room
@@ -97,3 +98,9 @@ bind frames now map all three axes to grip, preserving wrist roll and the finger
 geometry instead of aiming a thumb-root vector as the entire hand. Third-person
 presentation moves the eyes/controllers/panels while avatar IK remains on the
 undisplaced body. See quest-controls.md for physical verification limits.
+
+Build 0.39 adds procedural body balance, walking sway, arm inertia, landing
+compression, independent head look and fixed switch bindings. The head mesh
+now follows yaw, pitch and roll, and the eye bridge supplies desktop first-person
+and tracked self-view alignment. See rider-motion.md for authority, tuning,
+validation and remaining style/calibration work.

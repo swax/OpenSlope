@@ -18,7 +18,7 @@ Vec3 camera_eye(const Player& player, bool first_person = false, const FollowCam
     if (camera)
         return camera->pose().eye;
     const auto p = player.render_position();
-    return first_person ? avatar_pose(player).joint(AvatarJoint::Head) + avatar_pose(player).up * .105
+    return first_person ? avatar_pose(player).eye()
                         : player.camera_position(p - player.camera_forward() * 7 + Vec3{0, 3.5, 0});
 }
 
@@ -28,8 +28,10 @@ Matrix camera_for(const Player& player, double aspect, bool first_person = false
         const auto& c = camera->pose();
         const auto tangent = std::tan(c.fov / 2);
         const auto direction = look_down && first_person ? normalized(c.forward * .22 + Vec3{0, -1, 0}) : c.forward;
+        const AvatarLook look{direction, c.up};
+        const auto eye = look_down && first_person ? avatar_pose(player, nullptr, &look).eye() : c.eye;
         return projection(-tangent * aspect, tangent * aspect, -tangent, tangent, c.near_clip) *
-               view(c.eye, direction, c.up);
+               view(eye, direction, c.up);
     }
     const auto position = player.render_position(), forward = player.camera_forward();
     const auto eye = camera_eye(player, first_person);
@@ -38,6 +40,12 @@ Matrix camera_for(const Player& player, double aspect, bool first_person = false
                                : position + forward * 12 - eye;
     const auto tangent = std::tan(70 * pi / 360);
     return projection(-tangent * aspect, tangent * aspect, -tangent, tangent) * view(eye, direction);
+}
+
+AvatarPose desktop_avatar_pose(const Player& player, const FollowCamera& camera, bool first_person, bool look_down) {
+    const auto& c = camera.pose();
+    const AvatarLook look{look_down ? normalized(c.forward * .22 + Vec3{0, -1, 0}) : c.forward, c.up};
+    return avatar_pose(player, nullptr, first_person ? &look : nullptr);
 }
 
 std::uint32_t image_memory_type(VulkanContext& context, std::uint32_t bits) {
@@ -122,7 +130,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     const auto draw = [&] {
         chase.step(player, player.contract().tick_seconds());
         ui.frame(RideUi::desktop(chase.pose(), 1280. / 720, ui.visible));
-        const auto body = avatar.mesh(avatar_pose(player), first_person, false, chase.pose().eye);
+        const auto body = avatar.mesh(desktop_avatar_pose(player, chase, first_person, look_down), first_person, false,
+                                      chase.pose().eye);
         std::vector<Vertex> presented(body.begin(), body.end());
         equipment_outline(presented, player);
         ui.append(presented, player);
@@ -452,7 +461,8 @@ struct Window {
             vk_check(acquired, "Acquire preview image");
         ui.frame(RideUi::desktop(camera.pose(), double(width) / height, ui.visible));
         ui.third_person = !first_person;
-        const auto body_mesh = avatar.mesh(avatar_pose(player), first_person, false, camera.pose().eye);
+        const auto body_mesh = avatar.mesh(desktop_avatar_pose(player, camera, first_person, look_down), first_person,
+                                           false, camera.pose().eye);
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
         equipment_outline(presented, player);
         ui.append(presented, player, false, fps);
