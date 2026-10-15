@@ -45,7 +45,7 @@ struct UiResult {
 class RideUi {
 public:
     bool visible = false, controls = false, stats = false, sound_muted = false, third_person = true, head_steer = false,
-         immersive = false, library = false;
+         immersive = false, library = false, map_picker = false;
     std::vector<std::filesystem::path> map_paths;
     std::size_t page = 0;
     std::string notice;

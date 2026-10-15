@@ -2,8 +2,19 @@
 #include <stdexcept>
 
 namespace openslope {
+double VrFrameClock::step(double display_seconds, bool interactive) {
+    if (!std::isfinite(display_seconds)) {
+        reset();
+        return 0;
+    }
+    const auto dt = interactive && active_ ? std::max(0., display_seconds - previous_) : 0.;
+    previous_ = display_seconds;
+    active_ = interactive;
+    return dt;
+}
+
 std::span<const VrBinding> touch_bindings() {
-    static constexpr std::array<VrBinding, 16> bindings{
+    static constexpr std::array<VrBinding, 17> bindings{
         {{VrBindingAction::Steer, "/user/hand/left/input/thumbstick"},
          {VrBindingAction::Look, "/user/hand/right/input/thumbstick"},
          {VrBindingAction::Boost, "/user/hand/right/input/b/click"},
@@ -12,6 +23,7 @@ std::span<const VrBinding> touch_bindings() {
          {VrBindingAction::Board, "/user/hand/right/input/trigger/value"},
          {VrBindingAction::Reset, "/user/hand/left/input/x/click"},
          {VrBindingAction::Menu, "/user/hand/left/input/y/click"},
+         {VrBindingAction::Menu, "/user/hand/left/input/menu/click"},
          {VrBindingAction::Camera, "/user/hand/right/input/thumbstick/click"},
          {VrBindingAction::RailExit, "/user/hand/left/input/thumbstick/click"},
          {VrBindingAction::Grip, "/user/hand/left/input/grip/pose"},

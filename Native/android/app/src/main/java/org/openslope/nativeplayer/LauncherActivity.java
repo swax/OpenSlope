@@ -31,6 +31,11 @@ public final class LauncherActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        GameActivity game = GameActivity.running();
+        if (game != null && !getIntent().getBooleanExtra("show_library", false)) {
+            startActivity(new Intent(game.getIntent()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            finishAndRemoveTask(); return;
+        }
         ScrollView scroll = new ScrollView(this); layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(32, 24, 32, 24); scroll.addView(layout); setContentView(scroll);
         text("OpenSlope", 28); text("Choose a course from your Maps folder. Importing an ISO adds courses to the same library.", 18);
         location = text("", 14);

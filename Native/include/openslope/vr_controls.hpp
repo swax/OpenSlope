@@ -30,6 +30,35 @@ struct VrIntent {
 
 VrIntent vr_intent(const VrButtons& buttons, bool walking);
 
+class VrInputGate {
+public:
+    bool accept(bool activation_down) {
+        if (!activation_down)
+            armed_ = true;
+        return armed_;
+    }
+
+    void release() { armed_ = false; }
+
+private:
+    bool armed_ = false;
+};
+
+// A resumed frame never catches simulation up across a system pause or focus gap.
+class VrFrameClock {
+public:
+    double step(double display_seconds, bool interactive);
+
+    void reset() {
+        active_ = false;
+        previous_ = 0;
+    }
+
+private:
+    bool active_ = false;
+    double previous_ = 0;
+};
+
 class VrPresentation {
 public:
     bool controls = true, third_person = false;

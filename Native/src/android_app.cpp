@@ -237,7 +237,25 @@ extern "C" void android_main(android_app* app) {
             platform.render_scale = scale;
             platform.msaa = unsigned(samples);
             platform.head_steering = head_steering;
+            platform.is_resumed = [&] { return app->activityState == APP_CMD_RESUME && app->window; };
+            const auto game_type = environment->GetObjectClass(app->activity->clazz);
+            const auto exit_getter = environment->GetMethodID(game_type, "getExitRequest", "()I");
+            const auto destination_setter = environment->GetMethodID(game_type, "setReturnToMaps", "(Z)V");
+            if (!exit_getter || !destination_setter)
+                throw std::runtime_error("VR lifecycle host is missing");
+            platform.exit_request = [&] {
+                const auto request = environment->CallIntMethod(app->activity->clazz, exit_getter);
+                return request == 2   ? openslope::XrExitDestination::Maps
+                       : request == 1 ? openslope::XrExitDestination::App
+                                      : openslope::XrExitDestination::System;
+            };
+            platform.on_exit = [&](openslope::XrExitDestination destination) {
+                environment->CallVoidMethod(app->activity->clazz, destination_setter,
+                                            destination == openslope::XrExitDestination::Maps ? JNI_TRUE : JNI_FALSE);
+            };
             openslope::run_openxr(player, platform);
+            environment->DeleteLocalRef(game_type);
+            __android_log_print(ANDROID_LOG_INFO, "OpenSlopeNative", "VR native resources released");
         }
     } catch (const std::exception& e) {
         __android_log_print(ANDROID_LOG_ERROR, "OpenSlope", "%s", e.what());
@@ -251,5 +269,9 @@ extern "C" void android_main(android_app* app) {
         environment->DeleteLocalRef(type);
     }
     ANativeActivity_finish(app->activity);
+    // Android waits for input/window teardown acknowledgements before Destroy.
+    // Keep the glue event thread alive until that final command arrives.
+    while (!app->destroyRequested)
+        process_events(app, 100);
     app->activity->vm->DetachCurrentThread();
 }

@@ -92,3 +92,7 @@ Build 0.48 adds portable authored board-mix export, custom hit/ambient/effect WA
 routing, shared/older-import common-bank fallback and off-board environment beds.
 Quest folder caching retains those assets for maps without local audio metadata.
 See `audio-library.md`; broader gameplay, music and graphics parity remains active.
+
+Build 0.49 adds Horizon focus/pause gating, fresh-input rearming, resumed clock
+guards, separate wrist map/exit actions, app-icon task resume and orderly Android
+teardown. See `quest-system-integration.md` for authority and validation scope.

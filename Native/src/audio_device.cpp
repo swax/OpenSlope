@@ -114,6 +114,7 @@ struct AudioDevice::Data {
         if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK)
             return;
         AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
+        AAudioStreamBuilder_setUsage(builder, AAUDIO_USAGE_GAME);
         AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT);
         AAudioStreamBuilder_setChannelCount(builder, 2);
         AAudioStreamBuilder_setSampleRate(builder, int32_t(mixer.rate()));

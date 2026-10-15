@@ -184,10 +184,42 @@ void air_and_rail() {
              "Head and stick rail yaw retain identical tangent travel");
     }
 }
+
+void system_pause() {
+    Player player(floor());
+    player.warp({0, 40, 0}, {0, 0, -1}, {0, -3, -8});
+    VrFrameClock clock;
+    near(clock.step(10, true), 0, "initial focus does not invent elapsed simulation");
+    player.advance(clock.step(10 + h, true), {});
+    const auto position = player.rider().position, velocity = player.rider().velocity;
+    player.release_inputs();
+    player.advance(clock.step(15, false), {});
+    player.advance(clock.step(35, false), {});
+    player.advance(clock.step(45, true), {});
+    near(length(player.rider().position - position), 0, "system pause and first resumed frame preserve position");
+    near(length(player.rider().velocity - velocity), 0, "app switching never catches up paused physics");
+    const auto dt = clock.step(45 + h, true);
+    near(dt, h, "normal display intervals resume after focus returns");
+    player.advance(dt, {});
+    check(length(player.rider().position - position) > .01, "resumed game advances normally");
+    clock.reset();
+    near(clock.step(100, true), 0, "stopped session restart resets its display clock");
+    check(std::any_of(touch_bindings().begin(), touch_bindings().end(),
+                      [](const auto& binding) {
+                          return binding.action == VrBindingAction::Menu &&
+                                 binding.path == "/user/hand/left/input/menu/click";
+                      }),
+          "left controller Menu opens the in-app wrist menu");
+    check(std::none_of(touch_bindings().begin(), touch_bindings().end(),
+                       [](const auto& binding) { return binding.path == "/user/hand/right/input/menu/click"; }),
+          "Touch bindings leave the right system button to Horizon");
+}
+
 } // namespace
 
 int main() {
     try {
+        system_pause();
         carve();
         ownership();
         air_and_rail();

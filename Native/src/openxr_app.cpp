@@ -65,6 +65,7 @@ struct State {
     XrAction steer{}, look{}, boost{}, reset{}, jump{}, rail_exit{}, mount{}, restart{}, grip{}, menu{},
         camera_toggle{}, squeeze{}, aim{};
     VrPresentation presentation;
+    VrInputGate input_gate;
     RideUi ui;
     EquipmentInput equipment;
     XrQuaternionf input_rotation{0, 0, 0, 1};
@@ -90,7 +91,23 @@ struct State {
     GlareVisibility glare_visibility;
     VulkanContext vulkan;
     std::vector<Eye> eyes;
-    bool floor_space = false, running = false, focused = false, quit = false;
+    bool floor_space = false, running = false, focused = false, quit = false, exit_pending = false;
+    XrExitDestination exit_destination = XrExitDestination::System;
+    std::chrono::steady_clock::time_point exit_started;
+
+    void request_exit(XrExitDestination destination) {
+        if (exit_pending || destination == XrExitDestination::System)
+            return;
+        exit_destination = destination;
+        exit_pending = true;
+        exit_started = std::chrono::steady_clock::now();
+        tracking_log(destination == XrExitDestination::Maps ? "XR exit requested: map library"
+                                                            : "XR exit requested: app");
+        if (running)
+            xr_check(xrRequestExitSession(session), "Request VR session exit");
+        else
+            quit = true;
+    }
 
     ~State() {
         for (auto& eye : eyes) {
@@ -666,6 +683,10 @@ struct State {
         buttons.reset = resetting.isActive && resetting.currentState;
         buttons.menu = held(menu);
         buttons.camera = held(camera_toggle);
+        if (!input_gate.accept(buttons.boost || buttons.jump || buttons.board || buttons.reset || buttons.menu ||
+                               buttons.camera || held(squeeze) || (restarting.isActive && restarting.currentState) ||
+                               (leaving.isActive && leaving.currentState)))
+            return {};
         presentation.step(std::clamp(seconds, 0., .1), buttons);
         const auto intent = vr_intent(buttons, walking);
         RideInput result{intent.steer,   intent.boost,
@@ -717,7 +738,8 @@ struct State {
         case UiAction::Calibrate: anchored = false; break;
         case UiAction::Recall: player.recall_board(walk_forward); break;
         case UiAction::HeadSteer: head_steering = !head_steering; break;
-        case UiAction::Exit: quit = true; break;
+        case UiAction::Maps: request_exit(XrExitDestination::Maps); break;
+        case UiAction::Exit: request_exit(XrExitDestination::App); break;
         default: break;
         }
         result.mount = false;
@@ -740,6 +762,7 @@ struct State {
                 reference_change = reinterpret_cast<const XrEventDataReferenceSpaceChangePending*>(&event)->changeTime;
             if (event.type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED) {
                 const auto state = reinterpret_cast<XrEventDataSessionStateChanged*>(&event)->state;
+                tracking_log("XR session state: " + std::to_string(int(state)));
                 focused = state == XR_SESSION_STATE_FOCUSED;
                 if (state == XR_SESSION_STATE_READY) {
                     XrSessionBeginInfo begin{XR_TYPE_SESSION_BEGIN_INFO};
@@ -750,6 +773,8 @@ struct State {
                 if (state == XR_SESSION_STATE_STOPPING) {
                     xr_check(xrEndSession(session), "End VR session");
                     running = false;
+                    if (exit_pending)
+                        quit = true;
                     anchored = false;
                 }
                 if (state == XR_SESSION_STATE_EXITING || state == XR_SESSION_STATE_LOSS_PENDING)
@@ -766,6 +791,7 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
     player.start_on_foot();
     State state;
     state.ui.immersive = true;
+    state.ui.map_picker = bool(platform.on_exit);
     state.create(platform, player.terrain().mesh(), player.logic().flag_models());
     AudioScene audio(player.terrain().map_root());
     audio.mixer().paused(true);
@@ -775,7 +801,8 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
     using Clock = std::chrono::steady_clock;
     const auto started = Clock::now();
     auto sample_started = started;
-    XrTime previous_time = 0;
+    VrFrameClock frame_clock;
+    int activity_mode = -1;
     unsigned sample_frames = 0;
     double frame_wait = 0, simulation = 0, pose_time = 0, image_wait_time = 0, render_time = 0, resource_wait = 0,
            end_time = 0, gpu_time = 0, total_time = 0;
@@ -793,11 +820,25 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
         if (seconds > 0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() >= seconds)
             break;
         state.events();
-        audio.mixer().paused(!state.running || !state.focused);
+        if (platform.exit_request)
+            state.request_exit(platform.exit_request());
+        const bool resumed = !platform.is_resumed || platform.is_resumed();
+        const bool interactive = state.running && state.focused && resumed && !state.exit_pending;
+        const auto activity = (resumed ? 1 : 0) | (state.focused ? 2 : 0) | (interactive ? 4 : 0);
+        if (activity != activity_mode) {
+            activity_mode = activity;
+            tracking_log("XR activity: resumed " + std::to_string(resumed) + "; focused " +
+                         std::to_string(state.focused) + "; simulation/hands " + std::to_string(interactive));
+        }
+        if (!interactive)
+            state.input_gate.release();
+        audio.mixer().paused(!interactive);
+        if (state.exit_pending && Clock::now() - state.exit_started > std::chrono::seconds(3))
+            state.quit = true;
         if (state.quit)
             break;
         if (!state.running) {
-            previous_time = 0;
+            frame_clock.reset();
             reset_sample(Clock::now());
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
@@ -812,15 +853,15 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
         const auto waited = Clock::now();
         XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};
         xr_check(xrBeginFrame(state.session, &begin), "Begin VR frame");
-        const auto dt = previous_time ? double(frame.predictedDisplayTime - previous_time) * 1e-9 : 0;
-        previous_time = frame.predictedDisplayTime;
+        const auto dt = frame_clock.step(double(frame.predictedDisplayTime) * 1e-9, interactive);
         state.walking = player.on_foot();
-        if (state.focused)
+        if (interactive)
             player.advance(std::max(0.0, dt), state.input(std::max(0.0, dt), frame.predictedDisplayTime, player));
         else {
             player.release_inputs();
             state.presentation.release();
             state.ui.release();
+            state.equipment = {};
         }
         const auto boarding = player.on_foot() ? 1 : 0;
         if (boarding != state.boarding_mode) {
@@ -842,7 +883,7 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
         std::array<XrCompositionLayerProjectionView, 2> projections{
             {{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}}};
         bool rendered = false;
-        if (frame.shouldRender) {
+        if (frame.shouldRender && resumed) {
             std::array<XrView, 2> views{{{XR_TYPE_VIEW}, {XR_TYPE_VIEW}}};
             XrViewState view_state{XR_TYPE_VIEW_STATE};
             std::uint32_t count = 0;
@@ -889,17 +930,19 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                                              : "Avatar rendered pose: procedural head/controller fallback");
                 }
                 const auto camera_offset = state.presentation.camera_offset(player.camera_forward());
-                const auto body_mesh = state.avatar.mesh(pose, !state.presentation.third_person, false,
-                                                         tracked.head + camera_offset, camera_offset);
-                std::vector<Vertex> avatar_mesh(body_mesh.begin(), body_mesh.end());
-                equipment_outline(avatar_mesh, player);
-                state.ui.visible = state.presentation.controls;
-                state.ui.frame(RideUi::wrist(tracked.controllers[0], tracked.head + camera_offset, camera_offset));
-                std::vector<Vertex> hud;
-                state.ui.append(hud, player, true, dt > 0 ? 1 / dt : 0);
-                auto pointer = state.equipment.rays[1];
-                pointer.origin += body + camera_offset;
-                state.ui.append_pointer(hud, pointer);
+                std::vector<Vertex> avatar_mesh, hud;
+                state.ui.visible = interactive && state.presentation.controls;
+                if (interactive) {
+                    const auto body_mesh = state.avatar.mesh(pose, !state.presentation.third_person, false,
+                                                             tracked.head + camera_offset, camera_offset);
+                    avatar_mesh.assign(body_mesh.begin(), body_mesh.end());
+                    equipment_outline(avatar_mesh, player);
+                    state.ui.frame(RideUi::wrist(tracked.controllers[0], tracked.head + camera_offset, camera_offset));
+                    state.ui.append(hud, player, true, dt > 0 ? 1 / dt : 0);
+                    auto pointer = state.equipment.rays[1];
+                    pointer.origin += body + camera_offset;
+                    state.ui.append_pointer(hud, pointer);
+                }
                 CelestialView glare_view;
                 glare_view.stereo = true;
                 glare_view.anchor = tracked.head + camera_offset;
@@ -1009,6 +1052,9 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
         }
     }
     player.observe_ticks({});
+    if (platform.on_exit)
+        platform.on_exit(state.exit_destination);
+    tracking_log("XR frame loop ended");
     return 0;
 }
 } // namespace openslope

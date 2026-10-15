@@ -54,19 +54,24 @@ std::vector<UiButton> RideUi::buttons() const {
     }
     if (controls)
         return {{.06, .85, .88, .085, "BACK TO MENU", UiAction::Controls}};
-    return {{.06, .30, .42, .095, "RESUME", UiAction::Resume},
-            {.52, .30, .42, .095, "RESTART", UiAction::Restart},
-            {.06, .42, .42, .095, third_person ? "VIEW: 3RD PERSON" : "VIEW: 1ST PERSON", UiAction::View},
-            {.52, .42, .42, .095, "CONTROLS", UiAction::Controls},
-            {.06, .54, .42, .095, sound_muted ? "SOUND: OFF" : "SOUND: ON", UiAction::Sound},
-            {.52, .54, .42, .095, stats ? "STATS: ON" : "STATS: OFF", UiAction::Stats},
-            {.06, .66, .42, .095, immersive ? "RECALL BOARD" : "MODE / NEW RUN",
-             immersive ? UiAction::Recall : UiAction::Mode},
-            {.52, .66, .42, .095, immersive ? "RECENTER VIEW" : "MAP LIBRARY",
-             immersive ? UiAction::Calibrate : UiAction::Maps},
-            {.06, .78, .42, .095, immersive ? (head_steer ? "HEAD STEER: ON" : "HEAD STEER: OFF") : "RECALL BOARD",
-             immersive ? UiAction::HeadSteer : UiAction::Recall},
-            {.52, .78, .42, .095, "EXIT", UiAction::Exit}};
+    std::vector<UiButton> list{
+        {.06, .30, .42, .095, "RESUME", UiAction::Resume},
+        {.52, .30, .42, .095, "RESTART", UiAction::Restart},
+        {.06, .42, .42, .095, third_person ? "VIEW: 3RD PERSON" : "VIEW: 1ST PERSON", UiAction::View},
+        {.52, .42, .42, .095, "CONTROLS", UiAction::Controls},
+        {.06, .54, .42, .095, sound_muted ? "SOUND: OFF" : "SOUND: ON", UiAction::Sound},
+        {.52, .54, .42, .095, stats ? "STATS: ON" : "STATS: OFF", UiAction::Stats},
+        {.06, .66, .42, .095, immersive ? "RECALL BOARD" : "MODE / NEW RUN",
+         immersive ? UiAction::Recall : UiAction::Mode},
+        {.52, .66, .42, .095, immersive ? "RECENTER VIEW" : "MAP LIBRARY",
+         immersive ? UiAction::Calibrate : UiAction::Maps},
+        {.06, .78, .42, .095, immersive ? (head_steer ? "HEAD STEER: ON" : "HEAD STEER: OFF") : "RECALL BOARD",
+         immersive ? UiAction::HeadSteer : UiAction::Recall},
+        {.52, .78, .42, .095, immersive && map_picker ? "MAP LIBRARY" : "EXIT",
+         immersive && map_picker ? UiAction::Maps : UiAction::Exit}};
+    if (immersive && map_picker)
+        list.push_back({.06, .895, .88, .065, "EXIT APP", UiAction::Exit});
+    return list;
 }
 
 UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
@@ -191,7 +196,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.text(!notice.empty() ? notice
                : wrist         ? "POINT RIGHT HAND + TRIGGER"
                                : "ESC TO RETURN TO THE SLOPE",
-               .06, .94, .0033, muted);
+               .06, immersive ? .973 : .94, immersive ? .0025 : .0033, muted);
     } else {
         c.rect(0, 0, 1, .048, panel);
         c.rect(0, 0, .004, .048, accent);

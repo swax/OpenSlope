@@ -257,6 +257,38 @@ void camera_ui() {
           "Menu produces bounded real triangle geometry");
     for (const auto& v : vertices)
         check(std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z), "UI geometry is finite");
+    RideUi wrist;
+    wrist.visible = wrist.immersive = wrist.map_picker = true;
+    wrist.frame({{0, 0, 0}, {1, 0, 0}, {0, -1, 0}, true});
+    for (const auto action : {UiAction::Maps, UiAction::Exit}) {
+        const auto buttons = wrist.buttons();
+        const auto button =
+            std::find_if(buttons.begin(), buttons.end(), [&](const auto& b) { return b.action == action; });
+        check(button != buttons.end(), "Quest wrist menu offers separate map-library and app-exit actions");
+        wrist.release();
+        const EquipmentRay pointer{{button->x + button->w / 2, -button->y - button->h / 2, 1}, {0, 0, -1}, true};
+        const auto result = wrist.pointer(pointer, true);
+        check(result.action == action && result.consumed,
+              "wrist exit destination is selected by the real UI ray handler");
+    }
+    VrInputGate gate;
+    wrist.release();
+    const auto exit_buttons = wrist.buttons();
+    const auto exit_button = std::find_if(exit_buttons.begin(), exit_buttons.end(),
+                                          [](const auto& b) { return b.action == UiAction::Exit; });
+    const EquipmentRay exit_ray{
+        {exit_button->x + exit_button->w / 2, -exit_button->y - exit_button->h / 2, 1}, {0, 0, -1}, true};
+    UiResult resumed;
+    if (gate.accept(true))
+        resumed = wrist.pointer(exit_ray, true);
+    check(resumed.action == UiAction::None, "held system-menu trigger cannot select wrist Exit on focus return");
+    if (gate.accept(false))
+        wrist.pointer(exit_ray, false);
+    if (gate.accept(true))
+        resumed = wrist.pointer(exit_ray, true);
+    check(resumed.action == UiAction::Exit, "fresh released-and-pressed trigger can select wrist Exit");
+    gate.release();
+    check(!gate.accept(true), "each focus loss disarms carried-over button presses");
     check(!RideUi::wrist({}, {}).valid, "Missing left tracking hides the wrist panel");
     ui.map_paths = {"Maps/TEST_A", "Maps/TEST_B"};
     ui.library = true;
