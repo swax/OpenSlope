@@ -198,7 +198,8 @@ VulkanScene::~VulkanScene() {
     }
 }
 
-void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_models) {
+void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_models,
+                         std::span<const std::size_t> faceted_models) {
     if (vertices_.buffer)
         throw std::runtime_error("Scene has already been uploaded");
     terrain_total_indices_ = source.indices.size();
@@ -248,7 +249,7 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         terrain_indices_ = source.indices;
     }
     crowd_frames_.clear();
-    props_ = Props::load(source.map_root, false, flag_models);
+    props_ = Props::load(source.map_root, false, flag_models, faceted_models);
     world_ = World::load(source.map_root);
     auto batches = source.batches;
     for (const auto& part : props_.parts) {

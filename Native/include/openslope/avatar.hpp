@@ -31,6 +31,7 @@ inline constexpr unsigned avatar_joint_count = unsigned(AvatarJoint::Count);
 struct ControllerPose {
     Vec3 position{}, right{1, 0, 0}, up{0, 1, 0}, forward{0, 0, -1};
     bool valid = false, touch = true;
+    std::array<double, 3> fingers{};
 };
 
 // Model axes differ from the unmodified OpenXR grip frame.

@@ -215,11 +215,38 @@ void system_pause() {
           "Touch bindings leave the right system button to Horizon");
 }
 
+void presentation() {
+    Player player(floor());
+    player.warp({0, 60, 0}, {0, 0, -1}, {0, 0, -12});
+    RideInput head;
+    head.vr = {true, true, false, {-1, 0, 0}, 0};
+    player.advance(h, head);
+    const auto physical = player.rider().forward;
+    near(length(player.render_forward() - Vec3{0, 0, -1}), 0,
+         "VR board orientation starts at the same interpolation boundary as position");
+    player.advance(h * .5, head);
+    const auto halfway = player.render_forward();
+    check(halfway.x < -.01 && halfway.x > physical.x,
+          "A display frame between physics ticks interpolates the airborne head-steered board");
+    near(length(player.rider().forward - physical), 0, "Orientation interpolation cannot change physics");
+    near(dot(halfway, player.render_up()), 0, "Interpolated deck axes remain orthogonal");
+    player.advance(h * .5, head);
+    near(length(player.render_forward() - physical), 0, "The next tick continues from the preceding display pose");
+    player.warp({20, 60, 0}, {1, 0, 0});
+    near(length(player.render_forward() - Vec3{1, 0, 0}), 0, "Placement snaps orientation without stale interpolation");
+    const auto aim = rotate({0, 0, -1}, {0, 1, 0}, 5.1 * pi / 180);
+    const auto correction = gaze_turn(aim, {0, 0, -1}, 4.5 * pi / 180);
+    check(correction > 0 && correction < .1 * pi / 180,
+          "Air gaze eases continuously out of its dead zone instead of jumping at full turn rate");
+    near(gaze_turn(aim, {0, 0, -1}, 1, 0), 0, "Zero time consumes no gaze correction");
+}
+
 } // namespace
 
 int main() {
     try {
         system_pause();
+        presentation();
         carve();
         ownership();
         air_and_rail();

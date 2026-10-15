@@ -4,6 +4,12 @@ Audited on 2026-10-15 against Native runtime commit `7412ae6` (build 0.51).
 The named interaction families are implemented, but complete effects parity is
 not established. This audit changes documentation only.
 
+Follow-up: build 0.53 implements the ordinary breakable/movable restoration gap,
+including related tree rails, while preserving mode hides, collected rewards and
+the clean permanent latch recipe. See `interaction-resets.md` for current evidence
+and the explicit public-Play permanence discrepancy. The table below records the
+original audit; ambient voice selection, fence flex and video remain open.
+
 Authority: clean Trailmap 180, 230, 370 and 420; shared contracts; Slopesmith
 public documentation and tests; independently inspected local map exports.
 No other runtime or separately licensed decoder implementation was used.
@@ -55,5 +61,7 @@ python Native/tests/particles_replay_test.py temp/native/Release/openslope_playe
 python Native/tests/audio_scene_test.py temp/native/Release/openslope_player.exe
 ```
 
-Next effects work should address ordinary breakable lifecycle, ambient voice
-selection and fence flex, with screen video remaining an explicit separate gap.
+Build 0.53 completes the ordinary interaction restoration described above; see
+`interaction-resets.md` for current evidence. Subsequent effects work includes
+Tokyo Megaplex vent/contact integration and pressure-button cues, point-light
+glints/halos, ambient voice selection and fence flex. Screen video remains open.

@@ -158,7 +158,7 @@ int index(const std::string& field, std::size_t size) {
 }
 
 void mesh_file(Props& props, const std::filesystem::path& path, const Transform& rest, PropPart& part, Bounds& bounds,
-               bool flag) {
+               bool flag, bool faceted) {
     if (std::filesystem::file_size(path) > 64 * 1024 * 1024)
         throw std::runtime_error("OBJ exceeds 64 MiB");
     std::ifstream file(path);
@@ -204,25 +204,32 @@ void mesh_file(Props& props, const std::filesystem::path& path, const Transform&
             if (face.size() < 3)
                 throw std::runtime_error("OBJ face has fewer than three corners");
             for (std::size_t triangle = 1; triangle + 1 < face.size(); ++triangle) {
-                const auto normal =
-                    normalized(cross(points[std::get<0>(face[triangle])] - points[std::get<0>(face[0])],
-                                     points[std::get<0>(face[triangle + 1])] - points[std::get<0>(face[0])]));
+                auto normal = normalized(cross(points[std::get<0>(face[triangle])] - points[std::get<0>(face[0])],
+                                               points[std::get<0>(face[triangle + 1])] - points[std::get<0>(face[0])]));
+                if (faceted) {
+                    Vec3 authored{};
+                    for (const auto& corner : {face[0], face[triangle], face[triangle + 1]})
+                        if (const auto n = std::get<2>(corner); n >= 0)
+                            authored += normals[std::size_t(n)];
+                    if (dot(normal, authored) < 0)
+                        normal = -normal;
+                }
                 for (const auto& corner : {face[0], face[triangle], face[triangle + 1]}) {
                     const auto [p, t, n] = corner;
                     if (flag)
                         point_order.push_back(p);
-                    auto found = n < 0 ? vertices.end() : vertices.find(corner);
+                    auto found = n < 0 || faceted ? vertices.end() : vertices.find(corner);
                     std::uint32_t vertex;
                     if (found == vertices.end()) {
                         const auto position = axes(transform_point(rest, points[std::size_t(p)])) / 100;
-                        const auto shaded = normal_transform(rest, n < 0 ? normal : normals[std::size_t(n)]);
+                        const auto shaded = normal_transform(rest, n < 0 || faceted ? normal : normals[std::size_t(n)]);
                         const auto tex = t < 0 ? std::array<double, 2>{0, 0} : uv[std::size_t(t)];
                         vertex = static_cast<std::uint32_t>(props.geometry.vertices.size());
                         props.geometry.vertices.push_back({float(position.x), float(position.y), float(position.z), 1,
                                                            1, 1, float(tex[0]), float(1 - tex[1]), 0, 0, 0, 0, 0, 0,
                                                            float(shaded.x), float(shaded.y), float(shaded.z)});
                         bounds.add(position);
-                        if (n >= 0)
+                        if (n >= 0 && !faceted)
                             vertices.emplace(corner, vertex);
                     } else
                         vertex = found->second;
@@ -546,7 +553,8 @@ std::vector<std::string> prop_files(const std::filesystem::path& root, bool mode
     return {names.begin(), names.end()};
 }
 
-Props Props::load(const std::filesystem::path& root, bool model_only, std::span<const std::size_t> flag_models) {
+Props Props::load(const std::filesystem::path& root, bool model_only, std::span<const std::size_t> flag_models,
+                  std::span<const std::size_t> faceted_models) {
     Props result;
     const auto t = tables(root, model_only);
     if (t.models.is_null())
@@ -598,7 +606,8 @@ Props Props::load(const std::filesystem::path& root, bool model_only, std::span<
                     part.texture = part.frames.front();
                 part.object = i;
                 mesh_file(result, asset(root, "Meshes/" + safe(data.at("MeshPath"))), resolve(i), part, part.bounds,
-                          std::find(flag_models.begin(), flag_models.end(), model) != flag_models.end());
+                          std::find(flag_models.begin(), flag_models.end(), model) != flag_models.end(),
+                          std::find(faceted_models.begin(), faceted_models.end(), model) != faceted_models.end());
                 if (!part.count)
                     continue;
                 result.models[model].bounds.add(part.bounds.min);

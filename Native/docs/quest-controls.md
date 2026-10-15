@@ -7,6 +7,11 @@ no separately licensed runtime supplies the controls or geometry transforms.
 The table includes the 0.35 equipment and 0.36 flight updates; see foot-flight.md
 for current movement and unlimited off-board thrust.
 
+Build 0.53 adds per-hand capacitive touch and analog finger posing, the baked
+first-party Touch Plus controller model, a controller-fixed depth-tested wrist
+panel, continuous-control impacts and interpolated VR board rotation. See
+`quest-playtest-0.53.md` for the behavior, source boundary and verification limits.
+
 | Quest input | On foot | Mounted |
 |---|---|---|
 | Left stick | Head-relative walk/strafe | Steer; vertically dominant Y sets posture/flip |

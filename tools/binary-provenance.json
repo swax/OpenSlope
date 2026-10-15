@@ -12,6 +12,7 @@
 
     "Native/assets/stick-figure-rigged.glb": "Unchanged byte-for-byte copy of Slopesmith/public/characters/stick-figure-rigged.glb, embedded into the native player as its rider. Built by Slopesmith/tools/character-models/stick-figure.ts. Original, reproducible.",
     "Native/assets/snowboard.glb": "444-triangle first-party stock Slopesmith snowboard, 1.86 m long, with sidecut, raised tips and vertex-colour art. Baked through the public createBoard gear API by Native/tools/export-snowboard.ts, with a half turn about Y for Native's model-space nose. Original, reproducible Apache-2.0 project art; no retail assets. Native embeds only the saved GLB and links no authoring runtime.",
+    "Native/assets/quest-touch-plus.glb": "652-triangle first-party Slopesmith Quest Touch Plus controller, baked in its grip frame through the public createVirtualController art API by Native/tools/export-controllers.mjs. Original, reproducible Apache-2.0 project art, measured proportions with no Meta mesh or texture included. Native embeds the saved GLB and independently implements sensor input, labels and finger posing; no authoring runtime is linked.",
 
     "Slopesmith/media/slopesmith-authoring.png": "2187x1522 screenshot of an authored course open in the Slopesmith editor. Captured from the running editor. Original.",
     "Slopesmith/media/slopesmith-riding.png": "2189x1520 screenshot of test-riding in the Slopesmith editor. Captured from the running editor. Original.",

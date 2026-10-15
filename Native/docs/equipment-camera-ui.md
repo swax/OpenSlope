@@ -81,7 +81,9 @@ recall, recenter, head steering or exit. A captured menu press stays consumed
 until release, even after leaving/hiding the panel, so it cannot also ride a board.
 Hidden menus retain a compact speed/control watch. Third-person panels, pointer
 and controller models follow the presented eyes while the body stays unshifted.
-Controls are a dedicated page rather than labels around moving controllers.
+Controls have a dedicated page. Build 0.53 also shows contextual controller
+labels while the wrist menu is visible. Its panel follows the controller beyond
+the hand and uses scene depth, so nearer hands/controllers remain visible.
 
 Both hosts use the same bounded triangle UI, palette and first-party bitmap font;
 there is no browser/UI framework dependency. The current UI is deliberately a

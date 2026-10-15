@@ -122,6 +122,12 @@ void graphs(const std::filesystem::path& root) {
         logic.tick(1. / 60);
     check(logic.flags()[1] == 0 && logic.motions().empty(),
           "spent debris retires without restoring the intact source or collider");
+    for (unsigned i = 0; i < 1665; ++i)
+        logic.tick(1. / 60);
+    check(logic.flags()[0] == (WorldDraw | WorldCollide) && logic.flags()[1] == 0,
+          "interaction deadline restores intact source while keeping debris hidden");
+    logic.contact(0, 12, true, 87, {0, 0, -1});
+    check(logic.flags()[0] == 0, "a timed source reset rearms the full shatter chain");
     logic.restart(RunMode::Freeride);
     check(logic.flags()[0] == (WorldDraw | WorldCollide) && logic.flags()[1] == 0,
           "run restart restores authored presence");
@@ -149,6 +155,14 @@ void owned(const std::filesystem::path& maps) {
     for (unsigned i = 0; i < 121; ++i)
         logic.tick(1. / 60);
     check(logic.flags()[325] == 0, "actual GARI broken pieces retire at authored duration");
+    for (unsigned i = 0; i < 1680; ++i)
+        logic.tick(1. / 60);
+    check(logic.flags()[324] == (WorldDraw | WorldCollide) && logic.flags()[327] == WorldDraw &&
+              logic.flags()[325] == 0,
+          "actual GARI intact screen and trigger return together after thirty seconds");
+    logic.contact(324, 20, true, 87, {1, 0, 0});
+    check(logic.flags()[324] == 0 && logic.motions().size() == 1 && logic.motions()[0].current.size() == 24,
+          "actual GARI screen can shatter again after automatic restoration");
 }
 } // namespace
 

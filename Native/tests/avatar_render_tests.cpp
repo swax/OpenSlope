@@ -80,7 +80,7 @@ unsigned landmarks(const std::vector<unsigned char>& p) {
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 2)
+        if (argc < 2 || argc > 3)
             throw std::runtime_error("Provide capture output directory");
         const auto root = std::filesystem::path(argv[1]);
         std::filesystem::create_directories(root);
@@ -323,10 +323,10 @@ int main(int argc, char** argv) {
         // The real renderer must show text above panel backgrounds in both target colour spaces.
         RideUi ui;
         const auto render_ui = [&](std::string name, bool wrist, bool controls, bool visible) {
+            const auto attached = RideUi::wrist(tracking.controllers[0], tracking.head);
             const auto eye = tracking.head,
-                       direction = wrist
-                                       ? normalized(tracking.controllers[0].position + Vec3{0, .18, 0} - tracking.head)
-                                       : normalized(Vec3{0, -.2, -1});
+                       direction = wrist ? normalized(attached.origin + attached.right * .5 + attached.down * .5 - eye)
+                                         : normalized(Vec3{0, -.2, -1});
             CameraPose c{eye, direction, {0, 1, 0}};
             ui.visible = visible;
             ui.controls = controls;
@@ -370,6 +370,24 @@ int main(int argc, char** argv) {
         render_ui("desktop-hud", false, false, false);
         render_ui("wrist-menu", true, false, true);
         render_ui("wrist-controls", true, true, true);
+        RideUi depth_ui;
+        depth_ui.visible = true;
+        depth_ui.frame({{-.5, 2.15, -1}, {1, 0, 0}, {0, -1, 0}, true});
+        std::vector<Vertex> depth_hud;
+        depth_ui.append(depth_hud, player, true);
+        const std::vector<Vertex> foreground{{-.2f, 1.45f, 0, 1, 0, 1}, {.2f, 1.45f, 0, 1, 0, 1},
+                                             {.2f, 1.85f, 0, 1, 0, 1},  {-.2f, 1.45f, 0, 1, 0, 1},
+                                             {.2f, 1.85f, 0, 1, 0, 1},  {-.2f, 1.85f, 0, 1, 0, 1}};
+        const Vec3 depth_eye{0, 1.65, 1};
+        a.render(0, projection(-.7, .7, -.7, .7) * view(depth_eye, {0, 0, -1}),
+                 board_transform({0, -10000, 0}, {0, 0, -1}, {0, 1, 0}), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {},
+                 depth_eye, {}, {}, {}, foreground, 0, {}, {}, 1, {}, {}, {}, {}, {}, depth_hud);
+        a.capture(0, root / "wrist-depth-occlusion.ppm");
+        const auto depth_image = pixels(root / "wrist-depth-occlusion.ppm");
+        const auto centre_pixel = (512 * 1024 + 512) * 3;
+        check(depth_image[centre_pixel] > 240 && depth_image[centre_pixel + 1] < 10 &&
+                  depth_image[centre_pixel + 2] > 240,
+              "World-space wrist panel preserves nearer hand/controller pixels through real depth testing");
         player.warp({0, 0, 0}, {0, 0, -1});
         player.start_on_foot();
         RideInput holding;
@@ -380,6 +398,70 @@ int main(int argc, char** argv) {
         player.tick(holding);
         check(player.carrying_board(), "GPU fixture genuinely carries the board");
         render("desktop-board-held", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+        if (argc == 3) {
+            const auto maps = std::filesystem::path(argv[2]);
+            const auto course = maps / "MERQUER";
+            auto logic = WorldLogic::load(course);
+            const auto paths = spline_paths(course);
+            PropRoute track(paths.at(38).curves);
+            const auto centre = track.sample(track.length() * .5).position;
+            const Vec3 eye = centre + Vec3{0, 8, 35};
+            const auto matrix = projection(-.7, .7, -.7, .7) * view(eye, centre - eye);
+            Mesh empty;
+            empty.map_root = course;
+            auto train_scene = std::make_shared<VulkanScene>(context);
+            train_scene->upload(empty);
+            VulkanRenderer owned(context);
+            owned.use_scene(train_scene);
+            owned.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
+            const auto no_board = board_transform({0, -10000, 0}, {0, 0, -1}, {0, 1, 0});
+            std::vector<std::uint8_t> hidden(logic.flags().size());
+            const std::array<Vec3, 1> observer{centre};
+            unsigned visible = 0;
+            for (unsigned frame = 0; frame <= 480; ++frame) {
+                logic.tick(1. / 60, 0, observer);
+                if (frame % 60)
+                    continue;
+                const auto routes = logic.route_motions();
+                const auto train =
+                    std::find_if(routes.begin(), routes.end(), [](const auto& r) { return r.instance == 344; });
+                check(train != routes.end(), "Owned MERQUER train remains an active detached mover");
+                owned.render(0, matrix, no_board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, {}, 0,
+                             hidden, {}, 1, std::span(&*train, 1));
+                visible += owned.stats().route_copies;
+                owned.capture(0, root / ("owned-merquer-train-" + std::to_string(frame) + ".ppm"));
+            }
+            check(visible > 0, "Owned MERQUER train produces actual GPU draw calls during a complete pass");
+            {
+                const auto course = maps / "GARI";
+                auto logic = WorldLogic::load(course);
+                logic.restart(RunMode::Showoff);
+                const auto props = Props::load(course);
+                const auto centre = props.instances.at(392).bounds.center();
+                const auto size = length(props.instances.at(392).bounds.max - props.instances.at(392).bounds.min);
+                const auto eye = centre + Vec3{size * .9, size * .3, size * .9};
+                const auto camera = projection(-.6, .6, -.6, .6) * view(eye, centre - eye);
+                Mesh mesh;
+                mesh.map_root = course;
+                auto scene = std::make_shared<VulkanScene>(context);
+                scene->upload(mesh, logic.flag_models(), logic.faceted_models());
+                VulkanRenderer gem(context);
+                gem.use_scene(scene);
+                gem.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
+                std::vector<std::uint8_t> only(logic.flags().size());
+                only[392] = WorldDraw;
+                const std::array<Vec3, 1> view{centre};
+                for (unsigned frame = 0; frame <= 60; ++frame) {
+                    logic.tick(1. / 60, 0, view);
+                    if (frame % 15)
+                        continue;
+                    gem.render(0, camera, no_board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, {},
+                               0, only, logic.motions(), 1, {}, logic.texture_frames());
+                    check(gem.stats().visible_props == 1, "Owned rotating gem reaches the GPU with authored lighting");
+                    gem.capture(0, root / ("owned-gari-gem-" + std::to_string(frame) + ".ppm"));
+                }
+            }
+        }
         std::cout << "PASS: " << checks
                   << " actual Vulkan avatar, look-down, labels, tracking fallback and stereo checks\n";
         return 0;

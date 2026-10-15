@@ -47,6 +47,7 @@ public:
     void apply_forces(double seconds, const CollisionWorld& world, std::span<BoostRider> riders,
                       const LapEntry& lap_entry = {});
     std::size_t forces() const;
+    std::span<const std::size_t> faceted_models() const;
     std::optional<std::pair<Vec3, Vec3>> teleport_destination(std::size_t instance, unsigned rider_slot = 0) const;
     void contact(std::size_t instance, double speed, bool human = true, double force = 1, Vec3 direction = {},
                  std::optional<ParticleContact> particle_contact = {});

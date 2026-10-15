@@ -54,6 +54,7 @@ struct PlayTuning {
     double charge_rate = 2.5, brake_acceleration = 18, flip_recovery_rate = 720;
     unsigned jump_stat = 255;
     bool symmetric_deck = true;
+    bool knockdowns = false;
     unsigned rider_slot = 0;
     double body_radius = .85;
     double hard_landing_speed = 28, unrideable_speed = 5;
@@ -103,6 +104,9 @@ class Player {
 public:
     explicit Player(Terrain terrain, PlayTuning tuning = {});
     void reset(bool manual = false);
+
+    void reset_room_contacts() { foot_room_serial_ = ~std::uint64_t(0); }
+
     bool recover_course(bool manual = false);
 
     bool reset_pending() const { return recovery_target_.has_value(); }
@@ -282,6 +286,12 @@ private:
     RiderMotion rider_motion_;
     BoostTrail boost_trail_;
     std::uint64_t game_frame_ = 0;
+    Vec3 previous_board_forward_{0, 0, -1}, previous_board_up_{0, 1, 0};
+    std::uint64_t previous_board_serial_ = 0;
+    bool interpolate_board_ = false;
+    std::vector<WorldContact> foot_contacts_;
+    Vec3 foot_room_offset_{}, previous_foot_room_offset_{};
+    std::uint64_t foot_room_serial_ = 0;
     PoseAnimation get_up_;
     PlayTuning tuning_;
     Vec3 spawn_position_, spawn_forward_;
@@ -333,7 +343,8 @@ private:
     void tick_foot(const RideInput& input, const Rider& before);
     void tick_loose_board();
     std::optional<GroundContact> walk_ground(Vec3 start, Vec3 end) const;
-    Vec3 walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radius = .28, double height = 1.65) const;
+    Vec3 walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radius = .28, double height = 1.65,
+                   std::vector<WorldContact>* contacts = nullptr) const;
     std::map<std::size_t, WorldContact> previous_contacts_;
     Vec3 foot_contact_velocity_{};
     std::vector<ContactEvent> contact_events_;

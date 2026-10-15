@@ -64,7 +64,7 @@ struct State {
     XrSpace space{};
     XrActionSet actions{};
     XrAction steer{}, look{}, boost{}, reset{}, jump{}, rail_exit{}, mount{}, restart{}, grip{}, menu{},
-        camera_toggle{}, squeeze{}, aim{};
+        camera_toggle{}, squeeze{}, aim{}, trigger_value{}, squeeze_value{}, index_touch{}, thumb_touch{};
     VrPresentation presentation;
     VrInputGate input_gate;
     RideUi ui;
@@ -79,7 +79,8 @@ struct State {
     std::array<XrSpace, 2> grips{}, aims{};
     Vec3 walk_forward{}, room_offset{};
     bool walking = true, head_steering = false;
-    XrPath touch_profile{};
+    XrPath touch_profile{}, touch_plus_profile{};
+    bool touch_plus_extension = false;
     XrBodyTrackerFB body_tracker{};
     PFN_xrDestroyBodyTrackerFB destroy_body{};
     PFN_xrLocateBodyJointsFB locate_body{};
@@ -144,7 +145,8 @@ struct State {
         return result;
     }
 
-    void create(const XrPlatform& platform, const Mesh& mesh, std::span<const std::size_t> flag_models) {
+    void create(const XrPlatform& platform, const Mesh& mesh, std::span<const std::size_t> flag_models,
+                std::span<const std::size_t> faceted_models) {
         head_steering = platform.head_steering;
         tracking_log(head_steering ? "Steering: head with stick override; grounded stick view carry 25%"
                                    : "Steering: stick only; grounded stick view carry 25%");
@@ -186,12 +188,15 @@ struct State {
         body_extension = available(XR_FB_BODY_TRACKING_EXTENSION_NAME);
         full_extension = body_extension && available(XR_META_BODY_TRACKING_FULL_BODY_EXTENSION_NAME);
         fidelity_extension = body_extension && available(XR_META_BODY_TRACKING_FIDELITY_EXTENSION_NAME);
+        touch_plus_extension = available(XR_META_TOUCH_CONTROLLER_PLUS_EXTENSION_NAME);
         if (body_extension)
             requested.push_back(XR_FB_BODY_TRACKING_EXTENSION_NAME);
         if (full_extension)
             requested.push_back(XR_META_BODY_TRACKING_FULL_BODY_EXTENSION_NAME);
         if (fidelity_extension)
             requested.push_back(XR_META_BODY_TRACKING_FIDELITY_EXTENSION_NAME);
+        if (touch_plus_extension)
+            requested.push_back(XR_META_TOUCH_CONTROLLER_PLUS_EXTENSION_NAME);
         XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};
         std::strcpy(create.applicationInfo.applicationName, "OpenSlope Native");
         create.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
@@ -309,7 +314,7 @@ struct State {
         if (format == VK_FORMAT_UNDEFINED)
             throw std::runtime_error("No supported XR colour format");
         auto scene = std::make_shared<VulkanScene>(vulkan);
-        scene->upload(mesh, flag_models);
+        scene->upload(mesh, flag_models, faceted_models);
         eyes.reserve(2);
         for (const auto& config : views) {
             eyes.emplace_back();
@@ -379,7 +384,13 @@ struct State {
         action("restart_run", XR_ACTION_TYPE_BOOLEAN_INPUT, restart);
         action("controls_menu", XR_ACTION_TYPE_BOOLEAN_INPUT, menu);
         action("camera_toggle", XR_ACTION_TYPE_BOOLEAN_INPUT, camera_toggle);
+        action("finger_trigger", XR_ACTION_TYPE_FLOAT_INPUT, trigger_value, true);
+        action("finger_squeeze", XR_ACTION_TYPE_FLOAT_INPUT, squeeze_value, true);
+        action("index_touch", XR_ACTION_TYPE_BOOLEAN_INPUT, index_touch, true);
+        action("thumb_touch", XR_ACTION_TYPE_BOOLEAN_INPUT, thumb_touch, true);
         touch_profile = path("/interaction_profiles/oculus/touch_controller");
+        if (touch_plus_extension)
+            touch_plus_profile = path("/interaction_profiles/meta/touch_controller_plus");
         hands = {path("/user/hand/left"), path("/user/hand/right")};
         XrActionCreateInfo pose{XR_TYPE_ACTION_CREATE_INFO};
         pose.actionType = XR_ACTION_TYPE_POSE_INPUT;
@@ -405,6 +416,10 @@ struct State {
             case VrBindingAction::Grip: return grip;
             case VrBindingAction::Aim: return aim;
             case VrBindingAction::Squeeze: return squeeze;
+            case VrBindingAction::TriggerValue: return trigger_value;
+            case VrBindingAction::SqueezeValue: return squeeze_value;
+            case VrBindingAction::IndexTouch: return index_touch;
+            case VrBindingAction::ThumbTouch: return thumb_touch;
             }
             throw std::runtime_error("Unknown controller binding");
         };
@@ -416,6 +431,10 @@ struct State {
         suggested.countSuggestedBindings = std::uint32_t(bindings.size());
         suggested.suggestedBindings = bindings.data();
         xr_check(xrSuggestInteractionProfileBindings(instance, &suggested), "Suggest Touch-compatible bindings");
+        if (touch_plus_profile != XR_NULL_PATH) {
+            suggested.interactionProfile = touch_plus_profile;
+            xr_check(xrSuggestInteractionProfileBindings(instance, &suggested), "Suggest Quest Touch Plus bindings");
+        }
         const std::array<XrActionSuggestedBinding, 6> simple{{{grip, path("/user/hand/left/input/grip/pose")},
                                                               {grip, path("/user/hand/right/input/grip/pose")},
                                                               {reset, path("/user/hand/left/input/menu/click")},
@@ -524,8 +543,25 @@ struct State {
                     c.up = direction(location.pose.orientation, {0, 1, 0});
                     c.forward = direction(location.pose.orientation, {0, 0, -1});
                     XrInteractionProfileState profile{XR_TYPE_INTERACTION_PROFILE_STATE};
-                    c.touch = XR_SUCCEEDED(xrGetCurrentInteractionProfile(session, hands[i], &profile)) &&
-                              profile.interactionProfile == touch_profile;
+                    c.touch =
+                        XR_SUCCEEDED(xrGetCurrentInteractionProfile(session, hands[i], &profile)) &&
+                        (profile.interactionProfile == touch_profile ||
+                         (touch_plus_profile != XR_NULL_PATH && profile.interactionProfile == touch_plus_profile));
+                    const auto analog = [&](XrAction action) {
+                        get.action = action;
+                        XrActionStateFloat value{XR_TYPE_ACTION_STATE_FLOAT};
+                        return XR_SUCCEEDED(xrGetActionStateFloat(session, &get, &value)) && value.isActive
+                                   ? double(value.currentState)
+                                   : 0.;
+                    };
+                    const auto touched = [&](XrAction action) {
+                        get.action = action;
+                        XrActionStateBoolean value{XR_TYPE_ACTION_STATE_BOOLEAN};
+                        return XR_SUCCEEDED(xrGetActionStateBoolean(session, &get, &value)) && value.isActive &&
+                               value.currentState;
+                    };
+                    c.fingers = controller_finger_curls(
+                        {analog(trigger_value), analog(squeeze_value), touched(index_touch), touched(thumb_touch)});
                 }
             }
         if (focused && body_tracker) {
@@ -800,7 +836,7 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
     State state;
     state.ui.immersive = true;
     state.ui.map_picker = bool(platform.on_exit);
-    state.create(platform, player.terrain().mesh(), player.logic().flag_models());
+    state.create(platform, player.terrain().mesh(), player.logic().flag_models(), player.logic().faceted_models());
     AudioScene audio(player.terrain().map_root());
     audio.mixer().paused(true);
     state.course_id = platform.course_id.empty() ? player.terrain().map_root().filename().string() : platform.course_id;
@@ -923,6 +959,7 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                     state.reference_change = 0;
                 }
                 if (!state.anchored || state.anchor_serial != player.placement_serial()) {
+                    player.reset_room_contacts();
                     state.origin = {head.position.x, state.floor_space ? 0 : head.position.y - 1.65, head.position.z};
                     const auto direction = quaternion_rotate(head.orientation, {0, 0, -1});
                     state.reference_yaw = std::atan2(-direction.x, -direction.z);
@@ -951,7 +988,7 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                 std::vector<Vertex> avatar_mesh, hud;
                 state.ui.visible = interactive && state.presentation.controls;
                 if (interactive) {
-                    const auto body_mesh = state.avatar.mesh(pose, !state.presentation.third_person, false,
+                    const auto body_mesh = state.avatar.mesh(pose, !state.presentation.third_person, state.ui.visible,
                                                              tracked.head + camera_offset, camera_offset);
                     avatar_mesh.assign(body_mesh.begin(), body_mesh.end());
                     equipment_outline(avatar_mesh, player);
@@ -1059,11 +1096,12 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
             std::snprintf(message, sizeof(message),
                           "XR frames: %.1f fps / %.1f Hz; focused %d; total %.2f ms; wait-frame %.2f; simulation %.2f; "
                           "tracking/avatar %.2f; image-wait %.2f; render-submit %.2f; resource-wait %.2f; end-frame "
-                          "%.2f; GPU previous %.2f ms; eye %ux%u MSAA %u",
+                          "%.2f; GPU previous %.2f ms; eye %ux%u MSAA %u; props %u; route copies %u",
                           fps, hz, int(state.focused), total_time / n, frame_wait / n, simulation / n, pose_time / n,
                           image_wait_time / n, render_time / n, resource_wait / n, end_time / n,
                           gpu_samples ? gpu_time / gpu_samples : -1., state.eyes[0].width, state.eyes[0].height,
-                          state.eyes[0].renderer->samples());
+                          state.eyes[0].renderer->samples(), state.eyes[0].renderer->stats().visible_props,
+                          state.eyes[0].renderer->stats().route_copies);
             tracking_log(message);
             reset_sample(now);
         }

@@ -82,7 +82,7 @@ void clips() {
 
 void gameplay() {
     for (const bool switched : {false, true}) {
-        Player player(Terrain({floor()}));
+        Player player(Terrain({floor()}), {.knockdowns = true});
         crash_landing(player, switched);
         const auto camera = player.camera_forward();
         const auto serial = player.placement_serial();
@@ -122,18 +122,18 @@ void gameplay() {
              "Completed pose is upright before ordinary bank control");
         require(player.rider().lead == (switched ? -1 : 1), "Get-up keeps switch stance");
     }
-    Player heavy(Terrain({floor()}));
+    Player heavy(Terrain({floor()}), {.knockdowns = true});
     heavy.warp({0, .1, 0}, {0, 0, -1}, {0, -31, -5});
     heavy.tick({});
     require(heavy.rider().crash_cause == CrashCause::Landing && heavy.rider().crashes == 1,
             "Excessive downward impact triggers a hard landing");
     for (const auto surface : {6, 10}) {
-        Player wall(Terrain({floor(surface)}));
+        Player wall(Terrain({floor(surface)}), {.knockdowns = true});
         wall.warp({0, -.005, 0}, {0, 0, -1}, {0, 0, -12});
         wall.tick({});
         require(wall.rider().crash_cause == CrashCause::Unrideable,
                 "Bounce and wall rows trigger wipeout at contact speed");
-        Player slow(Terrain({floor(surface)}));
+        Player slow(Terrain({floor(surface)}), {.knockdowns = true});
         slow.warp({0, -.005, 0}, {0, 0, -1}, {0, 0, -1});
         slow.tick({});
         require(slow.rider().crashes == 0, "Unrideable trigger retains its speed gate");
@@ -157,6 +157,7 @@ void gameplay() {
                 "Reset surface is an ordinary physics row; automatic course reset belongs to an active run");
     }
     PlayTuning unresolved;
+    unresolved.knockdowns = true;
     unresolved.tumble_ground_drag = 0;
     for (const bool racing : {false, true}) {
         Player player(Terrain({floor()}), unresolved);
@@ -230,7 +231,7 @@ void profiles() {
                                                {{"Time", .1}, {"Standing", 1}, {"Crouch", 0}, {"Height", 0}}})}};
     const auto write = [&] { std::ofstream(root / "RiderAnimations.json") << profile; };
     write();
-    Player held(Terrain::load(root));
+    Player held(Terrain::load(root), {.knockdowns = true});
     crash_landing(held);
     for (unsigned i = 0; i < 600; ++i)
         held.tick({1, true, false, true, 1});

@@ -63,7 +63,7 @@ struct Props {
     std::vector<PropModel> models;
     std::vector<PropInstance> instances;
     static Props load(const std::filesystem::path& root, bool model_only = false,
-                      std::span<const std::size_t> flag_models = {});
+                      std::span<const std::size_t> flag_models = {}, std::span<const std::size_t> faceted_models = {});
 };
 
 // Metadata-only references used by document providers before mesh loading.

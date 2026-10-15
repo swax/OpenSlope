@@ -171,6 +171,95 @@ int main() {
         for (unsigned i = 0; i < 120; ++i)
             trigger.advance(1. / 60, walk);
         check(trigger.rider().position.z < -4, "triggers do not block walking");
+
+        const auto interactions = [&](Json nodes, int mass) {
+            geometry(root, {-3, 0, -3}, {3, 3, -2}, mass);
+            auto instances = Json::parse(std::ifstream(root / "Instances.json"));
+            instances["Instances"][0]["EffectSlotIndex"] = 0;
+            write(root / "Instances.json", instances);
+            write(root / "Effects.json",
+                  {{"kind", "openslope-effects"},
+                   {"version", 1},
+                   {"graphs", Json::array({{{"id", "hit"}, {"nodes", nodes}}})},
+                   {"slots",
+                    Json::array({{{"id", "slot:0"}, {"originalIndex", 0}, {"circumstances", {{"collision", "hit"}}}}})},
+                   {"functions", Json::array()},
+                   {"objectProperties", Json::array()},
+                   {"instances", Json::array()},
+                   {"splines", Json::array()}});
+        };
+        const Json sound{{"mainType", 8}, {"payload", {{"SoundPlay", 7}}}};
+        interactions(
+            Json::array({sound, {{"mainType", 0}, {"payload", {{"type0", {{"SubType", 5}, {"DeadNodeMode", 2}}}}}}}),
+            1);
+        Player breakable(Terrain::load(root));
+        breakable.configure_run(RunMode::Showoff);
+        breakable.warp({0, 0, 0}, {0, 0, -1});
+        breakable.start_on_foot();
+        unsigned cues = 0;
+        for (unsigned i = 0; i < 120; ++i) {
+            breakable.tick(walk);
+            for (const auto& action : breakable.world_actions())
+                cues += action.kind == WorldActionKind::CourseSound && action.rider;
+        }
+        check(breakable.logic().flags()[0] == 0 && cues == 1,
+              "Actual blocking walk contact breaks and sounds once before the run starts");
+        check(breakable.rider().position.z < -4 && breakable.course_run().status().phase == RunPhase::Ready,
+              "Off-board interactions do not start the race/showoff clock");
+        interactions(
+            Json::array(
+                {sound,
+                 {{"mainType", 0},
+                  {"payload",
+                   {{"type0", {{"SubType", 0}, {"type0Sub0", {{"U0", 5}, {"U3", 0}, {"U4", 0}, {"U5", 0}}}}}}}}}),
+            1);
+        Json body;
+        for (unsigned i = 0; i < 24; ++i)
+            body["UFloat" + std::to_string(i)] = 0.;
+        body["UFloat1"] = body["UFloat4"] = 250.;
+        body["UFloat2"] = body["UFloat5"] = 60.;
+        for (const auto i : {6u, 10u, 14u})
+            body["UFloat" + std::to_string(i)] = 540.;
+        for (const auto i : {15u, 19u, 23u})
+            body["UFloat" + std::to_string(i)] = 1. / 540;
+        body["U2"] = body["U3"] = 0;
+        body["UByteData"] = "AA==";
+        body["uPhysicsStruct0"] = Json::array({{{"U0", 60}, {"U1", 0}, {"U2", 1}}});
+        write(root / "Physics.json", {{"PhysicsHeaders", Json::array({{{"PhysicsDatas", Json::array({body})}}})}});
+        auto rigid_instance = Json::parse(std::ifstream(root / "Instances.json"));
+        rigid_instance["Instances"][0]["CollsionMode"] = 3;
+        rigid_instance["Instances"][0]["PhysicsIndex"] = 0;
+        write(root / "Instances.json", rigid_instance);
+        Player roller(Terrain::load(root));
+        roller.warp({0, 0, 0}, {0, 0, -1});
+        roller.start_on_foot();
+        for (unsigned i = 0; i < 120; ++i)
+            roller.tick(walk);
+        check(roller.logic().flags()[0] & WorldDynamic, "Walking installs a roller body from its collision graph");
+        check(!roller.logic().motions().empty(), "Walking hit pushes the live roller instead of stopping silently");
+        std::filesystem::remove(root / "Physics.json");
+        interactions(Json::array({sound}), 0);
+        Player room(Terrain::load(root));
+        room.configure_run(RunMode::Showoff);
+        room.warp({0, 0, 0}, {0, 0, -1});
+        room.start_on_foot();
+        room.tick({});
+        unsigned room_cues = 0;
+        for (unsigned i = 1; i <= 100; ++i) {
+            RideInput physical;
+            physical.room_offset = {0, 0, -double(i) * .035};
+            room.tick(physical);
+            for (const auto& action : room.world_actions())
+                room_cues += action.kind == WorldActionKind::CourseSound && action.rider;
+        }
+        check(room_cues > 0, "Physical room movement crosses off-board trigger volumes without stick input");
+        check(std::abs(room.rider().position.z) < .001, "Room-scale contact probing does not double the camera motion");
+        room.reset_room_contacts();
+        room.tick({});
+        check(std::none_of(room.world_actions().begin(), room.world_actions().end(),
+                           [](const auto& a) { return a.kind == WorldActionKind::CourseSound; }),
+              "Tracking-origin recenter does not sweep backwards through intervening triggers");
+        std::filesystem::remove(root / "Effects.json");
         geometry(root, {-4, 1, -4}, {4, 2, 4});
         Player roof(Terrain::load(root));
         roof.warp({0, 4, 0}, {0, 0, -1});

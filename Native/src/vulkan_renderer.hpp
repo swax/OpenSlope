@@ -36,7 +36,8 @@ public:
 
     ~VulkanScene();
     VulkanScene(const VulkanScene&) = delete;
-    void upload(const Mesh& mesh, std::span<const std::size_t> flag_models = {});
+    void upload(const Mesh& mesh, std::span<const std::size_t> flag_models = {},
+                std::span<const std::size_t> faceted_models = {});
 
 private:
     friend class VulkanRenderer;
@@ -116,7 +117,8 @@ public:
 
     ~VulkanRenderer();
     VulkanRenderer(const VulkanRenderer&) = delete;
-    void upload(const Mesh& mesh, std::span<const std::size_t> flag_models = {});
+    void upload(const Mesh& mesh, std::span<const std::size_t> flag_models = {},
+                std::span<const std::size_t> faceted_models = {});
     void use_scene(std::shared_ptr<VulkanScene> scene);
     void targets(std::span<const VkImage> images, VkFormat format, std::uint32_t width, std::uint32_t height,
                  unsigned requested_samples = 1);
@@ -166,7 +168,7 @@ private:
     VkRenderPass pass_{};
     VkPipelineLayout layout_{};
     VkPipeline pipeline_{}, blend_pipeline_{}, sprite_pipeline_{}, wake_pipeline_{}, sky_pipeline_{}, line_pipeline_{};
-    VkPipeline celestial_pipeline_{}, hud_pipeline_{};
+    VkPipeline celestial_pipeline_{}, hud_pipeline_{}, wrist_pipeline_{};
     Stats stats_;
     VkQueryPool timing_{};
     double timestamp_period_{};

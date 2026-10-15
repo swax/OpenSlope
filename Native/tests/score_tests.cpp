@@ -181,7 +181,7 @@ void arithmetic() {
 }
 
 void production() {
-    Player player(floor());
+    Player player(floor(), {.knockdowns = true});
     player.configure_run(RunMode::Showoff);
     for (unsigned i = 0; i < 170; ++i)
         player.tick({});

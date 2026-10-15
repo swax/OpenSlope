@@ -169,6 +169,7 @@ struct WorldLogic::Data {
         std::vector<std::pair<std::size_t, std::size_t>> ancestry;
         Vec3 impact{};
         std::optional<ParticleContact> contact{};
+        std::size_t interaction = none;
     };
 
     std::vector<Chain> chains;
@@ -209,6 +210,13 @@ struct WorldLogic::Data {
     std::vector<PropMotion> motions;
     std::vector<std::size_t> motion_ids;
     std::vector<double> cooldowns;
+    double clock = 0;
+    std::vector<double> reset_due;
+    std::map<std::size_t, double> interaction_due, rail_reset_due;
+    std::map<std::size_t, bool> mode_rails;
+    std::vector<bool> reward_marks;
+    std::set<std::size_t> collected_rewards;
+    std::vector<std::size_t> faceted_models;
 
     struct Region {
         std::vector<std::size_t> hosts;
@@ -236,12 +244,13 @@ struct WorldLogic::Data {
 
     void enqueue(std::size_t chain, std::size_t instance, bool rider, bool human, bool collision = false,
                  std::vector<std::pair<std::size_t, std::size_t>> ancestry = {}, bool setup = false, Vec3 impact = {},
-                 std::optional<ParticleContact> contact = {}) {
+                 std::optional<ParticleContact> contact = {}, std::size_t interaction = none) {
         if (chain >= chains.size() || ready.size() + waiting.size() >= 1024 || ancestry.size() >= 32 ||
             std::find(ancestry.begin(), ancestry.end(), std::pair{chain, instance}) != ancestry.end())
             return;
         ancestry.push_back({chain, instance});
-        ready.push_back({chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry), impact, contact});
+        ready.push_back(
+            {chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry), impact, contact, interaction});
         if (collision)
             busy.at(instance) = true;
     }
@@ -381,9 +390,11 @@ struct WorldLogic::Data {
 
     void trigger(std::size_t host) {
         const auto slot = hosts[host].slot;
-        if (slot < slots.size())
+        if (slot < slots.size()) {
+            const auto interaction = arm_interaction(host, slots[slot].chains[4]) ? host : none;
             enqueue(slots[slot].chains[4], host, false, false, false, {}, false, hosts[host].impact,
-                    hosts[host].contact);
+                    hosts[host].contact, interaction);
+        }
     }
 
     bool fragile_graph(std::size_t chain, std::size_t host, std::set<std::size_t>& visited) const {
@@ -402,19 +413,143 @@ struct WorldLogic::Data {
         return false;
     }
 
-    bool pad_graph(std::size_t chain, std::size_t host, std::set<std::size_t>& visited) const {
+    bool pad_graph(std::size_t chain, std::size_t host, std::set<std::size_t>& visited, bool multiplier = false) const {
         if (chain >= chains.size() || !visited.insert(chain).second)
             return false;
         for (const auto& node : chains[chain].nodes) {
-            if (node.main == 17 || node.main == 18)
+            if (multiplier ? node.main == 14 : node.main == 17 || node.main == 18)
                 return true;
-            if ((node.main == 21 || node.main == 26) && pad_graph(ref(node.refs, "function", functions), host, visited))
+            if ((node.main == 21 || node.main == 26) &&
+                pad_graph(ref(node.refs, "function", functions), host, visited, multiplier))
                 return true;
             if (node.main == 7 && ref(node.refs, "instance", instance_ids) == host &&
-                pad_graph(ref(node.refs, "effectGraph", graphs), host, visited))
+                pad_graph(ref(node.refs, "effectGraph", graphs), host, visited, multiplier))
                 return true;
         }
         return false;
+    }
+
+    bool permanent(std::size_t host) const {
+        const auto slot = hosts[host].slot;
+        return properties[host].kind == 5 && properties[host].mode == 4 && slot < slots.size() &&
+               slots[slot].chains[2] != none;
+    }
+
+    void reward(std::size_t host) {
+        if (host >= hosts.size())
+            return;
+        reward_marks[host] = true;
+        if (properties[host].kind == 5 && properties[host].mode >= 2)
+            collected_rewards.insert(host);
+    }
+
+    bool arm_interaction(std::size_t root, std::size_t entry) {
+        if (root >= hosts.size() || entry >= chains.size())
+            return false;
+        std::set<std::pair<std::size_t, std::size_t>> visited;
+        std::vector<std::pair<std::size_t, std::size_t>> pending{{entry, root}};
+        std::set<std::size_t> members{root}, rails;
+        bool temporary = false;
+        while (!pending.empty()) {
+            const auto [chain, host] = pending.back();
+            pending.pop_back();
+            if (chain >= chains.size() || host >= hosts.size() || hosts[host].mode_hidden ||
+                !visited.insert({chain, host}).second)
+                continue;
+            if (visited.size() > 200000)
+                throw std::runtime_error("Interaction reset graph exceeds limit");
+            members.insert(host);
+            for (const auto& node : chains[chain].nodes) {
+                if (node.main == 21 || node.main == 26)
+                    pending.push_back({ref(node.refs, "function", functions), host});
+                else if (node.main == 7) {
+                    const auto target = ref(node.refs, "instance", instance_ids),
+                               graph = ref(node.refs, "effectGraph", graphs);
+                    if (target >= hosts.size() || hosts[target].mode_hidden)
+                        continue;
+                    members.insert(target);
+                    if (graph < chains.size())
+                        pending.push_back({graph, target});
+                    else if (node.payload.contains("Instance") && node.payload.at("Instance").value("Effect", -1) == 0)
+                        temporary = true;
+                } else if (node.main == 0) {
+                    const auto& fields = node.payload.at("type0");
+                    const auto sub = fields.value("SubType", -1), operation = fields.value("DeadNodeMode", 0);
+                    const auto slot = hosts[host].slot;
+                    const bool latched_kill =
+                        sub == 5 && operation == 4 && slot < slots.size() && slots[slot].chains[2] != none;
+                    temporary |= sub == 0 || sub == 20 || (sub == 5 && operation >= 2 && !latched_kill);
+                } else if (node.main == 25) {
+                    const auto rail = ref(node.refs, "spline", spline_ids);
+                    if (rail != none)
+                        rails.insert(rail);
+                }
+            }
+        }
+        if (!temporary)
+            return false;
+        // Application reset policy, separate from each authored property's lifetime.
+        const auto deadline = clock + 30.;
+        interaction_due[root] = deadline;
+        for (const auto host : members)
+            reset_due[host] = deadline;
+        for (const auto rail : rails)
+            rail_reset_due[rail] = deadline;
+        return true;
+    }
+
+    void reset_interactions() {
+        std::set<std::size_t> expired, restored;
+        for (auto i = interaction_due.begin(); i != interaction_due.end();)
+            if (i->second <= clock + 1e-9) {
+                expired.insert(i->first);
+                i = interaction_due.erase(i);
+            } else
+                ++i;
+        for (std::size_t host = 0; host < reset_due.size(); ++host) {
+            if (reset_due[host] < 0 || reset_due[host] > clock + 1e-9)
+                continue;
+            reset_due[host] = -1;
+            if (hosts[host].mode_hidden || (hosts[host].showoff && mode != RunMode::Showoff) ||
+                collected_pads.contains(host) || collected_rewards.contains(host) || permanent(host))
+                continue;
+            restored.insert(host);
+            reward_marks[host] = false;
+            particles.kill(host);
+            particle_hosts.erase(host);
+            erase_route(host);
+            hosts[host].kill_movers = false;
+            hosts[host].impact = {};
+            hosts[host].contact.reset();
+            destroy(host);
+            busy[host] = false;
+            cooldowns[host] = 0;
+        }
+        const auto discard = [&](const Thread& thread) {
+            const bool remove =
+                !thread.setup && (expired.contains(thread.interaction) || restored.contains(thread.instance));
+            if (remove && thread.collision && thread.instance < busy.size())
+                busy[thread.instance] = false;
+            return remove;
+        };
+        std::erase_if(ready, discard);
+        std::erase_if(waiting, discard);
+        for (const auto host : restored) {
+            const auto slot = hosts[host].slot;
+            if (host_active[host] && slot < slots.size())
+                enqueue(slots[slot].chains[0], host, false, false);
+        }
+        for (auto i = rail_reset_due.begin(); i != rail_reset_due.end();)
+            if (i->second <= clock + 1e-9) {
+                const auto rail = i->first;
+                const bool enabled = mode_rails.contains(rail) ? mode_rails.at(rail)
+                                     : rail < paths.size()     ? paths[rail].enabled
+                                                               : true;
+                if (actions.size() < 4096)
+                    actions.push_back({WorldActionKind::RailToggle, double(enabled), rail, {}, false});
+                i = rail_reset_due.erase(i);
+            } else
+                ++i;
     }
 
     void destroy(std::size_t host, bool restore_flags = true) {
@@ -933,7 +1068,7 @@ struct WorldLogic::Data {
                         break;
                 } else if (node.main == 21 || node.main == 26)
                     enqueue(ref(node.refs, "function", functions), host, node.main == 21 && thread.rider, thread.human,
-                            false, thread.ancestry, thread.setup, thread.impact, thread.contact);
+                            false, thread.ancestry, thread.setup, thread.impact, thread.contact, thread.interaction);
                 else if (node.main == 7) {
                     const auto target = ref(node.refs, "instance", instance_ids),
                                graph = ref(node.refs, "effectGraph", graphs);
@@ -942,13 +1077,15 @@ struct WorldLogic::Data {
                         continue;
                     if (graph < chains.size())
                         enqueue(graph, target, thread.rider, thread.human, false, thread.ancestry, thread.setup,
-                                thread.impact, thread.contact);
+                                thread.impact, thread.contact, thread.interaction);
                     else if (p.contains("Instance") && p.at("Instance").contains("Effect")) {
                         if (p.at("Instance").at("Effect").get<int>() == 0) {
                             destroy(target);
                             flags[target] = 0;
                             properties[target].kind = 5;
                             properties[target].mode = 2;
+                            if (reward_marks[target])
+                                collected_rewards.insert(target);
                             if (thread.setup)
                                 hosts[target].mode_hidden = true;
                         } else {
@@ -1029,6 +1166,8 @@ struct WorldLogic::Data {
                             if (operation >= 2) {
                                 if (thread.rider && pad_instances[host])
                                     collected_pads.insert(host);
+                                if (reward_marks[host])
+                                    collected_rewards.insert(host);
                                 if (operation == 3) {
                                     hosts[host].kill_movers = true;
                                     particles.kill(host);
@@ -1045,6 +1184,7 @@ struct WorldLogic::Data {
                         ++unknown;
                 } else if (node.main == 17 || node.main == 18) {
                     if (thread.rider) {
+                        reward(host);
                         action(node.main == 17 ? WorldActionKind::SpeedBoost : WorldActionKind::TrickBoost, thread,
                                std::max(0., number(p, node.main == 17 ? "type17" : "type18")));
                         if (thread.human)
@@ -1056,6 +1196,7 @@ struct WorldLogic::Data {
                 } else if (node.main == 14 && thread.rider) {
                     const auto tier = number(p, "MultiplierScore");
                     if (tier == 2 || tier == 3 || tier == 5) {
+                        reward(host);
                         if (mode == RunMode::Showoff)
                             action(WorldActionKind::Multiplier, thread, tier);
                         if (thread.human)
@@ -1069,8 +1210,11 @@ struct WorldLogic::Data {
                         action(WorldActionKind::Teleport, thread, 0, target);
                 } else if (node.main == 25) {
                     const auto rail = ref(node.refs, "spline", spline_ids);
-                    if (rail != none)
+                    if (rail != none) {
+                        if (thread.setup)
+                            mode_rails[rail] = number(p.at("Spline"), "Effect") != 0;
                         action(WorldActionKind::RailToggle, thread, number(p.at("Spline"), "Effect"), rail);
+                    }
                 } else
                     ++unknown;
             }
@@ -1259,11 +1403,17 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
                                          (row.value("PlayerCollision", false) ? WorldCollide : 0)));
     }
     d.pad_instances.resize(d.hosts.size());
+    d.reward_marks.resize(d.hosts.size());
     for (std::size_t i = 0; i < d.hosts.size(); ++i)
         if (d.hosts[i].slot < d.slots.size()) {
             std::set<std::size_t> visited;
             d.pad_instances[i] = d.pad_graph(d.slots[d.hosts[i].slot].chains[1], i, visited);
+            visited.clear();
+            if (d.pad_graph(d.slots[d.hosts[i].slot].chains[1], i, visited, true))
+                d.faceted_models.push_back(d.hosts[i].model);
         }
+    std::sort(d.faceted_models.begin(), d.faceted_models.end());
+    d.faceted_models.erase(std::unique(d.faceted_models.begin(), d.faceted_models.end()), d.faceted_models.end());
     d.fragile_targets.resize(d.hosts.size());
     for (std::size_t i = 0; i < d.hosts.size(); ++i) {
         d.fragile_targets[i] = {i};
@@ -1295,6 +1445,7 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
     d.properties.resize(rows.size());
     d.motion_ids.resize(rows.size(), none);
     d.cooldowns.resize(rows.size());
+    d.reset_due.resize(rows.size(), -1);
     for (std::size_t i = 0; i < d.hosts.size(); ++i) {
         const auto position = d.hosts[i].position;
         if (std::abs(position.x) > 1e9 || std::abs(position.y) > 1e9 || std::abs(position.z) > 1e9)
@@ -1311,6 +1462,13 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
 void WorldLogic::restart(RunMode mode, bool preserve_collected_pads) {
     auto& d = *data_;
     d.mode = mode;
+    d.clock = 0;
+    d.interaction_due.clear();
+    d.rail_reset_due.clear();
+    d.mode_rails.clear();
+    std::fill(d.reset_due.begin(), d.reset_due.end(), -1);
+    std::fill(d.reward_marks.begin(), d.reward_marks.end(), false);
+    d.collected_rewards.clear();
     if (!preserve_collected_pads)
         d.collected_pads.clear();
     d.force_hosts.clear();
@@ -1370,6 +1528,8 @@ void WorldLogic::tick(double seconds, double speed, std::span<const Vec3> observ
             throw std::invalid_argument("Invalid crowd rider activity");
     auto& d = *data_;
     d.budget = 4096;
+    d.clock += seconds;
+    d.reset_interactions();
     d.particles.step(seconds);
     for (auto& motion : d.motions)
         motion.previous = motion.current;
@@ -1543,9 +1703,10 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
         return;
     const auto slot = d.hosts[instance].slot;
     if (slot < d.slots.size()) {
+        const auto interaction = d.arm_interaction(instance, d.slots[slot].chains[1]) ? instance : none;
         d.cooldowns[instance] = d.properties[instance].debounce;
         d.enqueue(d.slots[slot].chains[1], instance, true, human, true, {}, false, d.hosts[instance].impact,
-                  d.hosts[instance].contact);
+                  d.hosts[instance].contact, interaction);
         d.drain(speed);
         d.cooldowns[instance] = std::max(d.cooldowns[instance], d.properties[instance].debounce);
         if (d.properties[instance].fragile) {
@@ -1559,6 +1720,8 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
 }
 
 std::span<const std::uint8_t> WorldLogic::flags() const { return data_->flags; }
+
+std::span<const std::size_t> WorldLogic::faceted_models() const { return data_->faceted_models; }
 
 void WorldLogic::prepare_bodies(const CollisionWorld& world) {
     auto& d = *data_;

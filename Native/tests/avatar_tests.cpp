@@ -58,6 +58,26 @@ int main() {
         check(labels > no_labels + 3000, "controller help has visible geometry");
         finite_mesh(avatar.mesh(fallback, true, true, tracking.head));
         close(player.rider().position, before, "presentation cannot move physics");
+        const auto open_hand = avatar_pose(player, &tracking);
+        const auto open_mesh = avatar.mesh(open_hand, false, false);
+        const std::vector<Vertex> open_vertices(open_mesh.begin(), open_mesh.end());
+        for (unsigned group = 0; group < 3; ++group) {
+            auto curled = open_hand;
+            curled.controllers[0].fingers[group] = 1;
+            const auto changed = avatar.mesh(curled, false, false);
+            check(changed.size() == open_vertices.size(), "Finger sensors preserve body/controller topology");
+            unsigned moved = 0;
+            for (std::size_t i = 0; i < avatar.source_triangles() * 3; ++i) {
+                const Vec3 a{open_vertices[i].x, open_vertices[i].y, open_vertices[i].z},
+                    b{changed[i].x, changed[i].y, changed[i].z};
+                if (length(a - b) <= 1e-6)
+                    continue;
+                ++moved;
+                check(length(a - open_hand.controllers[0].position) < .3 && length(b - a) < .3,
+                      "Touch poses move only the selected hand's fingers");
+            }
+            check(moved > 10, "Each sensor group bends visible authored finger vertices");
+        }
         tracking.head.x += .4;
         for (auto& c : tracking.controllers)
             c.position.x += .4;

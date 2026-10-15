@@ -66,7 +66,7 @@ void playable(const std::filesystem::path& root, const Json& original_rows, cons
     require(bounce.contacts().size() == 1 && bounce.contacts()[0].phase == ContactPhase::Begin &&
                 bounce.contacts()[0].response.impulse > 0,
             "Bounce publishes contact and response separately");
-    Player fast(Terrain::load(root));
+    Player fast(Terrain::load(root), {.knockdowns = true});
     fast.warp({-2.5, -.005, 0}, {1, 0, 0}, {80, 0, 0});
     fast.tick({});
     require(fast.rider().position.x < 0, "High-speed rider cannot tunnel through an authored box");
@@ -79,6 +79,24 @@ void playable(const std::filesystem::path& root, const Json& original_rows, cons
     for (unsigned j = 0; j < 60 && fast.reset_pending(); ++j)
         fast.tick({});
     require(fast.rider().motion != Motion::Wipeout, "Reset exits unfinished recovery explicitly");
+    auto authored_models = Json::parse(std::ifstream(root / "Models.json"));
+    auto tall_wall = authored_models;
+    tall_wall["Models"][0]["ModelObjects"][0]["CollisionBounds"]["Max"][2] = 1000;
+    write(root / "Models.json", tall_wall);
+    Player continuous(Terrain::load(root));
+    write(root / "Models.json", authored_models);
+    continuous.warp({-2.5, .25, 0}, {1, 0, 0}, {80, 0, 0});
+    continuous.tick({});
+    require(continuous.rider().hard_impacts == 1 && !continuous.recovering() && continuous.rider().crashes == 0,
+            "Default application bounce retains control without a knockdown");
+    RideInput steer;
+    steer.boost = true;
+    steer.vr = {true, true, false, {-1, 0, 0}, 0};
+    const auto initial_heading = continuous.rider().forward;
+    continuous.tick(steer);
+    require(!continuous.recovering() && dot(initial_heading, continuous.rider().forward) < .999 &&
+                continuous.board_boosting(),
+            "Head steering and boost remain usable after an impact");
     Player trigger(Terrain::load(root));
     trigger.warp({35, -.005, 0}, {1, 0, 0}, {600, 0, 0});
     trigger.tick({});

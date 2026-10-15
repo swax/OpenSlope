@@ -99,7 +99,30 @@ def main():
                     if name=='hit': assert red>50,(label,red,result.stdout)
                     else: assert 'Visible props: 0;' in result.stdout,(label,result.stdout)
                 frames+=sum(step['Ticks'] for step in steps)
-    print(f'PASS: {frames} Vulkan frames verify priority scanline alpha, walking/riding shatter, visible pieces, retirement and routed PCM')
+        for repeat in (False, True):
+            steps=[dict(Ticks=10,Posture=1,WalkForward=[1,0,0]),
+                   dict(Ticks=12,Posture=1,WalkForward=[-1,0,0]),
+                   dict(Ticks=1,Posture=1,WalkForward=[1,0,0]),dict(Ticks=1800)]
+            if repeat: steps += [dict(Ticks=11,Posture=1,WalkForward=[1,0,0])]
+            replay=root/'respawn.json'
+            write(replay.name,dict(Schema='openslope-replay/v1',Placement=dict(Position=[-1.6,-.005,0],Forward=[1,0,0]),Steps=steps))
+            picture=root/'respawn.ppm';pcm=root/'respawn.wav'
+            result=subprocess.run([executable,'--map',str(root),'--on-foot','--first-person','--replay',str(replay),'--capture',str(picture),'--audio-capture',str(pcm)],capture_output=True,text=True,timeout=180)
+            assert result.returncode==0,result.stdout+result.stderr
+            pixels=picture.read_bytes().split(b'\n',3)[3]
+            cyan=sum(g>r+30 and b>r+30 and b>100 for r,g,b in zip(pixels[0::3],pixels[1::3],pixels[2::3]))
+            red=sum(r>180 and g<80 and b<80 for r,g,b in zip(pixels[0::3],pixels[1::3],pixels[2::3]))
+            if repeat:
+                assert 'contact sounds 2;' in result.stdout and red>50,(red,cyan,result.stdout)
+                with wave.open(str(pcm),'rb') as wav:
+                    wav.setpos(wav.getnframes()-11*800)
+                    tail=struct.unpack('<'+str(11*800*2)+'h',wav.readframes(11*800))
+                assert max(tail)>100 and min(tail)<-100,'second smash must produce actual PCM'
+            else:
+                assert 'contact sounds 1;' in result.stdout and cyan>10000 and red==0,(red,cyan,result.stdout)
+            ticks=sum(step['Ticks'] for step in steps);frames+=ticks
+            print(f'PASS: {ticks} production frames verify {"second smash and sound" if repeat else "intact barrier restoration"} after thirty seconds')
+    print(f'PASS: {frames} Vulkan frames verify priority scanline alpha, walking/riding shatter, pieces, retirement, timed restoration and routed PCM')
 
 
 if __name__=='__main__':main()

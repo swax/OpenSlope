@@ -12,13 +12,15 @@ std::optional<Player::GroundContact> Player::walk_ground(Vec3 start, Vec3 end) c
     return result;
 }
 
-Vec3 Player::walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radius, double height) const {
+Vec3 Player::walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radius, double height,
+                       std::vector<WorldContact>* contacts) const {
     // Application walker: separate sphere casts also test head/feet against boxes.
     // Positive-mass props block; triggers do not. There is no board bounce here.
     const auto offsets =
         std::array<double, 4>{radius, .65 * height, height < 1 ? .85 * height : height - .30, height - .16};
     for (unsigned pass = 0; pass < 6; ++pass) {
         std::optional<ShapeContact> closest;
+        std::optional<WorldContact> world_hit;
         for (unsigned i = 0; i < offsets.size(); ++i) {
             const auto r = i == 3 ? .16 : radius;
             const std::array<ProbeSphere, 1> a{{{start + Vec3{0, offsets[i], 0}, r}}},
@@ -27,16 +29,22 @@ Vec3 Player::walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radi
                 if (!hit.response || hit.normal.y > .1 ||
                     (hit.depth <= 1e-7 && dot(destination - start, hit.normal) >= -1e-9))
                     continue;
-                if (!closest || hit.t < closest->t)
+                if (!closest || hit.t < closest->t) {
                     closest = hit;
+                    world_hit = hit;
+                }
             }
             if (const auto hit = terrain_.sweep(a[0].centre, b[0].centre, r);
                 hit && hit->normal.y <= .1 && !(hit->depth <= 1e-7 && dot(destination - start, hit->normal) >= -1e-9) &&
-                (!closest || hit->t < closest->t))
+                (!closest || hit->t < closest->t)) {
                 closest = ShapeContact{hit->point, hit->normal, hit->t, hit->depth};
+                world_hit.reset();
+            }
         }
         if (!closest)
             break;
+        if (contacts && world_hit)
+            contacts->push_back(*world_hit);
         const auto delta = destination - start;
         start += delta * std::max(0., closest->t - .001);
         start += closest->normal * (std::max(0., closest->depth) + .001);
@@ -264,7 +272,8 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
     if (seated)
         destination.y = floor->point.y;
     foot_contact_velocity_ = rider_.velocity;
-    destination = walk_move(before.position, destination, rider_.velocity, .28, 1.65 - .35 * rider_.crouch);
+    destination =
+        walk_move(before.position, destination, rider_.velocity, .28, 1.65 - .35 * rider_.crouch, &foot_contacts_);
     if (seated) {
         const auto resting = walk_ground(destination + Vec3{0, .1, 0}, destination - Vec3{0, .1, 0});
         seated = bool(resting);

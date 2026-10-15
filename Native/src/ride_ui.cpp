@@ -159,12 +159,11 @@ UiFrame RideUi::desktop(const CameraPose& c, double aspect, bool menu) {
             2 * height / std::tan(c.fov / 2)};
 }
 
-UiFrame RideUi::wrist(const ControllerPose& c, Vec3 eye, Vec3 offset) {
+UiFrame RideUi::wrist(const ControllerPose& c, Vec3, Vec3 offset) {
     if (!c.valid)
         return {};
-    const auto centre = c.position + offset + Vec3{0, .18, 0};
-    const auto normal = normalized(eye - centre), right = normalized(project(c.right, normal), {1, 0, 0}),
-               up = normalized(cross(normal, right));
+    const auto centre = c.position + offset + c.forward * .34 + c.up * .025;
+    const auto right = c.right, up = c.forward;
     return {centre - right * .23 + up * .17, right * .46, -up * .34, true};
 }
 

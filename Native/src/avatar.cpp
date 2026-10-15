@@ -1,5 +1,6 @@
 #include "openslope/avatar.hpp"
 #include "figure.hpp"
+#include "openslope/gear.hpp"
 #include "openslope/ui_font.hpp"
 #include <cstring>
 #include <nlohmann/json.hpp>
@@ -83,12 +84,38 @@ void controller(std::vector<Vertex>& out, const ControllerPose& grip, unsigned s
         return;
     const auto colour = side ? std::array<float, 3>{1, .62f, .14f} : std::array<float, 3>{.52f, .94f, .20f};
     const auto top = c.position + c.up * .04 + c.forward * .015;
-    tube(out, c.position - c.up * .09, top, .026, {.22f, .25f, .3f});
-    tube(out, top - c.up * .014, top + c.up * .014, .043, {.1f, .12f, .17f});
-    tube(out, top + c.up * .016 - c.right * .015, top + c.up * .026 - c.right * .015, .011, colour);
-    tube(out, top + c.up * .016 + c.right * .022 - c.forward * .008,
-         top + c.up * .020 + c.right * .022 - c.forward * .008, .008, colour);
-    tube(out, c.position + c.forward * .027, c.position + c.forward * .043, .012, {.72f, .77f, .84f});
+    if (c.touch) {
+        const auto basis = [&](Vec3 v) {
+            return grip.right * (side ? v.x : -v.x) + grip.up * v.y - grip.forward * v.z;
+        };
+        const auto& model = touch_plus_mesh();
+        for (std::size_t i = 0; i < model.indices.size(); i += 3)
+            for (const auto k : {0u, side ? 1u : 2u, side ? 2u : 1u}) {
+                const auto& v = model.vertices[model.indices[i + k]];
+                const auto normal = normalized(basis({v.nx, v.ny, v.nz}));
+                const auto light = float(.65 + .35 * std::max(0., dot(normal, normalized(Vec3{-.3, .8, -.5}))));
+                out.push_back(vertex(grip.position + basis({v.x, v.y, v.z}), {v.r * light, v.g * light, v.b * light}));
+            }
+        const auto normal = normalized(grip.up * std::cos(32 * pi / 180) + grip.forward * std::sin(32 * pi / 180));
+        const auto right = grip.right * (side ? 1. : -1.), up = normalized(project(grip.forward, normal));
+        for (unsigned upper = 0; upper < 2; ++upper) {
+            const auto point = grip.position +
+                               basis(upper ? Vec3{-.0087, .0031, -.0617} : Vec3{-.0027, .0112, -.0488}) + normal * .001;
+            const auto glyph = ui_glyph(side ? (upper ? 'B' : 'A') : (upper ? 'Y' : 'X'));
+            constexpr double pixel = .00045;
+            for (unsigned y = 0; y < 7; ++y)
+                for (unsigned x = 0; x < 5; ++x)
+                    if (glyph[y] & (1u << (4 - x))) {
+                        const auto p = point + right * ((double(x) - 2.5) * pixel) + up * ((3.5 - y) * pixel);
+                        quad(out, p, p + right * pixel, p + (right + up) * pixel, p + up * pixel, {.92f, .92f, .92f});
+                    }
+        }
+    } else {
+        tube(out, c.position - c.up * .09, top, .026, {.22f, .25f, .3f});
+        tube(out, top - c.up * .014, top + c.up * .014, .043, {.1f, .12f, .17f});
+        tube(out, top + c.up * .016 - c.right * .015, top + c.up * .026 - c.right * .015, .011, colour);
+        tube(out, c.position + c.forward * .027, c.position + c.forward * .043, .012, {.72f, .77f, .84f});
+    }
     if (labels) {
         const auto anchor = top + c.up * .07 + c.forward * .08;
         tube(out, top, anchor, .0015, colour);
@@ -293,6 +320,8 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking, con
         }
         p.controllers = tracking->controllers;
         for (auto& c : p.controllers) {
+            for (auto& curl : c.fingers)
+                curl = std::isfinite(curl) ? std::clamp(curl, 0., 1.) : 0.;
             if (!finite(c.position) || !finite(c.right) || !finite(c.up) || !finite(c.forward) || length(c.up) < .5 ||
                 length(c.forward) < .5 || length(cross(c.forward, c.up)) < .5)
                 c.valid = false;
@@ -531,6 +560,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
         Vec3 origin, from, to, target;
         double scale;
         std::array<Vec3, 3> source{}, destination{};
+        Vec3 curl_axis{};
         bool framed = false;
 
         Vec3 map(Vec3 v) const {
@@ -545,7 +575,25 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
     transforms.reserve(bones_.size());
     for (const auto& b : bones_) {
         if (b.name.starts_with("LeftHand") || b.name.starts_with("RightHand")) {
-            transforms.push_back(transforms.at(b.parent));
+            const auto& parent = transforms.at(b.parent);
+            const auto side = b.name.starts_with("LeftHand") ? 0u : 1u;
+            const auto& c = p.controllers[side];
+            auto transform = parent;
+            transform.origin = b.head;
+            transform.target = parent.target + parent.map(basis(b.head - parent.origin));
+            transform.framed = true;
+            const bool thumb = b.name.find("Thumb") != std::string::npos;
+            const auto curl = c.valid ? c.fingers[thumb ? 0 : b.name.find("Index") != std::string::npos ? 1 : 2] : 0.;
+            if (bones_[b.parent].name == "Hand.L" || bones_[b.parent].name == "Hand.R")
+                transform.curl_axis =
+                    normalized(cross(parent.map(basis(b.axes[1])), c.position - transform.target), c.right);
+            const auto angle = curl * (thumb ? .75 : b.name.ends_with("2") ? 1.15 : .85);
+            for (unsigned i = 0; i < 3; ++i) {
+                const Vec3 axis = i == 0 ? Vec3{1, 0, 0} : i == 1 ? Vec3{0, 1, 0} : Vec3{0, 0, 1};
+                transform.source[i] = basis(axis);
+                transform.destination[i] = rotate(parent.map(basis(axis)), transform.curl_axis, angle);
+            }
+            transforms.push_back(transform);
             continue;
         }
         const auto t = target(b.name, p);

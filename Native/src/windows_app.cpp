@@ -102,7 +102,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     image.create(1280, 720);
     VulkanRenderer renderer(context);
     renderer.cull_terrain(terrain_culling);
-    renderer.upload(player.terrain().mesh(), player.logic().flag_models());
+    renderer.upload(player.terrain().mesh(), player.logic().flag_models(), player.logic().faceted_models());
     renderer.targets(std::span(&image.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1280, 720, msaa);
     std::cout << "MSAA samples: " << renderer.samples() << '\n';
     std::unique_ptr<AudioScene> audio;
@@ -365,7 +365,8 @@ struct Window {
         return DefWindowProcW(handle, message, wparam, lparam);
     }
 
-    void create(const Mesh& mesh, bool visible = true, std::span<const std::size_t> flag_models = {}) {
+    void create(const Mesh& mesh, bool visible = true, std::span<const std::size_t> flag_models = {},
+                std::span<const std::size_t> faceted_models = {}) {
         WNDCLASSW cls{};
         cls.lpfnWndProc = procedure;
         cls.hInstance = GetModuleHandleW(nullptr);
@@ -389,7 +390,7 @@ struct Window {
         VkSemaphoreCreateInfo semaphore{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         vk_check(vkCreateSemaphore(context.device, &semaphore, nullptr, &available), "Create acquire semaphore");
         vk_check(vkCreateSemaphore(context.device, &semaphore, nullptr, &finished), "Create present semaphore");
-        renderer.upload(mesh, flag_models);
+        renderer.upload(mesh, flag_models, faceted_models);
         if (visible)
             ShowWindow(handle, SW_SHOW);
     }
@@ -645,7 +646,8 @@ int main(int argc, char** argv) {
         Window window(context);
         window.renderer.cull_terrain(terrain_culling);
         window.msaa = msaa;
-        window.create(player->terrain().mesh(), !smoke_window, player->logic().flag_models());
+        window.create(player->terrain().mesh(), !smoke_window, player->logic().flag_models(),
+                      player->logic().faceted_models());
         std::unique_ptr<AudioScene> audio;
         std::unique_ptr<AudioDevice> device;
         std::unique_ptr<AudioService> audio_service;
@@ -846,7 +848,8 @@ int main(int argc, char** argv) {
                         next->configure_run(RunMode::Freeride);
                     }
                     next->start_on_foot();
-                    window.renderer.upload(next->terrain().mesh(), next->logic().flag_models());
+                    window.renderer.upload(next->terrain().mesh(), next->logic().flag_models(),
+                                           next->logic().faceted_models());
                     window.glare_visibility.reset();
                     audio_service.reset();
                     device.reset();

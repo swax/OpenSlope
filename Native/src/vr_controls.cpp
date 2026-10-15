@@ -14,7 +14,7 @@ double VrFrameClock::step(double display_seconds, bool interactive) {
 }
 
 std::span<const VrBinding> touch_bindings() {
-    static constexpr std::array<VrBinding, 17> bindings{
+    static constexpr std::array<VrBinding, 31> bindings{
         {{VrBindingAction::Steer, "/user/hand/left/input/thumbstick"},
          {VrBindingAction::Look, "/user/hand/right/input/thumbstick"},
          {VrBindingAction::Boost, "/user/hand/right/input/b/click"},
@@ -31,8 +31,28 @@ std::span<const VrBinding> touch_bindings() {
          {VrBindingAction::Aim, "/user/hand/left/input/aim/pose"},
          {VrBindingAction::Aim, "/user/hand/right/input/aim/pose"},
          {VrBindingAction::Squeeze, "/user/hand/left/input/squeeze/value"},
-         {VrBindingAction::Squeeze, "/user/hand/right/input/squeeze/value"}}};
+         {VrBindingAction::Squeeze, "/user/hand/right/input/squeeze/value"},
+         {VrBindingAction::TriggerValue, "/user/hand/left/input/trigger/value"},
+         {VrBindingAction::TriggerValue, "/user/hand/right/input/trigger/value"},
+         {VrBindingAction::SqueezeValue, "/user/hand/left/input/squeeze/value"},
+         {VrBindingAction::SqueezeValue, "/user/hand/right/input/squeeze/value"},
+         {VrBindingAction::IndexTouch, "/user/hand/left/input/trigger/touch"},
+         {VrBindingAction::IndexTouch, "/user/hand/right/input/trigger/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/left/input/x/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/left/input/y/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/right/input/a/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/right/input/b/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/left/input/thumbstick/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/right/input/thumbstick/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/left/input/thumbrest/touch"},
+         {VrBindingAction::ThumbTouch, "/user/hand/right/input/thumbrest/touch"}}};
     return bindings;
+}
+
+std::array<double, 3> controller_finger_curls(const VrHandInput& input) {
+    const auto value = [](double v) { return std::isfinite(v) ? std::clamp(v, 0., 1.) : 0.; };
+    return {input.thumb_touch ? .8 : 0., std::max(input.index_touch ? .2 : 0., value(input.trigger)),
+            value(input.squeeze)};
 }
 
 VrIntent vr_intent(const VrButtons& b, bool walking) {
@@ -91,8 +111,10 @@ double gaze_carve(Vec3 gaze, Vec3 travel, Vec3 normal, Vec3 fallback) {
     return std::copysign(std::clamp((std::abs(angle) - 5) / 30, 0., 1.), angle);
 }
 
-double gaze_turn(Vec3 gaze, Vec3 reference, double maximum) {
+double gaze_turn(Vec3 gaze, Vec3 reference, double maximum, double seconds) {
     const auto yaw = gaze_yaw(gaze, reference, {0, 1, 0});
-    return std::abs(yaw) <= 5 * pi / 180 ? 0 : std::clamp(yaw, -maximum, maximum);
+    const auto error = std::max(0., std::abs(yaw) - 5 * pi / 180);
+    const auto response = seconds <= 0 ? 0. : error <= .05 * pi / 180 ? error : error * -std::expm1(-18 * seconds);
+    return std::copysign(std::min(std::max(0., maximum), response), yaw);
 }
 } // namespace openslope

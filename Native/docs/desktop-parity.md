@@ -119,3 +119,18 @@ onboarding and hides optional settings/folder details behind labelled controls.
 It adds scalable text, 60 dp targets, focus/hover states and accessible status,
 with on-device empty/library/error/cancel and larger-text checks. See
 `quest-launcher.md`; immersive UI and wider effects parity remain separate work.
+
+Build 0.53 restores ordinary breakable/movable interaction groups after thirty
+seconds of gameplay, including debris, persistent effects and related rails.
+Newer interactions retain shared targets; mode hides, collected rewards and
+permanent latches remain protected. Actual GARI/MERQUER/MESA checks and a rendered
+second-smash/PCM replay cover the new path. See `interaction-resets.md`; broader
+effects and gameplay parity remain active.
+
+The same build adds controller-fixed, depth-tested wrist UI, the first-party
+Touch Plus models, sensor-driven fingers, off-board world interactions and
+continuous control through prop impacts. VR board presentation interpolates
+between physics ticks; multiplier pickups use faceted normals. See
+`quest-playtest-0.53.md` for verification and the still-open wider prop-brightness
+and Quest train reports. Later play-test notes on starts/recovery, vents, cues,
+boost mode, glints and graphics settings remain subsequent work.

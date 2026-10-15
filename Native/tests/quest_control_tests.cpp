@@ -48,9 +48,26 @@ void controls() {
     check(bound(VrBindingAction::Reset, "/user/hand/left/input/x/click") == 1, "X reset/recall");
     check(bound(VrBindingAction::Menu, "/user/hand/left/input/y/click") == 1, "Y controls rather than gate restart");
     check(bound(VrBindingAction::Camera, "/user/hand/right/input/thumbstick/click") == 1, "Right click camera");
-    std::set<std::string_view> paths;
+    std::set<std::pair<VrBindingAction, std::string_view>> paths;
     for (const auto& binding : touch_bindings())
-        check(paths.insert(binding.path).second, "Each physical component has one binding");
+        check(paths.insert({binding.action, binding.path}).second, "Each action/component pair has one binding");
+    check(bound(VrBindingAction::IndexTouch, "/user/hand/left/input/trigger/touch") == 1 &&
+              bound(VrBindingAction::IndexTouch, "/user/hand/right/input/trigger/touch") == 1,
+          "Each index reads its own capacitive trigger sensor");
+    for (const auto path : {"/user/hand/left/input/x/touch", "/user/hand/left/input/y/touch",
+                            "/user/hand/right/input/a/touch", "/user/hand/right/input/b/touch",
+                            "/user/hand/left/input/thumbrest/touch", "/user/hand/right/input/thumbrest/touch",
+                            "/user/hand/left/input/thumbstick/touch", "/user/hand/right/input/thumbstick/touch"})
+        check(bound(VrBindingAction::ThumbTouch, path) == 1, "Thumb observes buttons, stick and rest on both hands");
+    const auto open = controller_finger_curls({});
+    check(open == std::array<double, 3>{0, 0, 0}, "Released sensors open every finger group");
+    const auto touch = controller_finger_curls({0, 0, true, true});
+    check(touch[0] > open[0] && touch[1] > open[1] && touch[2] == 0,
+          "Capacitive touch changes thumb and index independently of grip");
+    const auto grip = controller_finger_curls({1, .5, false, false});
+    check(grip[0] == 0 && grip[1] == 1 && grip[2] == .5, "Trigger and grip supply continuous curls");
+    const auto invalid = controller_finger_curls({std::numeric_limits<double>::quiet_NaN(), 4});
+    check(invalid[1] == 0 && invalid[2] == 1, "Invalid/overrange sensors cannot corrupt hand geometry");
     VrButtons b;
     b.x = .5;
     b.y = 1;

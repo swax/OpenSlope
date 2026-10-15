@@ -9,7 +9,32 @@ struct VrInput {
     Vec3 gaze{};
     double spin = 0;
 };
-enum class VrBindingAction { Steer, Look, Boost, Jump, Board, Reset, Menu, Camera, RailExit, Grip, Squeeze, Aim };
+enum class VrBindingAction {
+    Steer,
+    Look,
+    Boost,
+    Jump,
+    Board,
+    Reset,
+    Menu,
+    Camera,
+    RailExit,
+    Grip,
+    Squeeze,
+    Aim,
+    TriggerValue,
+    SqueezeValue,
+    IndexTouch,
+    ThumbTouch
+};
+
+struct VrHandInput {
+    double trigger = 0, squeeze = 0;
+    bool index_touch = false, thumb_touch = false;
+};
+
+// Thumb, index and the remaining three fingers have independent sensor groups.
+std::array<double, 3> controller_finger_curls(const VrHandInput& input);
 
 struct VrBinding {
     VrBindingAction action;
@@ -76,5 +101,5 @@ private:
 double vr_axis(double raw, bool precision);
 double gaze_yaw(Vec3 gaze, Vec3 reference, Vec3 normal);
 double gaze_carve(Vec3 gaze, Vec3 travel, Vec3 normal, Vec3 fallback);
-double gaze_turn(Vec3 gaze, Vec3 reference, double maximum_radians);
+double gaze_turn(Vec3 gaze, Vec3 reference, double maximum_radians, double seconds = 1. / 60);
 } // namespace openslope

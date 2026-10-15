@@ -47,6 +47,19 @@ int main(int argc, char** argv) {
                 "Read shared model and placements");
         require(props.geometry.vertices.size() == 4 && props.geometry.indices.size() == 6,
                 "Reuse OBJ vertices across polygons and placements");
+        const std::array<std::size_t, 1> faceted_models{0};
+        const auto faceted = Props::load(root, false, {}, faceted_models);
+        require(faceted.geometry.vertices.size() == 6 && faceted.geometry.indices.size() == 6,
+                "Faceted pickup presentation splits triangle corners without changing topology");
+        for (unsigned i = 0; i < 6; ++i) {
+            const auto& v = faceted.geometry.vertices[faceted.geometry.indices[i]];
+            const auto& original = props.geometry.vertices[props.geometry.indices[i]];
+            near(length(Vec3{v.x - original.x, v.y - original.y, v.z - original.z}), 0,
+                 "Faceted normals preserve mesh positions");
+            const auto& first = faceted.geometry.vertices[faceted.geometry.indices[i - i % 3]];
+            near(length(Vec3{v.nx - first.nx, v.ny - first.ny, v.nz - first.nz}), 0,
+                 "Each pickup triangle has a single face normal");
+        }
         require(!props.instances[2].visible, "Retain authored hidden instances without drawing them");
         near(props.instances[0].bounds.min.x, -.61, "Placement scale and centimetres");
         near(props.instances[1].bounds.max.x, .61, "Rotated placement bounds");

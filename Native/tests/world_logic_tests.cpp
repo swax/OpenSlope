@@ -90,6 +90,8 @@ void pickup(const std::filesystem::path& root) {
     const auto doc = document(Json::array({node(14, {{"MultiplierScore", 3}}), property(5, {{"DeadNodeMode", 2}})}));
     write(root, "Effects.json", doc);
     auto logic = WorldLogic::load(root);
+    check(logic.faceted_models().size() == 1 && logic.faceted_models()[0] == 0,
+          "Multiplier metadata identifies faceted pickup models without names or hard-coded slots");
     check(logic.flags()[0] == 0, "LTG Showoff layer absent in Freeride");
     logic.restart(RunMode::Showoff);
     check(logic.flags()[0] == 3, "Showoff restores pickup draw and collision eligibility");
@@ -265,6 +267,146 @@ void modes(const std::filesystem::path& root) {
     check(rejected, "duplicate graph IDs are rejected");
 }
 
+void interaction_resets(const std::filesystem::path& root) {
+    fixture(root);
+    const Json kill = property(5, {{"DeadNodeMode", 2}}), stop = property(5, {{"DeadNodeMode", 3}}),
+               latched = property(5, {{"DeadNodeMode", 4}});
+    const Json call = node(7, Json::object(), {{"instance", "instance:3"}, {"effectGraph", "child"}});
+    const Json flag = property(13, {{"type0Sub13", {{"U0", 0}, {"U1", 1}, {"U2", 1}}}});
+    const std::array<Vec3, 1> eyes{{{0, 0, 0}}};
+    const auto advance = [&](WorldLogic& logic, double seconds) {
+        while (seconds > 1e-8) {
+            const auto dt = std::min(.1, seconds);
+            logic.tick(dt, 12, eyes);
+            seconds -= dt;
+        }
+    };
+    auto doc = document(Json::array({kill, node(4, {{"WaitTime", 1}}), call}));
+    doc["graphs"].push_back(graph("child", Json::array({stop})));
+    doc["graphs"].push_back(graph("persistent", Json::array({flag})));
+    doc["slots"][0]["circumstances"]["persistent"] = "persistent";
+    write(root, "Effects.json", doc);
+    auto group = WorldLogic::load(root);
+    group.tick(0, 12, eyes);
+    group.contact(1, 12);
+    check(group.flags()[1] == 0 && group.flags()[3] == 3, "group reset preserves the authored child delay");
+    advance(group, 29.9);
+    check(group.flags()[1] == 0 && group.flags()[3] == 0,
+          "whole chain remains broken until the thirty-second boundary");
+    group.tick(0, 12, eyes);
+    check(group.flags()[1] == 0, "a zero-duration tick cannot consume the reset deadline");
+    advance(group, .1);
+    check(group.flags()[1] == 3 && group.flags()[3] == 3, "source and delayed target restore on one deadline");
+    check(std::any_of(group.texture_frames().begin(), group.texture_frames().end(),
+                      [](const auto& frame) { return frame.instance == 1 && frame.wave.has_value(); }),
+          "nearby persistent appearance is reinstalled on reset");
+    group.contact(1, 12);
+    check(group.flags()[1] == 0, "restored collider can trigger a second break");
+
+    auto overlap = WorldLogic::load(root);
+    overlap.contact(1, 12);
+    advance(overlap, 20);
+    overlap.contact(2, 12);
+    advance(overlap, 10.1);
+    check(overlap.flags()[1] == 3 && overlap.flags()[2] == 0 && overlap.flags()[3] == 0,
+          "newer shared-target interaction survives the first source's reset");
+    advance(overlap, 20);
+    check(overlap.flags()[2] == 3 && overlap.flags()[3] == 3, "shared target returns with the later source");
+
+    auto delayed = doc;
+    delayed["graphs"][0]["nodes"] = Json::array({kill, node(4, {{"WaitTime", 35}}), call});
+    write(root, "Effects.json", delayed);
+    auto expired = WorldLogic::load(root);
+    expired.contact(1, 12);
+    advance(expired, 36);
+    check(expired.flags()[1] == 3 && expired.flags()[3] == 3,
+          "old delayed work cannot break a restored target after reset");
+    expired.contact(1, 12);
+    check(expired.flags()[1] == 0, "reset releases the old collision-chain busy latch");
+    expired.restart(RunMode::Freeride);
+    advance(expired, 36);
+    check(expired.flags()[1] == 3 && expired.flags()[3] == 3,
+          "run restart clears deadlines and delayed interaction work");
+
+    auto mode = document(Json::array({kill, call, node(25, {{"Spline", {{"Effect", 1}}}}, {{"spline", "rail"}})}));
+    mode["graphs"].push_back(graph("child", Json::array({stop})));
+    mode["graphs"].push_back(graph("hide", Json::array({kill})));
+    mode["splines"] = {{{"id", "rail"}, {"originalIndex", 0}, {"data", Json::object()}}};
+    mode["functions"] = {
+        {{"id", "mode"},
+         {"name", "RaceMode"},
+         {"nodes", Json::array({node(7, Json::object(), {{"instance", "instance:3"}, {"effectGraph", "hide"}}),
+                                node(25, {{"Spline", {{"Effect", 0}}}}, {{"spline", "rail"}})})}}};
+    write(root, "Effects.json", mode);
+    auto hidden = WorldLogic::load(root);
+    hidden.restart(RunMode::Race);
+    hidden.take_actions();
+    hidden.contact(1, 12);
+    advance(hidden, 30.1);
+    check(hidden.flags()[1] == 3 && hidden.flags()[3] == 0, "interaction reset preserves nested mode-entry hides");
+    const auto rails = hidden.take_actions();
+    check(std::any_of(
+              rails.begin(), rails.end(),
+              [](const auto& action) { return action.kind == WorldActionKind::RailToggle && action.value == 1; }) &&
+              rails.back().kind == WorldActionKind::RailToggle && rails.back().value == 0,
+          "related rail restores its mode-specific value rather than a global default");
+    hidden.restart(RunMode::Showoff);
+    advance(hidden, 35);
+    check(hidden.flags()[3] == 3, "new mode restores a formerly hidden instance");
+
+    auto reward_group = document(Json::array({node(14, {{"MultiplierScore", 3}}), kill, call}));
+    reward_group["graphs"].push_back(graph("child", Json::array({stop})));
+    write(root, "Effects.json", reward_group);
+    auto collected = WorldLogic::load(root);
+    collected.restart(RunMode::Showoff);
+    collected.contact(0, 12);
+    check(collected.flags()[0] == 0 && collected.flags()[3] == 0,
+          "collected source and non-rewarding related object both hide");
+    advance(collected, 30.1);
+    check(collected.flags()[0] == 0 && collected.flags()[3] == 3,
+          "actual collection stays spent while related debris resets despite sharing a reward slot");
+    collected.restart(RunMode::Showoff, true);
+    check(collected.flags()[0] == 3 && collected.flags()[3] == 3,
+          "run restart restores gems while retaining the separate collected-pad policy");
+    collected.restart(RunMode::Showoff);
+    check(collected.flags()[0] == 3, "new run restores collected rewards");
+
+    auto permanent = document(Json::array({latched}));
+    permanent["graphs"].push_back(graph("keep", Json::array()));
+    permanent["slots"][0]["circumstances"]["slot3"] = "keep";
+    write(root, "Effects.json", permanent);
+    auto kept = WorldLogic::load(root);
+    kept.contact(1, 12);
+    advance(kept, 35);
+    check(kept.flags()[1] == 0,
+          "authored permanent kill retains its region-exit latch beyond the application deadline");
+    const std::array<Vec3, 1> distant{{{10000, 0, 0}}};
+    kept.tick(.1, 0, distant);
+    kept.tick(.1, 0, distant);
+    kept.tick(.1, 0, eyes);
+    check(kept.flags()[1] == 0, "permanent recipe remains hidden across region exit and reentry");
+
+    auto roller = document(Json::array({property(0, {{"type0Sub0", {{"U0", 5}, {"U3", 0}, {"U4", 0}, {"U5", 0}}}})}));
+    write(root, "Effects.json", roller);
+    auto moving = WorldLogic::load(root);
+    moving.contact(1, 12);
+    advance(moving, 29.9);
+    check(moving.flags()[1] == (WorldDraw | WorldCollide | WorldDynamic),
+          "movable prop remains live before the shared deadline");
+    advance(moving, .1);
+    check(moving.flags()[1] == 3, "movable prop restores authored collision and draw state at thirty seconds");
+
+    auto stopped = document(Json::array({property(5, {{"DeadNodeMode", 1}})}));
+    stopped["graphs"].push_back(graph("persistent", Json::array({flag})));
+    stopped["slots"][0]["circumstances"]["persistent"] = "persistent";
+    write(root, "Effects.json", stopped);
+    auto paused = WorldLogic::load(root);
+    paused.tick(0, 12, eyes);
+    paused.contact(1, 12);
+    advance(paused, 35);
+    check(paused.flags()[1] == 3, "pause-only command is not classified as a breakable");
+}
+
 void production(const std::filesystem::path& root) {
     auto doc = document(Json::array({node(14, {{"MultiplierScore", 2}}), property(5, {{"DeadNodeMode", 2}})}));
     doc["graphs"].push_back(graph("reset", Json::array({node(13)})));
@@ -334,6 +476,48 @@ void production(const std::filesystem::path& root) {
           "pickup MAIN chime reaches actual PCM output");
 }
 
+void owned_resets(const std::filesystem::path& maps) {
+    const auto root = maps / "MESA";
+    const auto rows = Json::parse(std::ifstream(root / "Instances.json")).at("Instances");
+    const auto instance = [&](const char* name) {
+        for (std::size_t i = 0; i < rows.size(); ++i)
+            if (rows[i].value("InstanceName", "") == name)
+                return i;
+        throw std::runtime_error("Owned falling-tree fixture is missing");
+    };
+    const auto trigger = instance("Mdl_Trigger_Fireworks_5001"), trunk = instance("Mdl_TreeTrunk_EvergreenB_Fall_0"),
+               other = instance("Mdl_TreeTrunk_EvergreenB_Fall_1");
+    const auto placements = prop_placements(root);
+    const auto& m = placements[trigger];
+    const std::array<Vec3, 1> eyes{{{m[12], m[13], m[14]}}};
+    auto logic = WorldLogic::load(root);
+    logic.tick(0, 14, eyes);
+    logic.take_actions();
+    const auto original_trigger = logic.flags()[trigger], original_trunk = logic.flags()[trunk];
+    logic.contact(trigger, 14);
+    unsigned enabled = 0, restored = 0;
+    bool falling = false;
+    for (unsigned frame = 1; frame <= 1801; ++frame) {
+        logic.tick(h, 14, eyes);
+        if (frame == 240)
+            for (const auto& motion : logic.motions())
+                if (motion.instance == trunk)
+                    falling = !motion.current.empty() && motion.current[0] != identity_transform();
+        for (const auto& action : logic.take_actions())
+            if (action.kind == WorldActionKind::RailToggle && (action.target == 87 || action.target == 88)) {
+                enabled += action.value == 1 && frame < 1800;
+                restored += action.value == 0 && frame >= 1800;
+            }
+    }
+    check(falling && enabled == 2, "actual MESA tree changes pose and both tree rails activate after their wait");
+    check(logic.flags()[trigger] == original_trigger && logic.flags()[trunk] == original_trunk,
+          "actual MESA trigger and tree restore authored presence after thirty seconds");
+    check(std::none_of(logic.motions().begin(), logic.motions().end(),
+                       [&](const auto& motion) { return motion.instance == trunk || motion.instance == other; }),
+          "actual MESA falling-tree transforms are removed on group reset");
+    check(restored == 2, "actual MESA tree rails return to their mode-specific disabled state together");
+}
+
 void courses(const std::filesystem::path& maps) {
     unsigned count = 0;
     for (const auto& entry : std::filesystem::directory_iterator(maps))
@@ -377,9 +561,12 @@ int main(int argc, char** argv) {
         show(root);
         budget(root);
         modes(root);
+        interaction_resets(root);
         production(root);
-        if (argc == 2)
+        if (argc == 2) {
             courses(argv[1]);
+            owned_resets(argv[1]);
+        }
         std::cout << "PASS: " << checks
                   << " world graph, mode, pickup/reset, tombstone, timer, sound and production checks\n";
         return 0;

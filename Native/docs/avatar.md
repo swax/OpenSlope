@@ -19,15 +19,20 @@ First-person views omit head/neck geometry so the camera cannot be enclosed by
 the player's own head. F/V toggles desktop first person; hold C to look down.
 `--first-person` and `--look-down` also work in captures and desktop launchers.
 
-OpenXR reads both grip-pose actions at predicted display time. The procedural
-controller models have handles, top plates, sticks, buttons and triggers, with
+OpenXR reads both grip-pose actions at predicted display time. Build 0.53 embeds
+the first-party 652-triangle Quest Touch Plus model baked through the public
+Slopesmith art API, with independent Native input/posing and retained attribution.
+The controllers have handles, top plates, sticks, buttons and triggers, with
 depth-tested text anchored above each model and facing the viewer. Touch labels
 explain stick steer/tuck/brake, stick-click rail exit, mounted X reset/on-foot X recall,
 A hold/release jump, B boost and either trigger mount/dismount. Right stick turns the
 view; its click toggles first/third person. Y shows/hides control/clock/score panels.
 On foot they show stick walk, B run and A jump. The simple-controller profile has Select jump,
 left Menu reset and right Menu mount/dismount bindings and matching help.
-These are original generic models, not device art.
+The Touch Plus art is the project's own rebuild; no Meta reference mesh ships.
+Simple controllers retain a generic fallback. Capacitive thumb/index touch and
+analog trigger/grip values bend the existing finger chains; see
+`quest-playtest-0.53.md`.
 Missing grip poses hide the affected model immediately and use a procedural arm.
 
 Quest tracking uses the official optional extensions:

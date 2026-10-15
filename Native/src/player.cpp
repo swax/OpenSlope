@@ -56,6 +56,7 @@ Player::Player(Terrain terrain, PlayTuning tuning)
 }
 
 void Player::release_inputs() {
+    reset_room_contacts();
     foot_motion_.release();
     if (carry_.held())
         drop_board(false);
@@ -84,6 +85,7 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     if (!finite(position) || !finite(forward) || !finite(velocity) || !finite(up) || length(forward) < 1e-9 ||
         length(cross(forward, up)) < 1e-9)
         throw std::runtime_error("Invalid rider placement");
+    interpolate_board_ = false;
     teleport_pending_.reset();
     recovery_target_.reset();
     reset_age_ = reset_fade_in_ = 0;
@@ -295,7 +297,7 @@ void Player::enter_air() {
 }
 
 void Player::crash(CrashCause cause, Vec3 normal) {
-    if (rider_.control == Control::Wipeout)
+    if (!tuning_.knockdowns || rider_.control == Control::Wipeout)
         return;
     score_.lose(ScoreLoss::Crash, .1);
     // [Trailmap: 300-wipeout-triggers, 300-recovery] Save the carried frame,
@@ -393,8 +395,9 @@ void Player::land(const GroundContact& hit) {
         length(travel) > 1e-6 ? std::acos(std::clamp(std::abs(dot(normalized(travel), nose)), 0.0, 1.0)) : 0;
     const auto impact = -dot(rider_.velocity - hit.velocity, hit.normal);
     const bool unrideable = hit.surface == 6 || hit.surface == 10;
-    const bool hard = !recovering() && (tilt >= pi / 2 || impact > tuning_.hard_landing_speed ||
-                                        (unrideable && length(travel) > tuning_.unrideable_speed));
+    const bool hard = tuning_.knockdowns && !recovering() &&
+                      (tilt >= pi / 2 || impact > tuning_.hard_landing_speed ||
+                       (unrideable && length(travel) > tuning_.unrideable_speed));
     rider_.landing_scale = recovering() ? 1 : contract_.landing_retention(tilt, yaw);
     rider_.velocity = hit.velocity + (rider_.velocity - hit.velocity) * rider_.landing_scale;
     if (length(travel) > .5)
@@ -422,30 +425,44 @@ void Player::land(const GroundContact& hit) {
 }
 
 void Player::notify_tick(const Rider& before) {
-    if (!reset_pending() && !teleport_pending_ && run_.status().phase == RunPhase::Running) {
+    if (on_foot_ && foot_room_serial_ == placement_serial_)
+        foot_contact_velocity_ += (foot_room_offset_ - previous_foot_room_offset_) / contract_.tick_seconds();
+    if (!reset_pending() && !teleport_pending_ && (on_foot_ || run_.status().phase == RunPhase::Running)) {
         if (on_foot_) {
             std::map<std::size_t, WorldContact> seen;
+            const auto contact = [&](const WorldContact& hit) {
+                const auto old = seen.find(hit.instance);
+                const bool first = old == seen.end();
+                if (first || hit.t < old->second.t)
+                    seen[hit.instance] = hit;
+                dispatch_world_contact(hit, length(foot_contact_velocity_));
+                if (!teleport_pending_ && first)
+                    if (const auto response = logic_.shove(hit, foot_contact_velocity_, {0, 1, 0}))
+                        rider_.velocity += response->velocity - foot_contact_velocity_;
+            };
+            for (const auto& hit : foot_contacts_) {
+                if (teleport_pending_)
+                    break;
+                contact(hit);
+            }
+            const auto same_placement = foot_room_serial_ == placement_serial_;
+            const auto start =
+                same_placement ? before.position + previous_foot_room_offset_ : rider_.position + foot_room_offset_;
             for (const auto height : {.28, .825, 1.37}) {
                 if (teleport_pending_)
                     break;
-                const std::array<ProbeSphere, 1> from{{{before.position + Vec3{0, height, 0}, .28}}},
-                    to{{{rider_.position + Vec3{0, height, 0}, .28}}};
+                const std::array<ProbeSphere, 1> from{{{start + Vec3{0, height, 0}, .28}}},
+                    to{{{rider_.position + foot_room_offset_ + Vec3{0, height, 0}, .28}}};
                 for (const auto& hit : world_.sweep(from, to)) {
-                    const auto old = seen.find(hit.instance);
-                    const bool first = old == seen.end();
-                    if (old == seen.end() || hit.t < old->second.t)
-                        seen[hit.instance] = hit;
-                    dispatch_world_contact(hit, length(foot_contact_velocity_));
+                    contact(hit);
                     if (teleport_pending_)
                         break;
-                    if (first)
-                        if (const auto response = logic_.shove(hit, foot_contact_velocity_, {0, 1, 0}))
-                            rider_.velocity += response->velocity - foot_contact_velocity_;
                 }
             }
             record_contacts(std::move(seen));
         }
     }
+    foot_room_serial_ = placement_serial_;
     apply_world_actions();
     const bool placed = teleport_pending_.has_value();
     if (placed) {
@@ -458,7 +475,8 @@ void Player::notify_tick(const Rider& before) {
                       placed ? rider_.position : before.position,
                       rider_.position,
                       rider_.velocity,
-                      !placed && run_.status().phase == RunPhase::Running && !reset_pending() && !recovering(),
+                      !placed && (on_foot_ || run_.status().phase == RunPhase::Running) && !reset_pending() &&
+                          !recovering(),
                       rider_.tube_stage};
     logic_.apply_forces(dt, world_, std::span(&driven, 1), [&](std::uint64_t) -> std::optional<unsigned> {
         if (run_.status().mode == RunMode::Freeride || run_.status().passes <= 1)
@@ -577,14 +595,15 @@ void Player::teleport(Vec3 position, Vec3 forward) {
 }
 
 void Player::dispatch_world_contact(const WorldContact& contact, double speed, std::optional<Vec3> support_normal) {
-    if (!reset_pending() && !teleport_pending_ && run_.status().phase == RunPhase::Running &&
+    if (!reset_pending() && !teleport_pending_ && (on_foot_ || run_.status().phase == RunPhase::Running) &&
         logic_contacts_.insert(contact.instance).second) {
         const auto normal = support_normal.value_or(contact.normal);
-        const auto normal_speed = std::abs(dot(rider_.velocity - contact.surface_velocity, normal));
+        const auto velocity = on_foot_ ? foot_contact_velocity_ : rider_.velocity;
+        const auto normal_speed = std::abs(dot(velocity - contact.surface_velocity, normal));
         const bool supported =
             support_normal.has_value() || (rider_.grounded && rider_.ground_instance == contact.instance);
         logic_.contact(contact.instance, speed, true, fragile_contact_cost(normal_speed, normal, supported),
-                       rider_.velocity - contact.surface_velocity, ParticleContact{contact.point, normal});
+                       velocity - contact.surface_velocity, ParticleContact{contact.point, normal});
         logic_.prepare_bodies(world_);
         apply_world_actions();
     }
@@ -759,9 +778,14 @@ void Player::ride_rail(const RailHit& hit, const RideInput& input, const Rider& 
 }
 
 void Player::tick(const RideInput& input) {
+    interpolate_board_ = false;
+    previous_board_forward_ = render_forward();
+    previous_board_up_ = render_up();
+    previous_board_serial_ = placement_serial_;
     ++game_frame_;
     world_actions_.clear();
     logic_contacts_.clear();
+    foot_contacts_.clear();
     sample_input(input);
     boost_requested_ = input.boost;
     if (!boost_requested_) {
@@ -769,6 +793,8 @@ void Player::tick(const RideInput& input) {
         boost_engaged_ = false;
     }
     const auto before_pose = rider_;
+    previous_foot_room_offset_ = foot_room_offset_;
+    foot_room_offset_ = on_foot_ ? project(input.room_offset, {0, 1, 0}) : Vec3{};
     foot_contact_velocity_ = before_pose.velocity;
     const auto dt = contract_.tick_seconds();
     rider_.pads.tick(dt);
@@ -1145,6 +1171,7 @@ void Player::tick(const RideInput& input) {
 }
 
 void Player::advance(double seconds, const RideInput& input) {
+    interpolate_board_ = false;
     sample_input(input);
     if (input.reset && !reset_held_) {
         reset(true);
@@ -1155,6 +1182,12 @@ void Player::advance(double seconds, const RideInput& input) {
     const auto ticks = clock_.advance(seconds);
     for (unsigned i = 0; i < ticks; ++i)
         tick(input);
+    if (previous_board_serial_ != placement_serial_) {
+        previous_board_forward_ = render_forward();
+        previous_board_up_ = render_up();
+        previous_board_serial_ = placement_serial_;
+    }
+    interpolate_board_ = input.vr.enabled && !on_foot_;
 }
 
 std::vector<ProbeSphere> Player::volume(const Rider& pose, bool airborne, bool rail) const {
@@ -1406,7 +1439,10 @@ Vec3 Player::render_forward() const {
         return loose_board_.forward;
     const auto forward = normalized(project(rider_.forward, rider_.board_up), rider_.forward),
                right = normalized(cross(forward, rider_.board_up));
-    return rotate(forward, right, -rider_.flip_degrees * rider_.lead * pi / 180);
+    const auto current = rotate(forward, right, -rider_.flip_degrees * rider_.lead * pi / 180);
+    return interpolate_board_
+               ? normalized(previous_board_forward_ * (1 - clock_.alpha()) + current * clock_.alpha(), current)
+               : current;
 }
 
 Vec3 Player::render_up() const {
@@ -1418,8 +1454,12 @@ Vec3 Player::render_up() const {
                right = normalized(cross(forward, rider_.board_up));
     auto up = rotate(rider_.board_up, right, -rider_.flip_degrees * rider_.lead * pi / 180);
     if (rider_.motion == Motion::Ground)
-        up = rotate(up, render_forward(),
+        up = rotate(up, rotate(forward, right, -rider_.flip_degrees * rider_.lead * pi / 180),
                     -contract_.value("steering", "bankMaxDeg") * pi / 180 * rider_.lean * rider_.lead);
+    if (interpolate_board_) {
+        up = previous_board_up_ * (1 - clock_.alpha()) + up * clock_.alpha();
+        up = project(up, render_forward());
+    }
     return normalized(up);
 }
 

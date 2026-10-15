@@ -290,6 +290,30 @@ void camera_ui() {
     gate.release();
     check(!gate.accept(true), "each focus loss disarms carried-over button presses");
     check(!RideUi::wrist({}, {}).valid, "Missing left tracking hides the wrist panel");
+    ControllerPose left;
+    left.valid = true;
+    left.position = {1, 2, 3};
+    const auto frame = RideUi::wrist(left, {0, 4, 8});
+    const auto other_eye = RideUi::wrist(left, {7, 8, 9});
+    close(frame.origin, other_eye.origin, "Head movement cannot billboard the controller-fixed menu");
+    close(frame.right, other_eye.right, "Menu orientation stays attached to the controller");
+    for (const auto axis : std::array<Vec3, 3>{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}) {
+        auto rotated = left;
+        rotated.right = rotate(left.right, axis, .7);
+        rotated.up = rotate(left.up, axis, .7);
+        rotated.forward = rotate(left.forward, axis, .7);
+        const auto attached = RideUi::wrist(rotated, {0, 4, 8});
+        close(attached.origin, left.position + rotate(frame.origin - left.position, axis, .7),
+              "Menu follows full controller yaw, pitch and roll");
+        close(attached.right, rotate(frame.right, axis, .7), "Panel axes rotate with the wrist");
+    }
+    for (const auto corner :
+         {frame.origin, frame.origin + frame.right, frame.origin + frame.down, frame.origin + frame.right + frame.down})
+        check(dot(corner - left.position, left.forward) >= .169,
+              "Every menu corner remains beyond the hand and controller body");
+    const Vec3 shift{2, 1, -1};
+    close(RideUi::wrist(left, {}, shift).origin, frame.origin + shift,
+          "Third-person menu receives exactly the same presentation offset as its controller");
     ui.map_paths = {"Maps/TEST_A", "Maps/TEST_B"};
     ui.library = true;
     check(ui.buttons()[1].map == "Maps/TEST_B", "Map library buttons retain exact selected map paths");

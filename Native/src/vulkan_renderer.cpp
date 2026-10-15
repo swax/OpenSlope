@@ -144,9 +144,10 @@ void VulkanRenderer::destroy_buffer(Buffer& b) {
     b = {};
 }
 
-void VulkanRenderer::upload(const Mesh& source, std::span<const std::size_t> flag_models) {
+void VulkanRenderer::upload(const Mesh& source, std::span<const std::size_t> flag_models,
+                            std::span<const std::size_t> faceted_models) {
     auto scene = std::make_shared<VulkanScene>(context_);
-    scene->upload(source, flag_models);
+    scene->upload(source, flag_models, faceted_models);
     if (scene_) {
         finish();
         reserve_poses(scene->pose_capacity_);
@@ -320,6 +321,9 @@ void VulkanRenderer::clear_targets() {
     if (hud_pipeline_)
         vkDestroyPipeline(context_.device, hud_pipeline_, nullptr);
     hud_pipeline_ = {};
+    if (wrist_pipeline_)
+        vkDestroyPipeline(context_.device, wrist_pipeline_, nullptr);
+    wrist_pipeline_ = {};
     line_pipeline_ = {};
     if (pass_)
         vkDestroyRenderPass(context_.device, pass_, nullptr);
@@ -532,6 +536,9 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     blend.blendEnable = VK_FALSE;
     vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &hud_pipeline_),
              "Create HUD overlay pipeline");
+    depth_state.depthTestEnable = VK_TRUE;
+    vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &wrist_pipeline_),
+             "Create depth-tested controller panel pipeline");
     vkDestroyShaderModule(context_.device, vertex, nullptr);
     vkDestroyShaderModule(context_.device, fragment, nullptr);
     vk_check(pipeline_result, "Create terrain pipeline");
@@ -1358,7 +1365,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         stats_.celestial_triangles = unsigned(celestial.fan.size() / 3);
     }
     if (!hud.empty()) {
-        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, hud_pipeline_);
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, screen_hud ? hud_pipeline_ : wrist_pipeline_);
         vkCmdBindVertexBuffers(command_, 0, 1, &hud_vertices_.buffer, &offset);
         push.mvp = screen_hud ? Matrix::identity() : camera;
         push.options[0] = push.options[2] = push.options[3] = 0;
