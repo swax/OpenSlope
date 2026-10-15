@@ -2,72 +2,115 @@
 #include "openslope/audio.hpp"
 #include <bit>
 #include <fstream>
+#include <mutex>
 
 namespace openslope {
 using import_detail::Bytes;
 
-PcmClip PcmClip::load(const std::filesystem::path& path) {
-    const auto size = std::filesystem::file_size(path);
-    if (size < 44 || size > 64 * 1024 * 1024)
-        throw std::runtime_error("WAV extent exceeds its limits");
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-    std::ifstream file(path, std::ios::binary);
-    file.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(size));
-    if (!file)
-        throw std::runtime_error("Cannot read WAV");
-    Bytes b{bytes};
-    if (b.text(0, 4) != "RIFF" || b.text(8, 4) != "WAVE" || std::uint64_t(b.le(4)) + 8 != size)
-        throw std::runtime_error("Invalid RIFF/WAVE extent");
-    PcmClip clip;
-    unsigned format = 0, bits = 0, align = 0;
-    std::size_t offset = 0, length = 0;
-    bool have_format = false, have_data = false;
-    for (std::size_t p = 12; p < size;) {
-        b.range(p, 8);
-        const auto count = b.le(p + 4);
-        b.range(p + 8, count);
-        const auto kind = b.text(p, 4);
-        if (kind == "fmt ") {
-            if (have_format || count < 16)
-                throw std::runtime_error("Invalid WAV format chunk");
-            have_format = true;
-            format = b.le(p + 8, 2);
-            clip.channels = b.le(p + 10, 2);
-            clip.rate = b.le(p + 12);
-            align = b.le(p + 20, 2);
-            bits = b.le(p + 22, 2);
-            if (clip.channels < 1 || clip.channels > 2 || clip.rate < 8000 || clip.rate > 192000 ||
-                align != clip.channels * ((bits + 7) / 8) || b.le(p + 16) != clip.rate * align)
-                throw std::runtime_error("Invalid WAV channel/rate layout");
+struct WaveReader::Data {
+    std::ifstream file;
+    unsigned rate{}, channels{}, bits{}, format{}, align{};
+    std::uint64_t offset{}, count{};
+    std::mutex mutex;
+
+    explicit Data(const std::filesystem::path& path) : file(path, std::ios::binary) {
+        const auto size = std::filesystem::file_size(path);
+        if (size < 44 || size > std::uint64_t(0xffffffffu) + 8 || !file)
+            throw std::runtime_error("WAV extent exceeds its limits");
+        const auto bytes = [&](std::uint64_t position, unsigned length) {
+            if (position > size || length > size - position)
+                throw std::runtime_error("Truncated WAV chunk");
+            std::vector<std::uint8_t> value(length);
+            file.seekg(std::streamoff(position));
+            file.read(reinterpret_cast<char*>(value.data()), length);
+            if (!file)
+                throw std::runtime_error("Cannot read WAV header");
+            return value;
+        };
+        const auto header = bytes(0, 12);
+        const Bytes h{header};
+        if (h.text(0, 4) != "RIFF" || h.text(8, 4) != "WAVE" || std::uint64_t(h.le(4)) + 8 != size)
+            throw std::runtime_error("Invalid RIFF/WAVE extent");
+        bool have_format = false, have_data = false;
+        unsigned chunks = 0;
+        for (std::uint64_t p = 12; p < size;) {
+            if (++chunks > 4096)
+                throw std::runtime_error("Too many WAV chunks");
+            const auto chunk = bytes(p, 8);
+            const Bytes c{chunk};
+            const auto length = c.le(4);
+            if (length > size - p - 8)
+                throw std::runtime_error("Truncated WAV chunk");
+            const auto kind = c.text(0, 4);
+            if (kind == "fmt ") {
+                if (have_format || length < 16)
+                    throw std::runtime_error("Invalid WAV format chunk");
+                have_format = true;
+                const auto fields = bytes(p + 8, 16);
+                const Bytes f{fields};
+                format = f.le(0, 2);
+                channels = f.le(2, 2);
+                rate = f.le(4);
+                align = f.le(12, 2);
+                bits = f.le(14, 2);
+                if (channels < 1 || channels > 2 || rate < 8000 || rate > 192000 ||
+                    align != channels * ((bits + 7) / 8) || f.le(8) != rate * align)
+                    throw std::runtime_error("Invalid WAV channel/rate layout");
+            }
+            if (kind == "data") {
+                if (have_data)
+                    throw std::runtime_error("Duplicate WAV data chunk");
+                have_data = true;
+                offset = p + 8;
+                count = length;
+            }
+            p += 8 + std::uint64_t(length) + (length & 1);
+            if (p > size)
+                throw std::runtime_error("Truncated WAV chunk padding");
         }
-        if (kind == "data") {
-            if (have_data)
-                throw std::runtime_error("Duplicate WAV data chunk");
-            have_data = true;
-            offset = p + 8;
-            length = count;
-        }
-        p += 8 + count + (count & 1);
-        if (p > size)
-            throw std::runtime_error("Truncated WAV chunk padding");
+        if (!have_format || !have_data || !align || !count || count % align || (format != 1 && format != 3) ||
+            (format == 3 && bits != 32) || (format == 1 && bits != 8 && bits != 16 && bits != 24 && bits != 32))
+            throw std::runtime_error("Unsupported or incomplete WAV sample format");
     }
-    if (!have_format || !have_data || !align || length % align || !length || (format != 1 && format != 3) ||
-        (format == 3 && bits != 32) || (format == 1 && bits != 8 && bits != 16 && bits != 24 && bits != 32))
-        throw std::runtime_error("Unsupported or incomplete WAV sample format");
-    const auto values = length / (bits / 8);
-    if (values > 32 * 1024 * 1024)
-        throw std::runtime_error("Decoded WAV exceeds 128 MiB");
+};
+
+WaveReader::WaveReader(const std::filesystem::path& path) : data_(std::make_unique<Data>(path)) {}
+
+WaveReader::~WaveReader() = default;
+
+unsigned WaveReader::rate() const { return data_->rate; }
+
+unsigned WaveReader::channels() const { return data_->channels; }
+
+std::size_t WaveReader::frames() const { return std::size_t(data_->count / data_->align); }
+
+PcmClip WaveReader::read(std::size_t first, std::size_t count) {
+    auto& d = *data_;
+    if (first > frames() || count > frames() - first || count > (32 * 1024 * 1024) / d.channels)
+        throw std::runtime_error("WAV frame read exceeds its limits");
+    std::lock_guard lock(d.mutex);
+    std::vector<std::uint8_t> bytes(count * d.align);
+    d.file.clear();
+    d.file.seekg(std::streamoff(d.offset + std::uint64_t(first) * d.align));
+    d.file.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
+    if (!d.file)
+        throw std::runtime_error("Cannot read WAV frames");
+    const Bytes b{bytes};
+    PcmClip clip;
+    clip.rate = d.rate;
+    clip.channels = d.channels;
+    const auto values = count * d.channels;
     clip.samples.reserve(values);
     for (std::size_t i = 0; i < values; ++i) {
-        const auto p = offset + i * (bits / 8);
+        const auto p = i * (d.bits / 8);
         double sample = 0;
-        if (format == 3)
+        if (d.format == 3)
             sample = std::bit_cast<float>(b.le(p));
-        else if (bits == 8)
+        else if (d.bits == 8)
             sample = (int(b.le(p, 1)) - 128) / 128.;
-        else if (bits == 16)
+        else if (d.bits == 16)
             sample = static_cast<std::int16_t>(b.le(p, 2)) / 32768.;
-        else if (bits == 24) {
+        else if (d.bits == 24) {
             const auto v = b.le(p, 3);
             sample = (v & 0x800000 ? std::int64_t(v) - 0x1000000 : std::int64_t(v)) / 8388608.;
         } else
@@ -77,6 +120,13 @@ PcmClip PcmClip::load(const std::filesystem::path& path) {
         clip.samples.push_back(float(std::clamp(sample, -1., 1.)));
     }
     return clip;
+}
+
+PcmClip PcmClip::load(const std::filesystem::path& path) {
+    if (std::filesystem::file_size(path) > 64 * 1024 * 1024)
+        throw std::runtime_error("WAV extent exceeds its limits");
+    WaveReader reader(path);
+    return reader.read(0, reader.frames());
 }
 
 std::vector<std::int16_t> decode_audio_frames(std::span<const std::uint8_t> source, unsigned codec, std::size_t count,

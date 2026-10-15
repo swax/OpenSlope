@@ -152,6 +152,21 @@ final class MapLibrary {
                 copyAudio(sounds.uri, soundsFolder, cancel, audioBudget, 0);
             }
             copyCommonAudio(map, audioFolder, cancel, audioBudget);
+            Entry music = child(map.uri, "Music");
+            if (music != null) {
+                if (!music.directory) throw new IOException("Music must be a folder.");
+                File musicFolder = new File(output, "Music");
+                if (!musicFolder.mkdir()) throw new IOException("Cannot prepare authored music.");
+                for (String name : new String[]{"track.wav", "arrangement.json"}) {
+                    cancel.check(); Entry file = child(music.uri, name);
+                    if (file == null) continue;
+                    if (file.directory) throw new IOException("Authored music asset must be a file.");
+                    if (++audioBudget[1] > 20000) throw new IOException("Audio library contains too many files.");
+                    long limit = name.endsWith(".wav") ? FILE_LIMIT : PATCH_LIMIT;
+                    try (InputStream input = resolver.openInputStream(file.uri); OutputStream destination = new FileOutputStream(new File(musicFolder, name))) { audioBudget[0] += copy(input, destination, Math.min(limit, AUDIO_BUDGET - audioBudget[0]), cancel); }
+                }
+            }
+
             JSONArray images;
             try { images = new JSONArray(nativeAssetFiles(output.getAbsolutePath())); }
             catch (JSONException e) { throw new IOException("Cannot read map image references.", e); }

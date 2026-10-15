@@ -145,6 +145,10 @@ public final class NativeImportInstrumentation extends Instrumentation {
             File authoredSounds = new File(authoredParticles, "Sounds");
             require(authoredSounds.mkdir(), "Create authored sound folder without an Audio folder");
             java.nio.file.Files.copy(new File(extracted, "Audio/SFX/tone/000.wav").toPath(), new File(authoredSounds, "custom.wav").toPath());
+            File authoredMusic = new File(authoredParticles, "Music");
+            require(authoredMusic.mkdir(), "Create authored master music folder");
+            java.nio.file.Files.copy(new File(extracted, "Audio/SFX/tone/000.wav").toPath(), new File(authoredMusic, "track.wav").toPath());
+            java.nio.file.Files.write(new File(authoredMusic, "arrangement.json").toPath(), "{\"version\":1,\"mode\":\"linear-loop\",\"bpm\":120,\"loopStartSeconds\":0,\"loopEndSeconds\":0}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             String particleName = "Particles " + UUID.randomUUID(); documents.publish(particleName, authoredParticles, () -> {});
             MapLibrary.Entry particleMap = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(particleName)) particleMap = row;
             require(particleMap != null, "Discover authored particles through the opaque SAF provider");
@@ -152,6 +156,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(particleCache, "Textures/Particles/part.png").isFile(), "SAF plan copies optional named art before it exists in the play cache");
             require(new File(particleCache, "Textures/Particles/lens.png").isFile(), "SAF plan retains authored corona art without an imported profile");
             require(new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(particleCache, "World.json").toPath()), java.nio.charset.StandardCharsets.UTF_8)).getJSONObject("Glare").getBoolean("Enabled"), "Authored celestial settings reach the native play cache");
+            require(new File(particleCache, "Music/track.wav").isFile() && new File(particleCache, "Music/arrangement.json").isFile(), "SAF cache preserves authored master music and loop arrangement outside Audio");
             require(new File(particleCache, "Sounds/custom.wav").isFile(), "SAF cache retains authored WAVs outside Audio");
             require(new File(particleCache, "Audio/SFX/zboard/004.WAV").isFile(), "Map without Audio borrows a common bank from an older import with case-insensitive names");
             require(new File(particleCache, "Audio/SFX/zboard/004.loop.wav").isFile(), "Borrowed full and sustain WAVs stay paired");

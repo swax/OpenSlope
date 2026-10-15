@@ -134,6 +134,9 @@ Populated Maps audio plays through the native mixer: board/landing sounds, admit
 contact and ambient routes, and complete music graphs. M mutes; pause and focus
 loss also pause audio. `--no-audio` disables device playback. Old music graphs
 without variable-remap data need re-import with the independent audio utility.
+Mounting crossfades from the environment/intro to a run-selected song. Authored
+`Music/track.wav` and its loop arrangement stream on desktop and Quest;
+see [music lifecycle](docs/music-playback.md).
 See [native audio](docs/audio-playback.md) for supported contracts, capture/testing
 commands, extraction tools and remaining music/speech work. A fresh ISO import now
 stages the configured banks, music graph/chunks, loop banks and intro stems;

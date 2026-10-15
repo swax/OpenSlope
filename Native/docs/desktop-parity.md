@@ -96,3 +96,9 @@ See `audio-library.md`; broader gameplay, music and graphics parity remains acti
 Build 0.49 adds Horizon focus/pause gating, fresh-input rearming, resumed clock
 guards, separate wrist map/exit actions, app-icon task resume and orderly Android
 teardown. See `quest-system-integration.md` for authority and validation scope.
+
+Build 0.50 adds mounted race-music crossfades, off-board intro fallback, streamed
+authored master/loop export playback and retained song choice across recovery.
+The public scene API supports music enable and explicit song selection; menus
+and persisted preferences still need wiring. Live graph performance routing,
+async/announcer and broader parity remain active. See `music-playback.md`.

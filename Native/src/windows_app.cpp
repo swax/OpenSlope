@@ -210,7 +210,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         std::cout << "Audio capture: " << recorded.frames() << " stereo frames; contact sounds " << sound.contacts
                   << "; transients " << sound.transients << "; ambient voices " << sound.ambient << "; music node "
                   << sound.music_node << "; prewarmed " << sound.prewarmed << "; prewarm skipped "
-                  << sound.prewarm_skipped << "; decoded bytes " << sound.decoded_bytes << '\n';
+                  << sound.prewarm_skipped << "; decoded bytes " << sound.decoded_bytes << "; streamed bytes "
+                  << sound.streamed_bytes << '\n';
         player.observe_ticks({});
     }
     std::cout << "Equipment: held " << player.carrying_board() << "; hand "

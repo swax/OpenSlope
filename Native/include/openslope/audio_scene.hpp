@@ -6,8 +6,15 @@
 namespace openslope {
 struct AudioStats {
     unsigned contacts{}, transients{}, ambient{}, prewarmed{}, prewarm_skipped{};
-    std::size_t decoded_bytes{};
+    std::size_t decoded_bytes{}, streamed_bytes{};
     int music_node = -1;
+};
+
+struct MusicStatus {
+    bool enabled = true, authored = false;
+    std::string selection, song;
+    std::vector<std::string> songs;
+    double race{}, ambience{};
 };
 
 class AudioScene {
@@ -23,7 +30,10 @@ public:
     void music_level(unsigned level);
     void music_event(unsigned event);
     void restart();
+    void music_enabled(bool value);
+    void music_song(const std::string& selection);
     AudioStats stats() const;
+    MusicStatus music_status() const;
     void play_course(unsigned slot, Vec3 position, double gain = 1);
 
 private:

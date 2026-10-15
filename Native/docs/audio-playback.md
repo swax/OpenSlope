@@ -64,10 +64,12 @@ active.
 names its WAV chunks. First inclusive matching link wins; 1-based sample indices,
 loop counters, chained remaps, event-volume overrides, track exclusion and song
 end are supported. The next PCM chunk is queued ahead and swaps within the mixer
-at the boundary. A 100 Hz service loads/prefetches music; cached clip memory is
-bounded to 128 MiB with live voices pinned during eviction. A ride session starts
-the first song at path level 80; resetting cycles the playlist. Race-start/menu
-intro lifecycle, uber/trick grace and dedicated-song swaps, async loop/delay layers,
+at the boundary. A 100 Hz service loads/prefetches music with live voices pinned
+during eviction. Build 0.50 adds random song choice per run, mounting crossfades,
+off-board intro fallback, streamed authored masters and recovery continuity;
+see [music playback](music-playback.md) for the shared mix and bounded memory.
+Graph path level remains 80 until live performance routing is connected. Exact
+race-start/menu intro timing, uber/trick grace and dedicated-song swaps, async loop/delay layers,
 multi-stream synchronization, marker callbacks and the announcer remain outstanding.
 
 Older graph exports with variable offsets but no remap pairs cannot establish

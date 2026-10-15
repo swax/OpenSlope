@@ -19,6 +19,23 @@ struct PcmClip {
     static PcmClip load(const std::filesystem::path& path);
 };
 
+// Bounded frame reads for long standard WAV music; callers never load a full song.
+class WaveReader {
+public:
+    explicit WaveReader(const std::filesystem::path& path);
+    ~WaveReader();
+    WaveReader(const WaveReader&) = delete;
+    WaveReader& operator=(const WaveReader&) = delete;
+    unsigned rate() const;
+    unsigned channels() const;
+    std::size_t frames() const;
+    PcmClip read(std::size_t first, std::size_t count);
+
+private:
+    struct Data;
+    std::unique_ptr<Data> data_;
+};
+
 struct AdpcmState {
     std::int64_t first{}, second{};
 };
@@ -26,6 +43,8 @@ struct AdpcmState {
 std::vector<std::int16_t> decode_audio_frames(std::span<const std::uint8_t> source, unsigned codec, std::size_t count,
                                               AdpcmState& history);
 void write_wave(const std::filesystem::path& path, const PcmClip& clip);
+
+enum class AudioRole { Effect, RaceMusic, Ambience };
 
 struct VoiceParams {
     double gain = 1, pitch = 1;
@@ -35,6 +54,7 @@ struct VoiceParams {
     bool distance_falloff = true;
     double ramp_seconds = 0;
     bool sustain_only = false;
+    AudioRole role = AudioRole::Effect;
 };
 
 struct VoiceStatus {
@@ -60,7 +80,8 @@ public:
                std::optional<std::uint64_t> expected_generation = {});
     std::optional<VoiceStatus> status(std::uint64_t voice) const;
     void stop(std::uint64_t voice);
-    void clear();
+    void clear(bool keep_music = false);
+    void music_mix(double race, double ambience, bool immediate = false);
     void listener(AudioListener listener);
     void paused(bool value);
     void volume(double value);

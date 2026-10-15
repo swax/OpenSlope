@@ -7,7 +7,7 @@ namespace {
 void valid(const VoiceParams& p) {
     if (!std::isfinite(p.gain) || p.gain < 0 || p.gain > 16 || !std::isfinite(p.pitch) || p.pitch < .125 ||
         p.pitch > 8 || !finite(p.position) || !std::isfinite(p.range) || p.range <= 0 ||
-        !std::isfinite(p.ramp_seconds) || p.ramp_seconds < 0 || p.ramp_seconds > 1)
+        !std::isfinite(p.ramp_seconds) || p.ramp_seconds < 0 || p.ramp_seconds > 1 || unsigned(p.role) > 2)
         throw std::runtime_error("Invalid audio voice parameters");
 }
 } // namespace
@@ -30,6 +30,7 @@ struct AudioMixer::Data {
     std::uint64_t next = 1;
     double master = 1, current_master = 1;
     bool paused = false;
+    std::array<double, 3> role_target{1, 1, 1}, role_current{1, 0, 0};
     mutable std::mutex mutex;
 
     explicit Data(unsigned sample_rate) : rate(sample_rate) {}
@@ -114,10 +115,23 @@ void AudioMixer::stop(std::uint64_t id) {
             v = {};
 }
 
-void AudioMixer::clear() {
+void AudioMixer::clear(bool keep_music) {
     std::lock_guard lock(data_->mutex);
     for (auto& v : data_->voices)
-        v = {};
+        if (!keep_music || v.params.role == AudioRole::Effect)
+            v = {};
+}
+
+void AudioMixer::music_mix(double race, double ambience, bool immediate) {
+    if (!std::isfinite(race) || !std::isfinite(ambience) || race < 0 || race > 1 || ambience < 0 || ambience > 1)
+        throw std::runtime_error("Invalid music mix");
+    std::lock_guard lock(data_->mutex);
+    data_->role_target[1] = race;
+    data_->role_target[2] = ambience;
+    if (immediate) {
+        data_->role_current[1] = race;
+        data_->role_current[2] = ambience;
+    }
 }
 
 void AudioMixer::listener(AudioListener value) {
@@ -213,11 +227,22 @@ void AudioMixer::render(std::span<float> output) {
             };
             const auto first = sample(0), second = clip.channels == 2 ? sample(1) : first;
             const auto mono = (first + second) * .5;
-            output[i] += float((p.spatial ? mono * left : first) * voice.gain);
-            output[i + 1] += float((p.spatial ? mono * right_gain : second) * voice.gain);
+            const auto role = unsigned(p.role);
+            const auto role_gain = role == 0
+                                       ? 1.
+                                       : data_->role_current[role] +
+                                             std::clamp(data_->role_target[role] - data_->role_current[role],
+                                                        -smoothing * double(i / 2 + 1), smoothing * double(i / 2 + 1));
+            output[i] += float((p.spatial ? mono * left : first) * voice.gain * role_gain);
+            output[i + 1] += float((p.spatial ? mono * right_gain : second) * voice.gain * role_gain);
             voice.phase += step;
         }
     }
+    for (unsigned role = 1; role < 3; ++role) {
+        const auto step = double(output.size() / 2) / (.01 * data_->rate);
+        data_->role_current[role] += std::clamp(data_->role_target[role] - data_->role_current[role], -step, step);
+    }
+
     for (std::size_t i = 0; i < output.size(); i += 2) {
         data_->current_master +=
             std::clamp(data_->master - data_->current_master, -1. / (.01 * data_->rate), 1. / (.01 * data_->rate));

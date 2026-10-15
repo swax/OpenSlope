@@ -5,16 +5,23 @@ import { buildExportFolder } from '../Slopesmith/src/core/export/folder.ts';
 import { blankMountain } from '../Slopesmith/src/core/doc/mountain.ts';
 import type { ExportProvider } from '../Slopesmith/src/core/export/provider.ts';
 
-function tone(hz: number): Uint8Array {
-  const rate = 8000, frames = rate, bytes = new Uint8Array(44 + frames * 2), v = new DataView(bytes.buffer);
+function tone(hz: number | ((seconds: number) => number), rate = 8000, seconds = 1, channels = 1): Uint8Array {
+  const frames = Math.round(rate * seconds), bytes = new Uint8Array(44 + frames * channels * 2), v = new DataView(bytes.buffer);
   const text = (at: number, value: string) => [...value].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
   text(0, 'RIFF'); v.setUint32(4, bytes.length - 8, true); text(8, 'WAVE'); text(12, 'fmt ');
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true);
-  v.setUint16(34, 16, true); text(36, 'data'); v.setUint32(40, frames * 2, true);
-  for (let i = 0; i < frames; ++i) v.setInt16(44 + i * 2, Math.round(6000 * Math.sin(2 * Math.PI * hz * i / rate)), true);
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, channels, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * channels * 2, true); v.setUint16(32, channels * 2, true);
+  v.setUint16(34, 16, true); text(36, 'data'); v.setUint32(40, frames * channels * 2, true);
+  for (let i = 0; i < frames; ++i) {
+    const frequency = typeof hz === 'function' ? hz(i / rate) : hz;
+    for (let c = 0; c < channels; ++c)
+      v.setInt16(44 + (i * channels + c) * 2, Math.round(6000 * Math.sin(2 * Math.PI * frequency * i / rate)), true);
+  }
   return bytes;
 }
+const withMusic = process.argv.includes('--music');
+const arrangement = { version: 1, mode: 'linear-loop', bpm: 120, loopStartSeconds: .5, loopEndSeconds: 1 };
+const master = withMusic ? tone(t => t < .5 ? 220 : t < 1 ? 660 : 1100, 36000, 2, 2) : new Uint8Array();
 const provider = {
   groupDefs: async () => new Map(),
   modelGeometry: async () => () => ({ subs: [{ mat: -1,
@@ -27,11 +34,15 @@ const provider = {
   soundIndex: async () => null, courseEffectSound: async () => tone(330), namedEffectSound: async () => tone(330),
   environmentEffectSound: async () => tone(110), skybox: async () => ({ files: [], log: [] }),
   discRecipePaths: async () => ({ exportDir: 'AUDIOTEST', levelData: 'Maps/DONOR', levelDataRelative: '../DONOR' }),
-  stageRaceMusic: async () => ({ status: 'cleared', files: [], remove: [] }),
+  stageRaceMusic: async () => withMusic ? { status: 'staged', mode: arrangement.mode, bytes: master.length, files: [
+    { path: 'Music/track.wav', bytes: master },
+    { path: 'Music/arrangement.json', bytes: new TextEncoder().encode(JSON.stringify(arrangement)) },
+  ], remove: [] } : { status: 'cleared', files: [], remove: [] },
 } as unknown as ExportProvider;
 const doc = { ...blankMountain('AUDIOTEST'),
-  boardSound: { enabled: true, volume: .4, glide: .7, carve: .8, transients: .7, cues: .8 },
-  props: [
+  boardSound: { enabled: !withMusic, volume: .4, glide: .7, carve: .8, transients: .7, cues: .8 },
+  ...(withMusic ? { raceMusic: 'fixture.wav', raceMusicArrangement: arrangement } : {}),
+  props: withMusic ? [] : [
     { id: 'impact', level: 'DONOR', model: 1, name: 'Mdl_Box', pos: [0,0,0], yaw: 0, scale: 1,
       collisionSoundFile: 'impact.wav', nativeCollision: { mode: 1, playerCollision: true, responseMass: 0, playerBounce: false, bounceAmount: 0 } },
     { id: 'bed', level: 'DONOR', model: 1, name: 'Mdl_Box', pos: [10,0,0], yaw: 0, scale: 1, ambientSoundFile: 'bed.wav' },

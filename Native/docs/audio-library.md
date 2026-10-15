@@ -17,7 +17,8 @@ Sibling discovery is bounded to 20,000 entries and 256 maps. On overflow it
 keeps local and Shared audio and skips optional sibling fallback. Every
 selected path must remain inside its source folder and Maps library. Ambiguous
 case variants and unsafe authored names are rejected. Existing 4,096-clip,
-96 MiB resident SFX and 128 MiB total cache limits still apply. Full WAVs and
+96 MiB resident SFX and 128 MiB total audio budgets still apply. Build 0.50
+reserves 8 MiB for music streaming; cached clips occupy at most 120 MiB. Full WAVs and
 their own sustain regions are selected together. Gameplay performs no file I/O.
 
 `Slopesmith.json` now exports normalized `boardSound`. Native reads it for schema
@@ -32,7 +33,8 @@ with material -1 load without requiring a fake material record.
 `Audio/Environment.json` (`openslope-environment-audio/v1`) selects a nonspatial
 bed with explicit gain. It fades in off-board and out on mounting over 1.5 s;
 `Bed: null` remains silent. It uses the tagged sustain region when available.
-Race music, intro stems, and announcers remain separate parity work.
+Build 0.50 adds race music, authored masters and intro fallback;
+see [music playback](music-playback.md). Announcers remain parity work.
 
 Quest SAF preparation copies `Sounds/` alongside local Audio, then fills only
 the two common banks and missing surface routing from Shared/installed maps,

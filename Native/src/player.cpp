@@ -153,6 +153,7 @@ void Player::configure_run(RunMode mode) {
     if (mode == RunMode::Race && !run.finish())
         throw std::runtime_error("This map has no race finish route. Choose Freeride or Showoff.");
     run_ = std::move(run);
+    ++run_serial_;
     rails_.reset();
     logic_.restart(mode);
     apply_world_actions();
@@ -168,6 +169,7 @@ void Player::configure_run(RunMode mode) {
 
 void Player::restart_run() {
     run_.restart();
+    ++run_serial_;
     rails_.reset();
     logic_.restart(run_.status().mode, true);
     apply_world_actions();

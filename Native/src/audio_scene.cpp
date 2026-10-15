@@ -1,19 +1,40 @@
 #include "openslope/audio_scene.hpp"
+#include "music_playback.hpp"
 #include "openslope/audio_program.hpp"
 #include "openslope/board_audio.hpp"
 #include "openslope/import.hpp"
 #include "openslope/music.hpp"
+#include "openslope/music_stream.hpp"
 #include <cctype>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <random>
 #include <set>
 
 namespace openslope {
 namespace {
 using Json = nlohmann::json;
+
+struct MusicMix {
+    double race, intro, fade;
+};
+
+const MusicMix& music_mix() {
+    static const auto mix = [] {
+        const auto json = Json::parse(std::begin(bundled::music_playback), std::end(bundled::music_playback));
+        if (json.at("schema") != "openslope-music-playback/v1")
+            throw std::runtime_error("Unknown music playback profile");
+        const MusicMix value{json.at("raceGain"), json.at("introGain"), json.at("fadeSeconds")};
+        if (!std::isfinite(value.race) || value.race < 0 || value.race > 1 || !std::isfinite(value.intro) ||
+            value.intro < 0 || value.intro > 1 || !std::isfinite(value.fade) || value.fade <= 0)
+            throw std::runtime_error("Invalid music playback profile");
+        return value;
+    }();
+    return mix;
+}
 
 Json read(const std::filesystem::path& path) {
     if (std::filesystem::file_size(path) > 64 * 1024 * 1024)
@@ -182,10 +203,16 @@ struct AudioScene::Data {
     bool predicting_air = false;
     std::vector<std::string> playlist;
     std::size_t song = 0;
+    std::string song_selection;
+    std::mt19937 random{std::random_device{}()};
+    std::unique_ptr<MusicStream> authored_music, intro_music;
+    double race_fade = 0;
+    bool music_on = true, race_wanted = false;
+    std::uint64_t run_serial = 0;
     MusicGraph graph;
     MusicCursor cursor, pending_cursor;
     std::uint64_t music_voice{}, music_generation{};
-    double music_gain = .5;
+    double music_gain = music_mix().race;
     unsigned level = 80;
     std::optional<unsigned> pending_event;
     bool music_ready = false, pending_ready = false, music_start_pending = true;
@@ -329,9 +356,96 @@ struct AudioScene::Data {
                 if (!valid_map_name(name))
                     throw std::runtime_error("Unsafe music song name");
         }
+        prepare_music();
+        choose_song();
         prewarm();
-        std::unique_lock lock(mutex);
-        start_music(lock);
+        mixer.music_mix(0, 0, true);
+    }
+
+    void choose_song() {
+        if (playlist.empty()) {
+            song = 0;
+            return;
+        }
+        const auto selected = std::find(playlist.begin(), playlist.end(), song_selection);
+        song = selected != playlist.end() ? std::size_t(selected - playlist.begin())
+                                          : std::uniform_int_distribution<std::size_t>(0, playlist.size() - 1)(random);
+    }
+
+    void prepare_music() {
+        const auto track = asset(root, "Music/track.wav");
+        if (std::filesystem::is_regular_file(track)) {
+            double start = 0, end = 0;
+            if (std::filesystem::is_regular_file(asset(root, "Music/arrangement.json"))) {
+                const auto arrangement = read(asset(root, "Music/arrangement.json"));
+                if (arrangement.value("version", 0) == 1) {
+                    const auto number = [&](const char* key) {
+                        if (!arrangement.contains(key) || !arrangement.at(key).is_number())
+                            return 0.;
+                        const auto value = arrangement.at(key).get<double>();
+                        return std::isfinite(value) ? std::max(0., value) : 0.;
+                    };
+                    start = number("loopStartSeconds");
+                    end = number("loopEndSeconds");
+                }
+            }
+            authored_music = std::make_unique<MusicStream>(mixer, std::vector<std::filesystem::path>{track},
+                                                           AudioRole::RaceMusic, true, start, end, music_mix().race);
+        }
+        if (std::filesystem::exists(asset(root, "Audio/Environment.json")))
+            return;
+        auto folder = asset(root, "Audio/Intro");
+        if (!std::filesystem::is_directory(folder))
+            folder = asset(root, "Audio");
+        if (!std::filesystem::is_directory(folder))
+            return;
+        std::vector<std::string> names;
+        const auto index = asset(root, "Audio/Intro/stems.json");
+        if (std::filesystem::is_regular_file(index)) {
+            const auto rows = read(index);
+            if (!rows.is_array() || rows.size() > 256)
+                throw std::runtime_error("Invalid intro stem count");
+            for (const auto& row : rows)
+                names.push_back(row.at("Clip"));
+        } else {
+            unsigned count = 0;
+            for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+                if (++count > 20000)
+                    throw std::runtime_error("Intro audio directory exceeds its limit");
+                if (folded(entry.path().extension().string()) == ".wav")
+                    names.push_back(entry.path().filename().string());
+            }
+        }
+        for (char tier : {'C', 'A', 'B'}) {
+            std::vector<std::pair<unsigned, std::filesystem::path>> selected;
+            for (const auto& name : names) {
+                if (!valid_map_name(name))
+                    throw std::runtime_error("Unsafe intro WAV name");
+                const auto stem = std::filesystem::path(name).stem().string();
+                const auto dash = stem.find_last_of('-'), at = dash == std::string::npos ? 0 : dash + 1;
+                if (at + 1 >= stem.size() || std::toupper(static_cast<unsigned char>(stem[at])) != tier)
+                    continue;
+                const auto suffix = stem.substr(at + 1);
+                if (suffix.size() > 5 ||
+                    !std::all_of(suffix.begin(), suffix.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }))
+                    continue;
+                const auto relative = (folder / name).lexically_relative(root).generic_string();
+                const auto path = asset(root, relative);
+                if (std::filesystem::is_regular_file(path))
+                    selected.emplace_back(unsigned(std::stoul(suffix)), path);
+            }
+            if (selected.empty())
+                continue;
+            if (selected.size() > 64)
+                throw std::runtime_error("Too many intro music phrases");
+            std::sort(selected.begin(), selected.end());
+            std::vector<std::filesystem::path> paths;
+            for (const auto& [number, path] : selected)
+                paths.push_back(path);
+            intro_music = std::make_unique<MusicStream>(mixer, std::move(paths), AudioRole::Ambience, false, 0, 0,
+                                                        music_mix().intro);
+            break;
+        }
     }
 
     void discover_banks() {
@@ -443,8 +557,10 @@ struct AudioScene::Data {
                 std::cerr << "Audio asset unavailable: " << name << " (" << error << ")\n";
             return {};
         }
+        if (!resident)
+            value->priority = 200;
         const auto bytes = value->samples.size() * sizeof(float);
-        const auto budget = std::size_t(resident ? 96 : 128) * 1024 * 1024;
+        const auto budget = std::size_t(resident ? 96 : 120) * 1024 * 1024;
         if (resident && stats.decoded_bytes + bytes > budget) {
             failed.insert(name);
             ++stats.prewarm_skipped;
@@ -526,11 +642,9 @@ struct AudioScene::Data {
         try {
             lock.unlock();
             MusicGraph loaded_graph;
-            Json json;
             try {
                 const auto folder = asset(root, "Audio/Music/" + name);
                 loaded_graph = MusicGraph::load(folder / "graph.json");
-                json = read(folder / "graph.json");
             } catch (...) {
                 lock.lock();
                 throw;
@@ -544,9 +658,6 @@ struct AudioScene::Data {
             const auto sample = music_advance(graph, cursor, level);
             if (sample < 0)
                 return;
-            music_gain = json.value("Volume", .5);
-            if (!std::isfinite(music_gain) || music_gain < 0 || music_gain > 1)
-                throw std::runtime_error("Invalid music volume");
             auto value = load_clip("Audio/Music/" + name + "/" + graph.samples[std::size_t(sample)].wav, false, &lock);
             if (revision != music_revision) {
                 music_start_pending = true;
@@ -554,7 +665,10 @@ struct AudioScene::Data {
             }
             if (!value)
                 return;
-            music_voice = mixer.play(value, {music_gain * cursor.action_volume});
+            VoiceParams params;
+            params.gain = music_gain * cursor.action_volume;
+            params.role = AudioRole::RaceMusic;
+            music_voice = mixer.play(value, params);
             music_ready = music_voice != 0;
             music_generation = 0;
             stats.music_node = cursor.node;
@@ -600,7 +714,10 @@ struct AudioScene::Data {
             if (revision != music_revision)
                 return;
         }
-        if (!mixer.queue(music_voice, value, {music_gain * next_cursor.action_volume}, status->generation)) {
+        VoiceParams params;
+        params.gain = music_gain * next_cursor.action_volume;
+        params.role = AudioRole::RaceMusic;
+        if (!mixer.queue(music_voice, value, params, status->generation)) {
             music_reroute = true;
             return;
         }
@@ -610,6 +727,8 @@ struct AudioScene::Data {
     }
 
     void music_service(std::unique_lock<std::mutex>& lock) {
+        if (!race_wanted || authored_music)
+            return;
         try {
             music_service_unchecked(lock);
         } catch (const std::exception& e) {
@@ -619,11 +738,19 @@ struct AudioScene::Data {
         }
     }
 
-    void reset() {
-        mixer.clear();
+    void reset(bool new_run = true) {
+        if (new_run) {
+            if (authored_music) {
+                authored_music->playing(false);
+                authored_music->restart();
+            }
+            if (intro_music) {
+                intro_music->playing(false);
+                intro_music->restart();
+            }
+        }
+        mixer.clear(!new_run);
         board = {};
-        environment_voice = 0;
-        environment_fade = 0;
         boost = 0;
         performance.reset();
         predicting_air = false;
@@ -637,7 +764,13 @@ struct AudioScene::Data {
             e.voice = 0;
             e.inside = false;
         }
-        ++song;
+        if (!new_run)
+            return;
+        environment_voice = 0;
+        environment_fade = race_fade = 0;
+        race_wanted = false;
+        mixer.music_mix(0, 0, true);
+        choose_song();
         stats.music_node = -1;
         music_ready = pending_ready = false;
         music_start_pending = true;
@@ -663,6 +796,11 @@ void AudioScene::service() {
     std::lock_guard service_lock(data_->service_mutex);
     std::unique_lock lock(data_->mutex);
     data_->music_service(lock);
+    lock.unlock();
+    if (data_->authored_music)
+        data_->authored_music->service();
+    if (data_->intro_music)
+        data_->intro_music->service();
 }
 
 void AudioScene::music_level(unsigned level) {
@@ -686,9 +824,42 @@ void AudioScene::restart() {
     data_->reset();
 }
 
+void AudioScene::music_enabled(bool value) {
+    std::lock_guard lock(data_->mutex);
+    data_->music_on = value;
+}
+
+void AudioScene::music_song(const std::string& selection) {
+    std::lock_guard lock(data_->mutex);
+    if (selection == data_->song_selection)
+        return;
+    data_->song_selection = selection;
+    data_->choose_song();
+    data_->mixer.stop(data_->music_voice);
+    data_->music_voice = 0;
+    data_->music_ready = data_->pending_ready = false;
+    data_->music_start_pending = true;
+    ++data_->music_revision;
+}
+
+MusicStatus AudioScene::music_status() const {
+    std::lock_guard lock(data_->mutex);
+    const auto& d = *data_;
+    return {d.music_on,
+            bool(d.authored_music),
+            d.song_selection,
+            d.authored_music ? "track" : d.playlist.empty() ? "" : d.playlist[d.song % d.playlist.size()],
+            d.playlist,
+            d.race_fade,
+            d.environment_fade};
+}
+
 AudioStats AudioScene::stats() const {
     std::lock_guard lock(data_->mutex);
-    return data_->stats;
+    auto result = data_->stats;
+    result.streamed_bytes = (data_->authored_music ? data_->authored_music->bytes() : 0) +
+                            (data_->intro_music ? data_->intro_music->bytes() : 0);
+    return result;
 }
 
 void AudioScene::play_course(unsigned number, Vec3 position, double gain) {
@@ -702,16 +873,34 @@ void AudioScene::tick(const Player& player, const Rider& before) {
     const auto& rider = player.rider();
     const auto dt = player.contract().tick_seconds();
     if (d.serial && d.serial != player.audio_reset_serial())
-        d.reset();
+        d.reset(d.run_serial != player.run_serial());
     d.serial = player.audio_reset_serial();
-    const auto bed_target = player.on_foot() ? 1. : 0.;
-    d.environment_fade += std::clamp(bed_target - d.environment_fade, -dt / 1.5, dt / 1.5);
+    d.run_serial = player.run_serial();
+    const auto bed_target = d.music_on && player.on_foot() ? 1. : 0.;
+    const auto race_target = d.music_on && !player.on_foot() && (d.authored_music || !d.playlist.empty()) ? 1. : 0.;
+    const auto fade_step = dt / music_mix().fade;
+    d.race_fade += std::clamp(race_target - d.race_fade, -fade_step, fade_step);
+    d.race_wanted = d.race_fade > 0;
+    if (d.authored_music)
+        d.authored_music->playing(d.race_wanted);
+    if (d.intro_music)
+        d.intro_music->playing(d.environment_fade > 0 || bed_target > 0);
+    if (!d.race_wanted && d.music_voice) {
+        d.mixer.stop(d.music_voice);
+        d.music_voice = 0;
+        d.music_ready = d.pending_ready = false;
+        d.music_start_pending = true;
+        d.stats.music_node = -1;
+    }
+    d.environment_fade += std::clamp(bed_target - d.environment_fade, -fade_step, fade_step);
+    d.mixer.music_mix(d.race_fade, d.environment_fade);
     if (!d.environment_clip.empty()) {
         VoiceParams params;
-        params.gain = d.environment_gain * d.environment_fade;
+        params.role = AudioRole::Ambience;
+        params.gain = d.environment_gain;
         params.loop = true;
         params.sustain_only = true;
-        if (params.gain > 0) {
+        if (params.gain > 0 && d.environment_fade > 0) {
             if (!d.mixer.update(d.environment_voice, params))
                 if (auto clip = d.clip(d.environment_clip))
                     d.environment_voice = d.mixer.play(clip, params);

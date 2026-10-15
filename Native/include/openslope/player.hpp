@@ -155,6 +155,8 @@ public:
 
     std::uint64_t placement_serial() const { return placement_serial_; }
 
+    std::uint64_t run_serial() const { return run_serial_; }
+
     std::uint64_t audio_reset_serial() const { return placement_serial_ - transport_placements_; }
 
     std::uint64_t teleports() const { return teleports_; }
@@ -239,6 +241,7 @@ public:
     const Rails& rails() const { return rails_; }
 
 private:
+    std::uint64_t run_serial_ = 0;
     Terrain terrain_;
     CollisionWorld world_;
     Rails rails_;
