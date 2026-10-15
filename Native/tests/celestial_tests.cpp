@@ -102,6 +102,32 @@ void geometry() {
     rejects([&] { celestial_mesh(glare, frame); });
 }
 
+void lamps(const std::filesystem::path& root) {
+    using Json = nlohmann::json;
+    Json rows = Json::array();
+    for (auto res : {16, 32, 64, 256, 512})
+        rows.push_back({{"SpriteRes", res}, {"Colour", {1000, 0, 0}}, {"Position", {0, 1000, 0}}});
+    rows.push_back({{"SpriteRes", 32}, {"Colour", {-1, -1, -1}}, {"Position", {0, 1000, 0}}});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    const auto lights = load_lamp_glints(root);
+    check(lights.size() == 3, "Only small additive sprite classes become lamp glints");
+    close(lights[0].position.z, -10, 1e-9, "Light positions use native metre axes");
+    close(lights[0].hue.x, 1, 1e-9, "Illumination magnitude divides out of glint hue");
+    const auto matrix = (projection(-1, 1, -1, 1) * view({}, {0, 0, -1})).values;
+    const auto mesh = lamp_glint_mesh(lights, matrix, {}, 128, 128);
+    check(mesh.size() == 72, "Each lamp has halo, crossed spikes and fixed pixel core");
+    const auto wider = lamp_glint_mesh(lights, matrix, {}, 256, 256);
+    close(std::abs(mesh[18].x) / std::abs(wider[18].x), 2, 1e-6, "Core retains pixel size as resolution changes");
+    auto many = std::vector<LampGlint>(30, lights[0]);
+    check(lamp_glint_mesh(many, matrix, {}, 128, 128).size() == 240, "Lamp selection is bounded to ten visible lights");
+    many[0].position.z = 10;
+    check(lamp_glint_mesh(std::span(many.data(), 1), matrix, {}, 128, 128).empty(), "Behind-camera lamps draw nothing");
+    many[0].position.z = -601;
+    check(lamp_glint_mesh(std::span(many.data(), 1), matrix, {}, 128, 128).empty(),
+          "Lamp range excludes distant sources");
+    std::filesystem::remove(root / "Lights.json");
+}
+
 void visibility() {
     Glare glare;
     glare.enabled = true;
@@ -197,12 +223,20 @@ int main(int argc, char** argv) {
         geometry();
         visibility();
         profiles(root);
+        lamps(root);
         if (argc == 2) {
             unsigned courses = 0, enabled = 0;
             for (const auto& entry : std::filesystem::directory_iterator(argv[1]))
                 if (entry.is_directory() && std::filesystem::is_regular_file(entry.path() / "World.json") &&
                     std::filesystem::is_regular_file(entry.path() / "Patches.json")) {
                     const auto world = World::load(entry.path());
+                    if (!world.glints.empty()) {
+                        const auto eye = world.glints.front().position + Vec3{0, 0, 10};
+                        const auto matrix = (projection(-1, 1, -1, 1) * view(eye, {0, 0, -1})).values;
+                        check(!lamp_glint_mesh(world.glints, matrix, eye, 128, 128).empty(),
+                              "Owned source light table reaches the lamp renderer");
+                    }
+                    std::cout << entry.path().filename().string() << ": " << world.glints.size() << " lamp glints\n";
                     CelestialView frame;
                     frame.clip = (projection(-1, 1, -1, 1) * view({}, world.glare.direction())).values;
                     const auto drawn = celestial_mesh(world.glare, frame);

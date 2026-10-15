@@ -35,6 +35,7 @@
     <item name="launcher_courses" type="id" />
     <item name="launcher_mode" type="id" />
     <item name="launcher_scale" type="id" />
+    <item name="launcher_refresh_rate" type="id" />
     <item name="launcher_antialiasing" type="id" />
     <item name="launcher_steering" type="id" />
     <item name="launcher_status" type="id" />

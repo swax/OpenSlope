@@ -4,6 +4,9 @@
 #include <string_view>
 
 namespace openslope {
+// Choose an enumerated runtime rate; zero means keep the runtime preference.
+float display_refresh_rate(std::span<const float> supported, double target);
+
 struct VrInput {
     bool enabled = false, head = false, stick = false;
     Vec3 gaze{};

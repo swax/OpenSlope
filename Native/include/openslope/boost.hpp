@@ -27,6 +27,7 @@ struct BoostRider {
     bool active = true;
     unsigned stage = 0;
     bool snapped = false, driven = false;
+    std::span<const ProbeSphere> previous_probes{}, probes{};
 };
 
 using LapEntry = std::function<std::optional<unsigned>(std::uint64_t)>;

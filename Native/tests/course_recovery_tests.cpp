@@ -294,6 +294,25 @@ void local_courses(const std::filesystem::path& maps) {
             continue;
         const auto paths = CoursePaths::load(entry.path());
         Player rider(Terrain::load(entry.path()));
+        for (const auto mode : {RunMode::Freeride, RunMode::Showoff}) {
+            rider.configure_run(mode);
+            rider.start_on_foot();
+            for (unsigned i = 0; i < 30; ++i)
+                rider.tick({});
+            check(rider.interact_board(), "Owned course mounts on its first attempt");
+            unsigned fades = 0;
+            bool fading = false;
+            double travelled = 0;
+            const auto start = rider.rider().position;
+            for (unsigned i = 0; i < 600; ++i) {
+                rider.tick({.posture = 1});
+                fades += rider.reset_pending() && !fading;
+                fading = rider.reset_pending();
+                travelled = std::max(travelled, length(rider.rider().position - start));
+            }
+            check(fades <= 2 && travelled > 5, "Owned mounted start progresses without a repeated fade loop");
+        }
+        rider.configure_run(RunMode::Freeride);
         unsigned recovered = 0, supported = 0;
         for (const auto& path : paths.ai) {
             if (!path.respawnable || path.points.size() < 3)

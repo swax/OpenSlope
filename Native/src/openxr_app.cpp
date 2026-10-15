@@ -81,6 +81,33 @@ struct State {
     bool walking = true, head_steering = false;
     XrPath touch_profile{}, touch_plus_profile{};
     bool touch_plus_extension = false;
+    bool refresh_extension = false;
+    double target_refresh = 120;
+
+    void request_refresh_rate() {
+        if (!refresh_extension)
+            return;
+        PFN_xrVoidFunction enumerate_pointer{}, request_pointer{};
+        if (XR_FAILED(xrGetInstanceProcAddr(instance, "xrEnumerateDisplayRefreshRatesFB", &enumerate_pointer)) ||
+            XR_FAILED(xrGetInstanceProcAddr(instance, "xrRequestDisplayRefreshRateFB", &request_pointer)) ||
+            !enumerate_pointer || !request_pointer)
+            return;
+        const auto enumerate = reinterpret_cast<PFN_xrEnumerateDisplayRefreshRatesFB>(enumerate_pointer);
+        const auto request = reinterpret_cast<PFN_xrRequestDisplayRefreshRateFB>(request_pointer);
+        std::uint32_t count = 0;
+        if (XR_FAILED(enumerate(session, 0, &count, nullptr)) || count == 0 || count > 128)
+            return;
+        std::vector<float> rates(count);
+        if (XR_FAILED(enumerate(session, count, &count, rates.data())) || count > rates.size())
+            return;
+        const auto selected = display_refresh_rate(std::span(rates.data(), count), target_refresh);
+        if (selected > 0) {
+            const auto result = request(session, selected);
+            tracking_log("Display: target " + std::to_string(target_refresh) + " Hz; supported request " +
+                         std::to_string(selected) + " Hz; result " + std::to_string(int(result)));
+        }
+    }
+
     XrBodyTrackerFB body_tracker{};
     PFN_xrDestroyBodyTrackerFB destroy_body{};
     PFN_xrLocateBodyJointsFB locate_body{};
@@ -148,10 +175,12 @@ struct State {
     void create(const XrPlatform& platform, const Mesh& mesh, std::span<const std::size_t> flag_models,
                 std::span<const std::size_t> faceted_models) {
         head_steering = platform.head_steering;
+        target_refresh = platform.target_refresh_rate;
         tracking_log(head_steering ? "Steering: head with stick override; grounded stick view carry 25%"
                                    : "Steering: stick only; grounded stick view carry 25%");
         if (!std::isfinite(platform.render_scale) || platform.render_scale < 1 || platform.render_scale > 1.5 ||
-            (platform.msaa != 1 && platform.msaa != 2 && platform.msaa != 4))
+            (platform.msaa != 1 && platform.msaa != 2 && platform.msaa != 4) || !std::isfinite(target_refresh) ||
+            target_refresh < 60 || target_refresh > 120)
             throw std::runtime_error("Invalid VR image quality");
 #ifdef __ANDROID__
         if (!platform.java_vm || !platform.activity)
@@ -189,6 +218,9 @@ struct State {
         full_extension = body_extension && available(XR_META_BODY_TRACKING_FULL_BODY_EXTENSION_NAME);
         fidelity_extension = body_extension && available(XR_META_BODY_TRACKING_FIDELITY_EXTENSION_NAME);
         touch_plus_extension = available(XR_META_TOUCH_CONTROLLER_PLUS_EXTENSION_NAME);
+        refresh_extension = available(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
+        if (refresh_extension)
+            requested.push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
         if (body_extension)
             requested.push_back(XR_FB_BODY_TRACKING_EXTENSION_NAME);
         if (full_extension)
@@ -812,6 +844,7 @@ struct State {
                     XrSessionBeginInfo begin{XR_TYPE_SESSION_BEGIN_INFO};
                     begin.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                     xr_check(xrBeginSession(session, &begin), "Begin VR session");
+                    request_refresh_rate();
                     running = true;
                 }
                 if (state == XR_SESSION_STATE_STOPPING) {

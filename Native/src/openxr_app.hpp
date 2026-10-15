@@ -9,7 +9,8 @@ struct XrPlatform {
     void* java_vm{};
     void* activity{};
     std::function<bool()> process_events;
-    double render_scale = 1.0;
+    double render_scale = 1.5;
+    double target_refresh_rate = 120;
     unsigned msaa = 4;
     bool head_steering = false;
     std::function<bool()> is_resumed{};

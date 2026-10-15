@@ -2,6 +2,21 @@
 #include <stdexcept>
 
 namespace openslope {
+float display_refresh_rate(std::span<const float> supported, double target) {
+    if (!std::isfinite(target) || target <= 0)
+        return 0;
+    float below = 0, lowest = 0;
+    for (const auto rate : supported) {
+        if (!std::isfinite(rate) || rate <= 0)
+            continue;
+        if (!lowest || rate < lowest)
+            lowest = rate;
+        if (rate <= target + .01 && rate > below)
+            below = rate;
+    }
+    return below ? below : lowest;
+}
+
 double VrFrameClock::step(double display_seconds, bool interactive) {
     if (!std::isfinite(display_seconds)) {
         reset();

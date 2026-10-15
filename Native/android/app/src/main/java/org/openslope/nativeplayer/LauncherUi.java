@@ -15,7 +15,7 @@ final class LauncherUi {
     final LinearLayout content, courses, empty, settings, help, details, add;
     final TextView status, location, source, count, emptyTitle, emptyBody, modeHint;
     final Button importIso, chooseFolder, useLocal, refresh, cancel, settingsToggle, helpToggle, detailsToggle, addToggle, close;
-    final Spinner runMode, renderScale, antialiasing, steeringMode;
+    final Spinner runMode, renderScale, targetRefreshRate, antialiasing, steeringMode;
     final ProgressBar progress;
     private final List<View> controls = new ArrayList<>();
     private final Map<View, View> labels = new HashMap<>();
@@ -69,6 +69,7 @@ final class LauncherUi {
         settings = card(content); settings.setVisibility(View.GONE);
         settings.setAccessibilityPaneTitle(context.getString(R.string.ride_settings));
         renderScale = choice(settings, R.id.launcher_scale, R.string.vr_resolution, R.array.vr_resolutions);
+        targetRefreshRate = choice(settings, R.id.launcher_refresh_rate, R.string.target_refresh_rate, R.array.refresh_rates);
         text(settings, R.string.resolution_hint, 18, true);
         antialiasing = choice(settings, R.id.launcher_antialiasing, R.string.edge_smoothing, R.array.smoothing_options);
         steeringMode = choice(settings, R.id.launcher_steering, R.string.riding_steering, R.array.steering_options);

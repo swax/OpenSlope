@@ -68,6 +68,11 @@ void geometry(const std::filesystem::path& root, Vec3 low, Vec3 high, int mass =
 int main() {
     try {
         Player p(floor());
+        Player drift(floor());
+        drift.warp({0, -.005, 0}, {0, 0, -1}, {.02, 0, 0});
+        for (unsigned i = 0; i < 180; ++i)
+            drift.tick({});
+        check(drift.rider().position.z < -5, "Tiny sideways drift cannot strand a board without cruise drive");
         p.warp({0, 0, 0}, {0, 0, -1});
         p.start_on_foot();
         check(p.on_foot() && p.rider().grounded, "start grounded on foot");

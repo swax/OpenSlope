@@ -213,11 +213,13 @@ extern "C" void android_main(android_app* app) {
             const auto mode = openslope::run_mode(string_value(environment, mode_value));
             environment->DeleteLocalRef(mode_value);
             const auto scale_getter = environment->GetMethodID(type, "getRenderScale", "()D"),
-                       samples_getter = environment->GetMethodID(type, "getMsaa", "()I");
-            if (!scale_getter || !samples_getter)
+                       samples_getter = environment->GetMethodID(type, "getMsaa", "()I"),
+                       refresh_getter = environment->GetMethodID(type, "getTargetRefreshRate", "()D");
+            if (!scale_getter || !samples_getter || !refresh_getter)
                 throw std::runtime_error("VR quality host is missing");
             const auto scale = environment->CallDoubleMethod(app->activity->clazz, scale_getter);
             const auto samples = environment->CallIntMethod(app->activity->clazz, samples_getter);
+            const auto refresh = environment->CallDoubleMethod(app->activity->clazz, refresh_getter);
             const auto root = std::filesystem::path(string_value(environment, path));
             environment->DeleteLocalRef(path);
             environment->DeleteLocalRef(type);
@@ -235,6 +237,7 @@ extern "C" void android_main(android_app* app) {
             openslope::XrPlatform platform{app->activity->vm, app->activity->clazz,
                                            [&] { return process_events(app); }};
             platform.render_scale = scale;
+            platform.target_refresh_rate = refresh;
             platform.msaa = unsigned(samples);
             platform.head_steering = head_steering;
             platform.audio_preferences =

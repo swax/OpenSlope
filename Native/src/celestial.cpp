@@ -1,6 +1,8 @@
 #include "openslope/celestial.hpp"
 #include "celestial_spokes.hpp"
+#include "import_internal.hpp"
 #include <algorithm>
+#include <fstream>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 
@@ -73,6 +75,126 @@ Vertex vertex(std::array<double, 4> p, std::array<float, 3> rgb, double intensit
     return result;
 }
 } // namespace
+
+std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root) {
+    using Json = nlohmann::json;
+    Json doc;
+    const auto read = [&](const std::filesystem::path& file, std::uintmax_t maximum) {
+        const auto relative =
+            std::filesystem::weakly_canonical(file).lexically_relative(std::filesystem::weakly_canonical(root));
+        if (relative.empty() || relative.is_absolute() || *relative.begin() == ".." ||
+            std::filesystem::file_size(file) > maximum)
+            throw std::runtime_error("Invalid course light asset");
+        std::ifstream input(file, std::ios::binary);
+        return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input), {});
+    };
+    if (std::filesystem::exists(root / "Lights.json")) {
+        const auto bytes = read(root / "Lights.json", 32 * 1024 * 1024);
+        doc = Json::parse(bytes);
+    } else if (std::filesystem::is_directory(root / "Source")) {
+        // Older Native ISO imports retain their source geometry. Decode only its light table.
+        for (const auto& entry : std::filesystem::directory_iterator(root / "Source")) {
+            const auto name = entry.path().filename().string();
+            if (entry.path().extension() != ".PBD" || name.ends_with("_SKY.PBD"))
+                continue;
+            const auto bytes = read(entry.path(), 512 * 1024 * 1024);
+            doc = Json::parse(import_detail::light_document(bytes));
+            break;
+        }
+    }
+    if (doc.is_null())
+        return {};
+    const auto& rows = doc.at("Lights");
+    if (!rows.is_array() || rows.size() > 100000)
+        throw std::runtime_error("Invalid course light table");
+    std::vector<LampGlint> result;
+    for (const auto& row : rows) {
+        const auto mask = row.value("SpriteRes", 0) & 0x70;
+        if (mask != 16 && mask != 32 && mask != 64)
+            continue;
+        const auto vector = [&](const char* key) {
+            const auto& v = row.at(key);
+            if (!v.is_array() || v.size() != 3)
+                throw std::runtime_error("Invalid course light vector");
+            Vec3 p{v[0].get<double>(), v[1].get<double>(), v[2].get<double>()};
+            if (!finite(p) || length(p) > 1e9)
+                throw std::runtime_error("Invalid course light components");
+            return p;
+        };
+        const auto colour = vector("Colour");
+        if (std::min({colour.x, colour.y, colour.z}) < 0 || length(colour) < 1e-12)
+            continue;
+        const auto p = vector("Position");
+        const auto brightness = row.value("UnknownFloat1", 1.);
+        if (!std::isfinite(brightness) || brightness < 0 || brightness > 100)
+            throw std::runtime_error("Invalid course light brightness");
+        result.push_back({{p.x / 100, p.z / 100, -p.y / 100}, colour / length(colour), unsigned(mask), brightness});
+    }
+    return result;
+}
+
+std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std::array<float, 16>& clip, Vec3 eye,
+                                    unsigned width, unsigned height, double range) {
+    if (!finite(eye) || !width || !height || !std::isfinite(range) || range <= 0)
+        throw std::invalid_argument("Invalid lamp glint view");
+    for (const auto v : clip)
+        if (!std::isfinite(v))
+            throw std::invalid_argument("Invalid lamp projection");
+    const auto forward = normalized(Vec3{clip[3], clip[7], clip[11]}, {0, 0, -1});
+    const Vec3 row_x{clip[0], clip[4], clip[8]}, row_y{clip[1], clip[5], clip[9]};
+    const auto right = normalized(project(row_x, forward), {1, 0, 0}),
+               up = normalized(-project(row_y, forward), {0, 1, 0});
+    const CelestialView view{clip};
+
+    struct Visible {
+        const LampGlint* light;
+        double distance;
+        std::array<double, 4> p;
+    };
+
+    std::vector<Visible> visible;
+    for (const auto& light : lights) {
+        const auto distance = length(light.position - eye);
+        const auto p = project(view, light.position);
+        if (distance >= range || distance < .05 || p[3] <= 1e-6 || p[2] < 0 || p[2] > p[3] || std::abs(p[0]) > p[3] ||
+            std::abs(p[1]) > p[3])
+            continue;
+        visible.push_back({&light, distance, p});
+    }
+    std::stable_sort(visible.begin(), visible.end(),
+                     [](const auto& a, const auto& b) { return a.distance < b.distance; });
+    if (visible.size() > 10)
+        visible.resize(10);
+    std::vector<Vertex> result;
+    const auto quad = [&](const LampGlint& light, Vec3 x, Vec3 y, double gain, double kind) {
+        for (const auto uv : std::array<std::array<double, 2>, 6>{{{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}}}) {
+            const auto p = light.position + x * (uv[0] * 2 - 1) + y * (1 - uv[1] * 2);
+            Vertex v{float(p.x), float(p.y), float(p.z), float(light.hue.x), float(light.hue.y), float(light.hue.z)};
+            v.s = float(uv[0]);
+            v.t = float(uv[1]);
+            v.ls = float(gain);
+            v.lx = float(kind);
+            result.push_back(v);
+        }
+    };
+    for (const auto& lamp : visible) {
+        const auto& light = *lamp.light;
+        const auto nx = lamp.p[0] / lamp.p[3], ny = lamp.p[1] / lamp.p[3];
+        const auto bloom = std::pow(std::max(0., 1 - std::hypot(nx, ny)), 4);
+        const auto gain = light.brightness * (1 + bloom) * std::min(1., 2 * (1 - lamp.distance / range));
+        const auto radius = (light.size == 64 ? 2.5 : light.size == 32 ? 1. : .5) * (1 + bloom);
+        quad(light, right * radius * 2, up * radius * 2, gain * .25, 0);
+        const auto angle = -pi * .5 * nx;
+        const auto x = right * std::cos(angle) + up * std::sin(angle),
+                   y = up * std::cos(angle) - right * std::sin(angle);
+        quad(light, x * radius, y * radius * .15, gain, 1);
+        quad(light, y * radius, x * radius * .15, gain, 1);
+        const auto px = 2 * lamp.p[3] / (width * std::max(length(row_x), 1e-9));
+        const auto py = 2 * lamp.p[3] / (height * std::max(length(row_y), 1e-9));
+        quad(light, right * px * 8, up * py * 4, gain, 0);
+    }
+    return result;
+}
 
 Vec3 Glare::direction() const {
     const auto az = azimuth * pi / 180, el = elevation * pi / 180;

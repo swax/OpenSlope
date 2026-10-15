@@ -132,6 +132,21 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     jump_cooldown_ = air_grace_ = rail_cooldown_ = 0;
     clock_.reset();
     release_inputs();
+    latch_reset_contacts();
+}
+
+bool Player::in_reset_volume(std::size_t host) const {
+    for (const auto& probe : volume(rider_, !rider_.grounded))
+        if (world_.volume(host, probe.centre, probe.centre, probe.radius))
+            return true;
+    return bool(world_.volume(host, rider_.position, rider_.position));
+}
+
+void Player::latch_reset_contacts() {
+    reset_contact_latches_.clear();
+    for (const auto host : logic_.reset_volumes())
+        if (in_reset_volume(host))
+            reset_contact_latches_.insert(host);
 }
 
 void Player::reset(bool manual) {
@@ -478,6 +493,9 @@ void Player::notify_tick(const Rider& before) {
                       !placed && (on_foot_ || run_.status().phase == RunPhase::Running) && !reset_pending() &&
                           !recovering(),
                       rider_.tube_stage};
+    const auto previous_probes = volume(before, !before.grounded), probes = volume(rider_, !rider_.grounded);
+    driven.previous_probes = previous_probes;
+    driven.probes = probes;
     logic_.apply_forces(dt, world_, std::span(&driven, 1), [&](std::uint64_t) -> std::optional<unsigned> {
         if (run_.status().mode == RunMode::Freeride || run_.status().passes <= 1)
             return {};
@@ -635,7 +653,7 @@ void Player::apply_world_actions() {
     for (const auto& action : actions)
         switch (action.kind) {
         case WorldActionKind::Reset:
-            if (action.rider)
+            if (action.rider && !reset_contact_latches_.contains(action.target))
                 request_course_recovery(false, true);
             break;
         case WorldActionKind::Teleport:
@@ -798,6 +816,7 @@ void Player::tick(const RideInput& input) {
     foot_contact_velocity_ = before_pose.velocity;
     const auto dt = contract_.tick_seconds();
     rider_.pads.tick(dt);
+    std::erase_if(reset_contact_latches_, [&](auto host) { return !in_reset_volume(host); });
     const std::array<Vec3, 2> observers{rider_.position, world_view_.value_or(rider_.position + Vec3{0, 1.7, 0})};
     const std::array<CrowdActivity, 1> crowd_riders{
         {{rider_.position, 1, run_.status().phase == RunPhase::Running && !reset_pending()}}};
@@ -1053,7 +1072,10 @@ void Player::tick(const RideInput& input) {
         } else if (!recovering()) {
             const auto deficit =
                 std::clamp(s.target - length(relative_velocity), 0.0, contract_.value("speed", "cruiseDeficitMax"));
-            const auto align = contract_.cruise_alignment(relative_velocity, rider_.forward, rider_.normal);
+            // Application start assistance: negligible sideways drift must not disable cruise propulsion.
+            const auto align = length(project(relative_velocity, rider_.normal)) < .5
+                                   ? 1.
+                                   : contract_.cruise_alignment(relative_velocity, rider_.forward, rider_.normal);
             const auto drive = align * deficit * s.multiplier * contract_.value("speed", "riderDrive");
             const auto window = contract_.value("speed", "boostLeanWindow");
             const auto thrust = boosting ? contract_.value("speed", "boostAcceleration") *

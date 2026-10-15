@@ -39,6 +39,7 @@ public:
     CourseRun(CoursePaths paths, CoursePaths finish_paths, RunSettings settings);
     static CourseRun load(const std::filesystem::path& root, RunMode mode);
     void restart();
+    void abandon();
     bool begin_tick(double seconds, bool mounted);
     void end_tick(Vec3 position, std::uint64_t placement_serial);
     bool enter_lap_volume();

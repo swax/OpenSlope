@@ -134,3 +134,11 @@ between physics ticks; multiplier pickups use faceted normals. See
 `quest-playtest-0.53.md` for verification and the still-open wider prop-brightness
 and Quest train reports. Later play-test notes on starts/recovery, vents, cues,
 boost mode, glints and graphics settings remain subsequent work.
+
+Build 0.54 prevents the reproduced Snowdream start-reset loop, assists starts
+with negligible sideways drift, clears event scoring on dismount, and retains
+unlimited boost on remount. It aligns force occupancy with body contacts, plays
+trigger-entry cues without requiring an impact normal, and adds authored lamp
+glints/halos. Quest defaults to 150% with a configurable 120 fps target. See
+`playtest-0.54.md` for validation, actual installed version and remaining vent
+approach, prop-lighting and Quest train limitations.

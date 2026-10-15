@@ -29,7 +29,9 @@
     <string name="vr_resolution">VR resolution</string>
     <string name="edge_smoothing">Edge smoothing</string>
     <string name="riding_steering">Riding steering</string>
-    <string name="resolution_hint">Start with the recommended resolution. Higher settings can reduce performance.</string>
+    <string name="resolution_hint">150% resolution and 120 Hz are the defaults. Lower settings can improve performance. The headset uses a supported refresh rate.</string>
+    <string name="target_refresh_rate">Target frame rate</string>
+    <string-array name="refresh_rates"><item>72 fps</item><item>80 fps</item><item>90 fps</item><item>120 fps · default</item></string-array>
     <string name="steering_hint">Stick steering is always available. Head steering also lets you turn by looking.</string>
     <string name="first_run_help">First run &amp; controls</string>
     <string name="hide_first_run_help">Hide first run &amp; controls</string>
@@ -63,7 +65,7 @@
         <item quantity="other">%d courses ready to play</item>
     </plurals>
     <string-array name="ride_modes"><item>Freeride</item><item>Race</item><item>Showoff</item></string-array>
-    <string-array name="vr_resolutions"><item>100% · recommended</item><item>125% · sharper</item><item>150% · sharpest</item></string-array>
+    <string-array name="vr_resolutions"><item>100%</item><item>125%</item><item>150% · default</item></string-array>
     <string-array name="smoothing_options"><item>Off</item><item>2x</item><item>4x · recommended</item></string-array>
     <string-array name="steering_options"><item>Stick steering</item><item>Head + stick steering</item></string-array>
 </resources>

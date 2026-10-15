@@ -274,6 +274,9 @@ private:
     double reset_age_ = 0, reset_fade_in_ = 0;
     Vec3 reset_camera_forward_{0, 0, -1};
     void finish_course_recovery();
+    std::set<std::size_t> reset_contact_latches_;
+    bool in_reset_volume(std::size_t host) const;
+    void latch_reset_contacts();
     TrickScore score_;
     bool score_started_ = false;
     double held_boost_ = 0;

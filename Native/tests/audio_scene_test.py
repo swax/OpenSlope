@@ -53,6 +53,9 @@ def main():
         samples, report = capture(executable, root, 30, dict(Position=[-2, -.005, 0], Forward=[1, 0, 0], Velocity=[12, 0, 0]))
         assert 'contact sounds 1' in report and 'bounces 0' in report, report
         assert rms(samples) > 200, report
+        # Entry inside a pressure volume has no incoming surface-normal impact.
+        samples, report = capture(executable, root, 90, dict(Position=[0, -.005, 0], Forward=[1, 0, 0], Velocity=[0, 0, 0]))
+        assert 'contact sounds 1' in report and rms(samples) > 100, report
         root = base / 'interactive'
         fixture(root, mass=0)
         tone(root / 'Audio/SFX/test/000.wav', 1000)

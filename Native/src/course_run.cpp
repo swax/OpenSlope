@@ -184,6 +184,13 @@ void CourseRun::restart() {
     last_lap_time_ = tube_suppress_until_ = -1e30;
 }
 
+void CourseRun::abandon() {
+    restart();
+    status_ = {};
+    status_.mode = RunMode::Freeride;
+    status_.phase = RunPhase::Running;
+}
+
 bool CourseRun::begin_tick(double seconds, bool mounted) {
     if (!std::isfinite(seconds) || seconds < 0 || seconds > 1)
         throw std::invalid_argument("Invalid run tick");
@@ -200,7 +207,7 @@ bool CourseRun::begin_tick(double seconds, bool mounted) {
     }
     if (status_.phase == RunPhase::Running) {
         status_.elapsed += seconds;
-        if (settings_.mode == RunMode::Showoff)
+        if (status_.mode == RunMode::Showoff)
             status_.clock = settings_.showoff_seconds > 0 ? std::max(0., status_.clock - seconds) : 0;
         else
             status_.clock += seconds;
@@ -263,7 +270,7 @@ void CourseRun::end_tick(Vec3 position, std::uint64_t placement_serial) {
     status_.progress = locate(position);
     const auto dtf = status_.progress ? std::optional(status_.progress->distance_to_finish) : std::nullopt;
     const bool continuous = previous_position_ && serial_ == placement_serial;
-    if (status_.phase == RunPhase::Running && settings_.mode != RunMode::Freeride && continuous) {
+    if (status_.phase == RunPhase::Running && status_.mode != RunMode::Freeride && continuous) {
         bool crossing = false;
         if (finish_) {
             const auto [point, forward] = *finish_;
@@ -310,13 +317,13 @@ void CourseRun::end_tick(Vec3 position, std::uint64_t placement_serial) {
                     ++status_.checkpoints;
                     status_.checkpoint_notice = 2;
                     status_.checkpoint_bonus =
-                        settings_.mode == RunMode::Showoff && event->value <= 600 ? event->value : 0;
+                        status_.mode == RunMode::Showoff && event->value <= 600 ? event->value : 0;
                     status_.clock += status_.checkpoint_bonus;
                 }
             }
         }
     }
-    if (status_.phase == RunPhase::Running && settings_.mode == RunMode::Showoff && settings_.showoff_seconds > 0 &&
+    if (status_.phase == RunPhase::Running && status_.mode == RunMode::Showoff && settings_.showoff_seconds > 0 &&
         status_.clock <= 1e-9) {
         status_.clock = 0;
         status_.phase = RunPhase::Expired;

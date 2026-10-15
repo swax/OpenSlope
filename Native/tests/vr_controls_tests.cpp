@@ -246,6 +246,12 @@ void presentation() {
 int main() {
     try {
         system_pause();
+        const std::array<float, 4> rates{90, 72, 120, 80};
+        near(display_refresh_rate(rates, 120), 120, "Use enumerated 120 Hz");
+        near(display_refresh_rate(rates, 100), 90, "Fall back below an unavailable target");
+        near(display_refresh_rate(rates, 60), 72, "Use the minimum supported refresh rate");
+        near(display_refresh_rate({}, 120), 0, "Missing refresh extension retains runtime preference");
+        near(display_refresh_rate(rates, 0), 0, "No preference does not invent a refresh rate");
         presentation();
         carve();
         ownership();

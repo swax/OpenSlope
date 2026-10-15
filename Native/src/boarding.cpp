@@ -95,6 +95,7 @@ void Player::place_foot(Vec3 position, Vec3 forward, Vec3 velocity) {
     walk_phase_ = 0;
     clock_.reset();
     release_inputs();
+    latch_reset_contacts();
 }
 
 void Player::start_on_foot() {
@@ -171,6 +172,11 @@ bool Player::interact_board(Vec3 room_offset) {
         rider_.lead = board.lead;
         return true;
     }
+    run_.abandon();
+    score_.reset();
+    score_started_ = false;
+    run_active_ = false;
+    ++run_serial_;
     const auto position = render_board_position(), forward = render_forward(), up = render_up(),
                heading = camera_forward();
     const auto velocity = rider_.velocity;

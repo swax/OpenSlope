@@ -24,7 +24,8 @@ public final class GameActivity extends NativeActivity {
     public String getMapPath() { return getIntent().getStringExtra("map_path"); }
     public String getMapName() { String name = getIntent().getStringExtra("map_name"); return name == null ? new File(getMapPath()).getName() : name; }
     public String getRunMode() { String mode=getIntent().getStringExtra("run_mode");return mode==null?"freeride":mode; }
-    public double getRenderScale(){return getIntent().getDoubleExtra("render_scale",1.0);}
+    public double getRenderScale(){return getIntent().getDoubleExtra("render_scale",1.5);}
+    public double getTargetRefreshRate(){return getIntent().getDoubleExtra("target_refresh_rate",120.0);}
     public int getMsaa(){return getIntent().getIntExtra("msaa",4);}
     public boolean getHeadSteering(){return getIntent().getBooleanExtra("head_steering",false);}
     public void reportError(String message) { error = message; runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()); }

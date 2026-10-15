@@ -1008,16 +1008,17 @@ std::optional<WorldContact> CollisionWorld::ray(Vec3 start, Vec3 end, bool ridea
     return result;
 }
 
-std::optional<WorldVolume> CollisionWorld::volume(std::size_t instance, Vec3 start, Vec3 end) const {
-    if (!finite(start) || !finite(end))
-        throw std::invalid_argument("Invalid volume query");
+std::optional<WorldVolume> CollisionWorld::volume(std::size_t instance, Vec3 start, Vec3 end, double radius) const {
+    if (!finite(start) || !finite(end) || !std::isfinite(radius) || radius < 0 || radius > 10)
+        throw std::invalid_argument("Invalid world volume probe");
     if (instance >= data_->instance_objects.size() || (!data_->flags.empty() && !(data_->flags[instance] & 2)))
         return {};
     std::optional<WorldVolume> result;
     for (const auto index : data_->instance_objects[instance]) {
         const auto& object = data_->objects[index];
         const auto previous = data_->relative(object, {start, 0}).centre;
-        bool hit = bool(data_->ray_hit(object, previous, end));
+        bool hit = radius > 0 ? bool(data_->hit_current(object, {previous, radius}, {end, radius}))
+                              : bool(data_->ray_hit(object, previous, end));
         const auto contains = [&](Vec3 point) {
             const auto local = transform_point(object.inverse, point);
             const auto& box = object.box;

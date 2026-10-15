@@ -379,4 +379,30 @@ void write_props(const std::vector<std::uint8_t>& pbd, const std::vector<std::ui
     write_json(output / "Instances.json", {{"Instances", instances}});
     write_json(output / "Materials.json", {{"Materials", materials}});
 }
+
+std::string light_document(std::span<const std::uint8_t> geometry) {
+    Bytes b{geometry};
+    b.range(0, 144);
+    const auto count = b.le(28), offset = b.le(88);
+    if (count > 100000)
+        throw std::runtime_error("Course light table exceeds limit");
+    b.range(offset, std::size_t(count) * 92);
+    Json rows = Json::array();
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto p = offset + i * 92;
+        const auto vector = [&](std::size_t field) {
+            return Json::array({b.number(p + field), b.number(p + field + 4), b.number(p + field + 8)});
+        };
+        rows.push_back({{"LightName", "Light " + std::to_string(i)},
+                        {"Type", b.le(p)},
+                        {"SpriteRes", b.le(p + 4)},
+                        {"UnknownFloat1", b.number(p + 8)},
+                        {"Colour", vector(16)},
+                        {"Direction", vector(28)},
+                        {"Position", vector(40)},
+                        {"LowestXYZ", vector(52)},
+                        {"HighestXYZ", vector(64)}});
+    }
+    return Json{{"Lights", rows}}.dump();
+}
 } // namespace openslope::import_detail

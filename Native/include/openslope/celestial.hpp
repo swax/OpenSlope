@@ -2,6 +2,16 @@
 #include "terrain.hpp"
 
 namespace openslope {
+struct LampGlint {
+    Vec3 position, hue;
+    unsigned size = 0;
+    double brightness = 1;
+};
+
+std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root);
+std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std::array<float, 16>& clip, Vec3 eye,
+                                    unsigned width, unsigned height, double range = 600);
+
 struct Glare {
     bool enabled = false;
     std::array<float, 3> core{1, 184.f / 255, 92.f / 255}, rim{112.f / 255, 72.f / 255, 38.f / 255};

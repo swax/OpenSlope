@@ -73,8 +73,10 @@ focus; an uncommitted jump charge is cancelled.
 Desktop rendering defaults to 4x MSAA, falling back to a supported colour/depth
 sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
 OpenXR also defaults to 4x MSAA. The Quest launcher offers 100%, 125% and 150% of
-the runtime's recommended eye dimensions, plus Off/2x/4x edge smoothing. Start at
-100%/4x; higher resolution increases attachment memory and GPU cost.
+the runtime's recommended eye dimensions, plus Off/2x/4x edge smoothing. Fresh
+settings default to 150%/4x and a 120 fps target. Target frame rate is configurable
+at 72/80/90/120 fps, with runtime-supported fallback. Existing preferences remain
+in effect. Higher resolution increases attachment memory and GPU cost.
 Flag and banner graphs now drive eight-section cloth waves, with private phase,
 both fixed ends, lifecycle and conservative culling. See [flag-cloth.md](docs/flag-cloth.md)
 for supported geometry, validation and remaining fidelity work.

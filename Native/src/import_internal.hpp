@@ -57,6 +57,7 @@ void write_crowd(std::span<const std::uint8_t> source, const std::filesystem::pa
 std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes, bool lightmap, const ImportCancel& cancelled,
                               bool particle = false);
 void write_png(const std::filesystem::path& path, const Image& image);
+std::string light_document(std::span<const std::uint8_t> geometry);
 void write_paths(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output,
                  const ImportCancel& cancelled);
 void write_collision(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output,

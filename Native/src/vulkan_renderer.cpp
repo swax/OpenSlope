@@ -269,6 +269,7 @@ VulkanRenderer::~VulkanRenderer() {
     destroy_buffer(particle_vertices_);
     destroy_buffer(celestial_vertices_);
     destroy_buffer(hud_vertices_);
+    destroy_buffer(glint_vertices_);
     destroy_buffer(wake_vertices_);
     destroy_buffer(avatar_vertices_);
     destroy_buffer(sheet_vertices_);
@@ -738,6 +739,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     if (!glare_view.stereo)
         glare_view.anchor = eye;
     auto celestial = celestial_mesh(glare(), glare_view);
+    const auto glints = lamp_glint_mesh(scene_->world_.glints, camera.values, eye, width_, height_);
     const auto fan_count = celestial.fan.size();
     celestial.fan.insert(celestial.fan.end(), celestial.corona.begin(), celestial.corona.end());
     const auto visibility = 1 - fade;
@@ -968,6 +970,8 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     };
     upload_dynamic(celestial.fan, celestial_vertices_, celestial_capacity_);
     upload_dynamic(hud, hud_vertices_, hud_capacity_);
+    upload_dynamic(glints, glint_vertices_, glint_capacity_);
+    stats_.lamp_glints = unsigned(glints.size() / 24);
     boost_mesh_.clear();
     boost_mesh_.reserve(boost.size());
     for (const auto& point : boost) {
@@ -1342,6 +1346,17 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         vkCmdDraw(command_, std::uint32_t(boost_mesh_.size()), 1, 0, 0);
         ++stats_.boost_draws;
+    }
+    if (!glints.empty()) {
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
+        vkCmdBindVertexBuffers(command_, 0, 1, &glint_vertices_.buffer, &offset);
+        push.mvp = camera;
+        push.options[0] = 12;
+        push.options[2] = push.options[3] = 0;
+        vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->board_set_, 0,
+                                nullptr);
+        vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
+        vkCmdDraw(command_, std::uint32_t(glints.size()), 1, 0, 0);
     }
     if (!celestial.fan.empty()) {
         vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, celestial_pipeline_);

@@ -106,7 +106,7 @@ public:
         unsigned flag_sections{}, flag_draws{}, route_copies{}, route_lines{}, line_draws{}, avatar_triangles{},
             visible_props{}, prop_draws{}, terrain_patches{}, visible_terrain{}, terrain_draws{}, sprites{},
             wake_segments{}, wake_draws{}, sheet_segments{}, sheet_draws{}, boost_segments{}, boost_draws{},
-            world_sprites{}, particle_draws{}, celestial_triangles{}, celestial_draws{};
+            world_sprites{}, particle_draws{}, celestial_triangles{}, celestial_draws{}, lamp_glints{};
         std::uint64_t terrain_indices{}, terrain_total_indices{};
         std::size_t visibility_tests{};
         bool terrain_compacted = false;
@@ -198,6 +198,8 @@ private:
     std::size_t particle_capacity_{};
     std::vector<Vertex> particle_mesh_;
     Buffer celestial_vertices_, hud_vertices_;
+    Buffer glint_vertices_;
+    std::size_t glint_capacity_{};
     std::size_t celestial_capacity_{}, hud_capacity_{};
 
     struct ParticleDraw {

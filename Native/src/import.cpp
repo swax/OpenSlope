@@ -504,6 +504,8 @@ void extract_course(const DiscInput& disc, const std::string& course, const std:
         outputs.push_back("Effects.json");
     }
     notify("Recovering course sun and sky settings");
+    write_json(output / "Lights.json", Json::parse(import_detail::light_document(member(files, stem + ".PBD"))));
+    outputs.push_back("Lights.json");
     const auto world = disc_world_profile(disc, stem, cancelled);
     if (!world.empty()) {
         write_json(output / "World.json", Json::parse(world));

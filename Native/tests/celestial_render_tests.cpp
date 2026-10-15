@@ -188,6 +188,32 @@ int main(int argc, char** argv) {
                         check(channel(clear, 64, 64, 1) > channel(clear, 64, 64, 0) * 2,
                               "Only the lens atlas top-right green tile is submitted");
                 }
+        const auto lamps = root / "lamps";
+        std::filesystem::create_directory(lamps);
+        std::ofstream(lamps / "Lights.json")
+            << R"({"Lights":[{"SpriteRes":32,"Colour":[1,0,0],"Position":[0,500,0]}]})";
+        for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB}) {
+            Target image(context, format);
+            VulkanRenderer renderer(context);
+            Mesh mesh;
+            mesh.map_root = lamps;
+            renderer.upload(mesh);
+            renderer.targets(std::span(&image.image, 1), format, 128, 128);
+            submit(renderer, camera);
+            const auto lit = pixels(renderer, lamps / "visible.ppm");
+            check(renderer.stats().lamp_glints == 1 && channel(lit, 64, 64, 0) > 120,
+                  "Real GPU lamp batch adds its source hue at the projected light");
+            const auto wall = quad(20, -2, {0, 0, 0});
+            submit(renderer, camera, {}, {}, wall);
+            const auto hidden = pixels(renderer, lamps / "hidden.ppm");
+            check(channel(hidden, 64, 64, 0) == 0 && channel(hidden, 30, 64, 0) == 0,
+                  "Opaque world depth occludes the complete halo and fixed core");
+            const auto edge = quad(.2, -2, {0, 0, 0});
+            submit(renderer, camera, {}, {}, edge);
+            const auto partial = pixels(renderer, lamps / "partial.ppm");
+            check(channel(partial, 64, 64, 0) == 0 && channel(partial, 50, 64, 0) > channel(partial, 50, 64, 1),
+                  "Halo clips per pixel at an occluder edge without reading through its centre");
+        }
         std::cout << "PASS: " << checks
                   << " actual Vulkan celestial, depth, HUD, camera, stereo and queued-eye checks\n";
         return 0;

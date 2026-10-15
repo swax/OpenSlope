@@ -260,6 +260,21 @@ int main() {
     try {
         arithmetic();
         production();
+        Player dismount(floor());
+        begin(dismount);
+        dismount.scoring().spend(100, true);
+        check(dismount.interact_board() && dismount.on_foot(), "Leave a running scored event");
+        check(!dismount.scoring().status().active && dismount.scoring().status().total() == 0 &&
+                  dismount.course_run().status().mode == RunMode::Freeride,
+              "Dismount clears event scoring and returns to free riding");
+        check(dismount.interact_board(), "Remount the parked board");
+        for (unsigned i = 0; i < 120; ++i)
+            dismount.tick({.boost = true});
+        near(dismount.scoring().boost_amount(), 1, "Remount retains unlimited boost instead of restarting scoring");
+        dismount.restart_run();
+        check(dismount.course_run().status().mode == RunMode::Showoff &&
+                  dismount.course_run().status().phase == RunPhase::Ready,
+              "Explicit Restart restores the selected event after free riding");
         std::cout << "PASS: " << checks
                   << " trick, bank, crash/reset, meter, run lifecycle and production player checks\n";
         return 0;

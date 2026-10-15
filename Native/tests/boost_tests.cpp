@@ -336,6 +336,8 @@ void geometry(const std::filesystem::path& root) {
     check(world.volume(0, {0, 40, 0}, {0, 40, 0}).has_value(),
           "invisible contact-only box admits a stationary interior rider");
     check(!world.volume(0, {20, 40, 0}, {20, 40, 0}), "box rejects an outside rider");
+    check(!world.volume(0, {10.2, 40, 0}, {10.2, 40, 0}) && world.volume(0, {10.2, 40, 0}, {10.2, 40, 0}, .3),
+          "Volume coverage includes an overlapping body sphere while feet remain outside");
     check(world.volume(1, {30, 40, 0}, {30, 40, 0}).has_value(),
           "closed triangle proxy admits stationary interior, not only surface crossings");
     check(!world.volume(1, {41, 40, 0}, {41, 40, 0}), "triangle interior test rejects outside proxy");
@@ -401,6 +403,14 @@ void graph_forces(const std::filesystem::path& root) {
     write(root, "Effects.json", doc);
     auto world = CollisionWorld::load(root);
     auto logic = WorldLogic::load(root);
+    logic.contact(0, 0);
+    BoostRider edge{0, {10.2, 4, 0}, {10.2, 4, 0}, {}};
+    const std::array<ProbeSphere, 1> edge_body{{{{10.2, 4.8, 0}, .3}}};
+    edge.previous_probes = edge.probes = edge_body;
+    logic.apply_forces(dt, world, std::span(&edge, 1));
+    check(edge.driven && edge.velocity.y > 0,
+          "An entered vent drives an overlapping body beyond its foot-point bounds");
+    logic = WorldLogic::load(root);
     logic.contact(0, 0);
     BoostRider rider{0, {0, 4, 0}, {0, 4, 0}, {}};
     logic.apply_forces(dt, world, std::span(&rider, 1));

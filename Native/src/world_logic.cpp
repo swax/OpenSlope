@@ -216,7 +216,7 @@ struct WorldLogic::Data {
     std::map<std::size_t, bool> mode_rails;
     std::vector<bool> reward_marks;
     std::set<std::size_t> collected_rewards;
-    std::vector<std::size_t> faceted_models;
+    std::vector<std::size_t> faceted_models, reset_volumes;
 
     struct Region {
         std::vector<std::size_t> hosts;
@@ -413,17 +413,17 @@ struct WorldLogic::Data {
         return false;
     }
 
-    bool pad_graph(std::size_t chain, std::size_t host, std::set<std::size_t>& visited, bool multiplier = false) const {
+    bool pad_graph(std::size_t chain, std::size_t host, std::set<std::size_t>& visited, int kind = 0) const {
         if (chain >= chains.size() || !visited.insert(chain).second)
             return false;
         for (const auto& node : chains[chain].nodes) {
-            if (multiplier ? node.main == 14 : node.main == 17 || node.main == 18)
+            if (kind ? node.main == kind : node.main == 17 || node.main == 18)
                 return true;
             if ((node.main == 21 || node.main == 26) &&
-                pad_graph(ref(node.refs, "function", functions), host, visited, multiplier))
+                pad_graph(ref(node.refs, "function", functions), host, visited, kind))
                 return true;
             if (node.main == 7 && ref(node.refs, "instance", instance_ids) == host &&
-                pad_graph(ref(node.refs, "effectGraph", graphs), host, visited, multiplier))
+                pad_graph(ref(node.refs, "effectGraph", graphs), host, visited, kind))
                 return true;
         }
         return false;
@@ -1192,7 +1192,7 @@ struct WorldLogic::Data {
                     }
                 } else if (node.main == 13) {
                     if (thread.rider)
-                        action(WorldActionKind::Reset, thread);
+                        action(WorldActionKind::Reset, thread, 0, host);
                 } else if (node.main == 14 && thread.rider) {
                     const auto tier = number(p, "MultiplierScore");
                     if (tier == 2 || tier == 3 || tier == 5) {
@@ -1409,8 +1409,15 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
             std::set<std::size_t> visited;
             d.pad_instances[i] = d.pad_graph(d.slots[d.hosts[i].slot].chains[1], i, visited);
             visited.clear();
-            if (d.pad_graph(d.slots[d.hosts[i].slot].chains[1], i, visited, true))
+            if (d.pad_graph(d.slots[d.hosts[i].slot].chains[1], i, visited, 14))
                 d.faceted_models.push_back(d.hosts[i].model);
+            for (auto column : {1u, 4u}) {
+                visited.clear();
+                if (d.pad_graph(d.slots[d.hosts[i].slot].chains[column], i, visited, 13)) {
+                    d.reset_volumes.push_back(i);
+                    break;
+                }
+            }
         }
     std::sort(d.faceted_models.begin(), d.faceted_models.end());
     d.faceted_models.erase(std::unique(d.faceted_models.begin(), d.faceted_models.end()), d.faceted_models.end());
@@ -1623,10 +1630,22 @@ void WorldLogic::apply_forces(double seconds, const CollisionWorld& world, std::
     if (!std::isfinite(seconds) || seconds < 0 || seconds > 1)
         throw std::invalid_argument("Invalid force update");
     auto& d = *data_;
+    const auto rider_volume = [&](std::size_t host, const BoostRider& rider) {
+        if (!rider.active)
+            return std::optional<WorldVolume>{};
+        auto hit = world.volume(host, rider.previous, rider.position);
+        for (std::size_t i = 0; !hit && i < rider.probes.size(); ++i) {
+            const auto current = rider.probes[i];
+            const auto previous =
+                rider.previous_probes.size() == rider.probes.size() ? rider.previous_probes[i] : current;
+            hit = world.volume(host, previous.centre, current.centre, std::max(previous.radius, current.radius));
+        }
+        return hit;
+    };
     for (auto it = d.force_wait_exit.begin(); it != d.force_wait_exit.end();) {
         bool inside = false;
         for (const auto& rider : riders)
-            if (rider.active && world.volume(*it, rider.previous, rider.position)) {
+            if (rider_volume(*it, rider)) {
                 inside = true;
                 break;
             }
@@ -1643,7 +1662,7 @@ void WorldLogic::apply_forces(double seconds, const CollisionWorld& world, std::
         std::vector<std::optional<BoostVolume>> volumes;
         volumes.reserve(riders.size());
         for (const auto& rider : riders) {
-            const auto hit = rider.active ? world.volume(host, rider.previous, rider.position) : std::nullopt;
+            const auto hit = rider_volume(host, rider);
             volumes.push_back(hit ? std::optional(BoostVolume{hit->box, hit->axis}) : std::nullopt);
         }
         property.force->apply(seconds, riders, volumes, lap_entry);
@@ -1722,6 +1741,8 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
 std::span<const std::uint8_t> WorldLogic::flags() const { return data_->flags; }
 
 std::span<const std::size_t> WorldLogic::faceted_models() const { return data_->faceted_models; }
+
+std::span<const std::size_t> WorldLogic::reset_volumes() const { return data_->reset_volumes; }
 
 void WorldLogic::prepare_bodies(const CollisionWorld& world) {
     auto& d = *data_;

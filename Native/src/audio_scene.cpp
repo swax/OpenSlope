@@ -950,10 +950,13 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             auto& s = d.sounds[e.contact.instance];
             s.enabled = true;
             const auto speed = std::max(0., -dot(before.velocity, e.contact.normal));
+            // A nonresponsive volume is an authored entry cue, independent of impact direction.
+            const bool entry = !e.contact.response && e.phase == ContactPhase::Begin;
             const auto event = d.events.find(s.event);
             const auto name = !s.clip.empty() ? s.clip : event != d.events.end() ? event->second : std::string{};
-            if (s.debounce <= 0 && speed > .05 && !name.empty() && length(s.position - d.listener.position) < 100) {
-                d.one_shot(d.clip(name), s.position, std::min(1., speed / 20), true);
+            if (s.debounce <= 0 && (entry || (e.contact.response && speed > .05)) && !name.empty() &&
+                length(s.position - d.listener.position) < 100) {
+                d.one_shot(d.clip(name), s.position, entry ? 1. : std::min(1., speed / 20), true);
                 s.debounce = .8;
                 ++d.stats.contacts;
             }

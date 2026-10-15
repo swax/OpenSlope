@@ -55,7 +55,7 @@ public:
                                          std::size_t exclude) const;
     std::optional<PropBodyShape> body_shape(std::size_t instance) const;
     std::optional<WorldContact> ray(Vec3 start, Vec3 end, bool rideable_only = false) const;
-    std::optional<WorldVolume> volume(std::size_t instance, Vec3 start, Vec3 end) const;
+    std::optional<WorldVolume> volume(std::size_t instance, Vec3 start, Vec3 end, double radius = 0) const;
     std::size_t objects() const;
     std::size_t triangles() const;
     std::size_t bodies() const;

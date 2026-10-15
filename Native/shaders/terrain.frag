@@ -13,7 +13,13 @@ void main() {
     vec3 displayColour=vertexColour;
     float alpha=1.0;
     if(transform.options.x==8||transform.options.x==9||transform.options.x==10)alpha=effectAlpha;
-    if(transform.options.x>0&&transform.options.x!=8&&transform.options.x!=9&&transform.options.x!=10) {
+    if(transform.options.x==12){
+        vec2 q=textureUV*2.0-1.0;
+        float halo=exp(-5.0*dot(q,q))*(1.0-smoothstep(0.75,1.0,length(q)));
+        float spike=pow(max(0.0,1.0-abs(q.x)),1.5)*exp(-6.0*q.y*q.y)*(1.0-smoothstep(0.8,1.0,abs(q.y)));
+        alpha=effectAlpha*(lightmapTile.x>0.5?spike:halo);
+    }
+    if(transform.options.x>0&&transform.options.x!=8&&transform.options.x!=9&&transform.options.x!=10&&transform.options.x!=12) {
         vec4 base=texture(diffuseImage,textureUV);
         if(transform.options.x==3) {
             if(transform.options.z==1&&base.a<0.5)discard;
