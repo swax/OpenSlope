@@ -65,4 +65,8 @@ Build 0.53 completes the ordinary interaction restoration described above; see
 `interaction-resets.md` for current evidence. Builds 0.54/0.54.1 add authored lamp
 glints/halos, pressure-button cues and Tokyo vent/shaft entry; see
 `playtest-0.54.md` and `vent-entry.md` for scope and evidence. Ambient voice
-selection, fence flex and screen video remain open, alongside broader parity.
+selection, fence flex and screen video remained open at that milestone.
+Build 0.55 completes loudest-first ambient selection with stable named-source
+ties and a bounded application voice budget; see `ambient-field.md` for current
+evidence and limits. Fence flex and screen video remain open, alongside broader
+parity and the latest Merquer rendering/performance reports.

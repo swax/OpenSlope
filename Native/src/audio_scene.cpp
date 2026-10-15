@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 #include <random>
 #include <set>
+#include <string_view>
 
 namespace openslope {
 namespace {
@@ -186,15 +187,28 @@ struct AudioScene::Data {
 
     struct Emitter {
         std::size_t instance{};
+        std::string key;
         unsigned type{}, event{}, radial{}, angular{};
         std::string clip;
         Vec3 offset, extents, axis{0, 1, 0};
         double radius{}, cone{};
         std::uint64_t voice{};
         bool inside = false;
+        bool selected = false;
+        double gain = 0;
     };
 
     std::vector<Emitter> emitters;
+    unsigned ambient_limit = 32;
+
+    struct Audible {
+        std::size_t emitter{};
+        Vec3 source;
+        std::string_view clip;
+        std::shared_ptr<const PcmClip> decoded;
+    };
+
+    std::vector<Audible> audible;
     std::array<std::uint64_t, 4> board{};
     int family = -1;
     std::uint64_t boost{};
@@ -294,17 +308,21 @@ struct AudioScene::Data {
                 if (row.contains("SoundClip") && !row.at("SoundClip").is_null())
                     sounds[i].clip = authored_clip(row.at("SoundClip"));
                 if (sound.contains("ExternalSounds"))
-                    for (const auto& source : sound.at("ExternalSounds")) {
+                    for (std::size_t record = 0; record < sound.at("ExternalSounds").size(); ++record) {
+                        const auto& source = sound.at("ExternalSounds").at(record);
                         Emitter e;
                         e.instance = i;
+                        e.key = row.value("InstanceName", std::to_string(i)) + "/" + std::to_string(record);
                         e.type = source.at("U0");
                         e.event = source.at("SoundIndex");
                         if (source.contains("SoundClip") && !source.at("SoundClip").is_null())
                             e.clip = authored_clip(source.at("SoundClip"));
                         e.offset = axes({source.at("U2"), source.at("U3"), source.at("U4")}) / 100.;
                         e.radius = source.at("U5").get<double>() / 100.;
-                        if (!finite(e.offset) || !std::isfinite(e.radius) || e.radius <= 0 || e.type > 3)
+                        if (!finite(e.offset) || !std::isfinite(e.radius) || e.radius < 0 || e.type > 3)
                             throw std::runtime_error("Invalid placed audio emitter");
+                        if (e.radius == 0)
+                            continue;
                         if (e.type == 0)
                             e.radial = source.at("U6");
                         if (e.type == 1) {
@@ -763,7 +781,11 @@ struct AudioScene::Data {
         for (auto& e : emitters) {
             e.voice = 0;
             e.inside = false;
+            e.selected = false;
+            e.gain = 0;
         }
+        audible.clear();
+        stats.ambient_candidates = stats.ambient_selected = stats.ambient_active = 0;
         if (!new_run)
             return;
         environment_voice = 0;
@@ -879,8 +901,32 @@ MusicStatus AudioScene::music_status() const {
 AudioStats AudioScene::stats() const {
     std::lock_guard lock(data_->mutex);
     auto result = data_->stats;
+    result.ambient_active = 0;
+    for (const auto& emitter : data_->emitters)
+        result.ambient_active += emitter.voice && data_->mixer.status(emitter.voice).has_value();
     result.streamed_bytes = (data_->authored_music ? data_->authored_music->bytes() : 0) +
                             (data_->intro_music ? data_->intro_music->bytes() : 0);
+    return result;
+}
+
+void AudioScene::ambient_limit(unsigned maximum) {
+    if (maximum > 96)
+        throw std::invalid_argument("Ambient voice budget exceeds reserved mixer capacity");
+    std::lock_guard lock(data_->mutex);
+    data_->ambient_limit = maximum;
+}
+
+std::vector<AmbientVoiceStatus> AudioScene::ambient_voices() const {
+    std::lock_guard lock(data_->mutex);
+    std::vector<AmbientVoiceStatus> result;
+    for (const auto& emitter : data_->emitters)
+        if (emitter.voice && data_->mixer.status(emitter.voice))
+            result.push_back({emitter.key, emitter.instance, emitter.gain, emitter.voice});
+    std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
+        if (a.gain != b.gain)
+            return a.gain > b.gain;
+        return a.key != b.key ? a.key < b.key : a.instance < b.instance;
+    });
     return result;
 }
 
@@ -961,15 +1007,21 @@ void AudioScene::tick(const Player& player, const Rider& before) {
                 ++d.stats.contacts;
             }
         }
-    for (auto& e : d.emitters) {
+    d.audible.clear();
+    for (std::size_t index = 0; index < d.emitters.size(); ++index) {
+        auto& e = d.emitters[index];
+        e.selected = false;
         const auto& s = d.sounds[e.instance];
         const bool hit_gate = e.event == 16 || e.event == 28 || e.event == 57;
         const auto source = s.position + e.offset, delta = d.listener.position - source;
         const auto distance = length(delta);
         double normalized_distance = distance / e.radius, gain = 0;
         if (e.type == 1) {
-            if (e.extents.y <= 0 || e.extents.z <= 0)
+            if (e.extents.y <= 0 || e.extents.z <= 0) {
+                e.gain = 0;
+                e.inside = false;
                 continue;
+            }
             const auto z = normalized(e.axis), x = normalized(cross({0, 1, 0}, z), {1, 0, 0}),
                        y = normalized(cross(z, x));
             normalized_distance =
@@ -986,31 +1038,58 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             }
         }
         const auto event = d.events.find(int(e.event));
-        const auto name = !e.clip.empty() ? e.clip : event != d.events.end() ? event->second : std::string{};
-        if (gain > 0 && !name.empty()) {
-            VoiceParams params;
-            params.gain = gain;
-            params.loop = e.type != 3;
-            params.sustain_only = true;
-            params.spatial = true;
-            params.position = source;
-            params.distance_falloff = false;
-            if (e.type == 3) {
-                if (!e.inside)
-                    if (auto value = d.clip(name))
-                        d.mixer.play(value, params);
-            } else if (!d.mixer.update(e.voice, params)) {
-                if (auto value = d.clip(name)) {
-                    e.voice = d.mixer.play(value, params);
-                    ++d.stats.ambient;
-                }
-            }
-            e.inside = true;
-        } else {
-            if (e.voice)
-                d.mixer.stop(e.voice);
-            e.voice = 0;
-            e.inside = false;
+        const std::string_view name = !e.clip.empty()           ? std::string_view(e.clip)
+                                      : event != d.events.end() ? std::string_view(event->second)
+                                                                : std::string_view{};
+        const auto was_inside = e.inside;
+        e.inside = gain > 0 && !name.empty();
+        e.gain = gain;
+        if (e.inside && !(e.type == 3 && was_inside && (!e.voice || !d.mixer.status(e.voice))))
+            d.audible.push_back({index, source, name, {}});
+    }
+    std::sort(d.audible.begin(), d.audible.end(), [&](const auto& a, const auto& b) {
+        const auto& left = d.emitters[a.emitter];
+        const auto& right = d.emitters[b.emitter];
+        if (left.gain != right.gain)
+            return left.gain > right.gain;
+        return left.key != right.key ? left.key < right.key : a.emitter < b.emitter;
+    });
+    d.stats.ambient_candidates = unsigned(d.audible.size());
+    d.stats.ambient_selected = 0;
+    for (auto& candidate : d.audible) {
+        if (d.stats.ambient_selected >= d.ambient_limit)
+            break;
+        auto& emitter = d.emitters[candidate.emitter];
+        if (!emitter.voice) {
+            candidate.decoded = d.clip(std::string(candidate.clip));
+            if (!candidate.decoded)
+                continue;
+        }
+        emitter.selected = true;
+        ++d.stats.ambient_selected;
+    }
+    // Retire the previous field first, so a newly selected loop cannot steal another current voice.
+    for (auto& emitter : d.emitters)
+        if (!emitter.selected && emitter.voice) {
+            d.mixer.stop(emitter.voice);
+            emitter.voice = 0;
+        }
+    for (const auto& candidate : d.audible) {
+        auto& emitter = d.emitters[candidate.emitter];
+        if (!emitter.selected)
+            continue;
+        VoiceParams params;
+        params.gain = emitter.gain;
+        params.loop = emitter.type != 3;
+        params.sustain_only = true;
+        params.spatial = true;
+        params.position = candidate.source;
+        params.distance_falloff = false;
+        if (!d.mixer.update(emitter.voice, params)) {
+            const auto value = candidate.decoded ? candidate.decoded : d.clip(std::string(candidate.clip));
+            emitter.voice = value ? d.mixer.play(value, params) : 0;
+            if (emitter.voice && emitter.type != 3)
+                ++d.stats.ambient;
         }
     }
     const auto group = rider.surface >= 0 && std::size_t(rider.surface) < d.surface_groups.size()

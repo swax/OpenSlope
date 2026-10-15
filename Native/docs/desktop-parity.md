@@ -148,3 +148,9 @@ rideable steps, matching trigger reach and a first-party controlled ascent.
 Mounted and walking entries reach the upper transport, and ordinary boost
 returns afterward. The freeriding HUD also displays its unlimited boost.
 See `vent-entry.md` for exact validation, application policy and installed build.
+
+Build 0.55 ranks placed ambience by audible gain with stable named-source ties,
+bounded voice selection, retained playback phase and contact/entry lifecycle
+coverage. See `ambient-field.md` for authority, application budget and validation.
+Merquer trash-can performance, window flicker and wider prop lighting remain
+active investigations alongside the remaining parity scope.

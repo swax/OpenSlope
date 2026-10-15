@@ -67,7 +67,8 @@ def main():
         write(root / 'Instances.json', rows)
         samples, report = capture(executable, root, 40, dict(Position=[-2, -.005, 0], Forward=[1, 0, 0], Velocity=[12, 0, 0]))
         assert 'contact sounds 0' in report and 'ambient voices 1' in report, report
-        assert rms(samples[:4 * 800 * 2]) == 0 and rms(samples[-10 * 800 * 2:]) > 500, report
+        assert rms(samples[:3 * 800 * 2]) == 0 and rms(samples[3 * 800 * 2:4 * 800 * 2]) > 500, report
+        assert rms(samples[-10 * 800 * 2:]) > 500, report
         root = base / 'board'
         fixture(root, mass=0)
         tone(root / 'Audio/SFX/test/004.wav')
