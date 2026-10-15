@@ -5,7 +5,7 @@
 
 namespace openslope {
 struct AudioStats {
-    unsigned contacts{}, transients{}, ambient{};
+    unsigned contacts{}, transients{}, ambient{}, prewarmed{}, prewarm_skipped{};
     std::size_t decoded_bytes{};
     int music_node = -1;
 };

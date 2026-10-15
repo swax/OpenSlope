@@ -117,6 +117,15 @@ void mixer() {
     require(mix.update(voice, {.5, 2, true}), "Update a continuing voice");
     mix.stop(voice);
     require(mix.voices() == 0, "Stop a continuing voice");
+    VoiceParams sustain;
+    sustain.loop = sustain.sustain_only = true;
+    sustain.ramp_seconds = 8. / 48000;
+    voice = mix.play(clip, sustain);
+    near(mix.status(voice)->frame, 1, "Sustain-only loops begin at their tagged region");
+    mix.render(small);
+    near(small[0], .2 / 8, "Authored gain ramps start across the requested frame");
+    near(small[14], .25, "Authored gain ramps reach target at the frame end");
+    mix.stop(voice);
     clip = std::make_shared<PcmClip>();
     clip->samples.assign(2000, .5f);
     voice = mix.play(clip, {1, 1, false, true, {10, 0, 0}, 100});
@@ -146,6 +155,8 @@ void mixer() {
     near(chain[1998], .2, "Playing clip drains to its last sample");
     near(chain[2000], .4, "Queued clip begins on the following output sample");
     require(mix.status(voice)->generation == 1, "Queued segment exposes its generation");
+    require(!mix.queue(voice, a, {}, 0), "Stale background work cannot replace a newer music boundary");
+    require(mix.queue(voice, a, {}, 1), "Current music boundary accepts its prepared successor");
 }
 
 void programs() {

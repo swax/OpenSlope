@@ -225,3 +225,11 @@ Terrain sweeps use the existing cached patches and standard sphere/triangle
 queries. Stock snowboard geometry is intentionally reused first-party art, baked
 through its public API into an attributed GLB. Native consumes only that saved
 asset; no authoring runtime implementation is copied or linked. See foot-flight.md.
+
+Board audio performance is independently authored from sanitized Trailmap 190/420,
+the public Slopesmith audio docs/tests and public-API observations. The shared
+board-audio profile contains first-party response/mix tuning rather than retail
+expression sequences. A separate tool compares the compiled Native response with
+the public first-party API; Native does not import that runtime. WAV/loop matching,
+cache admission, ramping and revision-checked background music use ordinary PCM,
+string matching and synchronization operations. See board-audio-performance.md.

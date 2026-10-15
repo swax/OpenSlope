@@ -6,7 +6,8 @@ namespace openslope {
 namespace {
 void valid(const VoiceParams& p) {
     if (!std::isfinite(p.gain) || p.gain < 0 || p.gain > 16 || !std::isfinite(p.pitch) || p.pitch < .125 ||
-        p.pitch > 8 || !finite(p.position) || !std::isfinite(p.range) || p.range <= 0)
+        p.pitch > 8 || !finite(p.position) || !std::isfinite(p.range) || p.range <= 0 ||
+        !std::isfinite(p.ramp_seconds) || p.ramp_seconds < 0 || p.ramp_seconds > 1)
         throw std::runtime_error("Invalid audio voice parameters");
 }
 } // namespace
@@ -20,6 +21,7 @@ struct AudioMixer::Data {
         std::shared_ptr<const PcmClip> next;
         VoiceParams next_params;
         std::uint64_t generation{};
+        unsigned ramp_frames{};
     };
 
     std::array<Voice, 128> voices;
@@ -61,6 +63,9 @@ std::uint64_t AudioMixer::play(std::shared_ptr<const PcmClip> clip, VoiceParams 
         return 0;
     const auto id = data_->next++;
     *target = {id, std::move(clip), params, 0, 0, {}, {}, 0};
+    if (params.loop && params.sustain_only)
+        target->phase = double(target->clip->loop_start);
+    target->ramp_frames = unsigned(std::ceil(params.ramp_seconds * data_->rate));
     return id;
 }
 
@@ -70,12 +75,14 @@ bool AudioMixer::update(std::uint64_t id, VoiceParams params) {
     for (auto& v : data_->voices)
         if (v.id == id && id) {
             v.params = params;
+            v.ramp_frames = unsigned(std::ceil(params.ramp_seconds * data_->rate));
             return true;
         }
     return false;
 }
 
-bool AudioMixer::queue(std::uint64_t id, std::shared_ptr<const PcmClip> clip, VoiceParams params) {
+bool AudioMixer::queue(std::uint64_t id, std::shared_ptr<const PcmClip> clip, VoiceParams params,
+                       std::optional<std::uint64_t> expected_generation) {
     valid(params);
     if (clip && (clip->samples.empty() || clip->channels < 1 || clip->channels > 2 || clip->rate < 8000 ||
                  clip->rate > 192000 || clip->samples.size() % clip->channels))
@@ -83,6 +90,8 @@ bool AudioMixer::queue(std::uint64_t id, std::shared_ptr<const PcmClip> clip, Vo
     std::lock_guard lock(data_->mutex);
     for (auto& v : data_->voices)
         if (v.id == id && id) {
+            if (expected_generation && v.generation != *expected_generation)
+                return false;
             v.next = std::move(clip);
             v.next_params = params;
             return true;
@@ -192,7 +201,12 @@ void AudioMixer::render(std::span<float> output) {
             }
             const auto index = std::size_t(voice.phase), next = index + 1 < end ? index + 1 : p.loop ? begin : index;
             const auto fraction = voice.phase - index;
-            voice.gain += std::clamp(gain - voice.gain, -smoothing, smoothing);
+            if (voice.ramp_frames) {
+                voice.gain += (gain - voice.gain) / voice.ramp_frames;
+                --voice.ramp_frames;
+            } else {
+                voice.gain += std::clamp(gain - voice.gain, -smoothing, smoothing);
+            }
             const auto sample = [&](unsigned channel) {
                 return clip.samples[index * clip.channels + channel] * (1 - fraction) +
                        clip.samples[next * clip.channels + channel] * fraction;

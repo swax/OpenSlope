@@ -50,17 +50,15 @@ and alternate-mode emitter records consume their declared gain curves. Optional
 crowd routes are imported. Dynamic traffic/character-chant selection remains pending.
 
 The board selects a family from `Audio/BoardSoundIndex.json`, or the established
-`Maps/Shared/Audio/BoardSoundIndex.json`. Without routing data it uses PACK, matching
-the existing port's missing-index policy. `Audio/SNOW.INF` supplies the expression
-programs; no retail program is compiled into the application. Glide/carve/secondary
-layers use Board-bank offsets +4/+3/+0. Ground/air gates, a five-tick return fade,
-primary air/landing +2/+1 transients and the strict predicted-flight >1.5-second
-MAIN/32 wind gate are connected to fixed ticks. Exact original signal binding,
-secondary-layer identity and pitch units remain unproven: the application profile
-uses lateral speed in cm/s, speed×30 for dig, |lean|×100 and a 1..1.5 pitch range.
-Trim defaults are also application tuning. A missing program remains silent.
-Boost/meter, rail-specific audio and remaining rider/pickup cues still need their
-gameplay event consumers.
+`Maps/Shared/Audio/BoardSoundIndex.json`, with PACK fallback. Build 0.46 replaces
+the early disc-expression playback profile with original OpenSlope glide/carve
+response, rail handoff, scaled launch/landing, wind, boost envelope and authored
+mix. It prewarms configured effects banks, shares attack/loop PCM and keeps
+music reads outside the gameplay lock. See [board-audio-performance.md](board-audio-performance.md)
+for the shared profile, state gates, budget, public-API conformance and limits.
+`SNOW.INF` is still imported for inspection and codec/program conformance; focused
+rider playback does not execute it. Broader music/announcer/lifecycle parity stays
+active.
 
 `Audio/Music/playlist.json` names map-local song directories. Each `graph.json`
 names its WAV chunks. First inclusive matching link wins; 1-based sample indices,

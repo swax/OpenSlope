@@ -19,7 +19,7 @@ def main():
     activate = [dict(Ticks=1, Jump=True), dict(Ticks=1), dict(Ticks=1, Jump=True)]
     cases = [
         ('climb', activate + [dict(Ticks=90, Jump=True, Boost=True, FlightDirection=[0, 1, 0])], True, True, True),
-        ('released', activate + [dict(Ticks=60, Boost=True, FlightDirection=[0, 1, 0]), dict(Ticks=12)], True, False, True),
+        ('released', activate + [dict(Ticks=60, Boost=True, FlightDirection=[0, 1, 0]), dict(Ticks=24)], True, False, True),
         ('idle-boost', activate + [dict(Ticks=6, Boost=True)], True, False, False),
         ('takeoff-chord', [dict(Ticks=24, Jump=True, Boost=True, FlightDirection=[0, 1, 0])], True, True, True),
         ('crouch', [dict(Ticks=60, Posture=1, Crouch=True, WalkForward=[0, 0, -1])], False, False, False),

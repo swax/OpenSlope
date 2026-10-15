@@ -192,6 +192,10 @@ public:
 
     bool flight_boosting() const { return on_foot_ && foot_motion_.boosting(); }
 
+    bool board_boosting() const { return !on_foot_ && boost_engaged_; }
+
+    unsigned boost_sound_slot() const { return held_boost_ > .666 ? 120 : held_boost_ > .334 ? 121 : 122; }
+
     bool interact_board(Vec3 room_offset = {});
     bool recall_board(Vec3 facing = {});
     double board_distance(Vec3 room_offset = {}) const;

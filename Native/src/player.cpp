@@ -636,7 +636,8 @@ void Player::apply_world_actions() {
                 rails_.enable(action.target, action.value != 0);
             break;
         case WorldActionKind::CourseSound:
-        case WorldActionKind::MainSound: break;
+        case WorldActionKind::MainSound:
+        case WorldActionKind::BoostSound: break;
         }
     world_.instance_flags(logic_.flags());
     world_.motion(logic_.motions(), contract_.tick_seconds());
@@ -860,7 +861,7 @@ void Player::tick(const RideInput& input) {
     if (active.boost && !boost_engaged_) {
         rider_.boost_end =
             tuning_.symmetric_deck && dot(rider_.forward, project(rider_.velocity, {0, 1, 0})) < 0 ? -1 : 1;
-        world_actions_.push_back({WorldActionKind::MainSound,
+        world_actions_.push_back({WorldActionKind::BoostSound,
                                   held_boost_ > .666   ? 120.
                                   : held_boost_ > .334 ? 121.
                                                        : 122.,

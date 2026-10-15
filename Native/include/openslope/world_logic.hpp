@@ -10,7 +10,17 @@
 #include <span>
 
 namespace openslope {
-enum class WorldActionKind { Reset, Multiplier, CourseSound, MainSound, RailToggle, SpeedBoost, TrickBoost, Teleport };
+enum class WorldActionKind {
+    Reset,
+    Multiplier,
+    CourseSound,
+    MainSound,
+    RailToggle,
+    SpeedBoost,
+    TrickBoost,
+    Teleport,
+    BoostSound
+};
 class CollisionWorld;
 
 struct WorldAction {

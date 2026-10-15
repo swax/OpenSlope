@@ -8,6 +8,9 @@ The world layout contains relative scalar-field offsets and course-slot identifi
 without executable addresses, instructions or a retail settings table.
 The celestial spoke pattern is original OpenSlope presentation data, first authored
 for Slopesmith. It does not reproduce the retail engine's arbitrary spoke table.
+The board-audio contract contains original OpenSlope mix/response tuning,
+verified through the public Slopesmith audio APIs and behavior documentation.
+It contains no retail expression program.
 The measured functional facts are documented in the local Trailmap research workspace. No retail executable,
 disc image, extracted asset, or bulk disassembly is included or licensed here.
 SSX and related names are trademarks of Electronic Arts Inc. This project is

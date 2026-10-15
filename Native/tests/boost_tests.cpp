@@ -525,7 +525,7 @@ void player_air(const std::filesystem::path& root) {
     check(board.rider().boost_end == -1 && board.rider().velocity.x < -10,
           "symmetric deck chooses leading tail for boost at engage");
     check(board.world_actions().size() == 1 && board.world_actions()[0].value == 120,
-          "held strong boost engages its one-shot once");
+          "held strong boost exposes its engage cue once");
     board.tick(input);
     check(board.world_actions().empty() && board.rider().boost_end == -1,
           "held boost keeps its end and does not replay engage audio");

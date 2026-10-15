@@ -75,8 +75,8 @@ Shared export. No PAL image has been tested. Neither the executable, resulting
 retail mapping, decoded media nor private captures enter source/application
 packages.
 
-This closes surface-family extraction. Slopesmith's authored bed response,
-rail-specific handoff, boost envelope, prewarmed clips, authored mix settings
-and broader audio/music/announcer behavior still require parity work. Native's
-current disc-program signal/pitch profile is unchanged by this milestone.
-Device import/startup checks do not establish worn listening or sustained FPS.
+This closes surface-family extraction. Build 0.46 adds the authored bed response,
+rail handoff, boost envelope, prewarmed clips and Native mix sidecar described in
+[board-audio-performance.md](board-audio-performance.md). Wider audio/music/
+announcer behavior still requires parity work. Device import/startup checks do
+not establish worn listening or sustained FPS.

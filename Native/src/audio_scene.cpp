@@ -1,5 +1,6 @@
 #include "openslope/audio_scene.hpp"
 #include "openslope/audio_program.hpp"
+#include "openslope/board_audio.hpp"
 #include "openslope/import.hpp"
 #include "openslope/music.hpp"
 #include <fstream>
@@ -37,9 +38,6 @@ std::string slot_name(unsigned slot) {
 
 Vec3 axes(Vec3 p) { return {p.x, p.z, -p.y}; }
 
-const std::array<std::string, 10> families{"PACK", "POWDER", "LOOSE", "ICE",   "METAL",
-                                           "WOOD", "RAIL",   "ROCK",  "GLASS", "CHUTE"};
-
 std::size_t loop_match(const std::vector<float>& full, const std::vector<float>& pattern) {
     if (pattern.empty() || pattern.size() > full.size())
         throw std::runtime_error("Invalid loop-region WAV");
@@ -68,11 +66,13 @@ struct AudioScene::Data {
     AudioMixer mixer;
     AudioListener listener;
     mutable std::mutex mutex;
+    std::mutex service_mutex;
     AudioStats stats;
 
     struct Cached {
         std::shared_ptr<PcmClip> clip;
         std::uint64_t touched{};
+        bool resident = false;
     };
 
     std::map<std::string, Cached> clips;
@@ -80,7 +80,8 @@ struct AudioScene::Data {
     std::set<std::string> failed;
     std::map<unsigned, std::string> banks;
     std::map<int, std::string> events;
-    AudioPrograms programs;
+    BoardMix mix;
+    BoardAudio performance;
     std::vector<unsigned> surface_groups;
 
     struct Sound {
@@ -102,22 +103,24 @@ struct AudioScene::Data {
     };
 
     std::vector<Emitter> emitters;
-    std::array<std::uint64_t, 3> board{};
+    std::array<std::uint64_t, 4> board{};
     int family = -1;
-    double fade = 0;
-    std::uint64_t wind{};
-    std::uint64_t flight_boost{};
+    std::uint64_t boost{};
+    unsigned boost_slot = 120;
     double predicted_flight = 0;
+    bool predicting_air = false;
     std::vector<std::string> playlist;
     std::size_t song = 0;
     MusicGraph graph;
-    std::filesystem::path music_folder;
     MusicCursor cursor, pending_cursor;
     std::uint64_t music_voice{}, music_generation{};
     double music_gain = .5;
     unsigned level = 80;
     std::optional<unsigned> pending_event;
-    bool music_ready = false, pending_ready = false;
+    bool music_ready = false, pending_ready = false, music_start_pending = true;
+    std::uint64_t music_revision = 0;
+    std::uint64_t queued_revision = 0;
+    bool music_reroute = false;
     std::uint64_t serial = 0, teleports = 0;
 
     explicit Data(std::filesystem::path folder) : root(std::move(folder)) {
@@ -148,10 +151,23 @@ struct AudioScene::Data {
                     throw std::runtime_error("Invalid board surface groups");
             }
         }
-        if (std::filesystem::exists(root / "Audio/SNOW.INF")) {
-            std::ifstream file(asset(root, "Audio/SNOW.INF"));
-            const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-            programs = parse_audio_programs(text);
+        if (std::filesystem::exists(root / "Audio/BoardMix.json")) {
+            const auto doc = read(asset(root, "Audio/BoardMix.json"));
+            if (doc.value("schema", "") == "openslope-board-mix/v1") {
+                const auto& value = doc.at("boardSound");
+                mix.enabled = value.value("enabled", true);
+                const auto trim = [&](const char* key, double fallback) {
+                    if (!value.contains(key) || !value.at(key).is_number())
+                        return fallback;
+                    const auto v = value.at(key).get<double>();
+                    return std::isfinite(v) ? std::clamp(v, 0., 1.) : fallback;
+                };
+                mix.volume = trim("volume", mix.volume);
+                mix.glide = trim("glide", mix.glide);
+                mix.carve = trim("carve", mix.carve);
+                mix.transients = trim("transients", mix.transients);
+                mix.cues = trim("cues", mix.cues);
+            }
         }
         if (std::filesystem::exists(root / "Instances.json")) {
             const auto rows = read(asset(root, "Instances.json")).at("Instances");
@@ -214,62 +230,112 @@ struct AudioScene::Data {
                 if (!valid_map_name(name))
                     throw std::runtime_error("Unsafe music song name");
         }
-        start_music();
+        prewarm();
+        std::unique_lock lock(mutex);
+        start_music(lock);
     }
 
-    std::shared_ptr<PcmClip> clip(const std::string& name, bool looping = false) {
-        const auto key = name + (looping ? "#loop" : "");
-        if (failed.contains(key))
+    // Only course opening and the serialized music service may load files.
+    std::shared_ptr<PcmClip> load_clip(const std::string& name, bool resident = false,
+                                       std::unique_lock<std::mutex>* state_lock = nullptr) {
+        if (failed.contains(name))
             return {};
-        if (auto found = clips.find(key); found != clips.end()) {
+        if (auto found = clips.find(name); found != clips.end()) {
             found->second.touched = ++age;
             return found->second.clip;
         }
-        const auto path = asset(root, name);
-        if (!std::filesystem::exists(path))
-            return {};
+        std::shared_ptr<PcmClip> value;
+        std::string error;
+        if (state_lock)
+            state_lock->unlock();
         try {
-            auto value = std::make_shared<PcmClip>(PcmClip::load(path));
-            if (looping) {
-                auto loop_path = path;
-                loop_path.replace_filename(path.stem().string() + ".loop.wav");
-                if (!std::filesystem::exists(loop_path))
-                    return {};
-                const auto region = PcmClip::load(loop_path);
-                if (region.channels != value->channels || region.rate != value->rate)
-                    throw std::runtime_error("Loop WAV format differs");
-                const auto begin = loop_match(value->samples, region.samples);
-                if (begin % value->channels || region.samples.size() % value->channels)
-                    throw std::runtime_error("Invalid loop channel alignment");
-                value->loop_start = begin / value->channels;
-                value->loop_end = value->loop_start + region.frames();
+            const auto path = asset(root, name);
+            if (std::filesystem::exists(path)) {
+                value = std::make_shared<PcmClip>(PcmClip::load(path));
+                if (resident) {
+                    auto loop_path = path;
+                    loop_path.replace_filename(path.stem().string() + ".loop.wav");
+                    if (std::filesystem::exists(loop_path)) {
+                        const auto region = PcmClip::load(loop_path);
+                        if (region.channels != value->channels || region.rate != value->rate)
+                            throw std::runtime_error("Loop WAV format differs");
+                        const auto begin = loop_match(value->samples, region.samples);
+                        if (begin % value->channels || region.samples.size() % value->channels)
+                            throw std::runtime_error("Invalid loop channel alignment");
+                        value->loop_start = begin / value->channels;
+                        value->loop_end = value->loop_start + region.frames();
+                    }
+                }
             }
-            const auto bytes = value->samples.size() * sizeof(float);
-            while (stats.decoded_bytes + bytes > 128 * 1024 * 1024) {
-                auto victim = clips.end();
-                for (auto i = clips.begin(); i != clips.end(); ++i)
-                    if (i->second.clip.use_count() == 1 &&
-                        (victim == clips.end() || i->second.touched < victim->second.touched))
-                        victim = i;
-                if (victim == clips.end())
-                    throw std::runtime_error("Live audio exceeds its cache budget");
-                stats.decoded_bytes -= victim->second.clip->samples.size() * sizeof(float);
-                clips.erase(victim);
-            }
-            stats.decoded_bytes += bytes;
-            clips[key] = {value, ++age};
-            return value;
         } catch (const std::exception& e) {
-            failed.insert(key);
-            std::cerr << "Audio asset unavailable: " << name << " (" << e.what() << ")\n";
+            error = e.what();
+            value.reset();
+        }
+        if (state_lock)
+            state_lock->lock();
+        if (!value) {
+            failed.insert(name);
+            if (!error.empty())
+                std::cerr << "Audio asset unavailable: " << name << " (" << error << ")\n";
             return {};
         }
+        const auto bytes = value->samples.size() * sizeof(float);
+        const auto budget = std::size_t(resident ? 96 : 128) * 1024 * 1024;
+        if (resident && stats.decoded_bytes + bytes > budget) {
+            failed.insert(name);
+            ++stats.prewarm_skipped;
+            return {};
+        }
+        while (stats.decoded_bytes + bytes > budget) {
+            auto victim = clips.end();
+            for (auto i = clips.begin(); i != clips.end(); ++i)
+                if (!i->second.resident && i->second.clip.use_count() == 1 &&
+                    (victim == clips.end() || i->second.touched < victim->second.touched))
+                    victim = i;
+            if (victim == clips.end())
+                return {};
+            stats.decoded_bytes -= victim->second.clip->samples.size() * sizeof(float);
+            clips.erase(victim);
+        }
+        stats.decoded_bytes += bytes;
+        value->priority = resident ? 90 : 101;
+        clips[name] = {value, ++age, resident};
+        if (resident)
+            ++stats.prewarmed;
+        return value;
     }
 
-    std::shared_ptr<PcmClip> slot(unsigned group, unsigned number, bool loop = false) {
+    std::shared_ptr<PcmClip> clip(const std::string& name) {
+        const auto found = clips.find(name);
+        return found == clips.end() ? nullptr : found->second.clip;
+    }
+
+    void prewarm() {
+        std::set<std::string> names;
+        for (const auto& [group, bank] : banks) {
+            const auto path = asset(root, "Audio/SFX/" + bank);
+            if (!std::filesystem::is_directory(path))
+                continue;
+            for (const auto& entry : std::filesystem::directory_iterator(path)) {
+                const auto stem = entry.path().stem().string();
+                if (entry.path().extension() == ".wav" && !stem.empty() && stem.size() <= 5 &&
+                    std::all_of(stem.begin(), stem.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }))
+                    names.insert("Audio/SFX/" + bank + "/" + entry.path().filename().string());
+                if (names.size() > 4096)
+                    throw std::runtime_error("Too many course audio clips");
+            }
+        }
+        for (const auto& [event, name] : events)
+            names.insert(name);
+        if (names.size() > 4096)
+            throw std::runtime_error("Too many course audio clips");
+        for (const auto& name : names)
+            load_clip(name, true);
+    }
+
+    std::shared_ptr<PcmClip> slot(unsigned group, unsigned number) {
         const auto bank = banks.find(group);
-        return bank == banks.end() ? nullptr
-                                   : clip("Audio/SFX/" + bank->second + "/" + slot_name(number) + ".wav", loop);
+        return bank == banks.end() ? nullptr : clip("Audio/SFX/" + bank->second + "/" + slot_name(number) + ".wav");
     }
 
     void one_shot(std::shared_ptr<PcmClip> value, Vec3 position, double gain, bool spatial) {
@@ -282,40 +348,63 @@ struct AudioScene::Data {
         mixer.play(std::move(value), params);
     }
 
-    void start_music() {
+    void start_music(std::unique_lock<std::mutex>& lock) {
+        music_start_pending = false;
+        const auto revision = music_revision;
         music_ready = false;
         pending_ready = false;
         music_voice = 0;
         cursor = {};
-        pending_event.reset();
         if (playlist.empty())
             return;
         const auto name = playlist[song % playlist.size()];
         try {
-            music_folder = asset(root, "Audio/Music/" + name);
-            graph = MusicGraph::load(music_folder / "graph.json");
+            lock.unlock();
+            MusicGraph loaded_graph;
+            Json json;
+            try {
+                const auto folder = asset(root, "Audio/Music/" + name);
+                loaded_graph = MusicGraph::load(folder / "graph.json");
+                json = read(folder / "graph.json");
+            } catch (...) {
+                lock.lock();
+                throw;
+            }
+            lock.lock();
+            if (revision != music_revision) {
+                music_start_pending = true;
+                return;
+            }
+            graph = std::move(loaded_graph);
             const auto sample = music_advance(graph, cursor, level);
             if (sample < 0)
                 return;
-            const auto json = read(music_folder / "graph.json");
             music_gain = json.value("Volume", .5);
             if (!std::isfinite(music_gain) || music_gain < 0 || music_gain > 1)
                 throw std::runtime_error("Invalid music volume");
-            auto value = clip("Audio/Music/" + name + "/" + graph.samples[std::size_t(sample)].wav);
+            auto value = load_clip("Audio/Music/" + name + "/" + graph.samples[std::size_t(sample)].wav, false, &lock);
+            if (revision != music_revision) {
+                music_start_pending = true;
+                return;
+            }
             if (!value)
                 return;
-            value->priority = 101;
             music_voice = mixer.play(value, {music_gain * cursor.action_volume});
             music_ready = music_voice != 0;
             music_generation = 0;
             stats.music_node = cursor.node;
-            music_service();
+            music_service(lock);
         } catch (const std::exception& e) {
             std::cerr << "Music unavailable: " << e.what() << '\n';
         }
     }
 
-    void music_service_unchecked() {
+    void music_service_unchecked(std::unique_lock<std::mutex>& lock) {
+        if (music_start_pending) {
+            start_music(lock);
+            return;
+        }
+        const auto revision = music_revision;
         if (!music_ready)
             return;
         const auto status = mixer.status(music_voice);
@@ -328,35 +417,36 @@ struct AudioScene::Data {
             if (pending_ready) {
                 cursor = pending_cursor;
                 pending_ready = false;
-                pending_event.reset();
+                if (queued_revision == music_revision)
+                    pending_event.reset();
             }
             music_generation = status->generation;
             stats.music_node = cursor.node;
         }
-        if (pending_ready)
+        if (pending_ready && !music_reroute)
             return;
-        pending_cursor = cursor;
-        const auto sample = music_advance(graph, pending_cursor, level, pending_event);
-        if (sample < 0) {
-            mixer.queue(music_voice, {});
-            pending_ready = true;
+        music_reroute = false;
+        auto next_cursor = cursor;
+        const auto sample = music_advance(graph, next_cursor, level, pending_event);
+        std::shared_ptr<PcmClip> value;
+        if (sample >= 0) {
+            const auto name = playlist[song % playlist.size()];
+            value = load_clip("Audio/Music/" + name + "/" + graph.samples[std::size_t(sample)].wav, false, &lock);
+            if (revision != music_revision)
+                return;
+        }
+        if (!mixer.queue(music_voice, value, {music_gain * next_cursor.action_volume}, status->generation)) {
+            music_reroute = true;
             return;
         }
-        const auto name = playlist[song % playlist.size()];
-        auto value = clip("Audio/Music/" + name + "/" + graph.samples[std::size_t(sample)].wav);
-        if (!value) {
-            mixer.queue(music_voice, {});
-            pending_ready = true;
-            return;
-        }
-        value->priority = 101;
-        mixer.queue(music_voice, value, {music_gain * pending_cursor.action_volume});
+        pending_cursor = next_cursor;
+        queued_revision = revision;
         pending_ready = true;
     }
 
-    void music_service() {
+    void music_service(std::unique_lock<std::mutex>& lock) {
         try {
-            music_service_unchecked();
+            music_service_unchecked(lock);
         } catch (const std::exception& e) {
             music_ready = false;
             mixer.queue(music_voice, {});
@@ -367,10 +457,11 @@ struct AudioScene::Data {
     void reset() {
         mixer.clear();
         board = {};
-        wind = 0;
-        flight_boost = 0;
+        boost = 0;
+        performance.reset();
+        predicting_air = false;
+        predicted_flight = 0;
         family = -1;
-        fade = 0;
         for (auto& s : sounds) {
             s.enabled = false;
             s.debounce = 0;
@@ -380,7 +471,12 @@ struct AudioScene::Data {
             e.inside = false;
         }
         ++song;
-        start_music();
+        stats.music_node = -1;
+        music_ready = pending_ready = false;
+        music_start_pending = true;
+        pending_event.reset();
+        music_reroute = false;
+        ++music_revision;
     }
 };
 
@@ -397,8 +493,9 @@ void AudioScene::listener(AudioListener value) {
 }
 
 void AudioScene::service() {
-    std::lock_guard lock(data_->mutex);
-    data_->music_service();
+    std::lock_guard service_lock(data_->service_mutex);
+    std::unique_lock lock(data_->mutex);
+    data_->music_service(lock);
 }
 
 void AudioScene::music_level(unsigned level) {
@@ -406,15 +503,15 @@ void AudioScene::music_level(unsigned level) {
         throw std::runtime_error("Music path level exceeds 127");
     std::lock_guard lock(data_->mutex);
     data_->level = level;
-    data_->pending_ready = false;
-    data_->music_service();
+    data_->music_reroute = true;
+    ++data_->music_revision;
 }
 
 void AudioScene::music_event(unsigned event) {
     std::lock_guard lock(data_->mutex);
     data_->pending_event = event;
-    data_->pending_ready = false;
-    data_->music_service();
+    data_->music_reroute = true;
+    ++data_->music_revision;
 }
 
 void AudioScene::restart() {
@@ -447,7 +544,8 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             if (action.value < 0 || action.value > 65535)
                 continue;
             const auto main = action.kind == WorldActionKind::MainSound;
-            d.one_shot(d.slot(main ? 0 : 2, unsigned(action.value)), action.position, 1,
+            const auto gain = main && action.rider ? (d.mix.enabled ? d.mix.volume * d.mix.cues : 0) : 1;
+            d.one_shot(d.slot(main ? 0 : 2, unsigned(action.value)), action.position, gain,
                        !main && !(transported && action.rider));
             ++d.stats.transients;
         }
@@ -495,6 +593,7 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             VoiceParams params;
             params.gain = gain;
             params.loop = e.type != 3;
+            params.sustain_only = true;
             params.spatial = true;
             params.position = source;
             params.distance_falloff = false;
@@ -503,7 +602,7 @@ void AudioScene::tick(const Player& player, const Rider& before) {
                     if (auto value = d.clip(event->second))
                         d.mixer.play(value, params);
             } else if (!d.mixer.update(e.voice, params)) {
-                if (auto value = d.clip(event->second, true)) {
+                if (auto value = d.clip(event->second)) {
                     e.voice = d.mixer.play(value, params);
                     ++d.stats.ambient;
                 }
@@ -516,31 +615,12 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             e.inside = false;
         }
     }
-    if (player.flight_boosting()) {
-        VoiceParams params;
-        params.gain = .4;
-        params.loop = true;
-        if (!d.mixer.update(d.flight_boost, params))
-            if (auto value = d.slot(0, 120, true))
-                d.flight_boost = d.mixer.play(value, params);
-    } else if (d.flight_boost) {
-        d.mixer.stop(d.flight_boost);
-        d.flight_boost = 0;
-    }
     const auto group = rider.surface >= 0 && std::size_t(rider.surface) < d.surface_groups.size()
                            ? d.surface_groups[std::size_t(rider.surface)]
                            : 0;
-    const bool ground = rider.motion == Motion::Ground;
-    if (int(group) != d.family) {
-        for (auto id : d.board)
-            d.mixer.stop(id);
-        d.board = {};
-        d.family = int(group);
-    }
-    if (before.motion == Motion::Ground && rider.motion == Motion::Air) {
-        d.one_shot(d.slot(1, group * 8 + 2), {}, .7, false);
-        ++d.stats.transients;
-        d.predicted_flight = 0;
+    const bool air = !player.on_foot() && rider.motion == Motion::Air;
+    if (air && (!d.predicting_air || rider.launches != before.launches)) {
+        d.predicted_flight = 480 * dt;
         auto position = rider.position, velocity = rider.velocity;
         for (unsigned i = 0; i < 480; ++i) {
             const auto next = position + velocity * dt;
@@ -557,51 +637,65 @@ void AudioScene::tick(const Player& player, const Rider& before) {
                         dt;
         }
     }
-    if (before.motion != Motion::Ground && ground) {
-        d.one_shot(d.slot(1, group * 8 + 1), {}, .7, false);
+    d.predicting_air = air;
+    const auto f = normalized(project(rider.forward, rider.normal)), right = normalized(cross(rider.normal, f));
+    const auto relative = rider.velocity - rider.ground_velocity;
+    BoardAudioInput input;
+    input.mounted = !player.on_foot() &&
+                    (rider.motion == Motion::Ground || rider.motion == Motion::Air || rider.motion == Motion::Rail);
+    input.ground = rider.motion == Motion::Ground;
+    input.rail = rider.motion == Motion::Rail;
+    input.launched = rider.launches != before.launches;
+    input.group = group;
+    input.speed = length(project(relative, rider.normal));
+    input.slip = std::abs(dot(relative, right)) * 100;
+    input.lean = std::abs(rider.lean) * 100;
+    input.charge = rider.release_snapshot;
+    input.impact = std::max(0., -dot(before.velocity - rider.ground_velocity, rider.normal));
+    input.predicted_flight = d.predicted_flight;
+    input.boosting = player.flight_boosting() || (input.mounted && player.board_boosting());
+    input.boost_slot = player.flight_boosting() ? 120 : player.boost_sound_slot();
+    const auto frame = d.performance.step(input, dt);
+    const auto volume = d.mix.enabled ? d.mix.volume : 0;
+    if (frame.pop && volume * d.mix.transients > 0) {
+        d.one_shot(d.slot(1, group * 8 + 2), {}, *frame.pop * volume * d.mix.transients, false);
         ++d.stats.transients;
     }
-    d.fade = ground ? std::min(1., d.fade + .2) : 0;
-    const auto f = normalized(project(rider.forward, rider.normal)), right = normalized(cross(rider.normal, f));
-    const auto speed = length(project(rider.velocity, rider.normal)), slip = std::abs(dot(rider.velocity, right)) * 100;
-    const RideAudioSignals signals{slip, speed * 30, std::abs(rider.lean) * 100, speed * 100, slip};
-    const auto programs = d.programs.find(families[group]);
-    const std::array<std::string, 3> modes{"GLIDE", "CARVE", "AIGLIDE"};
-    const std::array<unsigned, 3> offsets{4, 3, 0};
-    for (unsigned i = 0; i < 3; ++i) {
-        double gain = 0, pitch = 1;
-        if (ground && programs != d.programs.end()) {
-            const auto program = programs->second.find(modes[i]);
-            if (program != programs->second.end()) {
-                const auto value = evaluate_audio_program(program->second, signals);
-                gain = value.volume / 127 * d.fade * .5 * (i == 2 ? .25 : 1);
-                pitch = 1 + .5 * value.bend / 127;
-            }
-        }
-        VoiceParams params;
-        params.gain = gain;
-        params.pitch = pitch;
-        params.loop = true;
-        if (gain <= 0) {
-            if (d.board[i])
-                d.mixer.update(d.board[i], params);
-        } else if (!d.mixer.update(d.board[i], params)) {
-            if (auto value = d.slot(1, group * 8 + offsets[i], true))
-                d.board[i] = d.mixer.play(value, params);
-        }
+    if (frame.land && volume * d.mix.transients > 0) {
+        d.one_shot(d.slot(1, group * 8 + 1), {}, *frame.land * volume * d.mix.transients, false);
+        ++d.stats.transients;
     }
-    const bool wind = rider.motion == Motion::Air && d.predicted_flight > 1.5;
-    if (wind) {
-        VoiceParams params;
-        params.gain = .25;
-        params.loop = true;
-        if (!d.mixer.update(d.wind, params))
-            if (auto value = d.slot(0, 32, true))
-                d.wind = d.mixer.play(value, params);
-    } else if (d.wind) {
-        d.mixer.stop(d.wind);
-        d.wind = 0;
+    if (int(group) != d.family) {
+        for (unsigned i = 0; i < 2; ++i) {
+            d.mixer.stop(d.board[i]);
+            d.board[i] = 0;
+        }
+        d.family = int(group);
     }
-    d.music_service();
+    const std::array<double, 4> trim{d.mix.glide, d.mix.carve, d.mix.transients, d.mix.cues};
+    const std::array<unsigned, 4> slots{group * 8 + 4, group * 8 + 3, 52, 32};
+    const auto loop = [&](std::uint64_t& voice, unsigned bank, unsigned number, BoardLayer layer, double gain,
+                          bool persistent = false) {
+        VoiceParams params;
+        params.gain = layer.gain * gain;
+        params.pitch = layer.pitch;
+        params.loop = true;
+        params.sustain_only = true;
+        params.ramp_seconds = dt;
+        if (params.gain <= 0 && !persistent) {
+            d.mixer.stop(voice);
+            voice = 0;
+        } else if (!d.mixer.update(voice, params) && (params.gain > 0 || (input.mounted && input.ground)))
+            if (auto value = d.slot(bank, number))
+                voice = d.mixer.play(value, params);
+    };
+    for (unsigned i = 0; i < 4; ++i)
+        loop(d.board[i], i == 3 ? 0 : 1, slots[i], frame.layers[i], volume * trim[i], i < 2);
+    if (d.boost_slot != frame.boost_slot) {
+        d.mixer.stop(d.boost);
+        d.boost = 0;
+        d.boost_slot = frame.boost_slot;
+    }
+    loop(d.boost, 0, frame.boost_slot, frame.boost, volume * d.mix.cues);
 }
 } // namespace openslope

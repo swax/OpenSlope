@@ -1,0 +1,4 @@
+#pragma once
+namespace openslope::bundled {
+inline constexpr unsigned char board_audio[] = { @BOARD_AUDIO_BYTES@ };
+}

@@ -33,6 +33,8 @@ struct VoiceParams {
     Vec3 position{};
     double range = 100;
     bool distance_falloff = true;
+    double ramp_seconds = 0;
+    bool sustain_only = false;
 };
 
 struct VoiceStatus {
@@ -54,7 +56,8 @@ public:
     AudioMixer& operator=(const AudioMixer&) = delete;
     std::uint64_t play(std::shared_ptr<const PcmClip> clip, VoiceParams params = {});
     bool update(std::uint64_t voice, VoiceParams params);
-    bool queue(std::uint64_t voice, std::shared_ptr<const PcmClip> clip, VoiceParams params = {});
+    bool queue(std::uint64_t voice, std::shared_ptr<const PcmClip> clip, VoiceParams params = {},
+               std::optional<std::uint64_t> expected_generation = {});
     std::optional<VoiceStatus> status(std::uint64_t voice) const;
     void stop(std::uint64_t voice);
     void clear();

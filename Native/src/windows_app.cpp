@@ -110,6 +110,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         audio = std::make_unique<AudioScene>(player.terrain().map_root());
         player.observe_ticks([&](const Player& p, const Rider& before) {
             audio->listener({camera_eye(p), p.camera_forward(), {0, 1, 0}});
+            audio->service();
             audio->tick(p, before);
             std::array<float, 1600> block{};
             audio->mixer().render(block);
@@ -208,7 +209,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         const auto sound = audio->stats();
         std::cout << "Audio capture: " << recorded.frames() << " stereo frames; contact sounds " << sound.contacts
                   << "; transients " << sound.transients << "; ambient voices " << sound.ambient << "; music node "
-                  << sound.music_node << '\n';
+                  << sound.music_node << "; prewarmed " << sound.prewarmed << "; prewarm skipped "
+                  << sound.prewarm_skipped << "; decoded bytes " << sound.decoded_bytes << '\n';
         player.observe_ticks({});
     }
     std::cout << "Equipment: held " << player.carrying_board() << "; hand "
