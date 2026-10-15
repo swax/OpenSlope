@@ -108,3 +108,8 @@ selection to the desktop and wrist menus. App-private preferences survive
 restarts and document-picker cache changes. Live graph performance events,
 async/announcer, AI field/standings and wider rendering/gameplay parity remain.
 See `audio-settings.md` for controls, persistence and verification scope.
+
+The 2026-10-15 effects audit confirms actual hydrant, trash-can and shatter
+chains while identifying ordinary breakable respawn, ambient voice selection,
+fence flex and in-world screen video as outstanding. See `effects-coverage.md`
+for the coverage table, current checks and validation limits.
