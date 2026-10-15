@@ -8,7 +8,7 @@
 #include <span>
 
 namespace openslope {
-enum class WorldActionKind {Reset,Multiplier,CourseSound,MainSound,RailToggle,SpeedBoost,TrickBoost};
+enum class WorldActionKind {Reset,Multiplier,CourseSound,MainSound,RailToggle,SpeedBoost,TrickBoost,Teleport};
 class CollisionWorld;
 struct WorldAction {WorldActionKind kind;double value=0;std::size_t target=0;Vec3 position;bool rider=false;};
 // Runtime flags are separate from immutable authored properties and geometry.
@@ -21,6 +21,7 @@ public:
     void tick(double seconds,double speed=0,std::span<const Vec3> observers={},std::span<const CrowdActivity> riders={},bool force_crowd=false);
     void apply_forces(double seconds,const CollisionWorld& world,std::span<BoostRider> riders,const LapEntry& lap_entry={});
     std::size_t forces() const;
+    std::optional<std::pair<Vec3,Vec3>> teleport_destination(std::size_t instance,unsigned rider_slot=0) const;
     void contact(std::size_t instance,double speed,bool human=true,double force=1);
     std::span<const std::uint8_t> flags() const;
     std::vector<WorldAction> take_actions();

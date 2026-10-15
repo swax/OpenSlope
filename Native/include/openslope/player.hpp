@@ -24,7 +24,7 @@ enum class CrashCause {None,PropImpact,Landing,Unrideable};
 struct PlayTuning {
     // Desktop application defaults where the clean specification is open.
     double charge_rate=2.5,brake_acceleration=18,flip_recovery_rate=720;
-    unsigned jump_stat=255;bool symmetric_deck=true;
+    unsigned jump_stat=255;bool symmetric_deck=true;unsigned rider_slot=0;
     double body_radius=.85;
     double hard_landing_speed=28,unrideable_speed=5;
     double tumble_ground_drag=8,tumble_air_drag=1.2,settle_angular_speed=.9,settle_normal_speed=1.5,settle_hold=.2;
@@ -81,6 +81,7 @@ public:
     void observe_ticks(std::function<void(const Player&,const Rider&)> observer){tick_observer_=std::move(observer);}
     std::uint64_t placement_serial() const {return placement_serial_;}
     std::uint64_t audio_reset_serial() const {return placement_serial_-transport_placements_;}
+    std::uint64_t teleports() const {return teleports_;}
     bool recovering() const {return rider_.control==Control::Wipeout||rider_.control==Control::RecoverWait;}
     void run_active(bool active){run_active_=active;}
     bool run_active() const {return run_active_||(run_.status().mode!=RunMode::Freeride&&run_.status().phase==RunPhase::Running);}
@@ -106,6 +107,8 @@ private:
     std::optional<Vec3> world_view_;
     std::vector<WorldAction> world_actions_;
     void apply_world_actions();
+    std::optional<std::pair<Vec3,Vec3>> teleport_pending_;
+    void teleport(Vec3 position,Vec3 forward);
     std::set<std::size_t> logic_contacts_;
     void dispatch_world_contact(const WorldContact& contact,double speed,std::optional<Vec3> support_normal={});
     struct GroundContact;
@@ -148,7 +151,7 @@ private:
     std::map<std::size_t,WorldContact> previous_contacts_;
     std::vector<ContactEvent> contact_events_;
     std::function<void(const Player&,const Rider&)> tick_observer_;
-    std::uint64_t placement_serial_=0,transport_placements_=0;
+    std::uint64_t placement_serial_=0,transport_placements_=0,teleports_=0;
     std::optional<GroundContact> trace_ground(Vec3 start,Vec3 end) const;
     std::optional<GroundContact> probe(Vec3 position) const;
     std::vector<ProbeSphere> volume(const Rider& pose,bool airborne,bool rail=false) const;

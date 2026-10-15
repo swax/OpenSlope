@@ -29,7 +29,7 @@ struct AudioScene::Data {
     struct Sound {int event=-1;Vec3 position;bool enabled=false;double debounce=0;};std::vector<Sound> sounds;
     struct Emitter {std::size_t instance{};unsigned type{},event{},radial{},angular{};Vec3 offset,extents,axis{0,1,0};double radius{},cone{};std::uint64_t voice{};bool inside=false;};std::vector<Emitter> emitters;
     std::array<std::uint64_t,3> board{};int family=-1;double fade=0;std::uint64_t wind{};double predicted_flight=0;
-    std::vector<std::string> playlist;std::size_t song=0;MusicGraph graph;std::filesystem::path music_folder;MusicCursor cursor,pending_cursor;std::uint64_t music_voice{},music_generation{};double music_gain=.5;unsigned level=80;std::optional<unsigned> pending_event;bool music_ready=false,pending_ready=false;std::uint64_t serial=0;
+    std::vector<std::string> playlist;std::size_t song=0;MusicGraph graph;std::filesystem::path music_folder;MusicCursor cursor,pending_cursor;std::uint64_t music_voice{},music_generation{};double music_gain=.5;unsigned level=80;std::optional<unsigned> pending_event;bool music_ready=false,pending_ready=false;std::uint64_t serial=0,teleports=0;
     explicit Data(std::filesystem::path folder):root(std::move(folder)){
         if(root.empty())return;
         if(std::filesystem::exists(root/"Audio/SoundIndex.json")){const auto index=read(asset(root,"Audio/SoundIndex.json"));if(index.value("Schema","")=="openslope-sound-index/v1"){
@@ -82,7 +82,8 @@ void AudioScene::play_course(unsigned number,Vec3 position,double gain){std::loc
 void AudioScene::tick(const Player& player,const Rider& before){
     std::lock_guard lock(data_->mutex);auto& d=*data_;const auto& rider=player.rider();const auto dt=player.contract().tick_seconds();
     if(d.serial&&d.serial!=player.audio_reset_serial())d.reset();d.serial=player.audio_reset_serial();
-    for(const auto& action:player.world_actions())if(action.kind==WorldActionKind::CourseSound||action.kind==WorldActionKind::MainSound){if(action.value<0||action.value>65535)continue;const auto main=action.kind==WorldActionKind::MainSound;d.one_shot(d.slot(main?0:2,unsigned(action.value)),action.position,1,!main);++d.stats.transients;}
+    const bool transported=player.teleports()!=d.teleports;d.teleports=player.teleports();
+    for(const auto& action:player.world_actions())if(action.kind==WorldActionKind::CourseSound||action.kind==WorldActionKind::MainSound){if(action.value<0||action.value>65535)continue;const auto main=action.kind==WorldActionKind::MainSound;d.one_shot(d.slot(main?0:2,unsigned(action.value)),action.position,1,!main&&!(transported&&action.rider));++d.stats.transients;}
     for(auto& s:d.sounds)s.debounce=std::max(0.,s.debounce-dt);
     for(const auto& e:player.contacts())if(e.phase!=ContactPhase::End&&e.contact.instance<d.sounds.size()){auto& s=d.sounds[e.contact.instance];s.enabled=true;const auto speed=std::max(0.,-dot(before.velocity,e.contact.normal));const auto event=d.events.find(s.event);if(s.debounce<=0&&speed>.05&&event!=d.events.end()&&length(s.position-d.listener.position)<100){d.one_shot(d.clip(event->second),s.position,std::min(1.,speed/20),true);s.debounce=.8;++d.stats.contacts;}}
     for(auto& e:d.emitters){const auto& s=d.sounds[e.instance];const bool hit_gate=e.event==16||e.event==28||e.event==57;const auto source=s.position+e.offset,delta=d.listener.position-source;const auto distance=length(delta);double normalized_distance=distance/e.radius,gain=0;

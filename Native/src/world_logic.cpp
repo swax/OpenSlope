@@ -23,6 +23,7 @@ Json legacy(const Json& source){
     for(const auto& [key,target]:{std::pair{"EffectHeaders","graphs"},std::pair{"Functions","functions"}})if(source.contains(key))for(std::size_t i=0;i<source.at(key).size();++i){const auto& row=source.at(key)[i];Json nodes=Json::array();for(const auto& raw:row.at("Effects")){auto payload=raw;payload.erase("MainType");Json refs=Json::object();const auto main=raw.at("MainType").get<int>();
             if(main==7&&raw.contains("Instance")){refs["instance"]=id("instance:",raw.at("Instance").at("InstanceIndex"));refs["effectGraph"]=id("graph:",raw.at("Instance").at("EffectIndex"));}
             if(main==21||main==26)refs["function"]=id("function:",raw.at("FunctionRunIndex"));
+            if(main==24)refs["instance"]=id("instance:",raw.at("TeleportInstanceIndex"));
             if(main==2&&raw.contains("type2")&&raw.at("type2").value("SubType",0)==1)refs["spline"]=id("spline:",raw.at("type2").at("SplineAnimation").at("SplineIndex"));
             if(main==25)refs["spline"]=id("spline:",raw.at("Spline").at("SplineIndex"));
             nodes.push_back({{"mainType",main},{"payload",payload},{"references",refs}});
@@ -173,6 +174,7 @@ struct WorldLogic::Data {
                 else if(node.main==13){if(thread.rider)action(WorldActionKind::Reset,thread);}
                 else if(node.main==14&&thread.rider){const auto tier=number(p,"MultiplierScore");if(tier==2||tier==3||tier==5){if(mode==RunMode::Showoff)action(WorldActionKind::Multiplier,thread,tier);if(thread.human)action(WorldActionKind::MainSound,thread,tier==2?116:tier==3?117:118);}}
                 else if(node.main==8)action(WorldActionKind::CourseSound,thread,number(p,"SoundPlay"));
+                else if(node.main==24){const auto target=ref(node.refs,"instance",instance_ids);if(thread.rider&&target<hosts.size())action(WorldActionKind::Teleport,thread,0,target);}
                 else if(node.main==25){const auto rail=ref(node.refs,"spline",spline_ids);if(rail!=none)action(WorldActionKind::RailToggle,thread,number(p.at("Spline"),"Effect"),rail);}
                 else ++unknown;
             }
@@ -218,6 +220,11 @@ void WorldLogic::apply_forces(double seconds,const CollisionWorld& world,std::sp
     std::vector<std::size_t> ended;for(const auto host:d.force_hosts){auto& property=d.properties[host];if(property.paused||!property.force)continue;std::vector<std::optional<BoostVolume>> volumes;volumes.reserve(riders.size());for(const auto& rider:riders){const auto hit=rider.active?world.volume(host,rider.previous,rider.position):std::nullopt;volumes.push_back(hit?std::optional(BoostVolume{hit->box,hit->axis}):std::nullopt);}property.force->apply(seconds,riders,volumes,lap_entry);if(property.force->expired())ended.push_back(host);}for(const auto host:ended)d.finish(host);d.drain(0);
 }
 std::size_t WorldLogic::forces() const {return data_->force_hosts.size();}
+std::optional<std::pair<Vec3,Vec3>> WorldLogic::teleport_destination(std::size_t instance,unsigned rider_slot) const {
+    if(rider_slot>5)throw std::invalid_argument("Invalid teleport rider slot");if(instance>=data_->hosts.size())return {};const auto& host=data_->hosts[instance];const auto matrix=inverse_transform(host.inverse);
+    const auto right=normalized(transform_point(matrix,{1,0,0})-host.position,{1,0,0}),forward=normalized(transform_point(matrix,{0,0,-1})-host.position,{0,0,-1});const std::array<std::array<double,2>,6> offsets{{{{-1,0}},{{-1,1}},{{0,1}},{{1,1}},{{1,0}},{{0,0}}}};
+    return std::pair{host.position+(right*offsets[rider_slot][0]+forward*offsets[rider_slot][1])*3,normalized(project(forward,{0,1,0}),{0,0,-1})};
+}
 void WorldLogic::contact(std::size_t instance,double speed,bool human,double force){auto& d=*data_;if(!std::isfinite(speed)||speed<0||!std::isfinite(force)||force<0||force>1e9)throw std::invalid_argument("Invalid world contact");if(instance>=d.hosts.size()||!(d.flags[instance]&WorldCollide))return;if(d.properties[instance].fragile){d.properties[instance].fragile->hit(force);if(d.properties[instance].fragile->take_trigger()){d.trigger(instance);d.drain(speed);}return;}if(d.force_wait_exit.contains(instance))return;if(d.properties[instance].force){d.properties[instance].force->contact();return;}if(d.busy[instance]||d.properties[instance].kind==2||d.cooldowns[instance]>1e-9)return;const auto slot=d.hosts[instance].slot;if(slot<d.slots.size()){d.cooldowns[instance]=d.properties[instance].debounce;d.enqueue(d.slots[slot].chains[1],instance,true,human,true);d.drain(speed);d.cooldowns[instance]=std::max(d.cooldowns[instance],d.properties[instance].debounce);if(d.properties[instance].fragile){d.properties[instance].fragile->hit(force);if(d.properties[instance].fragile->take_trigger()){d.trigger(instance);d.drain(speed);}}}}
 std::span<const std::uint8_t> WorldLogic::flags() const {return data_->flags;}
 std::vector<WorldAction> WorldLogic::take_actions(){auto actions=std::move(data_->actions);data_->actions.clear();return actions;}

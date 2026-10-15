@@ -116,7 +116,7 @@ Build 0.25 adds persistent regions, model-animation ownership, installed-player
 controls and region/node-end continuations. See prop-animations.md for evidence.
 Build 0.27 connects counter/crack deferred triggers and material frame state;
 see deferred-world.md for exact scope. Complete hide/rearm lifetimes, mesh-throw
-and debris, particle effects, teleport, remaining
+and debris, particle effects, remaining
 score/time opcodes and rigid-body movers still need consumers. Detached spline
 path drawing is now connected; see spline-movers.md. Collected
 gems use clean 390's run-long tombstone; Slopesmith's application pickup grow-back
@@ -137,3 +137,9 @@ Build 0.30 connects main 17/18 pad durations/chimes/tombstones and property
 collision volumes. The player shares these across walking, snow, air and rails.
 See boost-volumes.md for exact recovered behavior, independently authored lap/
 air profiles, compatibility repair, source comparisons and remaining limits.
+
+Build 0.31 consumes main 24 through stable destination references and native
+stopped placement, ending the old sweep and preserving the run/music. All six
+rider-slot offsets, walking arrivals, camera pixels, entry PCM and the original
+MERQUER portal are validated in teleports.md. Exact direct-slot sound mixing,
+the custom-marker scale policy and other application choices stay explicit.

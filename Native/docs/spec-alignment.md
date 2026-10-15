@@ -148,3 +148,10 @@ launch payloads. The lap ascent profile, cross-station suppression and held-air
 deck thrust/rotation are explicit application choices in boost-volumes.md.
 The original lap position/motion-state program remains unresolved; its current
 profile does not establish complete original transport equivalence.
+
+Instance teleport consumes clean 150/230/390 for rider ownership, stable target,
+six creation-slot offsets, target-positive-Y heading and stopped arrival.
+Native queries, tick interruption and placement history prevent false travel
+through the skipped world. The custom scale policy, walking/parked board,
+placement arbitration and queued cue mixing are application choices documented
+in teleports.md, including an actual imported portal capture.

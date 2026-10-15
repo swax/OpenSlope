@@ -28,6 +28,10 @@ lifts and staged tube launches. See [boost volumes](docs/boost-volumes.md) for
 source alignment, test evidence and the remaining original lap-ride/air-profile
 gaps. Desktop and Quest use the same gameplay code.
 
+Build 0.31 connects authored [instance teleports](docs/teleports.md), including
+Merqury City's entrance/exit, stopped destination-facing arrival and retained
+run/music. Walking arrivals keep the parked board nearby.
+
 ## Build and try on Windows
 
 Install Visual Studio 2022 C++ Build Tools with its CMake component and Windows SDK. Python 3 is
