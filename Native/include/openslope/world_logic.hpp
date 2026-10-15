@@ -36,7 +36,7 @@ public:
                       const LapEntry& lap_entry = {});
     std::size_t forces() const;
     std::optional<std::pair<Vec3, Vec3>> teleport_destination(std::size_t instance, unsigned rider_slot = 0) const;
-    void contact(std::size_t instance, double speed, bool human = true, double force = 1);
+    void contact(std::size_t instance, double speed, bool human = true, double force = 1, Vec3 direction = {});
     std::span<const std::uint8_t> flags() const;
     std::vector<WorldAction> take_actions();
     std::span<const PropMotion> motions() const;

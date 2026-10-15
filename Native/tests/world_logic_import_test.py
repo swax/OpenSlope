@@ -32,7 +32,8 @@ def members():
         [frame(14, 'f', 2), frame(0, 'II', 5, 2)],
         [frame(13, 'f', 0)],
         [frame(4, 'f', .1), frame(8, 'I', 7), frame(99, 'I', 123), frame(14, 'f', 3)],
-        [frame(0, 'II18f', 24, 1, *[float(i) for i in range(1, 19)]), frame(24, 'I', 1)],
+        [frame(0, 'II18f', 24, 1, *[float(i) for i in range(1, 19)]), frame(24, 'I', 1),
+         frame(0, 'II9f', 20, 1, .03, 2., -1.5, .25, -2., 900., 800., 400., 1.)],
     ]
     for index, nodes in enumerate(bodies):
         at = append(b''.join(nodes))
@@ -76,6 +77,8 @@ def main():
         assert unknown['extensions']['nativeWords'] == [99, 12, 123]
         assert doc['graphs'][2]['nodes'][3]['payload']['MultiplierScore'] == 3
         tube = doc['graphs'][3]['nodes'][0]['payload']['type0']['type0Sub24']
+        thrown = doc['graphs'][3]['nodes'][2]['payload']['type0']['type0Sub20']
+        assert [thrown[f'U{i}'] for i in range(3,6)] == [-1.5,.25,-2.], 'mesh-throw direction is three float values'
         assert tube == {'U0': 1, **{f'U{i}': float(i) for i in range(1, 19)}}
         teleport = doc['graphs'][3]['nodes'][1]
         assert teleport['payload']['TeleportInstanceIndex'] == 1

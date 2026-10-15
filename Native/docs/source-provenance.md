@@ -4,6 +4,13 @@ The implementation inputs are the clean Trailmap specification bodies, the Apach
 OpenSlope contracts and standard mathematical/protocol identities. Evidence annotations and
 other components' implementation sources are outside this implementation boundary.
 
+Build 0.37's mesh-throw fields and break-chain structure follow the sanitized
+230/370 bodies. Kinematics, piece spread/tumble and transform composition are
+independently authored application math. Priority-material alpha is a Slopesmith
+public `texture-array.test.ts` acceptance behavior. Private map data is used for
+comparison only. No other runtime or differently licensed library implementation
+was read or ported for this work; see shatter.md for the remaining sound gap.
+
 | Importer part | Implementation authority |
 |---|---|
 | Primary ISO9660 directory access | [Trailmap: 200-iso]; bounded, seekable document/file reads. |

@@ -37,7 +37,7 @@ Json node(Bytes bytes, std::size_t at, std::size_t size, std::size_t index, cons
         Json property = {{"SubType", sub}};
         const std::map<unsigned, std::string> layouts{
             {0, "ffffff"},     {13, "ifff"},      {14, "ff"},           {15, "fffff"},
-            {17, "iii"},       {18, "fffffff"},   {20, "iffiiiffff"},   {24, "i" + std::string(18, 'f')},
+            {17, "iii"},       {18, "fffffff"},   {20, "ifffffffff"},   {24, "i" + std::string(18, 'f')},
             {256, "ifffffii"}, {257, "iiffffii"}, {258, "ifffffiifffi"}};
         if (const auto found = layouts.find(sub); found != layouts.end()) {
             require(12 + found->second.size() * 4);

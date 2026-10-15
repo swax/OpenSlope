@@ -135,11 +135,11 @@ int main(int argc, char** argv) {
         context.create(false);
         for (const auto samples : {1u, 4u})
             for (const auto name :
-                 {"handedness", "orientation", "lighting",       "repeat",       "props",        "props_uv",
-                  "props_flag", "props_crowd", "props_cutout",   "props_blend",  "minification", "antialiasing",
-                  "visibility", "sprites",     "boost",          "boost_fog",    "wake",         "wake_repeat",
-                  "sheet",      "sky",         "sky_foreground", "sky_authored", "fog",          "sprites_fog",
-                  "wake_fog",   "sheet_fog",   "props_fog"}) {
+                 {"handedness",   "orientation",  "lighting",     "repeat",      "props",          "props_uv",
+                  "props_flag",   "props_crowd",  "props_cutout", "props_blend", "props_priority", "props_layers",
+                  "minification", "antialiasing", "visibility",   "sprites",     "boost",          "boost_fog",
+                  "wake",         "wake_repeat",  "sheet",        "sky",         "sky_foreground", "sky_authored",
+                  "fog",          "sprites_fog",  "wake_fog",     "sheet_fog",   "props_fog"}) {
                 auto scene = std::make_shared<VulkanScene>(context);
                 Mesh mesh;
                 if (std::string(name) == "antialiasing") {
@@ -1034,6 +1034,9 @@ int main(int argc, char** argv) {
                     } else if (std::string(name) == "props_cutout") {
                         pixel(*pixels, .40625, .5, {40, 80, 120});
                         pixel(*pixels, .59375, .5, {240, 100, 40});
+                    } else if (std::string(name) == "props_layers") {
+                        pixel(*pixels, .5, .5,
+                              pixels == &a ? std::array<int, 3>{160, 140, 120} : std::array<int, 3>{177, 145, 120});
                     } else {
                         pixel(*pixels, .5, .5,
                               pixels == &a ? std::array<int, 3>{120, 120, 120} : std::array<int, 3>{149, 128, 120});

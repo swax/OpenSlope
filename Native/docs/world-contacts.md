@@ -102,3 +102,8 @@ trigger graphs disarm both; material-matched targets share private cracked
 frames. Custom mass-zero crack proxies can supply support until shatter while
 other pass-through objects retain their behavior. The 0.3 m reach, 1/87 contact
 profile and fallback surface are application choices; see deferred-world.md.
+
+Build 0.37 also publishes walking sweeps to the common Begin/Stay/End contact
+stream, allowing map-routed impact audio on foot. It carries the impact direction
+through break graphs and deferred triggers into per-piece mesh throws. See
+shatter.md for the GARI comparison and unresolved executable sound routes.

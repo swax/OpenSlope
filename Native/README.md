@@ -24,6 +24,10 @@ resolvers, uber tiers, AI races and multiplayer remain later stages. The retail 
 repertoire are out of scope, as CONTRIBUTING.md sets out. See
 [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
+Build 0.37 fixes GARI's black barrier overlay and adds per-piece break animations,
+with shared walking/riding contact events. Automatic collision-event sound routing
+still needs executable extraction; see [barrier validation and limits](docs/shatter.md).
+
 Build 0.30 adds timed speed/trick pads, authored conveyors/vents/wind, altitude
 lifts and staged tube launches. See [boost volumes](docs/boost-volumes.md) for
 source alignment, test evidence and the remaining original lap-ride/air-profile

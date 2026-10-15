@@ -323,6 +323,8 @@ private:
     std::optional<GroundContact> probe(Vec3 position) const;
     std::vector<ProbeSphere> volume(const Rider& pose, bool airborne, bool rail = false) const;
     bool move_world(const Rider& before, Vec3 destination, bool landing_allowed);
+    void record_contacts(std::map<std::size_t, WorldContact> seen,
+                         const std::map<std::size_t, CollisionResponse>& responses = {});
     void sample_input(const RideInput& input);
     void land(const GroundContact& hit);
     void enter_air();

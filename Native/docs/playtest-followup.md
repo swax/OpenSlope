@@ -9,6 +9,9 @@ not replace its broader audio, world, performance and multiplayer requirements.
 - [x] Desktop 0.36 test launchers start in third person.
 - [ ] Glass barriers render transparently and smash, disappear and play their
   configured break sound when crossed with an admitted impact.
+  Build 0.37 fixes GARI's opaque scanline sheet and implements its fragmented
+  break/reveal path for walking and riding. Automatic collision-sound resolver
+  extraction remains required; see shatter.md.
 - [x] Desktop E spawns/recalls a board ahead without mounting it automatically.
 - [ ] Quest behind-head draw reaches the hand correctly through real input.
   The implementation and production gesture replays are present; worn reach

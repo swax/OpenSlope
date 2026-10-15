@@ -384,7 +384,9 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
             const auto name = "Textures/" + texture;
             const auto found = names.find(name);
             return PropFrame{descriptor(found == names.end() ? 0 : found->second, 1),
-                             (part.flags & (1u << 18)) ? (fractional[name] ? 2 : 1) : 0};
+                             // Priority overlays also carry pixel alpha (scanlines, for example).
+                             // [Slopesmith public texture-array tests: priority partial alpha]
+                             (part.flags & ((1u << 18) | (1u << 17))) ? (fractional[name] ? 2 : 1) : 0};
         };
         const auto base = bind(part.texture);
         PropDraw draw{part.first + prop_first, part.count, base.set, base.alpha, {}};

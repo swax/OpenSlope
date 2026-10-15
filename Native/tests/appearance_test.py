@@ -116,12 +116,21 @@ def fixtures(root):
     (corrupt / "Textures/base.png").write_bytes(bad)
     for name, flags, art in (("props", 0, [200, 160, 120, 64]),
                               ("props_cutout", 1 << 18, [240, 100, 40, 0, 240, 100, 40, 255]),
-                              ("props_blend", 1 << 18, [200, 160, 120, 128])):
+                              ("props_blend", 1 << 18, [200, 160, 120, 128]),
+                              ("props_priority", 1 << 17, [200, 160, 120, 128]),
+                              ("props_layers", 1 << 18, [200, 160, 120, 128])):
         folder = course(root, name, "background.png")
         (folder / "Textures/background.png").write_bytes(rgba(1, 1, [40, 80, 120, 255]))
         (folder / "Textures/prop.png").write_bytes(rgba(len(art) // 4, 1, art))
         (folder / "Meshes").mkdir()
         (folder / "Meshes/quad.obj").write_text("v -30 0 -30\nv 30 0 -30\nv 30 0 30\nv -30 0 30\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 1 0 0\nf 1/1/1 2/2/1 3/3/1 4/4/1\n")
+        if name == "props_layers":
+            # A single material packet can contain front faces before rear faces.
+            # Blending must leave depth intact even when the packet cannot be sorted.
+            (folder / "Meshes/quad.obj").write_text(
+                ''.join(f'v {x} {y} {z}\n' for y in (5,-5) for x,z in ((-30,-30),(30,-30),(30,30),(-30,30)))
+                + 'vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 1 0 0\n'
+                + 'f 1/1/1 2/2/1 3/3/1 4/4/1\nf 5/1/1 6/2/1 7/3/1 8/4/1\n')
         models = [{"ModelName": "Authored shared quad", "ModelObjects": [{"ParentID": -1, "MeshData": [{"MeshPath": "quad.obj", "MaterialID": 0}]}]}]
         materials = [{"TexturePath": "prop.png", "UnknownInt18": flags}]
         if name == "props_cutout":

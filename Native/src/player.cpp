@@ -420,17 +420,22 @@ void Player::land(const GroundContact& hit) {
 void Player::notify_tick(const Rider& before) {
     if (!reset_pending() && !teleport_pending_ && run_.status().phase == RunPhase::Running) {
         if (on_foot_) {
+            std::map<std::size_t, WorldContact> seen;
             for (const auto height : {.28, .825, 1.37}) {
                 if (teleport_pending_)
                     break;
                 const std::array<ProbeSphere, 1> from{{{before.position + Vec3{0, height, 0}, .28}}},
                     to{{{rider_.position + Vec3{0, height, 0}, .28}}};
                 for (const auto& hit : world_.sweep(from, to)) {
+                    const auto old = seen.find(hit.instance);
+                    if (old == seen.end() || hit.t < old->second.t)
+                        seen[hit.instance] = hit;
                     dispatch_world_contact(hit, length(before.velocity));
                     if (teleport_pending_)
                         break;
                 }
             }
+            record_contacts(std::move(seen));
         }
     }
     apply_world_actions();
@@ -561,7 +566,8 @@ void Player::dispatch_world_contact(const WorldContact& contact, double speed, s
         const auto normal_speed = std::abs(dot(rider_.velocity - contact.surface_velocity, normal));
         const bool supported =
             support_normal.has_value() || (rider_.grounded && rider_.ground_instance == contact.instance);
-        logic_.contact(contact.instance, speed, true, fragile_contact_cost(normal_speed, normal, supported));
+        logic_.contact(contact.instance, speed, true, fragile_contact_cost(normal_speed, normal, supported),
+                       rider_.velocity - contact.surface_velocity);
         apply_world_actions();
     }
 }
@@ -1250,6 +1256,12 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             if (teleport_pending_)
                 return false;
         }
+    record_contacts(std::move(seen), responses);
+    return true;
+}
+
+void Player::record_contacts(std::map<std::size_t, WorldContact> seen,
+                             const std::map<std::size_t, CollisionResponse>& responses) {
     contact_events_.clear();
     for (const auto& [instance, contact] : seen) {
         const auto phase = previous_contacts_.contains(instance) ? ContactPhase::Stay : ContactPhase::Begin;
@@ -1269,7 +1281,6 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         return a.contact.t < b.contact.t;
     });
     previous_contacts_ = std::move(seen);
-    return true;
 }
 
 Vec3 Player::camera_position(Vec3 desired) const {

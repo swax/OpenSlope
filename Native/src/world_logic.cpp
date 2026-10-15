@@ -2,6 +2,7 @@
 #include "import_internal.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/material_animation.hpp"
+#include "openslope/mesh_throw.hpp"
 #include "openslope/props.hpp"
 #include "openslope/texture_playback.hpp"
 #include "prop_internal.hpp"
@@ -31,6 +32,8 @@ Json read(const std::filesystem::path& root, const char* name) {
 
 std::string id(const char* prefix, std::size_t index) { return std::string(prefix) + std::to_string(index); }
 
+void restore_throw_direction(Json& payload, const Json& words, bool legacy_words);
+
 Json legacy(const Json& source) {
     Json doc = {{"graphs", Json::array()},    {"functions", Json::array()},        {"slots", Json::array()},
                 {"instances", Json::array()}, {"objectProperties", Json::array()}, {"splines", Json::array()}};
@@ -56,6 +59,8 @@ Json legacy(const Json& source) {
                         refs["spline"] = id("spline:", raw.at("type2").at("SplineAnimation").at("SplineIndex"));
                     if (main == 25)
                         refs["spline"] = id("spline:", raw.at("Spline").at("SplineIndex"));
+                    if (main == 0)
+                        restore_throw_direction(payload, Json::array(), true);
                     nodes.push_back({{"mainType", main}, {"payload", payload}, {"references", refs}});
                 }
                 doc[target].push_back(
@@ -84,6 +89,25 @@ double number(const Json& value, const char* key, double fallback = 0) {
         throw std::runtime_error("Invalid world node number");
     return v;
 }
+
+void restore_throw_direction(Json& payload, const Json& words, bool legacy_words) {
+    if (!payload.contains("type0") || payload.at("type0").value("SubType", -1) != 20)
+        return;
+    auto& fields = payload["type0"]["type0Sub20"];
+    for (unsigned i = 3; i <= 5; ++i) {
+        auto& value = fields["U" + std::to_string(i)];
+        if (!value.is_number_integer())
+            continue;
+        // Older saved documents exposed these three float words as integers.
+        // Prefer the preserved packet; explicit authored numeric directions stay numeric.
+        if (words.size() >= 13)
+            value = std::bit_cast<float>(words[i + 3].get<std::uint32_t>());
+        else if (legacy_words || std::abs(value.get<double>()) > 1e6)
+            value = std::bit_cast<float>(value.get<std::int32_t>());
+        if (!value.is_number() || !std::isfinite(value.get<double>()))
+            throw std::runtime_error("Invalid saved mesh throw direction");
+    }
+}
 } // namespace
 
 struct WorldLogic::Data {
@@ -108,6 +132,7 @@ struct WorldLogic::Data {
         std::size_t model = none;
         bool mode_hidden = false, kill_movers = false;
         Transform inverse = identity_transform();
+        Vec3 impact{};
     };
 
     struct Property {
@@ -116,6 +141,7 @@ struct WorldLogic::Data {
         std::optional<PropPlayback> animation{};
         std::optional<PropChecklist> checklist{};
         std::optional<FragileProp> fragile{};
+        std::optional<MeshThrow> pieces{};
         std::optional<ScrollPlayback> scroll{};
         std::optional<FlagPlayback> flag{};
         std::unique_ptr<TexturePlayback> flip{};
@@ -131,6 +157,7 @@ struct WorldLogic::Data {
         double wait = 0;
         bool rider = false, human = false, collision = false, setup = false;
         std::vector<std::pair<std::size_t, std::size_t>> ancestry;
+        Vec3 impact{};
     };
 
     std::vector<Chain> chains;
@@ -166,6 +193,7 @@ struct WorldLogic::Data {
     std::vector<unsigned> material_counts;
     bool materials_dirty = false;
     PropClips clips;
+    std::map<std::size_t, std::vector<Vec3>> throw_centres;
     std::vector<PropMotion> motions;
     std::vector<std::size_t> motion_ids;
     std::vector<double> cooldowns;
@@ -193,12 +221,12 @@ struct WorldLogic::Data {
     }
 
     void enqueue(std::size_t chain, std::size_t instance, bool rider, bool human, bool collision = false,
-                 std::vector<std::pair<std::size_t, std::size_t>> ancestry = {}, bool setup = false) {
+                 std::vector<std::pair<std::size_t, std::size_t>> ancestry = {}, bool setup = false, Vec3 impact = {}) {
         if (chain >= chains.size() || ready.size() + waiting.size() >= 1024 || ancestry.size() >= 32 ||
             std::find(ancestry.begin(), ancestry.end(), std::pair{chain, instance}) != ancestry.end())
             return;
         ancestry.push_back({chain, instance});
-        ready.push_back({chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry)});
+        ready.push_back({chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry), impact});
         if (collision)
             busy.at(instance) = true;
     }
@@ -220,10 +248,11 @@ struct WorldLogic::Data {
     }
 
     void update_motion(std::size_t host, bool snap = false) {
-        if (!properties[host].animation)
+        if (!properties[host].animation && !properties[host].pieces)
             return;
-        const auto& player = *properties[host].animation;
-        auto current = clips.delta(hosts[host].model, player.frame(), player.basis());
+        auto current = properties[host].pieces ? properties[host].pieces->pose()
+                                               : clips.delta(hosts[host].model, properties[host].animation->frame(),
+                                                             properties[host].animation->basis());
         const auto index = motion_ids[host];
         if (index == none) {
             motion_ids[host] = motions.size();
@@ -335,7 +364,7 @@ struct WorldLogic::Data {
     void trigger(std::size_t host) {
         const auto slot = hosts[host].slot;
         if (slot < slots.size())
-            enqueue(slots[slot].chains[4], host, false, false);
+            enqueue(slots[slot].chains[4], host, false, false, false, {}, false, hosts[host].impact);
     }
 
     bool fragile_graph(std::size_t chain, std::size_t host, std::set<std::size_t>& visited) const {
@@ -449,7 +478,7 @@ struct WorldLogic::Data {
         force_hosts.insert(host);
     }
 
-    void find_flag_models() {
+    std::vector<std::size_t> find_models(int subtype) {
         std::vector<std::pair<std::size_t, std::size_t>> pending;
         for (std::size_t host = 0; host < hosts.size(); ++host)
             if (hosts[host].slot < slots.size())
@@ -469,7 +498,7 @@ struct WorldLogic::Data {
             if (visited.size() > 500000)
                 throw std::runtime_error("Flag model graph exceeds limit");
             for (const auto& node : chains[chain].nodes) {
-                if (node.main == 0 && node.payload.at("type0").value("SubType", -1) == 13 && host < hosts.size() &&
+                if (node.main == 0 && node.payload.at("type0").value("SubType", -1) == subtype && host < hosts.size() &&
                     hosts[host].model < model_materials.size())
                     models.insert(hosts[host].model);
                 else if (node.main == 21 || node.main == 26)
@@ -479,7 +508,31 @@ struct WorldLogic::Data {
                         {ref(node.refs, "effectGraph", graphs), ref(node.refs, "instance", instance_ids)});
             }
         }
-        flag_models = {models.begin(), models.end()};
+        return {models.begin(), models.end()};
+    }
+
+    void throw_mesh(std::size_t host, const Json& payload, Vec3 impact) {
+        const auto model = hosts[host].model;
+        if (hosts[host].mode_hidden || !throw_centres.contains(model))
+            return;
+        const auto& fields = payload.at("type0Sub20");
+        MeshThrowLaw law;
+        law.step = number(fields, "U1", .05);
+        law.duration = number(fields, "U2", 2);
+        law.direction = {number(fields, "U3"), number(fields, "U5"), -number(fields, "U4")};
+        law.speed = {number(fields, "U6") / 100, number(fields, "U8") / 100, number(fields, "U7") / 100};
+        law.multiplier = number(fields, "U9", 1);
+        const auto& inverse = hosts[host].inverse;
+        const auto local_vector = [&](Vec3 v) {
+            return transform_point(inverse, hosts[host].position + v) - transform_point(inverse, hosts[host].position);
+        };
+        law.gravity = local_vector({0, -9.81, 0});
+        MeshThrow pieces(law, throw_centres.at(model), local_vector(impact), random());
+        destroy(host, false);
+        properties[host].kind = 20;
+        properties[host].pieces = std::move(pieces);
+        flags[host] = WorldDraw;
+        update_motion(host, true);
     }
 
     void install_flag(std::size_t host, const Json& payload) {
@@ -856,7 +909,7 @@ struct WorldLogic::Data {
                         break;
                 } else if (node.main == 21 || node.main == 26)
                     enqueue(ref(node.refs, "function", functions), host, node.main == 21 && thread.rider, thread.human,
-                            false, thread.ancestry, thread.setup);
+                            false, thread.ancestry, thread.setup, thread.impact);
                 else if (node.main == 7) {
                     const auto target = ref(node.refs, "instance", instance_ids),
                                graph = ref(node.refs, "effectGraph", graphs);
@@ -864,7 +917,8 @@ struct WorldLogic::Data {
                         (hosts[target].mode_hidden && !thread.setup))
                         continue;
                     if (graph < chains.size())
-                        enqueue(graph, target, thread.rider, thread.human, false, thread.ancestry, thread.setup);
+                        enqueue(graph, target, thread.rider, thread.human, false, thread.ancestry, thread.setup,
+                                thread.impact);
                     else if (p.contains("Instance") && p.at("Instance").contains("Effect")) {
                         if (p.at("Instance").at("Effect").get<int>() == 0) {
                             destroy(target);
@@ -899,7 +953,9 @@ struct WorldLogic::Data {
                         properties[host].kind = 14;
                         properties[host].fragile.emplace(number(fields, "U1"), number(fields, "U0", -1));
                         crack_frame(host);
-                    } else if (sub == 7 || sub == 15 || sub == 18 || sub == 24)
+                    } else if (sub == 20)
+                        throw_mesh(host, property, thread.impact);
+                    else if (sub == 7 || sub == 15 || sub == 18 || sub == 24)
                         install_force(host, property, sub);
                     else if (sub == 10 || sub == 11)
                         install_material(host, property, sub);
@@ -1041,6 +1097,9 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
                 if (++node_count > 100000)
                     throw std::runtime_error("Too many world graph nodes");
                 auto payload = node.at("payload");
+                if (node.at("mainType") == 0)
+                    restore_throw_direction(
+                        payload, node.value("extensions", Json::object()).value("nativeWords", Json::array()), false);
                 if (node.at("mainType") == 0 && payload.at("type0").at("SubType") == 24) {
                     auto& fields = payload["type0"]["type0Sub24"];
                     const auto words = node.value("extensions", Json::object()).value("nativeWords", Json::array());
@@ -1141,7 +1200,17 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
             }
         }
     }
-    d.find_flag_models();
+    d.flag_models = d.find_models(13);
+    const auto throw_models = d.find_models(20);
+    if (!throw_models.empty()) {
+        const auto layouts = prop_layout(root, throw_models);
+        for (const auto model : throw_models) {
+            auto& centres = d.throw_centres[model];
+            for (const auto& object : layouts.at(model))
+                centres.push_back(object.has_box ? transform_point(map_transform(object.rest), object.box.center())
+                                                 : Vec3{});
+        }
+    }
     d.paths = spline_paths(root);
     d.host_active.resize(rows.size());
     d.clips = PropClips::load(root);
@@ -1256,6 +1325,15 @@ void WorldLogic::tick(double seconds, double speed, std::span<const Vec3> observ
             d.update_material(i);
             if (p.flip->expired())
                 d.finish(i);
+        } else if (p.pieces) {
+            p.pieces->step(seconds);
+            d.update_motion(i);
+            if (p.pieces->expired()) {
+                d.destroy(i, false);
+                d.properties[i].kind = 5;
+                d.properties[i].mode = 4;
+                d.flags[i] = 0;
+            }
         } else if (p.animation) {
             p.animation->step(seconds);
             d.update_motion(i);
@@ -1353,12 +1431,13 @@ std::optional<std::pair<Vec3, Vec3>> WorldLogic::teleport_destination(std::size_
                      normalized(project(forward, {0, 1, 0}), {0, 0, -1})};
 }
 
-void WorldLogic::contact(std::size_t instance, double speed, bool human, double force) {
+void WorldLogic::contact(std::size_t instance, double speed, bool human, double force, Vec3 direction) {
     auto& d = *data_;
-    if (!std::isfinite(speed) || speed < 0 || !std::isfinite(force) || force < 0 || force > 1e9)
+    if (!std::isfinite(speed) || speed < 0 || !std::isfinite(force) || force < 0 || force > 1e9 || !finite(direction))
         throw std::invalid_argument("Invalid world contact");
     if (instance >= d.hosts.size() || !(d.flags[instance] & WorldCollide))
         return;
+    d.hosts[instance].impact = normalized(direction, {});
     if (d.properties[instance].fragile) {
         d.properties[instance].fragile->hit(force);
         if (d.properties[instance].fragile->take_trigger()) {
@@ -1378,7 +1457,7 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
     const auto slot = d.hosts[instance].slot;
     if (slot < d.slots.size()) {
         d.cooldowns[instance] = d.properties[instance].debounce;
-        d.enqueue(d.slots[slot].chains[1], instance, true, human, true);
+        d.enqueue(d.slots[slot].chains[1], instance, true, human, true, {}, false, d.hosts[instance].impact);
         d.drain(speed);
         d.cooldowns[instance] = std::max(d.cooldowns[instance], d.properties[instance].debounce);
         if (d.properties[instance].fragile) {

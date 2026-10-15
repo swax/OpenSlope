@@ -485,6 +485,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         blend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
         blend.alphaBlendOp = VK_BLEND_OP_ADD;
+        depth_state.depthWriteEnable = VK_FALSE;
         blend_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &blend_pipeline_);
     }
     VkResult sprite_result = blend_result;
