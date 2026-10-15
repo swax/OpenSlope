@@ -294,7 +294,8 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual("binary", repo_hygiene.classify("Trailmap/research/shot.png"))
 
     def test_git_metadata_and_submodules_do_not_trip_the_type_gate(self):
-        for path in (".gitattributes", ".gitmodules", ".gitignore", "Snowknife/SSX-Library", "Slopesmith/.nvmrc"):
+        for path in (".gitattributes", ".gitmodules", ".gitignore", "Snowknife/SSX-Library", "Slopesmith/.nvmrc",
+                     "Native/.clang-format"):
             self.assertNotEqual("unclassified", repo_hygiene.classify(path), path)
         self.assertEqual([], repo_hygiene.scan_unclassified([".gitattributes", "Snowknife/SSX-Library"]))
 

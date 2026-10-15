@@ -295,6 +295,21 @@ python Native/tests/desktop_replay_test.py temp/native/Release/openslope_player.
 
 The bounded replay interface and its limits are described in [desktop controls](docs/desktop-controls.md).
 
+## Formatting
+
+`Native/.clang-format` sets the C++ style. It is pinned to clang-format 23.1.3, because other
+versions can format slightly differently:
+
+```powershell
+uv tool install clang-format==23.1.3
+```
+
+`git clang-format` formats only the lines changed since `HEAD`. To reformat every native source:
+
+```powershell
+clang-format -i (git ls-files 'Native/src/*.?pp' 'Native/include/*.hpp' 'Native/tests/*.?pp')
+```
+
 ## Specification alignment
 
 Trailmap's clean behavioral chapter bodies are the implementation authority. The tracked

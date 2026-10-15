@@ -137,7 +137,8 @@ GOVERNANCE_BASENAMES = {
 # Dotfiles carry their name in place of an extension -- pathlib reports no suffix for
 # `.nvmrc` -- so the ones that are ordinary text are matched by name instead.
 # `.editorconfig` is the editor-settings INI (Snowknife/.editorconfig): plain text, scanned like source.
-TEXT_BASENAMES = {".editorconfig", ".nvmrc"}
+# `.clang-format` is the C++ formatter's YAML settings (Native/.clang-format), read the same way.
+TEXT_BASENAMES = {".clang-format", ".editorconfig", ".nvmrc"}
 
 # Submodules. `git ls-files` reports the gitlink as a path, but there is no file there
 # to scan or to hash; the snapshot stages it separately by commit id.
