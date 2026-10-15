@@ -113,3 +113,9 @@ The 2026-10-15 effects audit confirms actual hydrant, trash-can and shatter
 chains while identifying ordinary breakable respawn, ambient voice selection,
 fence flex and in-world screen video as outstanding. See `effects-coverage.md`
 for the coverage table, current checks and validation limits.
+
+Build 0.52 makes the Quest launch panel course-first, adds clear ISO/custom-map
+onboarding and hides optional settings/folder details behind labelled controls.
+It adds scalable text, 60 dp targets, focus/hover states and accessible status,
+with on-device empty/library/error/cancel and larger-text checks. See
+`quest-launcher.md`; immersive UI and wider effects parity remain separate work.

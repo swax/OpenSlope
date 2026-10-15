@@ -20,6 +20,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
         try { return method.invoke(activity, values); } catch (InvocationTargetException e) { throw new IOException(e.getCause().getMessage(), e.getCause()); }
     }
     @Override public void onStart() {
+        if(arguments!=null&&"true".equals(arguments.getString("launcher"))){LauncherUiChecks.run(this);return;}
         if(arguments!=null&&"true".equals(arguments.getString("lifecycle"))){NativeVrLifecycle.run(this);return;}
         if(arguments!=null&&"true".equals(arguments.getString("vr"))){NativeVrSmoke.run(this,arguments);return;}
         Bundle results = new Bundle(); LauncherActivity activity = null; File temporary = null; int code=Activity.RESULT_OK;

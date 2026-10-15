@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="launcher_background">#121A20</color>
+    <color name="launcher_surface">#1D2A33</color>
+    <color name="launcher_action">#293D49</color>
+    <color name="launcher_hover">#385465</color>
+    <color name="launcher_border">#7E96A3</color>
+    <color name="launcher_text">#EAF0F3</color>
+    <color name="launcher_secondary">#BECDD5</color>
+    <color name="launcher_accent">#83DBCE</color>
+    <color name="launcher_accent_hover">#A5EADD</color>
+    <color name="launcher_ink">#142B30</color>
+    <color name="launcher_disabled">#23313A</color>
+    <color name="launcher_disabled_text">#93A5AF</color>
+    <color name="launcher_warning">#FFD39B</color>
+    <style name="Theme.OpenSlope.Launcher" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:windowBackground">@color/launcher_background</item>
+        <item name="android:colorBackground">@color/launcher_background</item>
+        <item name="android:colorAccent">@color/launcher_accent</item>
+        <item name="android:textColorPrimary">@color/launcher_text</item>
+        <item name="android:textColorSecondary">@color/launcher_secondary</item>
+        <item name="android:colorControlNormal">@color/launcher_secondary</item>
+        <item name="android:colorControlActivated">@color/launcher_accent</item>
+        <item name="android:colorButtonNormal">@color/launcher_action</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/launcher_background</item>
+        <item name="android:navigationBarColor">@color/launcher_background</item>
+        <item name="android:listPreferredItemHeightSmall">60dp</item>
+        <item name="android:listPreferredItemHeight">60dp</item>
+    </style>
+    <item name="launcher_root" type="id" />
+    <item name="launcher_title" type="id" />
+    <item name="launcher_courses" type="id" />
+    <item name="launcher_mode" type="id" />
+    <item name="launcher_scale" type="id" />
+    <item name="launcher_antialiasing" type="id" />
+    <item name="launcher_steering" type="id" />
+    <item name="launcher_status" type="id" />
+    <item name="launcher_import" type="id" />
+    <item name="launcher_select_all" type="id" />
+    <item name="launcher_folder" type="id" />
+    <item name="launcher_settings" type="id" />
+    <item name="launcher_help" type="id" />
+    <item name="launcher_details" type="id" />
+    <item name="launcher_cancel" type="id" />
+    <item name="launcher_refresh" type="id" />
+    <item name="launcher_local" type="id" />
+    <item name="launcher_close" type="id" />
+</resources>
