@@ -13,7 +13,8 @@ authored dead-node chain removes draw and collision together. Collected pads
 stay collected across run retries; reopening/configuring the course starts a
 fresh set. This differs intentionally from gem retry behavior. Ownerless graph
 threads cannot grant pads. Human feedback uses MAIN 115/114; AI-owned requests
-omit those chimes. Particle sparkle consumers remain outstanding.
+omit those chimes. Timer-emitter sparkles now use the shared 0.40 particle path;
+see world-particles.md for scope and remaining particle consumers.
 
 Property 7 drives the positive deficit along its normalized world-space axis:
 `velocity += axis * max(0, target - dot(velocity, axis)) * rate * dt`.

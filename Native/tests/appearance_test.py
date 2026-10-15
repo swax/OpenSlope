@@ -35,6 +35,14 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    for name in ('world_particles', 'world_particles_fog'):
+        folder = course(root, name, 'base.png')
+        (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+        (folder / 'Textures/Particles').mkdir()
+        (folder / 'Textures/Particles/part.png').write_bytes(rgba(1, 1, [255, 255, 255, 128]))
+        (folder / 'Textures/Particles/str2.png').write_bytes(rgba(1, 1, [0, 255, 0, 128]))
+        fog = dict(Start=0, End=1, Color=[90, 90, 90]) if name.endswith('_fog') else dict(Enabled=False)
+        (folder / 'World.json').write_text(json.dumps(dict(Schema='openslope-world/v1', Fog=fog)))
     for name in ('sky', 'sky_foreground', 'sky_authored'):
         folder = course(root, name, 'base.png')
         (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [40,80,120,255]))

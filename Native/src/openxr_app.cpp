@@ -936,7 +936,8 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                         player.effects().wake(), player.effects().sheet(), avatar_mesh, player.reset_fade(),
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices());
+                        player.boost_trail_mesh().vertices(),
+                        player.logic().particles(player.frame_alpha(), eye_position));
                     this_render += ms(render_start, Clock::now());
                     const auto& stats = eye.renderer->stats();
                     this_resource_wait += stats.wait_ms;

@@ -42,7 +42,9 @@ particle colour independently of course normalization.
 `openslope-riding-effects/v1`, with `Enabled` and a `Puff` filename in the course's
 Textures folder. An independent optional `Wake` slot selects the carved strip;
 see carved-wake.md. Imports select `particle-part.png` and preserve the bank's
-name→filename map for later consumers. No registration-index mapping is inferred
+name→filename map. Build 0.40 also writes the indexed EmitterSprites array and
+uses the shared registry for older named banks; see world-particles.md. No
+registration-index mapping is inferred
 from directory order. Existing/custom Maps can provide this profile and their own
 PNG. Without a profile or available referenced art, no substitute sprite is drawn.
 The legacy Shared bank is not automatically read by this consumer. Quest SAF

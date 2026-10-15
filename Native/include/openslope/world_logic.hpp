@@ -3,6 +3,7 @@
 #include "collision.hpp"
 #include "course_run.hpp"
 #include "crowd.hpp"
+#include "particles.hpp"
 #include "spline_motion.hpp"
 #include "world_properties.hpp"
 #include <memory>
@@ -37,7 +38,10 @@ public:
                       const LapEntry& lap_entry = {});
     std::size_t forces() const;
     std::optional<std::pair<Vec3, Vec3>> teleport_destination(std::size_t instance, unsigned rider_slot = 0) const;
-    void contact(std::size_t instance, double speed, bool human = true, double force = 1, Vec3 direction = {});
+    void contact(std::size_t instance, double speed, bool human = true, double force = 1, Vec3 direction = {},
+                 std::optional<ParticleContact> particle_contact = {});
+    std::vector<ParticleSprite> particles(double alpha, Vec3 eye) const;
+    std::size_t emitters() const;
     void prepare_bodies(const CollisionWorld& world);
     void step_bodies(double seconds, const Terrain& terrain, const CollisionWorld& world);
     std::optional<CollisionResponse> shove(const WorldContact& contact, Vec3 velocity, Vec3 up);

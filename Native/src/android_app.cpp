@@ -3,11 +3,13 @@
 #include "openslope/audio_scene.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/import.hpp"
+#include "openslope/particles.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/props.hpp"
 #include "openslope/rails.hpp"
 #include "openslope/world.hpp"
 #include "openxr_app.hpp"
+#include <algorithm>
 #include <android/log.h>
 #include <android_native_app_glue.h>
 #include <cerrno>
@@ -169,6 +171,9 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_MapLibrary_
     try {
         const auto root = std::filesystem::path(string_value(env, path));
         auto files = openslope::referenced_images(openslope::Terrain::load(root));
+        for (const auto& name : openslope::particle_textures(root, true))
+            if (!name.empty())
+                files.push_back("Textures/" + name);
         for (const auto& file : openslope::prop_files(root))
             if (file.starts_with("Meshes/"))
                 files.push_back(file);
@@ -177,6 +182,8 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_MapLibrary_
                 files.push_back(file);
         for (const auto& file : openslope::collision_files(root))
             files.push_back(file);
+        std::sort(files.begin(), files.end());
+        files.erase(std::unique(files.begin(), files.end()), files.end());
         const nlohmann::json names = files;
         return env->NewStringUTF(names.dump(-1, ' ', true).c_str());
     } catch (const std::exception& e) {

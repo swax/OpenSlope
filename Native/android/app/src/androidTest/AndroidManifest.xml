@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <receiver android:name="org.openslope.nativeplayer.FixtureBootstrapReceiver" android:exported="true" />
         <provider android:name="org.openslope.nativeplayer.FixtureDocumentsProvider"
             android:authorities="org.openslope.nativeplayer.test.documents" android:exported="true" android:permission="android.permission.MANAGE_DOCUMENTS" android:grantUriPermissions="true">
             <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>

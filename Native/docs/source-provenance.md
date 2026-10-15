@@ -19,6 +19,7 @@ desktop evidence and remaining solver/device limits are explicit in rigid-props.
 
 | Importer part | Implementation authority |
 |---|---|
+| World particles | Clean 150/180/230/400 bodies, the Apache short-identifier particle registry contract and standard affine/billboard/blend identities. Independently authored compact emitter records, seeded sampling, graph/contact lifecycle and Vulkan batches. The registry is independently compared with user-image data and Slopesmith's public API; no other runtime or library implementation is a port input. See world-particles.md for application choices and remaining fidelity/device work. |
 | Primary ISO9660 directory access | [Trailmap: 200-iso]; bounded, seekable document/file reads. |
 | Course events and clocks | Clean 250/390 bodies, standard segment/plane math and the public Slopesmith manifest/checkpoint/lap/clock tests. Independently authored mode datasets, stored horizontal DTF, active-line event crossings, clocks/lap order, bounded portable settings and labelled controller panel. Application gates/tuning and incomplete race systems are explicit in course-runs.md. |
 | Walking and boarding | Independently authored application mode, vector/slide math and solid floor/sphere queries. Slopesmith public walking/coasting tests establish feature inventory; clean 300/340/350/370 retain recovered riding authority. This mode does not claim recovered retail walking behavior; tuning and limits are in boarding.md. |

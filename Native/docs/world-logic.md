@@ -115,9 +115,11 @@ the Quest remains on 0.22 for the user's steering test.
 Build 0.25 adds persistent regions, model-animation ownership, installed-player
 controls and region/node-end continuations. See prop-animations.md for evidence.
 Build 0.27 connects counter/crack deferred triggers and material frame state;
-see deferred-world.md for exact scope. Complete hide/rearm lifetimes, mesh-throw
-and debris, particle effects, remaining
-score/time opcodes and rigid-body movers still need consumers. Detached spline
+see deferred-world.md for exact scope. Mesh-throw debris and supported rigid
+bodies were connected in 0.37/0.38; timer/collision particles and fireworks
+are connected in 0.40, including detached lifetime/region handling and Quest
+asset caching. See shatter.md, rigid-props.md and world-particles.md. Remaining
+hide/rearm behavior, score/time opcodes and broader coupled dynamics still need consumers. Detached spline
 path drawing is now connected; see spline-movers.md. Collected
 gems use clean 390's run-long tombstone; Slopesmith's application pickup grow-back
 and breakable timers are a separate play-profile gap. Full LTG/world-grid import,

@@ -580,7 +580,7 @@ void Player::dispatch_world_contact(const WorldContact& contact, double speed, s
         const bool supported =
             support_normal.has_value() || (rider_.grounded && rider_.ground_instance == contact.instance);
         logic_.contact(contact.instance, speed, true, fragile_contact_cost(normal_speed, normal, supported),
-                       rider_.velocity - contact.surface_velocity);
+                       rider_.velocity - contact.surface_velocity, ParticleContact{contact.point, normal});
         logic_.prepare_bodies(world_);
         apply_world_actions();
     }

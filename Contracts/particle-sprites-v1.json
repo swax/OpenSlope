@@ -1,0 +1,12 @@
+{
+  "schema": "openslope-particle-sprites/v1",
+  "version": 1,
+  "provenance": "Functional registration identifiers, independently read as data from a user-supplied image and checked against clean Trailmap 180. Registration order differs from image-directory order; duplicate entries are intentional.",
+  "sprites": [
+    "part", "snfl", "clod", "spry", "halo", "brk1", "brk2", "brk3",
+    "ndl1", "ndl2", "swd1", "swd2", "swp1", "swp2", "cnf1", "cnf2",
+    "blb1", "blb2", "str1", "str2", "str3", "nois", "strk", "tral",
+    "ex06", "ex07", "ex08", "ex09", "lens", "blnk", "mip1", "mip1",
+    "mip2", "beam", "fog0", "spec", "envr", "exlm"
+  ]
+}

@@ -143,7 +143,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                         player.effects().wake(), player.effects().sheet(), presented, player.reset_fade(),
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices());
+                        player.boost_trail_mesh().vertices(),
+                        player.logic().particles(player.frame_alpha(), chase.pose().eye));
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         gpu += renderer.stats().gpu_ms;
         cull += renderer.stats().cull_ms;
@@ -245,6 +246,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     std::cout << "Dynamic props: " << player.logic().bodies() << " bodies; " << player.logic().sleeping_bodies()
               << " sleeping\n";
     unsigned reported_bodies = 0;
+    std::cout << "World particles: " << player.logic().emitters() << " emitters; " << stats.world_sprites
+              << " drawn sprites; " << stats.particle_draws << " draws\n";
     for (const auto& motion : player.logic().motions())
         if ((player.logic().flags()[motion.instance] & WorldDynamic) && !motion.current.empty() &&
             reported_bodies++ < 8) {
@@ -473,7 +476,8 @@ struct Window {
                         player.effects().sprites(), player.effects().wake(), player.effects().sheet(), presented,
                         player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices());
+                        player.boost_trail_mesh().vertices(),
+                        player.logic().particles(player.frame_alpha(), camera.pose().eye));
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &finished;

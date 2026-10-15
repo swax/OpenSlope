@@ -4,6 +4,7 @@ These Apache-2.0 data files are tracked inputs to the public implementations and
 
 - `ride-v1.json`: shared rider constants and response parameters for Slopesmith and Unity.
 - `external-sound-banks-v1.json`: fixed bank/file identifiers for Slopesmith, Snowknife and Native.
+- `particle-sprites-v1.json`: short sprite registration identifiers, retaining registration order and duplicates.
 - `carving-response-cases-v1.json`: independent reference cases checked by TypeScript and C# tests.
 
 From the repository root, validate the generated views with:
@@ -19,3 +20,13 @@ provenance labels, not links to files shipped by this repository. Required build
 tests, and publication checks use the tracked contracts and `tools/hygiene/`.
 The local emulator harness can regenerate its audio view with the audio generator's
 `--local-autotest` flag. Local specification checks remain available in Trailmap.
+
+Optionally check the particle registration identifiers against a user-supplied image:
+
+```text
+python tools/check-particle-contract.py <user-supplied-iso>
+```
+
+This compares short functional identifiers and preserves duplicate registration slots;
+it does not export addresses, executable code or media. Slopesmith's public preview API
+and Native's consumers validate against the same tracked registry.

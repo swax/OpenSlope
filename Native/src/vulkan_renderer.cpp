@@ -265,6 +265,7 @@ VulkanRenderer::~VulkanRenderer() {
     destroy_buffer(line_vertices_);
     destroy_buffer(visible_indices_);
     destroy_buffer(sprite_vertices_);
+    destroy_buffer(particle_vertices_);
     destroy_buffer(wake_vertices_);
     destroy_buffer(avatar_vertices_);
     destroy_buffer(sheet_vertices_);
@@ -590,7 +591,8 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                             std::span<const WakeVertex> wake, std::span<const SprayVertex> sheet,
                             std::span<const Vertex> avatar, float fade, std::span<const std::uint8_t> instance_flags,
                             std::span<const PropMotion> motions, double alpha, std::span<const PropRouteMotion> routes,
-                            std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost) {
+                            std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost,
+                            std::span<const ParticleSprite> particles) {
     if (boost.size() > 84 || boost.size() % 12)
         throw std::invalid_argument("Boost trail submission exceeds its history bound");
     for (const auto& point : boost) {
@@ -803,6 +805,66 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
             std::memcpy(mapped, sprite_mesh.data(), sprite_mesh.size() * sizeof(Vertex));
             vkUnmapMemory(context_.device, sprite_vertices_.memory);
         }
+    }
+    particle_mesh_.clear();
+    particle_draws_.clear();
+    if (particles.size() > WorldParticles::maximum_sprites)
+        throw std::runtime_error("World particle submission exceeds its bound");
+    std::vector<const ParticleSprite*> ordered;
+    ordered.reserve(particles.size());
+    for (const auto& p : particles) {
+        if (!finite(p.position) || !std::isfinite(p.radius) || p.radius < 0 || p.radius > 100)
+            throw std::runtime_error("Invalid world particle geometry");
+        for (auto c : p.colour)
+            if (!std::isfinite(c) || c < 0 || c > 1)
+                throw std::runtime_error("Invalid world particle colour");
+        if (p.texture < scene_->particle_sets_.size() && scene_->particle_sets_[p.texture] && p.radius > 0 &&
+            p.colour[3] > 0)
+            ordered.push_back(&p);
+    }
+    std::stable_sort(ordered.begin(), ordered.end(), [&](auto a, auto b) {
+        const bool aa = a->blend == ParticleBlend::Additive, ba = b->blend == ParticleBlend::Additive;
+        if (aa != ba)
+            return aa;
+        if (aa)
+            return a->texture < b->texture;
+        return dot(a->position - eye, a->position - eye) > dot(b->position - eye, b->position - eye);
+    });
+    particle_mesh_.reserve(ordered.size() * 6);
+    for (const auto* particle : ordered) {
+        const auto& p = *particle;
+        const auto first = std::uint32_t(particle_mesh_.size());
+        for (const auto uv : std::array<std::array<float, 2>, 6>{{{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}}}) {
+            const bool dark = p.blend == ParticleBlend::Darken;
+            Vertex v{float(p.position.x),    float(p.position.y),    float(p.position.z),
+                     dark ? 0 : p.colour[0], dark ? 0 : p.colour[1], dark ? 0 : p.colour[2]};
+            v.s = uv[0];
+            v.t = uv[1];
+            v.ls = p.radius;
+            v.lx = p.colour[3];
+            particle_mesh_.push_back(v);
+        }
+        if (!particle_draws_.empty() && particle_draws_.back().texture == p.texture &&
+            particle_draws_.back().blend == p.blend)
+            particle_draws_.back().count += 6;
+        else
+            particle_draws_.push_back({first, 6, p.texture, p.blend});
+    }
+    stats_.world_sprites = unsigned(ordered.size());
+    if (!particle_mesh_.empty()) {
+        if (particle_mesh_.size() > particle_capacity_) {
+            destroy_buffer(particle_vertices_);
+            particle_capacity_ =
+                std::min(WorldParticles::maximum_sprites * 6, std::max(particle_mesh_.size(), particle_capacity_ * 2));
+            particle_vertices_ =
+                create_buffer(particle_capacity_ * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, nullptr);
+        }
+        void* mapped;
+        vk_check(vkMapMemory(context_.device, particle_vertices_.memory, 0, particle_mesh_.size() * sizeof(Vertex), 0,
+                             &mapped),
+                 "Map world particles");
+        std::memcpy(mapped, particle_mesh_.data(), particle_mesh_.size() * sizeof(Vertex));
+        vkUnmapMemory(context_.device, particle_vertices_.memory);
     }
     wake_mesh_.clear();
     if (scene_->wake_set_ && !wake.empty()) {
@@ -1184,6 +1246,23 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                                 nullptr);
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         vkCmdDraw(command_, std::uint32_t(sprite_mesh.size()), 1, 0, 0);
+    }
+    if (!particle_mesh_.empty()) {
+        vkCmdBindVertexBuffers(command_, 0, 1, &particle_vertices_.buffer, &offset);
+        push.mvp = camera;
+        push.options[0] = 4;
+        push.options[2] = 0;
+        for (const auto& draw : particle_draws_) {
+            vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              draw.blend == ParticleBlend::Additive ? sprite_pipeline_ : blend_pipeline_);
+            push.options[3] = draw.blend == ParticleBlend::Additive ? 0 : 1;
+            const auto set = scene_->particle_sets_[draw.texture];
+            vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &set, 0, nullptr);
+            vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
+            vkCmdDraw(command_, draw.count, 1, draw.first, 0);
+            ++stats_.particle_draws;
+        }
+        push.options[3] = 0;
     }
     if (!sheet_mesh_.empty()) {
         vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);

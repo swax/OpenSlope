@@ -1,5 +1,6 @@
 #include "openslope/appearance.hpp"
 #include "openslope/import.hpp"
+#include "openslope/particles.hpp"
 #include "openslope/props.hpp"
 #include "openslope/riding_effects.hpp"
 #include "openslope/world.hpp"
@@ -17,8 +18,12 @@ namespace {
 constexpr std::size_t image_limit = 64 * 1024 * 1024, scene_limit = 256 * 1024 * 1024;
 
 std::string diffuse_file(const std::string& name) {
-    if (!valid_map_name(name) || std::filesystem::path(name).filename().string() != name)
+    const std::filesystem::path relative(name);
+    if (name.empty() || name.find('\\') != std::string::npos || relative.is_absolute() || relative.has_root_name())
         throw std::runtime_error("A terrain texture must name a file inside Textures");
+    for (const auto& part : relative)
+        if (!valid_map_name(part.string()))
+            throw std::runtime_error("A terrain texture must stay inside Textures");
     return "Textures/" + name;
 }
 
@@ -64,6 +69,9 @@ std::vector<MeshBatch> terrain_batches(const Terrain& terrain) {
         if (!sprite.empty())
             batches.push_back({0, 0, sprite, -1});
     }
+    for (const auto& name : particle_textures(terrain.map_root()))
+        if (!name.empty())
+            batches.push_back({0, 0, name, -1});
     return batches;
 }
 } // namespace

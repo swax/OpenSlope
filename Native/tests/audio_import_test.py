@@ -124,7 +124,12 @@ def main():
         run(executable, 'extract', image, 'FIXTURE', root / 'Maps')
         output = root / 'Maps/FIXTURE'
         audio = output / 'Audio'
-        assert json.loads((output / 'RidingEffects.json').read_text())['Puff'] == 'particle-part.png'
+        profile = json.loads((output / 'RidingEffects.json').read_text())
+        assert profile['Puff'] == 'particle-part.png'
+        assert len(profile['EmitterSprites']) == 38
+        assert profile['EmitterSprites'][0] == 'particle-part.png'
+        assert profile['EmitterSprites'][3] == 'particle-spry.png'
+        assert profile['EmitterSprites'][23] == 'particle-tral.png'
         assert json.loads((output / 'RidingEffects.json').read_text())['Wake'] == 'particle-tral.png'
         assert (output / 'Textures/particle-tral.png').exists()
         assert json.loads((output / 'RidingEffects.json').read_text())['Sheet'] == 'particle-spry.png'

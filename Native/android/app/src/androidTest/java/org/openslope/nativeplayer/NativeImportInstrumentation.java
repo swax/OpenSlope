@@ -66,10 +66,17 @@ public final class NativeImportInstrumentation extends Instrumentation {
             rejected = false; try { direct.publishImport("Outside staging", extracted, () -> {}); } catch (IOException e) { rejected = true; }
             require(rejected && extracted.isDirectory(), "Local import cannot consume a source outside its staging root");
             Uri tree = DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, "root");
-            // Start our provider as its owner so it can grant the target UID access after APK updates.
-            try(ContentProviderClient provider=getContext().getContentResolver().acquireContentProviderClient(FixtureDocumentsProvider.AUTHORITY)){
-                require(provider!=null,"Fixture document provider starts before target access");
-            }
+            // Instrumentation executes in the target UID; bootstrap in the test APK's owner process.
+            java.util.concurrent.CountDownLatch providerReady = new java.util.concurrent.CountDownLatch(1);
+            final int[] providerCode = {Activity.RESULT_CANCELED}; final String[] providerError = {""};
+            Intent bootstrap = new Intent().setClassName(getContext().getPackageName(), FixtureBootstrapReceiver.class.getName());
+            context.sendOrderedBroadcast(bootstrap, null, new BroadcastReceiver() {
+                @Override public void onReceive(Context received, Intent intent) {
+                    providerCode[0] = getResultCode(); providerError[0] = getResultData(); providerReady.countDown();
+                }
+            }, null, Activity.RESULT_CANCELED, null, null);
+            require(providerReady.await(10, java.util.concurrent.TimeUnit.SECONDS), "Fixture provider bootstrap completes");
+            require(providerCode[0] == Activity.RESULT_OK, "Fixture owner grants its tree after APK updates: " + providerError[0]);
             MapLibrary documents = new MapLibrary(context.getContentResolver(), local, tree);
             String name = "Authored " + UUID.randomUUID(); documents.publish(name, extracted, () -> {});
             MapLibrary.Entry selected = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(name)) selected = row;
@@ -101,6 +108,25 @@ public final class NativeImportInstrumentation extends Instrumentation {
                 require(new File(prepared, relative).isFile(), "SAF play cache includes " + relative);
             }
             require(!new File(prepared, "Source").exists(), "Play cache excludes unreferenced import sidecars");
+            File authoredParticles = new File(temporary, "authored-particles");
+            require(authoredParticles.mkdir(), "Create an authored particle map without ISO metadata");
+            JSONObject authoredPatches = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(extracted, "Patches.json").toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            JSONArray authoredRows = authoredPatches.getJSONArray("Patches");
+            for (int i = 0; i < authoredRows.length(); ++i) {
+                authoredRows.getJSONObject(i).put("TexturePath", "").put("LightmapID", -1).put("LightMapPoint", new JSONArray("[0,0,0,0]"));
+            }
+            java.nio.file.Files.write(new File(authoredParticles, "Patches.json").toPath(), authoredPatches.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            File particleFolder = new File(authoredParticles, "Textures/Particles");
+            require(particleFolder.mkdirs(), "Create nested authored particle art");
+            java.nio.file.Files.copy(new File(extracted, "Textures/particle-part.png").toPath(), new File(particleFolder, "part.png").toPath());
+            String particleName = "Particles " + UUID.randomUUID(); documents.publish(particleName, authoredParticles, () -> {});
+            MapLibrary.Entry particleMap = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(particleName)) particleMap = row;
+            require(particleMap != null, "Discover authored particles through the opaque SAF provider");
+            File particleCache = documents.prepare(particleMap, temporary, () -> {});
+            require(new File(particleCache, "Textures/Particles/part.png").isFile(), "SAF plan copies optional named art before it exists in the play cache");
+            require(!new File(particleCache, "RidingEffects.json").exists() && !new File(particleCache, "Origin.json").exists(), "Authored particle art requires no imported profile or origin");
+            invoke(activity, "nativeValidate", new Class<?>[]{String.class}, particleCache.getAbsolutePath());
+            DocumentsContract.deleteDocument(getContext().getContentResolver(), particleMap.uri);
             int before = temporary.list().length; final int[] playProbes = {0}; rejected = false;
             try { documents.prepare(selected, temporary, () -> { if (++playProbes[0] > 4) throw new IOException("cancelled"); }); } catch (IOException e) { rejected = true; }
             require(rejected && temporary.list().length == before, "Cancelled play preparation removes partial image cache");

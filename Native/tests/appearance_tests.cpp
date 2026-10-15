@@ -59,6 +59,12 @@ int main(int argc, char** argv) {
                 "Missing custom map images fall back without blocking terrain");
         rejects([&] { static_cast<void>(referenced_images(Terrain::load(root / "unsafe"))); },
                 "Reject texture path traversal");
+        const auto particle_files = referenced_images(Terrain::load(root / "world_particles"));
+        require(std::find(particle_files.begin(), particle_files.end(), "Textures/Particles/part.png") !=
+                        particle_files.end() &&
+                    std::find(particle_files.begin(), particle_files.end(), "Textures/Particles/str2.png") !=
+                        particle_files.end(),
+                "World emitter art is included in the portable asset manifest");
         rejects([&] { static_cast<void>(Appearance::load(Terrain::load(root / "corrupt"))); },
                 "Present corrupt map image is an error");
         const auto wake = referenced_images(Terrain::load(root / "wake"));

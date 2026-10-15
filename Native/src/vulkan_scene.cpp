@@ -268,6 +268,10 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     const auto sheet = riding_sprite(source.map_root, "Sheet");
     if (!sheet.empty())
         batches.push_back({0, 0, sheet, -1});
+    const auto particles = particle_textures(source.map_root);
+    for (const auto& name : particles)
+        if (!name.empty())
+            batches.push_back({0, 0, name, -1});
     auto appearance = Appearance::load(source.map_root, batches);
     world_.fit_colours(appearance);
     if (!appearance.missing.empty())
@@ -365,6 +369,10 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         wake_set_ = descriptor(found->second, 1);
     if (const auto found = names.find("Textures/" + sheet); !sheet.empty() && found != names.end())
         sheet_set_ = descriptor(found->second, 1);
+    particle_sets_.resize(particles.size());
+    for (std::size_t i = 0; i < particles.size(); ++i)
+        if (const auto found = names.find("Textures/" + particles[i]); !particles[i].empty() && found != names.end())
+            particle_sets_[i] = descriptor(found->second, 1);
     for (const auto& batch : source.batches) {
         auto diffuse = names.find("Textures/" + batch.texture);
         std::ostringstream page;

@@ -1,5 +1,6 @@
 #pragma once
 #include "openslope/boost_trail.hpp"
+#include "openslope/particles.hpp"
 #include "openslope/props.hpp"
 #include "openslope/riding_effects.hpp"
 #include "openslope/spline_motion.hpp"
@@ -92,6 +93,7 @@ private:
     VkSampler repeat_{}, clamp_{}, sky_sampler_{};
     VkDeviceSize image_bytes_{};
     VkDescriptorSet effect_set_{}, wake_set_{}, sheet_set_{};
+    std::vector<VkDescriptorSet> particle_sets_;
     Image image(const struct RgbaImage& pixels, VkCommandPool pool, bool mipmapped = true);
     Buffer buffer(VkDeviceSize size, VkBufferUsageFlags usage, const void* data);
 };
@@ -101,7 +103,8 @@ public:
     struct Stats {
         unsigned flag_sections{}, flag_draws{}, route_copies{}, route_lines{}, line_draws{}, avatar_triangles{},
             visible_props{}, prop_draws{}, terrain_patches{}, visible_terrain{}, terrain_draws{}, sprites{},
-            wake_segments{}, wake_draws{}, sheet_segments{}, sheet_draws{}, boost_segments{}, boost_draws{};
+            wake_segments{}, wake_draws{}, sheet_segments{}, sheet_draws{}, boost_segments{}, boost_draws{},
+            world_sprites{}, particle_draws{};
         std::uint64_t terrain_indices{}, terrain_total_indices{};
         std::size_t visibility_tests{};
         bool terrain_compacted = false;
@@ -130,7 +133,7 @@ public:
                 std::span<const Vertex> avatar = {}, float fade = 0, std::span<const std::uint8_t> instance_flags = {},
                 std::span<const PropMotion> motions = {}, double alpha = 1,
                 std::span<const PropRouteMotion> routes = {}, std::span<const PropTextureFrame> texture_frames = {},
-                std::span<const BoostTrailVertex> boost = {});
+                std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {});
 
     const Stats& stats() const { return stats_; }
 
@@ -180,6 +183,17 @@ private:
     Buffer sprite_vertices_;
     std::size_t sprite_capacity_{};
     std::vector<Vertex> sprite_mesh_;
+    Buffer particle_vertices_;
+    std::size_t particle_capacity_{};
+    std::vector<Vertex> particle_mesh_;
+
+    struct ParticleDraw {
+        std::uint32_t first{}, count{};
+        unsigned texture{};
+        ParticleBlend blend = ParticleBlend::Additive;
+    };
+
+    std::vector<ParticleDraw> particle_draws_;
     Buffer wake_vertices_;
     std::size_t wake_capacity_{};
     std::vector<Vertex> wake_mesh_;

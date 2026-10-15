@@ -159,11 +159,19 @@ final class MapLibrary {
                 String[] parts = relative.split("/", -1);
                 boolean skyAsset = parts.length == 3 && parts[0].equals("Skybox") && (parts[1].equals("Textures") || parts[1].equals("Meshes"));
                 boolean worldAsset = parts.length == 2 && (parts[0].equals("Textures") || parts[0].equals("Lightmaps") || parts[0].equals("Meshes") || parts[0].equals("Collision"));
-                if (!(skyAsset || worldAsset) || !safeName(parts[parts.length - 1])) throw new IOException("Unsafe map asset reference.");
-                String folderName = skyAsset ? parts[0] + "/" + parts[1] : parts[0], filename = parts[parts.length - 1];
+                boolean nestedTexture = parts.length >= 3 && parts.length <= 6 && parts[0].equals("Textures");
+                if (!(skyAsset || worldAsset || nestedTexture)) throw new IOException("Unsafe map asset reference.");
+                for (String part : parts) if (!safeName(part)) throw new IOException("Unsafe map asset reference.");
+                String folderName = String.join("/", Arrays.copyOf(parts, parts.length - 1)), filename = parts[parts.length - 1];
                 Map<String, Entry> files = folders.get(folderName);
                 if (files == null) {
-                    files = new HashMap<>(); Entry folder = child(skyAsset ? sky.uri : map.uri, skyAsset ? parts[1] : parts[0]);
+                    files = new HashMap<>(); Entry folder = null; Uri parent = map.uri;
+                    for (int part = 0; part < parts.length - 1; ++part) {
+                        cancel.check(); folder = child(parent, parts[part]);
+                        if (folder == null) break;
+                        if (!folder.directory) throw new IOException(folderName + " must be a folder.");
+                        parent = folder.uri;
+                    }
                     if (folder != null) {
                         if (!folder.directory) throw new IOException(folderName + " must be a folder.");
                         for (Entry entry : children(folder.uri)) files.put(entry.name, entry);
@@ -175,7 +183,7 @@ final class MapLibrary {
                 if (image == null) { if (mesh) throw new IOException("Missing map mesh: " + relative); continue; }
                 if (image.directory) throw new IOException("Map asset is a folder: " + relative);
                 File directory = new File(output, folderName);
-                if (!directory.isDirectory() && !directory.mkdir()) throw new IOException("Cannot prepare map images.");
+                if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot prepare map images.");
                 try (InputStream input = resolver.openInputStream(image.uri); OutputStream file = new FileOutputStream(new File(directory, filename))) { long copied = copy(input, file, Math.min(IMAGE_LIMIT, IMAGE_BUDGET - (mesh ? meshes : total)), cancel); if (mesh) meshes += copied; else total += copied; }
             }
             cancel.check();

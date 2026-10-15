@@ -75,11 +75,12 @@ std::vector<unsigned char> capture(VulkanRenderer& renderer, const std::filesyst
                                    std::span<const std::uint8_t> flags = {}, std::span<const PropMotion> motions = {},
                                    double alpha = 1, std::span<const PropRouteMotion> routes = {},
                                    std::span<const PropTextureFrame> texture_frames = {},
-                                   std::span<const BoostTrailVertex> boost = {}) {
+                                   std::span<const BoostTrailVertex> boost = {},
+                                   std::span<const ParticleSprite> particles = {}) {
     auto board = Matrix::identity();
     board.values[12] = 10;
     renderer.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, sprites, wake, sheet, {}, fade,
-                    flags, motions, alpha, routes, texture_frames, boost);
+                    flags, motions, alpha, routes, texture_frames, boost, particles);
     return read_capture(renderer, output);
 }
 
@@ -1043,6 +1044,73 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+        for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB})
+            for (const auto samples : {1u, 4u})
+                for (const auto name : {"world_particles", "world_particles_fog"}) {
+                    auto mesh = Terrain::load(root / name).mesh(4);
+                    VulkanRenderer renderer(context);
+                    renderer.upload(mesh);
+                    Target target{context};
+                    target.create(format);
+                    renderer.targets(std::span(&target.image, 1), format, 128, 128, samples);
+                    const auto render = [&](std::span<const ParticleSprite> particles) {
+                        return capture(renderer, root / "world-particles.ppm", Matrix::identity(), {}, {}, {}, {}, 0,
+                                       {}, {}, 1, {}, {}, {}, particles);
+                    };
+                    const auto baseline = render({});
+                    ParticleSprite p{{0, 0, .25}, .3f, {.8f, .2f, .1f, .5f}, 0, ParticleBlend::Additive};
+                    auto additive = render(std::span(&p, 1));
+                    if (renderer.stats().world_sprites != 1 || renderer.stats().particle_draws != 1)
+                        throw std::runtime_error("World particle was not submitted");
+                    ++checks;
+                    p.blend = ParticleBlend::Alpha;
+                    const auto alpha = render(std::span(&p, 1));
+                    p.blend = ParticleBlend::Darken;
+                    const auto dark = render(std::span(&p, 1));
+                    constexpr unsigned center = (64 * 128 + 64) * 3;
+                    for (unsigned c = 0; c < 3; ++c) {
+                        checks += 2;
+                        if (additive[center + c] <= baseline[center + c] || dark[center + c] >= baseline[center + c])
+                            throw std::runtime_error("Additive/darkening world particle pixels do not composite");
+                        if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+                            const double fade = std::string_view(name).ends_with("_fog") ? .75 : 1.;
+                            const auto opacity = .5 * (128. / 255) * fade;
+                            const auto expected_add = baseline[center + c] + p.colour[c] * 255 * opacity;
+                            const auto expected_alpha =
+                                baseline[center + c] * (1 - opacity) + p.colour[c] * 255 * opacity;
+                            const auto expected_dark = baseline[center + c] * (1 - opacity);
+                            checks += 3;
+                            if (std::abs(additive[center + c] - expected_add) > 2 ||
+                                std::abs(alpha[center + c] - expected_alpha) > 2 ||
+                                std::abs(dark[center + c] - expected_dark) > 2)
+                                throw std::runtime_error(
+                                    "World particle blend or fog law differs from framebuffer pixels");
+                        }
+                    }
+                    p.position.z = .75;
+                    const auto behind = render(std::span(&p, 1));
+                    if (behind != baseline)
+                        throw std::runtime_error("World particles ignore opaque depth");
+                    ++checks;
+                    p.position.z = .25;
+                    p.blend = ParticleBlend::Additive;
+                    p.colour = {0, 0, 0, .5};
+                    if (render(std::span(&p, 1)) != baseline)
+                        throw std::runtime_error("Black additive control changes the frame");
+                    ++checks;
+                    p.texture = 255;
+                    if (render(std::span(&p, 1)) != baseline || renderer.stats().world_sprites != 0)
+                        throw std::runtime_error("Missing sprite selects unrelated art");
+                    ++checks;
+                    const std::array<ParticleSprite, 2> layers{
+                        {{{0, 0, .3}, .3f, {1, 1, 1, .5f}, 19, ParticleBlend::Additive},
+                         {{0, 0, .25}, .3f, {1, 1, 1, .5f}, 0, ParticleBlend::Darken}}};
+                    const auto layered = render(layers);
+                    if (renderer.stats().world_sprites != 2 || renderer.stats().particle_draws != 2 ||
+                        layered == baseline)
+                        throw std::runtime_error("World particle layers do not retain sprite and blend batches");
+                    ++checks;
+                }
         std::cout << "PASS: " << checks << " actual Vulkan texture/lightmap channel checks on UNORM and sRGB targets\n";
         return 0;
     } catch (const std::exception& e) {

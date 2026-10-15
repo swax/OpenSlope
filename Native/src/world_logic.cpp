@@ -115,6 +115,7 @@ struct WorldLogic::Data {
     struct Node {
         int main = 0;
         Json payload, refs;
+        std::optional<ParticleLaw> emitter{};
     };
 
     struct Chain {
@@ -134,6 +135,7 @@ struct WorldLogic::Data {
         bool mode_hidden = false, kill_movers = false;
         Transform inverse = identity_transform();
         Vec3 impact{};
+        std::optional<ParticleContact> contact{};
     };
 
     struct Property {
@@ -166,6 +168,7 @@ struct WorldLogic::Data {
         bool rider = false, human = false, collision = false, setup = false;
         std::vector<std::pair<std::size_t, std::size_t>> ancestry;
         Vec3 impact{};
+        std::optional<ParticleContact> contact{};
     };
 
     std::vector<Chain> chains;
@@ -217,6 +220,8 @@ struct WorldLogic::Data {
     std::map<std::string, std::size_t> graphs, functions, slot_ids, instance_ids, spline_ids, entries;
     std::deque<Thread> ready, waiting;
     std::vector<WorldAction> actions;
+    WorldParticles particles;
+    std::set<std::size_t> particle_hosts;
     std::size_t unknown = 0;
     unsigned budget = 4096;
     RunMode mode = RunMode::Freeride;
@@ -230,12 +235,13 @@ struct WorldLogic::Data {
     }
 
     void enqueue(std::size_t chain, std::size_t instance, bool rider, bool human, bool collision = false,
-                 std::vector<std::pair<std::size_t, std::size_t>> ancestry = {}, bool setup = false, Vec3 impact = {}) {
+                 std::vector<std::pair<std::size_t, std::size_t>> ancestry = {}, bool setup = false, Vec3 impact = {},
+                 std::optional<ParticleContact> contact = {}) {
         if (chain >= chains.size() || ready.size() + waiting.size() >= 1024 || ancestry.size() >= 32 ||
             std::find(ancestry.begin(), ancestry.end(), std::pair{chain, instance}) != ancestry.end())
             return;
         ancestry.push_back({chain, instance});
-        ready.push_back({chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry), impact});
+        ready.push_back({chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry), impact, contact});
         if (collision)
             busy.at(instance) = true;
     }
@@ -376,7 +382,8 @@ struct WorldLogic::Data {
     void trigger(std::size_t host) {
         const auto slot = hosts[host].slot;
         if (slot < slots.size())
-            enqueue(slots[slot].chains[4], host, false, false, false, {}, false, hosts[host].impact);
+            enqueue(slots[slot].chains[4], host, false, false, false, {}, false, hosts[host].impact,
+                    hosts[host].contact);
     }
 
     bool fragile_graph(std::size_t chain, std::size_t host, std::set<std::size_t>& visited) const {
@@ -799,7 +806,8 @@ struct WorldLogic::Data {
                     (property.kind == 5 && property.mode >= 2 && property.mode <= 3))
                     continue;
                 if ((property.kind == 2 && property.time < 0) ||
-                    (property.kind >= 0 && slot < slots.size() && slots[slot].chains[2] != none))
+                    ((property.kind >= 0 || particle_hosts.contains(host)) && slot < slots.size() &&
+                     slots[slot].chains[2] != none))
                     continue;
                 if (slot < slots.size())
                     enqueue(slots[slot].chains[0], host, false, false);
@@ -810,8 +818,11 @@ struct WorldLogic::Data {
                 const auto latch = slot < slots.size() ? slots[slot].chains[2] : none;
                 if (latch != none)
                     enqueue(latch, host, false, false);
-                else
+                else {
+                    particles.kill(host);
+                    particle_hosts.erase(host);
                     destroy(host);
+                }
             }
         }
     }
@@ -922,7 +933,7 @@ struct WorldLogic::Data {
                         break;
                 } else if (node.main == 21 || node.main == 26)
                     enqueue(ref(node.refs, "function", functions), host, node.main == 21 && thread.rider, thread.human,
-                            false, thread.ancestry, thread.setup, thread.impact);
+                            false, thread.ancestry, thread.setup, thread.impact, thread.contact);
                 else if (node.main == 7) {
                     const auto target = ref(node.refs, "instance", instance_ids),
                                graph = ref(node.refs, "effectGraph", graphs);
@@ -931,7 +942,7 @@ struct WorldLogic::Data {
                         continue;
                     if (graph < chains.size())
                         enqueue(graph, target, thread.rider, thread.human, false, thread.ancestry, thread.setup,
-                                thread.impact);
+                                thread.impact, thread.contact);
                     else if (p.contains("Instance") && p.at("Instance").contains("Effect")) {
                         if (p.at("Instance").at("Effect").get<int>() == 0) {
                             destroy(target);
@@ -947,7 +958,25 @@ struct WorldLogic::Data {
                     }
                 } else if (node.main == 2 && host < hosts.size() && p.at("type2").value("SubType", 0) == 1)
                     route_install(host, node);
-                else if ((node.main == 3 || node.main == 9) && host < hosts.size())
+                else if (node.emitter && host < hosts.size()) {
+                    if (hosts[host].mode_hidden)
+                        continue;
+                    hosts[host].kill_movers = false;
+                    auto matrix = inverse_transform(hosts[host].inverse);
+                    if (properties[host].body)
+                        matrix = properties[host].body->pose();
+                    if (const auto mover = movers.find(host); mover != movers.end()) {
+                        const auto& copies = route_draws[mover->second.draw].current;
+                        if (!copies.empty())
+                            matrix = multiply(inverse_transform(hosts[host].inverse), copies.front());
+                    }
+                    const bool collision = p.at("type2").value("SubType", 0) == 2;
+                    particles.spawn(host, *node.emitter, matrix,
+                                    collision
+                                        ? thread.contact.value_or(ParticleContact{hosts[host].position, {0, 1, 0}})
+                                        : std::optional<ParticleContact>{});
+                    particle_hosts.insert(host);
+                } else if ((node.main == 3 || node.main == 9) && host < hosts.size())
                     control(host, p.at(node.main == 3 ? "type3" : "type9"));
                 else if (node.main == 0 && host < hosts.size()) {
                     const auto& property = p.at("type0");
@@ -1000,8 +1029,11 @@ struct WorldLogic::Data {
                             if (operation >= 2) {
                                 if (thread.rider && pad_instances[host])
                                     collected_pads.insert(host);
-                                if (operation == 3)
+                                if (operation == 3) {
                                     hosts[host].kill_movers = true;
+                                    particles.kill(host);
+                                    particle_hosts.erase(host);
+                                }
                                 properties[host].kind = 5;
                                 properties[host].mode = operation;
                                 flags[host] = 0;
@@ -1132,6 +1164,26 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
                 }
                 chain.nodes.push_back(
                     {node.at("mainType"), std::move(payload), node.value("references", Json::object())});
+                auto& decoded = chain.nodes.back();
+                if (decoded.main == 2 && decoded.payload.contains("type2")) {
+                    const auto& type = decoded.payload.at("type2");
+                    const auto sub = type.value("SubType", -1);
+                    if (sub == 0 || sub == 2) {
+                        const auto& fields = type.at(sub == 0 ? "type2Sub0" : "type2Sub2");
+                        std::array<double, 51> values{};
+                        values[3] = 1;
+                        for (unsigned i = 0; i < values.size(); ++i) {
+                            const auto key = "U" + std::to_string(i);
+                            if (!fields.contains(key))
+                                continue;
+                            const auto& value = fields.at(key);
+                            values[i] = sub == 2 && i >= 2 && i <= 48 && value.is_number_integer()
+                                            ? double(std::bit_cast<float>(value.get<std::int32_t>()))
+                                            : value.get<double>();
+                        }
+                        decoded.emitter = ParticleLaw::decode(values);
+                    }
+                }
             }
             d.chains.push_back(std::move(chain));
         }
@@ -1265,6 +1317,8 @@ void WorldLogic::restart(RunMode mode, bool preserve_collected_pads) {
     d.body_hosts.clear();
     d.force_wait_exit.clear();
     d.actions.clear();
+    d.particles.reset();
+    d.particle_hosts.clear();
     d.ready.clear();
     d.waiting.clear();
     d.motions.clear();
@@ -1316,6 +1370,7 @@ void WorldLogic::tick(double seconds, double speed, std::span<const Vec3> observ
             throw std::invalid_argument("Invalid crowd rider activity");
     auto& d = *data_;
     d.budget = 4096;
+    d.particles.step(seconds);
     for (auto& motion : d.motions)
         motion.previous = motion.current;
     d.observe_regions(observers);
@@ -1456,13 +1511,18 @@ std::optional<std::pair<Vec3, Vec3>> WorldLogic::teleport_destination(std::size_
                      normalized(project(forward, {0, 1, 0}), {0, 0, -1})};
 }
 
-void WorldLogic::contact(std::size_t instance, double speed, bool human, double force, Vec3 direction) {
+void WorldLogic::contact(std::size_t instance, double speed, bool human, double force, Vec3 direction,
+                         std::optional<ParticleContact> particle_contact) {
     auto& d = *data_;
     if (!std::isfinite(speed) || speed < 0 || !std::isfinite(force) || force < 0 || force > 1e9 || !finite(direction))
         throw std::invalid_argument("Invalid world contact");
+    if (particle_contact && (!finite(particle_contact->position) || !finite(particle_contact->normal)))
+        throw std::invalid_argument("Invalid world particle contact");
     if (instance >= d.hosts.size() || !(d.flags[instance] & WorldCollide))
         return;
     d.hosts[instance].impact = normalized(direction, {});
+    d.hosts[instance].contact =
+        particle_contact.value_or(ParticleContact{d.hosts[instance].position, normalized(-direction, {0, 1, 0})});
     if (d.properties[instance].roller)
         return;
     if (d.properties[instance].fragile) {
@@ -1484,7 +1544,8 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
     const auto slot = d.hosts[instance].slot;
     if (slot < d.slots.size()) {
         d.cooldowns[instance] = d.properties[instance].debounce;
-        d.enqueue(d.slots[slot].chains[1], instance, true, human, true, {}, false, d.hosts[instance].impact);
+        d.enqueue(d.slots[slot].chains[1], instance, true, human, true, {}, false, d.hosts[instance].impact,
+                  d.hosts[instance].contact);
         d.drain(speed);
         d.cooldowns[instance] = std::max(d.cooldowns[instance], d.properties[instance].debounce);
         if (d.properties[instance].fragile) {
@@ -1584,4 +1645,10 @@ std::size_t WorldLogic::active_regions() const {
 std::size_t WorldLogic::chains() const { return data_->chains.size(); }
 
 std::size_t WorldLogic::unsupported() const { return data_->unknown; }
+
+std::vector<ParticleSprite> WorldLogic::particles(double alpha, Vec3 eye) const {
+    return data_->particles.draw(alpha, eye);
+}
+
+std::size_t WorldLogic::emitters() const { return data_->particles.emitters(); }
 } // namespace openslope

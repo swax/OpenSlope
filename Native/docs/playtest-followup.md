@@ -25,7 +25,10 @@ not replace its broader audio, world, performance and multiplayer requirements.
   remains separate. See rigid-props.md for tuning and solver limits.
 - [x] Desktop menus and HUD leave more of the course visible, with an actual
   16:9 renderer check guarding menu text separation.
-- [ ] Authored fireworks produce visible particles at their live graph locations.
+- [x] Authored fireworks produce visible particles at their live graph locations.
+  Build 0.40 executes the shared emitter law, registration and blend modes,
+  including real GARI triggers and custom-map/Quest asset caching. Worn particle
+  performance remains to be checked; see world-particles.md.
 - [x] W flips forward relative to travel, including switch stance.
 - [x] Desktop click mounts/re-equips and dismounts, with held-click protection.
 - [x] Superman flight matches the public Slopesmith controls, with gravity,

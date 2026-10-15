@@ -1,5 +1,6 @@
 #include "import_internal.hpp"
 #include "openslope/collision.hpp"
+#include "openslope/particles.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/props.hpp"
 #include "openslope/rails.hpp"
@@ -543,6 +544,9 @@ void extract_course(const DiscInput& disc, const std::string& course, const std:
                                 {"Enabled", true},
                                 {"SpriteBank", bank},
                                 {"Profile", "native-riding-effects/v3"}};
+                profile["EmitterSprites"] = Json::array();
+                for (const auto& sprite : particle_sprite_names())
+                    profile["EmitterSprites"].push_back(bank.contains(sprite) ? bank[sprite] : Json(""));
                 for (const auto [sprite, slot] :
                      {std::pair{"part", "Puff"}, std::pair{"tral", "Wake"}, std::pair{"spry", "Sheet"}})
                     if (bank.contains(sprite))
