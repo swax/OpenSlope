@@ -3,32 +3,215 @@
 #include <stdexcept>
 
 namespace {
-using namespace openslope;unsigned checks=0;
-void check(bool value,const char* text){++checks;if(!value)throw std::runtime_error(text);}
-void near(double a,double b,const char* text){check(std::abs(a-b)<1e-8,text);}
-void near(Vec3 a,Vec3 b,const char* text){near(a.x,b.x,text);near(a.y,b.y,text);near(a.z,b.z,text);}
-PropCurveSegment curve(double slope,double constant=0,double start=0,double end=2){return {{0,0,slope,constant},start,end};}
-void curves(){
-    PropObjectMotion object;object.rest=placement({700,800,900},{0,0,std::sin(pi/4),std::cos(pi/4)},{2,3,4});object.animated=true;object.base={100,200,300};object.channels[0]={{{2,3,5,7},0,2}};
-    near(transform_point(object.pose(1),{}),{17,200,300},"absolute polynomial replaces base component and animated rest transform");near(transform_point(object.pose(5),{}),{45,200,300},"curve clamps at its final window");
-    object.channels[0]={curve(100,0,0,1),curve(200,-100,1,2)};near(transform_point(object.pose(1.5),{}).x,200,"piecewise selection uses absolute clip seconds");
-    object.channels[3]={curve(0,90)};object.channels[4]={curve(0,45)};object.channels[5]={curve(0,30)};const auto matrix=object.pose(1);const auto origin=transform_point(matrix,{});const auto expected=rotate(rotate(rotate(Vec3{1,0,0},{1,0,0},pi/2),{0,1,0},pi/4),{0,0,1},pi/6);near(transform_point(matrix,{1,0,0})-origin,expected,"multi-axis channels compose Z then Y then X");
-    PropObjectMotion root;root.rest=placement({1000,0,0},{0,0,0,1},{1,1,1});PropObjectMotion child;child.parent=0;child.animated=true;child.channels[0]={curve(100)};child.channels[4]={curve(0)};PropClips clips({{60,{root,child}}});near(transform_point(clips.sample(0,30)[1],{}),{11,0,0},"mesh-less static parent composes with full animated translation");near(transform_point(clips.delta(0,30)[1],{10,0,0}),{11,0,0},"delta maps baked frame zero to current model pose");
-    child.channels[0]={curve(100,0,0,1),curve(0,0,1,2)};child.channels[2]={curve(0,0,0,1),curve(100,-100,1,2)};PropClips combo({{60,{root,child}}});near(transform_point(combo.sample(0,45,15)[1],{}),{10.5,.5,0},"combo composes a local snapshot and applies static parent once");
-    PropPose lit;const auto identity=identity_transform();for(unsigned i=0;i<16;++i)lit.matrix[i]=float(identity[i]);lit.direction[0]={1,0,0,0};lit.colour[0]={1,.5f,.25f,0};const auto yaw=map_transform(placement({}, {0,0,std::sin(pi/4),std::cos(pi/4)}, {1,1,1}));const auto turned=moved_prop_pose(lit,yaw);const auto dark=prop_light({1,0,0},turned),bright=prop_light({0,-1,0},turned);near(dark[0],0,"animated normal turns away from its model-local key light");near(bright[0],1,"inverse direction transform preserves current normal lighting");near(bright[1],.5,"animated lighting keeps channel amplitude");
-    bool refused=false;root.parent=1;try{PropClips bad({{60,{root,child}}});}catch(const std::runtime_error&){refused=true;}check(refused,"animation hierarchy cycles are rejected");
+using namespace openslope;
+unsigned checks = 0;
+
+void check(bool value, const char* text) {
+    ++checks;
+    if (!value)
+        throw std::runtime_error(text);
 }
-void clocks(){
-    PropPlayLaw law;law.loop=1;PropPlayback wrap(law,60);wrap.step(1);near(wrap.frame(),30,"realtime rate is thirty frames per second");wrap.step(1);near(wrap.frame(),0,"wrap returns to the window start");
-    law.loop=2;PropPlayback ping(law,60);for(const auto expected:{30.,60.,30.,0.}){ping.step(1);near(ping.frame(),expected,"ping-pong visits both endpoints");}
-    law.reverse=true;PropPlayback reverse(law,60);near(reverse.frame(),60,"reverse starts at clip end");reverse.step(1);near(reverse.frame(),30,"reverse moves backwards");law.reverse=false;law.loop=0;PropPlayback once(law,60);once.step(3);near(once.frame(),60,"play-once clamps at final frame");check(once.take_end()&&!once.take_end(),"play-once emits exactly one end request");once.step(3);check(!once.take_end(),"finished clock cannot re-emit end");
-    law.kind=257;law.loop=2;PropPlayback delta(law,30);delta.step(1);near(delta.frame(),0,"delta starts frozen");delta.grant(30);delta.step(1);near(delta.frame(),30,"thirty grant units advance one clip second");near(delta.budget(),0,"delta exhausts its budget");delta.step(1);near(delta.frame(),30,"exhausted clock holds its pose");delta.grant(30);delta.step(1);near(delta.frame(),0,"second grant toggles the kicker back");
-    law.rate=15;PropPlayback slow(law,60);slow.grant(30);slow.step(1);near(slow.frame(),15,"slower law advances half a clip second");near(slow.budget(),.5,"budget is denominated in clip seconds");slow.step(1);near(slow.frame(),30,"slower clock still spends exactly one clip-second grant");slow.hold(.5);slow.grant(30);slow.step(1);near(slow.frame(),37.5,"hold consumes wall time before advancing");slow.seek(12);near(slow.frame(),12,"seek sets clip frame");slow.paused(true);slow.step(1);near(slow.frame(),12,"pause keeps the installed pose");
-    PropPlayLaw empty;empty.start=empty.end=15;PropPlayback no_window(empty,60);check(!no_window.valid(),"zero-length windows play nothing");
-    law={};law.kind=257;PropPlayback gated_once(law,30);gated_once.grant(60);gated_once.step(2);check(!gated_once.take_end(),"a delta player never self-retires at the clip end");
-    law={};law.loop=1;law.random_rate=60;PropPlayback variable(law,120,.5);variable.step(1);near(variable.frame(),45,"random rate lies between the authored bounds");law.random_rate=0;law.random_start=true;PropPlayback phase(law,120,.5);near(phase.frame(),60,"random phase is per playback instance");
-    law={};law.kind=258;law.loop=2;law.end=60;law.combo_start=61;law.combo_last=100;for(const auto end:{-1,0,1}){law.combo_end=end;PropPlayback combo(law,100);combo.step(.5);near(combo.frame(),15,"combo idle advances independently");check(combo.trigger_combo()&&!combo.trigger_combo(),"running combo refuses retrigger");combo.step(.5);near(combo.frame(),76,"combo window advances from authored start");near(*combo.basis(),15,"combo retains idle snapshot");combo.step(2);near(combo.frame(),end<0?100:15,"end sign selects combo or idle hold");check(bool(combo.basis())==(end<0),"only held combo retains its basis");check(combo.trigger_combo()==(end==0),"only resumed combo can re-arm");}
+
+void near(double a, double b, const char* text) { check(std::abs(a - b) < 1e-8, text); }
+
+void near(Vec3 a, Vec3 b, const char* text) {
+    near(a.x, b.x, text);
+    near(a.y, b.y, text);
+    near(a.z, b.z, text);
 }
-void courses(const std::filesystem::path& maps){unsigned courses=0,models=0;for(const auto& entry:std::filesystem::directory_iterator(maps))if(entry.is_directory()&&std::filesystem::exists(entry.path()/"Models.json")){const auto clips=PropClips::load(entry.path());for(std::size_t m=0;m<clips.models();++m)if(clips.frames(m)>0){for(const auto frame:{0.,clips.frames(m)*.5,clips.frames(m)})for(const auto& pose:clips.delta(m,frame))for(const auto value:pose)check(std::isfinite(value),"owned animation samples remain finite");++models;}++courses;}check(courses==11&&models>0,"all eleven course animation tables sample");std::cout<<"Owned model animations: "<<models<<" animated models across "<<courses<<" courses\n";}
+
+PropCurveSegment curve(double slope, double constant = 0, double start = 0, double end = 2) {
+    return {{0, 0, slope, constant}, start, end};
 }
-int main(int argc,char** argv){try{curves();clocks();if(argc==2)courses(argv[1]);std::cout<<"PASS: "<<checks<<" cubic model, hierarchy, clip law, budget, combo and lifecycle checks\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
+
+void curves() {
+    PropObjectMotion object;
+    object.rest = placement({700, 800, 900}, {0, 0, std::sin(pi / 4), std::cos(pi / 4)}, {2, 3, 4});
+    object.animated = true;
+    object.base = {100, 200, 300};
+    object.channels[0] = {{{2, 3, 5, 7}, 0, 2}};
+    near(transform_point(object.pose(1), {}), {17, 200, 300},
+         "absolute polynomial replaces base component and animated rest transform");
+    near(transform_point(object.pose(5), {}), {45, 200, 300}, "curve clamps at its final window");
+    object.channels[0] = {curve(100, 0, 0, 1), curve(200, -100, 1, 2)};
+    near(transform_point(object.pose(1.5), {}).x, 200, "piecewise selection uses absolute clip seconds");
+    object.channels[3] = {curve(0, 90)};
+    object.channels[4] = {curve(0, 45)};
+    object.channels[5] = {curve(0, 30)};
+    const auto matrix = object.pose(1);
+    const auto origin = transform_point(matrix, {});
+    const auto expected =
+        rotate(rotate(rotate(Vec3{1, 0, 0}, {1, 0, 0}, pi / 2), {0, 1, 0}, pi / 4), {0, 0, 1}, pi / 6);
+    near(transform_point(matrix, {1, 0, 0}) - origin, expected, "multi-axis channels compose Z then Y then X");
+    PropObjectMotion root;
+    root.rest = placement({1000, 0, 0}, {0, 0, 0, 1}, {1, 1, 1});
+    PropObjectMotion child;
+    child.parent = 0;
+    child.animated = true;
+    child.channels[0] = {curve(100)};
+    child.channels[4] = {curve(0)};
+    PropClips clips({{60, {root, child}}});
+    near(transform_point(clips.sample(0, 30)[1], {}), {11, 0, 0},
+         "mesh-less static parent composes with full animated translation");
+    near(transform_point(clips.delta(0, 30)[1], {10, 0, 0}), {11, 0, 0},
+         "delta maps baked frame zero to current model pose");
+    child.channels[0] = {curve(100, 0, 0, 1), curve(0, 0, 1, 2)};
+    child.channels[2] = {curve(0, 0, 0, 1), curve(100, -100, 1, 2)};
+    PropClips combo({{60, {root, child}}});
+    near(transform_point(combo.sample(0, 45, 15)[1], {}), {10.5, .5, 0},
+         "combo composes a local snapshot and applies static parent once");
+    PropPose lit;
+    const auto identity = identity_transform();
+    for (unsigned i = 0; i < 16; ++i)
+        lit.matrix[i] = float(identity[i]);
+    lit.direction[0] = {1, 0, 0, 0};
+    lit.colour[0] = {1, .5f, .25f, 0};
+    const auto yaw = map_transform(placement({}, {0, 0, std::sin(pi / 4), std::cos(pi / 4)}, {1, 1, 1}));
+    const auto turned = moved_prop_pose(lit, yaw);
+    const auto dark = prop_light({1, 0, 0}, turned), bright = prop_light({0, -1, 0}, turned);
+    near(dark[0], 0, "animated normal turns away from its model-local key light");
+    near(bright[0], 1, "inverse direction transform preserves current normal lighting");
+    near(bright[1], .5, "animated lighting keeps channel amplitude");
+    bool refused = false;
+    root.parent = 1;
+    try {
+        PropClips bad({{60, {root, child}}});
+    } catch (const std::runtime_error&) {
+        refused = true;
+    }
+    check(refused, "animation hierarchy cycles are rejected");
+}
+
+void clocks() {
+    PropPlayLaw law;
+    law.loop = 1;
+    PropPlayback wrap(law, 60);
+    wrap.step(1);
+    near(wrap.frame(), 30, "realtime rate is thirty frames per second");
+    wrap.step(1);
+    near(wrap.frame(), 0, "wrap returns to the window start");
+    law.loop = 2;
+    PropPlayback ping(law, 60);
+    for (const auto expected : {30., 60., 30., 0.}) {
+        ping.step(1);
+        near(ping.frame(), expected, "ping-pong visits both endpoints");
+    }
+    law.reverse = true;
+    PropPlayback reverse(law, 60);
+    near(reverse.frame(), 60, "reverse starts at clip end");
+    reverse.step(1);
+    near(reverse.frame(), 30, "reverse moves backwards");
+    law.reverse = false;
+    law.loop = 0;
+    PropPlayback once(law, 60);
+    once.step(3);
+    near(once.frame(), 60, "play-once clamps at final frame");
+    check(once.take_end() && !once.take_end(), "play-once emits exactly one end request");
+    once.step(3);
+    check(!once.take_end(), "finished clock cannot re-emit end");
+    law.kind = 257;
+    law.loop = 2;
+    PropPlayback delta(law, 30);
+    delta.step(1);
+    near(delta.frame(), 0, "delta starts frozen");
+    delta.grant(30);
+    delta.step(1);
+    near(delta.frame(), 30, "thirty grant units advance one clip second");
+    near(delta.budget(), 0, "delta exhausts its budget");
+    delta.step(1);
+    near(delta.frame(), 30, "exhausted clock holds its pose");
+    delta.grant(30);
+    delta.step(1);
+    near(delta.frame(), 0, "second grant toggles the kicker back");
+    law.rate = 15;
+    PropPlayback slow(law, 60);
+    slow.grant(30);
+    slow.step(1);
+    near(slow.frame(), 15, "slower law advances half a clip second");
+    near(slow.budget(), .5, "budget is denominated in clip seconds");
+    slow.step(1);
+    near(slow.frame(), 30, "slower clock still spends exactly one clip-second grant");
+    slow.hold(.5);
+    slow.grant(30);
+    slow.step(1);
+    near(slow.frame(), 37.5, "hold consumes wall time before advancing");
+    slow.seek(12);
+    near(slow.frame(), 12, "seek sets clip frame");
+    slow.paused(true);
+    slow.step(1);
+    near(slow.frame(), 12, "pause keeps the installed pose");
+    PropPlayLaw empty;
+    empty.start = empty.end = 15;
+    PropPlayback no_window(empty, 60);
+    check(!no_window.valid(), "zero-length windows play nothing");
+    law = {};
+    law.kind = 257;
+    PropPlayback gated_once(law, 30);
+    gated_once.grant(60);
+    gated_once.step(2);
+    check(!gated_once.take_end(), "a delta player never self-retires at the clip end");
+    law = {};
+    law.loop = 1;
+    law.random_rate = 60;
+    PropPlayback variable(law, 120, .5);
+    variable.step(1);
+    near(variable.frame(), 45, "random rate lies between the authored bounds");
+    law.random_rate = 0;
+    law.random_start = true;
+    PropPlayback phase(law, 120, .5);
+    near(phase.frame(), 60, "random phase is per playback instance");
+    law = {};
+    law.kind = 258;
+    law.loop = 2;
+    law.end = 60;
+    law.combo_start = 61;
+    law.combo_last = 100;
+    for (const auto end : {-1, 0, 1}) {
+        law.combo_end = end;
+        PropPlayback combo(law, 100);
+        combo.step(.5);
+        near(combo.frame(), 15, "combo idle advances independently");
+        check(combo.trigger_combo() && !combo.trigger_combo(), "running combo refuses retrigger");
+        combo.step(.5);
+        near(combo.frame(), 76, "combo window advances from authored start");
+        near(*combo.basis(), 15, "combo retains idle snapshot");
+        combo.step(2);
+        near(combo.frame(), end < 0 ? 100 : 15, "end sign selects combo or idle hold");
+        check(bool(combo.basis()) == (end < 0), "only held combo retains its basis");
+        check(combo.trigger_combo() == (end == 0), "only resumed combo can re-arm");
+    }
+}
+
+void courses(const std::filesystem::path& maps) {
+    unsigned courses = 0, models = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(maps))
+        if (entry.is_directory() && std::filesystem::exists(entry.path() / "Models.json")) {
+            const auto clips = PropClips::load(entry.path());
+            for (std::size_t m = 0; m < clips.models(); ++m)
+                if (clips.frames(m) > 0) {
+                    for (const auto frame : {0., clips.frames(m) * .5, clips.frames(m)})
+                        for (const auto& pose : clips.delta(m, frame))
+                            for (const auto value : pose)
+                                check(std::isfinite(value), "owned animation samples remain finite");
+                    ++models;
+                }
+            ++courses;
+        }
+    check(courses == 11 && models > 0, "all eleven course animation tables sample");
+    std::cout << "Owned model animations: " << models << " animated models across " << courses << " courses\n";
+}
+} // namespace
+
+int main(int argc, char** argv) {
+    try {
+        curves();
+        clocks();
+        if (argc == 2)
+            courses(argv[1]);
+        std::cout << "PASS: " << checks << " cubic model, hierarchy, clip law, budget, combo and lifecycle checks\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "FAIL: " << e.what() << '\n';
+        return 1;
+    }
+}

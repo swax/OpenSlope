@@ -1,48 +1,456 @@
+#include "openslope/material_animation.hpp"
 #include "openslope/player.hpp"
 #include "openslope/world_properties.hpp"
-#include "openslope/material_animation.hpp"
-#include <nlohmann/json.hpp>
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 
 namespace {
-using namespace openslope;using Json=nlohmann::json;unsigned checks=0;
-void check(bool ok,const char* message){++checks;if(!ok)throw std::runtime_error(message);}
-void near(double a,double b,const char* message){check(std::abs(a-b)<1e-6,message);}
-void write(const std::filesystem::path& root,const char* name,const Json& value){std::ofstream(root/name)<<value;}
-Json node(int main,Json payload=Json::object(),Json refs=Json::object()){return {{"mainType",main},{"payload",payload},{"references",refs}};}
-Json prop(unsigned sub,Json fields){return node(0,{{"type0",{{"SubType",sub},{"type0Sub"+std::to_string(sub),fields}}}});}
-Json stop(unsigned mode){return node(0,{{"type0",{{"SubType",5},{"DeadNodeMode",mode}}}});}
-void laws(){
-    PropChecklist checklist(3);checklist.control(1,1);checklist.control(1,1);check(checklist.remaining()==2&&!checklist.take_trigger(),"duplicate numbered input counts once");checklist.control(2,3);check(checklist.remaining()==2,"ordered input needs its predecessor");checklist.control(2,2);check(checklist.remaining()==1,"ordered input accepts a marked predecessor");checklist.control(3,0);check(checklist.remaining()==0&&checklist.take_trigger()&&!checklist.take_trigger(),"decrement leaves marks alone and emits once");checklist.control(1,9);check(!checklist.take_trigger(),"spent counter stays quiet");PropChecklist empty(0);empty.control(3,0);check(!empty.take_trigger(),"zero-count install is not a triggered transition");
-    FragileProp pane(5,-1);check(pane.hit(1)&&!pane.take_trigger(),"carried arrival cracks without breaking");near(pane.strength(),4,"carried contact price");pane.step(.49);check(!pane.hit(87),"all contacts respect half-second gate");pane.step(.01);check(pane.hit(1),"gate opens at thirty fixed ticks");for(unsigned i=0;i<3;++i){pane.step(.5);pane.hit(1);}check(pane.take_trigger()&&!pane.take_trigger()&&!pane.hit(1),"fifth charge breaks once");FragileProp impact(5,-1);impact.hit(87);check(impact.take_trigger(),"hard impact spends retail pool immediately");FragileProp healing(1000,2);healing.hit(1);healing.step(1);healing.step(1);check(healing.expired()&&!healing.hit(1),"positive lifetime heals by retiring node");near(fragile_contact_cost(7,{0,1,0},false),1,"gentle settling remains carried profile");near(fragile_contact_cost(8,{0,1,0},false),87,"hard normal impact uses representative measured price");near(fragile_contact_cost(4,{1,0,0},false),87,"walking through standing glass is a crossing");near(fragile_contact_cost(.01,normalized(Vec3{0,1,1}),true),1,"fast tangential travel cannot inflate normal contact price");
+using namespace openslope;
+using Json = nlohmann::json;
+unsigned checks = 0;
+
+void check(bool ok, const char* message) {
+    ++checks;
+    if (!ok)
+        throw std::runtime_error(message);
 }
-Json fixture(const std::filesystem::path& root,double strength=5,double lifetime=-1){
-    std::filesystem::create_directories(root/"Meshes");std::filesystem::create_directories(root/"Collision");std::filesystem::create_directories(root/"Textures");const char* mesh="v -10000 -10000 0\nv 10000 -10000 0\nv 10000 10000 0\nv -10000 10000 0\nf 1 2 3\nf 1 3 4\n";std::ofstream(root/"Meshes/pane.obj")<<mesh;std::ofstream(root/"Collision/pane.obj")<<mesh;
-    Json points=Json::array();for(unsigned u=0;u<4;++u)for(unsigned v=0;v<4;++v)points.push_back({u*200000./3-100000,v*200000./3-100000,-1000});write(root,"Patches.json",{{"Patches",Json::array({{{"PatchName","Floor below fragile pane"},{"SurfaceType",1},{"TrickOnlyPatch",false},{"Points",points},{"UVPoints",{{0,0},{0,1},{1,0},{1,1}}},{"TexturePath",""},{"LightmapID",-1},{"LightMapPoint",{0,0,0,0}}}})}});
-    write(root,"Models.json",{{"Models",Json::array({{{"ModelObjects",Json::array({{{"ParentID",-1},{"MeshData",Json::array({{{"MeshPath","pane.obj"},{"MaterialID",0}}})}}})}}})}});write(root,"Materials.json",{{"Materials",Json::array({{{"TexturePath","plain.png"},{"TextureFlipbook",{"plain.png","cracked.png"}},{"UnknownInt18",1<<17}}})}});
-    Json rows=Json::array();for(unsigned i=0;i<3;++i)rows.push_back({{"ModelID",0},{"Location",{i==2?30000:0,0,100}},{"Visable",i!=1},{"PlayerCollision",i!=1},{"PlayerBounce",false},{"U0",0},{"CollsionMode",1},{"CollsionModelPaths",{"pane.obj"}},{"SurfaceType",-1},{"EffectSlotIndex",i==1?-1:0}});write(root,"Instances.json",{{"Instances",rows}});
-    Json doc={{"kind","openslope-effects"},{"version",1},{"graphs",Json::array({{{"id","crack"},{"nodes",Json::array({prop(14,{{"U0",lifetime},{"U1",strength}}),node(8,{{"SoundPlay",65}})})}},{{"id","shatter"},{"nodes",Json::array({node(8,{{"SoundPlay",64}}),stop(4),node(7,{{"Instance",{{"Effect",1}}}},{{"instance","instance:1"}})})}}})},{"slots",Json::array({{{"id","pane"},{"circumstances",{{"collision","crack"},{"trigger","shatter"}}}}})},{"functions",Json::array()},{"instances",Json::array()},{"objectProperties",Json::array()},{"splines",Json::array()}};write(root,"Effects.json",doc);return doc;
+
+void near(double a, double b, const char* message) { check(std::abs(a - b) < 1e-6, message); }
+
+void write(const std::filesystem::path& root, const char* name, const Json& value) {
+    std::ofstream(root / name) << value;
 }
-void graphs(const std::filesystem::path& root){
-    fixture(root);auto logic=WorldLogic::load(root);check((logic.flags()[0]&WorldFragile)&&!(logic.flags()[1]&WorldFragile),"only authored crack receivers gain fragile support");logic.contact(0,8);auto actions=logic.take_actions();check(actions.size()==1&&actions[0].value==65,"initial crack sound runs once");check(logic.texture_frames().size()==1&&logic.texture_frames()[0].instance==0&&logic.texture_frames()[0].frame==1,"crack paints a private host frame, not shared-model sibling");for(unsigned i=0;i<29;++i){logic.tick(1./60);logic.contact(0,8);}check(logic.flags()[0]&WorldDraw,"standing pane survives closed contact gate");for(unsigned i=0;i<92;++i){logic.tick(1./60);logic.contact(0,8);}actions=logic.take_actions();check(logic.flags()[0]==0&&(logic.flags()[1]&WorldDraw),"fifth accepted contact fires own trigger, hides pane and reveals twin");check(actions.size()==1&&actions[0].value==64,"shatter sound fires exactly once");check(logic.texture_frames().empty(),"destroying crack removes private frame state");logic.contact(0,8);check(logic.take_actions().empty(),"tombstoned source cannot shatter twice");logic.restart(RunMode::Freeride);logic.contact(0,12,true,87);check(logic.flags()[0]==0,"hard contact breaks freshly restarted pane at once");
-    fixture(root,1000,.5);logic=WorldLogic::load(root);logic.contact(0,8);logic.take_actions();logic.tick(.5);check(logic.texture_frames().empty()&&(logic.flags()[0]&WorldCollide),"lifetime teardown restores intact appearance/support");logic.contact(0,8);check(logic.take_actions().size()==1,"healed pane can crack as fresh node");
+
+Json node(int main, Json payload = Json::object(), Json refs = Json::object()) {
+    return {{"mainType", main}, {"payload", payload}, {"references", refs}};
 }
-void counter_graph(const std::filesystem::path& root){
-    fixture(root);Json doc={{"kind","openslope-effects"},{"version",1},{"graphs",Json::array()},{"slots",Json::array()},{"functions",Json::array()},{"instances",Json::array()},{"objectProperties",Json::array()},{"splines",Json::array()}};Json install=node(0,{{"type0",{{"SubType",6},{"Counter",{{"Count",2},{"U1",-1}}}}}});doc["graphs"].push_back({{"id","install"},{"nodes",Json::array({install})}});doc["graphs"].push_back({{"id","mark"},{"nodes",Json::array({node(3,{{"type3",{{"U0",1},{"U1",2}}}})})}});doc["graphs"].push_back({{"id","decrement"},{"nodes",Json::array({node(9,{{"type9",{{"U0",3},{"U1",0}}}})})}});doc["graphs"].push_back({{"id","switch"},{"nodes",Json::array({node(7,Json::object(),{{"instance","instance:0"},{"effectGraph","decrement"}})})}});doc["graphs"].push_back({{"id","trigger"},{"nodes",Json::array({node(8,{{"SoundPlay",42}}),stop(0)})}});doc["slots"].push_back({{"id","counter"},{"circumstances",{{"persistent","install"},{"collision","mark"},{"trigger","trigger"}}}});doc["slots"].push_back({{"id","switch"},{"circumstances",{{"collision","switch"}}}});std::ifstream input(root/"Instances.json");Json rows;input>>rows;input.close();rows["Instances"][2]["EffectSlotIndex"]=1;write(root,"Instances.json",rows);write(root,"Effects.json",doc);auto logic=WorldLogic::load(root);const std::array<Vec3,1> observer{{{0,0,0}}};logic.contact(0,1);check(logic.take_actions().empty(),"mark on a missing counter cannot fire trigger");logic.tick(0,0,observer);for(unsigned i=0;i<8;++i)logic.contact(0,1);check(logic.take_actions().empty(),"repeated real marks cannot finish two-input counter");logic.contact(2,1);check(logic.take_actions().empty(),"counter completion waits for next update");logic.tick(0);const auto actions=logic.take_actions();check(actions.size()==1&&actions[0].value==42&&!actions[0].rider,"deferred trigger runs on own instance without current rider inheritance");logic.tick(.1);check(logic.take_actions().empty(),"self-destruction inside counter trigger is safe and fires once");
+
+Json prop(unsigned sub, Json fields) {
+    return node(0, {{"type0", {{"SubType", sub}, {"type0Sub" + std::to_string(sub), fields}}}});
 }
-void production(const std::filesystem::path& root){
-    fixture(root);Player rider(Terrain::load(root));rider.warp({0,1,0},{0,0,-1});check(rider.rider().grounded&&rider.rider().ground_instance==0,"authored mass-zero glass supports mounted rider before cracking");for(unsigned i=0;i<115;++i)rider.tick({});check((rider.logic().flags()[0]&WorldCollide)&&rider.rider().grounded,"carried rider keeps floor while crack pool drains");for(unsigned i=0;i<35;++i)rider.tick({});check(rider.logic().flags()[0]==0&&rider.rider().position.y<.5,"shared physics falls through actual opened pane");
-    fixture(root);std::ifstream tilted_input(root/"Instances.json");Json tilted;tilted_input>>tilted;tilted_input.close();tilted["Instances"][0]["Rotation"]={std::sin(pi/12),0,0,std::cos(pi/12)};write(root,"Instances.json",tilted);Player slope(Terrain::load(root));slope.warp({0,1,0},{0,-.5,std::sqrt(.75)},{0,-10,20*std::sqrt(.75)});for(unsigned i=0;i<25;++i)slope.tick({});check((slope.logic().flags()[0]&WorldCollide)&&slope.rider().grounded,"normal-relative damage preserves a fast descent along tilted glass");fixture(root);
-    Player impact(Terrain::load(root));impact.warp({0,4,0},{0,0,-1},{0,-12,0});for(unsigned i=0;i<25;++i)impact.tick({});check(impact.logic().flags()[0]==0&&impact.rider().position.y<1,"falling player breaks through rather than landing on glass");
-    Player walker(Terrain::load(root));walker.warp({0,1,0},{0,0,-1});walker.start_on_foot();for(unsigned i=0;i<60;++i)walker.tick({});check((walker.logic().flags()[0]&WorldCollide)&&walker.rider().grounded,"on-foot rider drains same supported crack pool");check(walker.interact_board(),"parked board remains mountable on cracked floor");for(unsigned i=0;i<90;++i)walker.tick({});check(walker.logic().flags()[0]==0&&walker.rider().position.y<.5,"mounting retains damage pool instead of resetting pane");
+
+Json stop(unsigned mode) { return node(0, {{"type0", {{"SubType", 5}, {"DeadNodeMode", mode}}}}); }
+
+void laws() {
+    PropChecklist checklist(3);
+    checklist.control(1, 1);
+    checklist.control(1, 1);
+    check(checklist.remaining() == 2 && !checklist.take_trigger(), "duplicate numbered input counts once");
+    checklist.control(2, 3);
+    check(checklist.remaining() == 2, "ordered input needs its predecessor");
+    checklist.control(2, 2);
+    check(checklist.remaining() == 1, "ordered input accepts a marked predecessor");
+    checklist.control(3, 0);
+    check(checklist.remaining() == 0 && checklist.take_trigger() && !checklist.take_trigger(),
+          "decrement leaves marks alone and emits once");
+    checklist.control(1, 9);
+    check(!checklist.take_trigger(), "spent counter stays quiet");
+    PropChecklist empty(0);
+    empty.control(3, 0);
+    check(!empty.take_trigger(), "zero-count install is not a triggered transition");
+    FragileProp pane(5, -1);
+    check(pane.hit(1) && !pane.take_trigger(), "carried arrival cracks without breaking");
+    near(pane.strength(), 4, "carried contact price");
+    pane.step(.49);
+    check(!pane.hit(87), "all contacts respect half-second gate");
+    pane.step(.01);
+    check(pane.hit(1), "gate opens at thirty fixed ticks");
+    for (unsigned i = 0; i < 3; ++i) {
+        pane.step(.5);
+        pane.hit(1);
+    }
+    check(pane.take_trigger() && !pane.take_trigger() && !pane.hit(1), "fifth charge breaks once");
+    FragileProp impact(5, -1);
+    impact.hit(87);
+    check(impact.take_trigger(), "hard impact spends retail pool immediately");
+    FragileProp healing(1000, 2);
+    healing.hit(1);
+    healing.step(1);
+    healing.step(1);
+    check(healing.expired() && !healing.hit(1), "positive lifetime heals by retiring node");
+    near(fragile_contact_cost(7, {0, 1, 0}, false), 1, "gentle settling remains carried profile");
+    near(fragile_contact_cost(8, {0, 1, 0}, false), 87, "hard normal impact uses representative measured price");
+    near(fragile_contact_cost(4, {1, 0, 0}, false), 87, "walking through standing glass is a crossing");
+    near(fragile_contact_cost(.01, normalized(Vec3{0, 1, 1}), true), 1,
+         "fast tangential travel cannot inflate normal contact price");
 }
-void standing(const std::filesystem::path& root){fixture(root);std::ifstream input(root/"Patches.json");Json floor;input>>floor;input.close();for(auto& point:floor["Patches"][0]["Points"])point[2]=0;write(root,"Patches.json",floor);const char* panel="v 0 -200 40\nv 0 200 40\nv 0 200 90\nv 0 -200 90\nf 1 2 3\nf 1 3 4\n";std::ofstream(root/"Meshes/pane.obj")<<panel;std::ofstream(root/"Collision/pane.obj")<<panel;Player walker(Terrain::load(root));walker.warp({-1,0,0},{1,0,0});walker.start_on_foot();RideInput input_walk;input_walk.walk_forward={1,0,0};input_walk.posture=1;input_walk.boost=true;for(unsigned i=0;i<30;++i)walker.tick(input_walk);check(walker.logic().flags()[0]==0,"walking head/upper-body probes shatter raised glass that feet and low torso miss");}
-void split_surface(const std::filesystem::path& root,bool direct=false){auto document=fixture(root);std::ifstream input(root/"Instances.json");Json rows;input>>rows;input.close();auto& floor=rows["Instances"][1];floor["Visable"]=true;floor["PlayerCollision"]=true;floor["PlayerBounce"]=true;floor["U0"]=1e30;floor["SurfaceType"]=1;floor["Location"]={0,0,120};write(root,"Instances.json",rows);document["graphs"][1]["nodes"].back()=direct?node(7,{{"Instance",{{"Effect",0}}}},{{"instance","instance:1"}}):node(7,Json::object(),{{"instance","instance:1"},{"effectGraph","floor-hide"}});document["graphs"].push_back({{"id","floor-hide"},{"nodes",Json::array({stop(2)})}});write(root,"Effects.json",document);Player player(Terrain::load(root));player.warp({0,1.2,0},{0,0,-1});check(player.rider().ground_instance==1,"solid twin supplies floor above separate damage proxy");player.tick({});const auto painted=player.logic().texture_frames();check(painted.size()==2&&painted[0].instance==0&&painted[1].instance==1,"authored material-matched break group paints both pane and solid surface privately");for(unsigned i=0;i<35;++i)player.tick({});check((player.logic().flags()[1]&WorldCollide)&&player.rider().grounded,"split pane retains support while small carried charges accrue");for(unsigned i=0;i<120;++i)player.tick({});check(!(player.logic().flags()[0]&WorldCollide)&&!(player.logic().flags()[1]&WorldCollide)&&player.rider().position.y<.8,"split pane trigger removes both proxy and real support and rider falls through");}
-void materials(const std::filesystem::path& root){fixture(root);const auto frames=material_flipbooks(root);check(frames[0]==std::vector<std::string>({"plain.png","cracked.png"}),"portable material frame order is retained");const auto refs=prop_files(root);check(std::find(refs.begin(),refs.end(),"Textures/cracked.png")!=refs.end(),"private frame art participates in asset cache references");}
-void owned(const std::filesystem::path& maps,const std::filesystem::path& reference={}){const auto frames=material_flipbooks(maps/"MEGAPLE");check(frames.at(43)==std::vector<std::string>({"0050.png","0069.png"}),"old native glass material recovers exact source flipbook without rewriting Maps");auto logic=WorldLogic::load(maps/"MEGAPLE");unsigned panes=0;for(auto flag:logic.flags())panes+=(flag&WorldFragile)!=0;check(panes==20,"all twenty authored panes become potential contact/support receivers");std::cout<<"Owned glass: "<<panes<<" fragile panes; legacy material 43 frames 0050/0069\n";auto mission=WorldLogic::load(maps/"MERQUER");std::ifstream positions(maps/"MERQUER/Instances.json");Json rows;positions>>rows;const auto p=rows["Instances"][2030]["Location"];const std::array<Vec3,1> view{{{p[0].get<double>()/100,p[2].get<double>()/100,-p[1].get<double>()/100}}};mission.tick(0,0,view);const std::array<unsigned,10> cans{1957,1960,1963,1966,1969,1972,1975,1978,1981,1986};for(unsigned i=0;i<9;++i){mission.contact(cans[i],20);mission.tick(0,0,view);}mission.contact(cans.back(),20);const auto before=mission.unsupported();mission.tick(0,0,view);const auto sign=mission.texture_frames();check(mission.unsupported()==before&&std::any_of(sign.begin(),sign.end(),[](const auto& state){return state.instance==2082&&std::abs(state.uv[1]-.5)<1e-9;}),"ten real garbage-can inputs reach the strike sign UV phase receiver");unsigned courses=0,books=0;for(const auto& course:std::filesystem::directory_iterator(maps))if(course.is_directory()&&std::filesystem::is_regular_file(course.path()/"Materials.json")){const auto frames=material_flipbooks(course.path());for(const auto& book:frames)books+=!book.empty();if(!reference.empty())check(frames==material_flipbooks(reference/course.path().filename()),"independent exported frame lists match source-sidecar recovery");++courses;}check(courses==11&&books>0,"all eleven legacy material tables recover their optional books");std::cout<<"Owned materials: "<<books<<" flipbook materials across "<<courses<<" courses; MERQUER counter continuation reached\n";const auto geometry=Props::load(maps/"MEGAPLE");const auto center=geometry.instances.at(7).bounds.center();Player actual(Terrain::load(maps/"MEGAPLE"));actual.warp(center+Vec3{.7,0,0},{0,0,-1});actual.start_on_foot();std::cout<<"Owned pane initial support "<<(actual.rider().ground_instance?std::to_string(*actual.rider().ground_instance):"terrain/air")<<" at "<<actual.rider().position.x<<','<<actual.rider().position.y<<','<<actual.rider().position.z<<'\n';check(actual.rider().grounded&&actual.rider().ground_instance==6,"real MEGAPLE solid glass twin supports the on-foot rider");actual.tick({});const auto painted=actual.logic().texture_frames();check(std::any_of(painted.begin(),painted.end(),[](const auto& frame){return frame.instance==6&&frame.frame==1;})&&std::any_of(painted.begin(),painted.end(),[](const auto& frame){return frame.instance==7&&frame.frame==1;}),"actual visible glass surface and separate receiver share private cracked frame");const auto level=actual.rider().position.y;for(unsigned i=0;i<155;++i)actual.tick({});check(!(actual.logic().flags()[7]&WorldCollide)&&!(actual.logic().flags()[6]&WorldCollide)&&actual.rider().position.y<level-.2,"real authored pane trigger disarms its native floor and player falls through");std::cout<<"Owned pane final y "<<actual.rider().position.y<<" below "<<level<<'\n';}
+
+Json fixture(const std::filesystem::path& root, double strength = 5, double lifetime = -1) {
+    std::filesystem::create_directories(root / "Meshes");
+    std::filesystem::create_directories(root / "Collision");
+    std::filesystem::create_directories(root / "Textures");
+    const char* mesh = "v -10000 -10000 0\nv 10000 -10000 0\nv 10000 10000 0\nv -10000 10000 0\nf 1 2 3\nf 1 3 4\n";
+    std::ofstream(root / "Meshes/pane.obj") << mesh;
+    std::ofstream(root / "Collision/pane.obj") << mesh;
+    Json points = Json::array();
+    for (unsigned u = 0; u < 4; ++u)
+        for (unsigned v = 0; v < 4; ++v)
+            points.push_back({u * 200000. / 3 - 100000, v * 200000. / 3 - 100000, -1000});
+    write(root, "Patches.json",
+          {{"Patches", Json::array({{{"PatchName", "Floor below fragile pane"},
+                                     {"SurfaceType", 1},
+                                     {"TrickOnlyPatch", false},
+                                     {"Points", points},
+                                     {"UVPoints", {{0, 0}, {0, 1}, {1, 0}, {1, 1}}},
+                                     {"TexturePath", ""},
+                                     {"LightmapID", -1},
+                                     {"LightMapPoint", {0, 0, 0, 0}}}})}});
+    write(root, "Models.json",
+          {{"Models",
+            Json::array(
+                {{{"ModelObjects",
+                   Json::array({{{"ParentID", -1},
+                                 {"MeshData", Json::array({{{"MeshPath", "pane.obj"}, {"MaterialID", 0}}})}}})}}})}});
+    write(root, "Materials.json",
+          {{"Materials", Json::array({{{"TexturePath", "plain.png"},
+                                       {"TextureFlipbook", {"plain.png", "cracked.png"}},
+                                       {"UnknownInt18", 1 << 17}}})}});
+    Json rows = Json::array();
+    for (unsigned i = 0; i < 3; ++i)
+        rows.push_back({{"ModelID", 0},
+                        {"Location", {i == 2 ? 30000 : 0, 0, 100}},
+                        {"Visable", i != 1},
+                        {"PlayerCollision", i != 1},
+                        {"PlayerBounce", false},
+                        {"U0", 0},
+                        {"CollsionMode", 1},
+                        {"CollsionModelPaths", {"pane.obj"}},
+                        {"SurfaceType", -1},
+                        {"EffectSlotIndex", i == 1 ? -1 : 0}});
+    write(root, "Instances.json", {{"Instances", rows}});
+    Json doc = {
+        {"kind", "openslope-effects"},
+        {"version", 1},
+        {"graphs",
+         Json::array(
+             {{{"id", "crack"},
+               {"nodes", Json::array({prop(14, {{"U0", lifetime}, {"U1", strength}}), node(8, {{"SoundPlay", 65}})})}},
+              {{"id", "shatter"},
+               {"nodes", Json::array({node(8, {{"SoundPlay", 64}}), stop(4),
+                                      node(7, {{"Instance", {{"Effect", 1}}}}, {{"instance", "instance:1"}})})}}})},
+        {"slots", Json::array({{{"id", "pane"}, {"circumstances", {{"collision", "crack"}, {"trigger", "shatter"}}}}})},
+        {"functions", Json::array()},
+        {"instances", Json::array()},
+        {"objectProperties", Json::array()},
+        {"splines", Json::array()}};
+    write(root, "Effects.json", doc);
+    return doc;
 }
-int main(int argc,char** argv){try{laws();const auto root=std::filesystem::temp_directory_path()/("openslope-fragile-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directory(root);struct Cleanup{std::filesystem::path path;~Cleanup(){std::error_code error;std::filesystem::remove_all(path,error);}}cleanup{root};materials(root);graphs(root);counter_graph(root);production(root);standing(root);split_surface(root);split_surface(root,true);if(argc>=2)owned(argv[1],argc>=3?std::filesystem::path(argv[2]):std::filesystem::path{});std::cout<<"PASS: "<<checks<<" counter, damage/gate, private-frame, heal/trigger and real player support checks\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
+
+void graphs(const std::filesystem::path& root) {
+    fixture(root);
+    auto logic = WorldLogic::load(root);
+    check((logic.flags()[0] & WorldFragile) && !(logic.flags()[1] & WorldFragile),
+          "only authored crack receivers gain fragile support");
+    logic.contact(0, 8);
+    auto actions = logic.take_actions();
+    check(actions.size() == 1 && actions[0].value == 65, "initial crack sound runs once");
+    check(logic.texture_frames().size() == 1 && logic.texture_frames()[0].instance == 0 &&
+              logic.texture_frames()[0].frame == 1,
+          "crack paints a private host frame, not shared-model sibling");
+    for (unsigned i = 0; i < 29; ++i) {
+        logic.tick(1. / 60);
+        logic.contact(0, 8);
+    }
+    check(logic.flags()[0] & WorldDraw, "standing pane survives closed contact gate");
+    for (unsigned i = 0; i < 92; ++i) {
+        logic.tick(1. / 60);
+        logic.contact(0, 8);
+    }
+    actions = logic.take_actions();
+    check(logic.flags()[0] == 0 && (logic.flags()[1] & WorldDraw),
+          "fifth accepted contact fires own trigger, hides pane and reveals twin");
+    check(actions.size() == 1 && actions[0].value == 64, "shatter sound fires exactly once");
+    check(logic.texture_frames().empty(), "destroying crack removes private frame state");
+    logic.contact(0, 8);
+    check(logic.take_actions().empty(), "tombstoned source cannot shatter twice");
+    logic.restart(RunMode::Freeride);
+    logic.contact(0, 12, true, 87);
+    check(logic.flags()[0] == 0, "hard contact breaks freshly restarted pane at once");
+    fixture(root, 1000, .5);
+    logic = WorldLogic::load(root);
+    logic.contact(0, 8);
+    logic.take_actions();
+    logic.tick(.5);
+    check(logic.texture_frames().empty() && (logic.flags()[0] & WorldCollide),
+          "lifetime teardown restores intact appearance/support");
+    logic.contact(0, 8);
+    check(logic.take_actions().size() == 1, "healed pane can crack as fresh node");
+}
+
+void counter_graph(const std::filesystem::path& root) {
+    fixture(root);
+    Json doc = {{"kind", "openslope-effects"},       {"version", 1},
+                {"graphs", Json::array()},           {"slots", Json::array()},
+                {"functions", Json::array()},        {"instances", Json::array()},
+                {"objectProperties", Json::array()}, {"splines", Json::array()}};
+    Json install = node(0, {{"type0", {{"SubType", 6}, {"Counter", {{"Count", 2}, {"U1", -1}}}}}});
+    doc["graphs"].push_back({{"id", "install"}, {"nodes", Json::array({install})}});
+    doc["graphs"].push_back({{"id", "mark"}, {"nodes", Json::array({node(3, {{"type3", {{"U0", 1}, {"U1", 2}}}})})}});
+    doc["graphs"].push_back(
+        {{"id", "decrement"}, {"nodes", Json::array({node(9, {{"type9", {{"U0", 3}, {"U1", 0}}}})})}});
+    doc["graphs"].push_back(
+        {{"id", "switch"},
+         {"nodes",
+          Json::array({node(7, Json::object(), {{"instance", "instance:0"}, {"effectGraph", "decrement"}})})}});
+    doc["graphs"].push_back({{"id", "trigger"}, {"nodes", Json::array({node(8, {{"SoundPlay", 42}}), stop(0)})}});
+    doc["slots"].push_back(
+        {{"id", "counter"},
+         {"circumstances", {{"persistent", "install"}, {"collision", "mark"}, {"trigger", "trigger"}}}});
+    doc["slots"].push_back({{"id", "switch"}, {"circumstances", {{"collision", "switch"}}}});
+    std::ifstream input(root / "Instances.json");
+    Json rows;
+    input >> rows;
+    input.close();
+    rows["Instances"][2]["EffectSlotIndex"] = 1;
+    write(root, "Instances.json", rows);
+    write(root, "Effects.json", doc);
+    auto logic = WorldLogic::load(root);
+    const std::array<Vec3, 1> observer{{{0, 0, 0}}};
+    logic.contact(0, 1);
+    check(logic.take_actions().empty(), "mark on a missing counter cannot fire trigger");
+    logic.tick(0, 0, observer);
+    for (unsigned i = 0; i < 8; ++i)
+        logic.contact(0, 1);
+    check(logic.take_actions().empty(), "repeated real marks cannot finish two-input counter");
+    logic.contact(2, 1);
+    check(logic.take_actions().empty(), "counter completion waits for next update");
+    logic.tick(0);
+    const auto actions = logic.take_actions();
+    check(actions.size() == 1 && actions[0].value == 42 && !actions[0].rider,
+          "deferred trigger runs on own instance without current rider inheritance");
+    logic.tick(.1);
+    check(logic.take_actions().empty(), "self-destruction inside counter trigger is safe and fires once");
+}
+
+void production(const std::filesystem::path& root) {
+    fixture(root);
+    Player rider(Terrain::load(root));
+    rider.warp({0, 1, 0}, {0, 0, -1});
+    check(rider.rider().grounded && rider.rider().ground_instance == 0,
+          "authored mass-zero glass supports mounted rider before cracking");
+    for (unsigned i = 0; i < 115; ++i)
+        rider.tick({});
+    check((rider.logic().flags()[0] & WorldCollide) && rider.rider().grounded,
+          "carried rider keeps floor while crack pool drains");
+    for (unsigned i = 0; i < 35; ++i)
+        rider.tick({});
+    check(rider.logic().flags()[0] == 0 && rider.rider().position.y < .5,
+          "shared physics falls through actual opened pane");
+    fixture(root);
+    std::ifstream tilted_input(root / "Instances.json");
+    Json tilted;
+    tilted_input >> tilted;
+    tilted_input.close();
+    tilted["Instances"][0]["Rotation"] = {std::sin(pi / 12), 0, 0, std::cos(pi / 12)};
+    write(root, "Instances.json", tilted);
+    Player slope(Terrain::load(root));
+    slope.warp({0, 1, 0}, {0, -.5, std::sqrt(.75)}, {0, -10, 20 * std::sqrt(.75)});
+    for (unsigned i = 0; i < 25; ++i)
+        slope.tick({});
+    check((slope.logic().flags()[0] & WorldCollide) && slope.rider().grounded,
+          "normal-relative damage preserves a fast descent along tilted glass");
+    fixture(root);
+    Player impact(Terrain::load(root));
+    impact.warp({0, 4, 0}, {0, 0, -1}, {0, -12, 0});
+    for (unsigned i = 0; i < 25; ++i)
+        impact.tick({});
+    check(impact.logic().flags()[0] == 0 && impact.rider().position.y < 1,
+          "falling player breaks through rather than landing on glass");
+    Player walker(Terrain::load(root));
+    walker.warp({0, 1, 0}, {0, 0, -1});
+    walker.start_on_foot();
+    for (unsigned i = 0; i < 60; ++i)
+        walker.tick({});
+    check((walker.logic().flags()[0] & WorldCollide) && walker.rider().grounded,
+          "on-foot rider drains same supported crack pool");
+    check(walker.interact_board(), "parked board remains mountable on cracked floor");
+    for (unsigned i = 0; i < 90; ++i)
+        walker.tick({});
+    check(walker.logic().flags()[0] == 0 && walker.rider().position.y < .5,
+          "mounting retains damage pool instead of resetting pane");
+}
+
+void standing(const std::filesystem::path& root) {
+    fixture(root);
+    std::ifstream input(root / "Patches.json");
+    Json floor;
+    input >> floor;
+    input.close();
+    for (auto& point : floor["Patches"][0]["Points"])
+        point[2] = 0;
+    write(root, "Patches.json", floor);
+    const char* panel = "v 0 -200 40\nv 0 200 40\nv 0 200 90\nv 0 -200 90\nf 1 2 3\nf 1 3 4\n";
+    std::ofstream(root / "Meshes/pane.obj") << panel;
+    std::ofstream(root / "Collision/pane.obj") << panel;
+    Player walker(Terrain::load(root));
+    walker.warp({-1, 0, 0}, {1, 0, 0});
+    walker.start_on_foot();
+    RideInput input_walk;
+    input_walk.walk_forward = {1, 0, 0};
+    input_walk.posture = 1;
+    input_walk.boost = true;
+    for (unsigned i = 0; i < 30; ++i)
+        walker.tick(input_walk);
+    check(walker.logic().flags()[0] == 0,
+          "walking head/upper-body probes shatter raised glass that feet and low torso miss");
+}
+
+void split_surface(const std::filesystem::path& root, bool direct = false) {
+    auto document = fixture(root);
+    std::ifstream input(root / "Instances.json");
+    Json rows;
+    input >> rows;
+    input.close();
+    auto& floor = rows["Instances"][1];
+    floor["Visable"] = true;
+    floor["PlayerCollision"] = true;
+    floor["PlayerBounce"] = true;
+    floor["U0"] = 1e30;
+    floor["SurfaceType"] = 1;
+    floor["Location"] = {0, 0, 120};
+    write(root, "Instances.json", rows);
+    document["graphs"][1]["nodes"].back() =
+        direct ? node(7, {{"Instance", {{"Effect", 0}}}}, {{"instance", "instance:1"}})
+               : node(7, Json::object(), {{"instance", "instance:1"}, {"effectGraph", "floor-hide"}});
+    document["graphs"].push_back({{"id", "floor-hide"}, {"nodes", Json::array({stop(2)})}});
+    write(root, "Effects.json", document);
+    Player player(Terrain::load(root));
+    player.warp({0, 1.2, 0}, {0, 0, -1});
+    check(player.rider().ground_instance == 1, "solid twin supplies floor above separate damage proxy");
+    player.tick({});
+    const auto painted = player.logic().texture_frames();
+    check(painted.size() == 2 && painted[0].instance == 0 && painted[1].instance == 1,
+          "authored material-matched break group paints both pane and solid surface privately");
+    for (unsigned i = 0; i < 35; ++i)
+        player.tick({});
+    check((player.logic().flags()[1] & WorldCollide) && player.rider().grounded,
+          "split pane retains support while small carried charges accrue");
+    for (unsigned i = 0; i < 120; ++i)
+        player.tick({});
+    check(!(player.logic().flags()[0] & WorldCollide) && !(player.logic().flags()[1] & WorldCollide) &&
+              player.rider().position.y < .8,
+          "split pane trigger removes both proxy and real support and rider falls through");
+}
+
+void materials(const std::filesystem::path& root) {
+    fixture(root);
+    const auto frames = material_flipbooks(root);
+    check(frames[0] == std::vector<std::string>({"plain.png", "cracked.png"}),
+          "portable material frame order is retained");
+    const auto refs = prop_files(root);
+    check(std::find(refs.begin(), refs.end(), "Textures/cracked.png") != refs.end(),
+          "private frame art participates in asset cache references");
+}
+
+void owned(const std::filesystem::path& maps, const std::filesystem::path& reference = {}) {
+    const auto frames = material_flipbooks(maps / "MEGAPLE");
+    check(frames.at(43) == std::vector<std::string>({"0050.png", "0069.png"}),
+          "old native glass material recovers exact source flipbook without rewriting Maps");
+    auto logic = WorldLogic::load(maps / "MEGAPLE");
+    unsigned panes = 0;
+    for (auto flag : logic.flags())
+        panes += (flag & WorldFragile) != 0;
+    check(panes == 20, "all twenty authored panes become potential contact/support receivers");
+    std::cout << "Owned glass: " << panes << " fragile panes; legacy material 43 frames 0050/0069\n";
+    auto mission = WorldLogic::load(maps / "MERQUER");
+    std::ifstream positions(maps / "MERQUER/Instances.json");
+    Json rows;
+    positions >> rows;
+    const auto p = rows["Instances"][2030]["Location"];
+    const std::array<Vec3, 1> view{{{p[0].get<double>() / 100, p[2].get<double>() / 100, -p[1].get<double>() / 100}}};
+    mission.tick(0, 0, view);
+    const std::array<unsigned, 10> cans{1957, 1960, 1963, 1966, 1969, 1972, 1975, 1978, 1981, 1986};
+    for (unsigned i = 0; i < 9; ++i) {
+        mission.contact(cans[i], 20);
+        mission.tick(0, 0, view);
+    }
+    mission.contact(cans.back(), 20);
+    const auto before = mission.unsupported();
+    mission.tick(0, 0, view);
+    const auto sign = mission.texture_frames();
+    check(
+        mission.unsupported() == before &&
+            std::any_of(sign.begin(), sign.end(),
+                        [](const auto& state) { return state.instance == 2082 && std::abs(state.uv[1] - .5) < 1e-9; }),
+        "ten real garbage-can inputs reach the strike sign UV phase receiver");
+    unsigned courses = 0, books = 0;
+    for (const auto& course : std::filesystem::directory_iterator(maps))
+        if (course.is_directory() && std::filesystem::is_regular_file(course.path() / "Materials.json")) {
+            const auto frames = material_flipbooks(course.path());
+            for (const auto& book : frames)
+                books += !book.empty();
+            if (!reference.empty())
+                check(frames == material_flipbooks(reference / course.path().filename()),
+                      "independent exported frame lists match source-sidecar recovery");
+            ++courses;
+        }
+    check(courses == 11 && books > 0, "all eleven legacy material tables recover their optional books");
+    std::cout << "Owned materials: " << books << " flipbook materials across " << courses
+              << " courses; MERQUER counter continuation reached\n";
+    const auto geometry = Props::load(maps / "MEGAPLE");
+    const auto center = geometry.instances.at(7).bounds.center();
+    Player actual(Terrain::load(maps / "MEGAPLE"));
+    actual.warp(center + Vec3{.7, 0, 0}, {0, 0, -1});
+    actual.start_on_foot();
+    std::cout << "Owned pane initial support "
+              << (actual.rider().ground_instance ? std::to_string(*actual.rider().ground_instance) : "terrain/air")
+              << " at " << actual.rider().position.x << ',' << actual.rider().position.y << ','
+              << actual.rider().position.z << '\n';
+    check(actual.rider().grounded && actual.rider().ground_instance == 6,
+          "real MEGAPLE solid glass twin supports the on-foot rider");
+    actual.tick({});
+    const auto painted = actual.logic().texture_frames();
+    check(std::any_of(painted.begin(), painted.end(),
+                      [](const auto& frame) { return frame.instance == 6 && frame.frame == 1; }) &&
+              std::any_of(painted.begin(), painted.end(),
+                          [](const auto& frame) { return frame.instance == 7 && frame.frame == 1; }),
+          "actual visible glass surface and separate receiver share private cracked frame");
+    const auto level = actual.rider().position.y;
+    for (unsigned i = 0; i < 155; ++i)
+        actual.tick({});
+    check(!(actual.logic().flags()[7] & WorldCollide) && !(actual.logic().flags()[6] & WorldCollide) &&
+              actual.rider().position.y < level - .2,
+          "real authored pane trigger disarms its native floor and player falls through");
+    std::cout << "Owned pane final y " << actual.rider().position.y << " below " << level << '\n';
+}
+} // namespace
+
+int main(int argc, char** argv) {
+    try {
+        laws();
+        const auto root =
+            std::filesystem::temp_directory_path() /
+            ("openslope-fragile-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directory(root);
+
+        struct Cleanup {
+            std::filesystem::path path;
+
+            ~Cleanup() {
+                std::error_code error;
+                std::filesystem::remove_all(path, error);
+            }
+        } cleanup{root};
+
+        materials(root);
+        graphs(root);
+        counter_graph(root);
+        production(root);
+        standing(root);
+        split_surface(root);
+        split_surface(root, true);
+        if (argc >= 2)
+            owned(argv[1], argc >= 3 ? std::filesystem::path(argv[2]) : std::filesystem::path{});
+        std::cout << "PASS: " << checks
+                  << " counter, damage/gate, private-frame, heal/trigger and real player support checks\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "FAIL: " << e.what() << '\n';
+        return 1;
+    }
+}
