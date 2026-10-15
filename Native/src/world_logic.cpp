@@ -4,6 +4,7 @@
 #include "openslope/material_animation.hpp"
 #include "openslope/props.hpp"
 #include "openslope/texture_playback.hpp"
+#include "prop_internal.hpp"
 #include <bit>
 #include <deque>
 #include <fstream>
@@ -986,7 +987,8 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
     if (root.empty() || !std::filesystem::exists(root / "Instances.json"))
         return result;
     auto& d = *result.data_;
-    const auto rows = read(root, "Instances.json").at("Instances");
+    const auto instances = read(root, "Instances.json");
+    const auto& rows = instances.at("Instances");
     if (!rows.is_array() || rows.size() > 100000)
         throw std::runtime_error("Invalid world instance count");
     Json doc;
@@ -1106,7 +1108,7 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
             d.model_materials.push_back(std::move(materials));
         }
     }
-    const auto placements = prop_placements(root);
+    const auto placements = prop_detail::placements(rows);
     for (std::size_t i = 0; i < rows.size(); ++i) {
         const auto& row = rows[i];
         const auto old = row.value("EffectSlotIndex", -1);

@@ -230,6 +230,10 @@ no retail data belongs in the APK or a release.
 
 The same importer can be checked on desktop without a headset:
 
+For repeatable extraction timings, stage profiles, and baseline comparisons, see
+[ISO import performance](docs/import-performance.md). The benchmark also builds
+for ARM64 Android; current measurements and device verification limits are recorded there.
+
 ```powershell
 ./temp/native-core/Release/openslope_import.exe list "discs/SSX Tricky (USA).iso"
 ./temp/native-core/Release/openslope_import.exe extract "discs/SSX Tricky (USA).iso" GARI temp/native-import/Maps

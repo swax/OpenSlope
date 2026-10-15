@@ -53,6 +53,18 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(direct.maps().size() == 1, "Custom maps discovered without ISO selection");
             boolean rejected = false; try { direct.publish("Custom course", extracted, () -> {}); } catch (IOException e) { rejected = true; }
             require(rejected && direct.maps().size() == 1, "Existing local map is preserved");
+            File moved = direct.importPath(context.getCacheDir()); require(!moved.exists() && moved.getParentFile().equals(local), "Local extraction stages on the Maps filesystem");
+            moved.mkdir(); MapLibrary.copyLocal(extracted, moved, () -> {});
+            direct.publishImport("Moved course", moved, () -> {});
+            require(!moved.exists() && new File(local, "Moved course/Patches.json").isFile(), "Owned local import publishes by consuming its staging directory");
+            File interrupted = direct.importPath(context.getCacheDir()); interrupted.mkdir();
+            rejected = false; try { direct.publishImport("Cancelled local", interrupted, () -> { throw new IOException("cancelled"); }); } catch (IOException e) { rejected = true; }
+            require(rejected && interrupted.isDirectory() && !direct.exists("Cancelled local"), "Cancellation before local rename keeps the course unpublished");
+            rejected = false; try { direct.publishImport("Custom course", interrupted, () -> {}); } catch (IOException e) { rejected = true; }
+            require(rejected && interrupted.isDirectory(), "Existing local course does not consume import staging");
+            MapLibrary.deleteLocal(interrupted);
+            rejected = false; try { direct.publishImport("Outside staging", extracted, () -> {}); } catch (IOException e) { rejected = true; }
+            require(rejected && extracted.isDirectory(), "Local import cannot consume a source outside its staging root");
             Uri tree = DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, "root");
             // Start our provider as its owner so it can grant the target UID access after APK updates.
             try(ContentProviderClient provider=getContext().getContentResolver().acquireContentProviderClient(FixtureDocumentsProvider.AUTHORITY)){

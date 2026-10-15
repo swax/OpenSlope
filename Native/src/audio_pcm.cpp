@@ -83,13 +83,12 @@ std::vector<std::int16_t> decode_audio_frames(std::span<const std::uint8_t> sour
                                               AdpcmState& h) {
     if (count > 16 * 1024 * 1024)
         throw std::runtime_error("Decoded audio channel exceeds its limit");
-    std::vector<std::int16_t> output;
-    output.reserve(count);
+    std::vector<std::int16_t> output(count);
     if (codec == 9) {
         if (count > source.size())
             throw std::runtime_error("Truncated signed PCM audio");
         for (std::size_t i = 0; i < count; ++i)
-            output.push_back(std::int16_t(static_cast<std::int8_t>(source[i])) * 256);
+            output[i] = std::int16_t(static_cast<std::int8_t>(source[i])) * 256;
         return output;
     }
     const unsigned stride = codec == 5 ? 16 : codec == 10 ? 15 : 0;
@@ -121,8 +120,8 @@ std::vector<std::int16_t> decode_audio_frames(std::span<const std::uint8_t> sour
             const auto clamped = std::clamp<std::int64_t>(sample, -32768, 32767);
             h.second = h.first;
             h.first = codec == 10 ? clamped : sample;
-            if (output.size() < count)
-                output.push_back(static_cast<std::int16_t>(clamped));
+            if (f * 28 + i < count)
+                output[f * 28 + i] = static_cast<std::int16_t>(clamped);
         }
     }
     return output;
@@ -154,7 +153,10 @@ void write_wave(const std::filesystem::path& path, const PcmClip& clip) {
     for (const auto sample : clip.samples) {
         if (!std::isfinite(sample))
             throw std::runtime_error("Non-finite output audio sample");
-        const auto value = static_cast<std::uint16_t>(std::clamp(std::lround(double(sample) * 32768), -32768l, 32767l));
+        // Saturate before conversion, then round halfway away from zero. This
+        // avoids a scalar lround library call for every imported PCM sample.
+        const auto scaled = std::clamp(double(sample) * 32768, -32768., 32767.);
+        const auto value = static_cast<std::uint16_t>(static_cast<std::int32_t>(scaled + (scaled < 0 ? -.5 : .5)));
         buffer[used++] = char(value & 255);
         buffer[used++] = char(value >> 8);
         if (used == buffer.size()) {

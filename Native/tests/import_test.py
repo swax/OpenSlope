@@ -186,6 +186,17 @@ def main():
         bad = course_members(); bad['../fixture.pbd'] = bad.pop('fixture.pbd')
         image = root / 'unsafe.iso'; image.write_bytes(iso(big(bad)))
         run(executable, 'list', image, succeeds=False)
+        duplicate = course_members()
+        duplicate['other/FIXTURE.SSH'] = duplicate['fixture.ssh']
+        image = root / 'duplicate-leaf.iso'; image.write_bytes(iso(big(duplicate)))
+        run(executable, 'list', image, succeeds=False)
+        if len(sys.argv) > 2:
+            # Course selection must read the index/PBD without fetching unrelated
+            # archive payloads. The benchmark counts actual production reads.
+            files = course_members(); files['unused.bin'] = bytes(4 * 1024 * 1024)
+            image = root / 'discovery-io.iso'; image.write_bytes(iso(big(files)))
+            timing = json.loads(run(Path(sys.argv[2]).resolve(), image))
+            assert timing['courses'] == ['FIXTURE'] and timing['read_bytes'] < 32768
         # Degree-three and mixed monomials distinguish the direct double tensor
         # identity from a staged float calculation, without a decoder reference.
         curved = course_members()
@@ -209,6 +220,16 @@ def main():
         image = root / 'associated-alpha.iso'; image.write_bytes(iso(big(associated)))
         maps = root / 'alpha Maps'; run(executable, 'extract', image, 'FIXTURE', maps)
         assert png_pixels(maps / 'FIXTURE/Textures/0000.png') == bytes([242, 120, 60, 252]) * 4, 'Fractional alpha near opaque still follows the normalized colour identity'
+        # Worst-case Adler sums and multiple 65535-byte stored blocks, checked
+        # independently by Python's zlib and CRC implementation.
+        large = course_members()
+        width, height = 257, 129
+        pixels = b'\xff' * (width * height * 4)
+        image = bytes([5, 0, 0, 0]) + struct.pack('<hhhhI', width, height, 0, 0, 0) + pixels
+        large['fixture_L.ssh'] = b'SHPS' + le(32 + len(image)) + le(1) + b'TEST0000' + le(32) + bytes(8) + image
+        image = root / 'large-lightmap.iso'; image.write_bytes(iso(big(large)))
+        maps = root / 'large Maps'; run(executable, 'extract', image, 'FIXTURE', maps)
+        assert png_pixels(maps / 'FIXTURE/Lightmaps/0000.png') == pixels
     print('Synthetic ISO import: C0FB/BIGF, RefPack, terrain, RGBA PNG, provenance, failures and existing-map protection PASS')
 
 

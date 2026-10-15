@@ -1,6 +1,7 @@
 #include "openslope/collision.hpp"
 #include "openslope/import.hpp"
 #include "openslope/model_animation.hpp"
+#include "prop_internal.hpp"
 #include <fstream>
 #include <map>
 #include <nlohmann/json.hpp>
@@ -707,7 +708,7 @@ CollisionWorld CollisionWorld::load(const std::filesystem::path& root) {
     if (!enabled)
         return world;
     const auto layouts = prop_layout(root, box_models);
-    const auto placements = prop_placements(root);
+    const auto placements = prop_detail::placements(rows);
     const auto physics = has_bodies ? read_bodies(root) : std::vector<std::vector<std::shared_ptr<Body>>>{};
     std::map<std::string, std::shared_ptr<Proxy>> proxies;
     std::set<const Body*> counted;

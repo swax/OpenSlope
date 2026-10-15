@@ -1,6 +1,7 @@
 #include "openslope/audio_data.hpp"
 #include "openslope/audio_program.hpp"
 #include "openslope/music.hpp"
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 
@@ -55,6 +56,36 @@ void codecs() {
             static_cast<void>(decode_audio_frames(std::span(ps).first(15), 5, 28, s));
         },
         "Reject truncated codec frame");
+}
+
+void wave_writer() {
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("openslope-wave-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    require(std::filesystem::create_directory(root), "Create isolated WAV fixture");
+
+    struct Cleanup {
+        std::filesystem::path path;
+
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(path, error);
+        }
+    } cleanup{root};
+
+    PcmClip clip;
+    clip.rate = 8000;
+    for (int i = -32768; i <= 32767; ++i)
+        clip.samples.push_back(i / 32768.f);
+    // Exactly representable positive/negative ties, clipping and signed zero.
+    for (const auto value : {-4.f, -1.f, -.5f / 32768, -1.5f / 32768, -0.f, 0.f, .5f / 32768, 1.5f / 32768, 1.f, 4.f})
+        clip.samples.push_back(value);
+    std::vector<float> expected;
+    for (const auto value : clip.samples)
+        expected.push_back(std::clamp(std::lround(double(value) * 32768), -32768l, 32767l) / 32768.f);
+    write_wave(root / "rounding.wav", clip);
+    require(PcmClip::load(root / "rounding.wav").samples == expected,
+            "WAV preserves every PCM16 value, clipping and halfway-away rounding across buffer boundaries");
 }
 
 void mixer() {
@@ -173,6 +204,7 @@ void graphs() {
 int main() {
     try {
         codecs();
+        wave_writer();
         mixer();
         programs();
         graphs();

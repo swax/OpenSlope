@@ -136,8 +136,8 @@ public final class LauncherActivity extends Activity {
                 long length = discLength(file);
                 for (String name : names) {
                     checkCancelled(); if (destination.exists(name)) { ++skipped; continue; }
-                    File staging = new File(getCacheDir(), "import-" + UUID.randomUUID());
-                    try { nativeExtract(file.getFd(), length, name, staging.getAbsolutePath()); checkCancelled(); setStatus("Writing " + name + " into Maps…"); destination.publish(name, staging, this::checkCancelled); ++imported; }
+                    File staging = destination.importPath(getCacheDir());
+                    try { nativeExtract(file.getFd(), length, name, staging.getAbsolutePath()); checkCancelled(); setStatus("Writing " + name + " into Maps…"); destination.publishImport(name, staging, this::checkCancelled); ++imported; }
                     finally { MapLibrary.deleteLocal(staging); }
                 }
                 outcome = "Imported " + imported + " courses. Kept " + skipped + " existing maps.";

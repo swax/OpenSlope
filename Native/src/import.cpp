@@ -52,8 +52,9 @@ std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent) {
     Bytes b{table};
     std::vector<Extent> result;
     std::set<std::string> names;
+    std::size_t entries = 0;
     for (std::size_t p = start; p < end;) {
-        if (result.size() >= 65535 || end - p < 2 * width + 1)
+        if (++entries > 65535 || end - p < 2 * width + 1)
             throw std::runtime_error("Invalid archive index count");
         const auto offset = b.be(p, width), size = b.be(p + width, width);
         p += 2 * width;
@@ -352,10 +353,22 @@ std::vector<DiscCourse> disc_courses(const DiscInput& disc, const ImportCancel& 
         if (entry.directory || !name.ends_with(".BIG") || name == "SSXFE.BIG")
             continue;
         const auto stem = name.substr(0, name.size() - 4);
-        const auto files = archive(disc, entry, cancelled);
+        // Discovery needs the PBD format header, not decoded textures, audio or
+        // source sidecars for every course. Validate the full index and leaf
+        // names now; extraction still decodes and validates every member.
+        std::map<std::string, Extent> files;
+        for (auto file : archive_index(disc, entry)) {
+            import_detail::check_cancel(cancelled);
+            const auto slash = file.name.find_last_of('/');
+            const auto leaf = upper(file.name.substr(slash == std::string::npos ? 0 : slash + 1));
+            if (!files.emplace(leaf, std::move(file)).second)
+                throw std::runtime_error("Duplicate level member");
+        }
         const auto it = files.find(stem + ".PBD");
         if (it != files.end()) {
-            pbd_header(Bytes{it->second});
+            const auto geometry =
+                decode_refpack(disc.read(it->second.offset, static_cast<std::size_t>(it->second.size)));
+            pbd_header(Bytes{geometry});
             if (!files.contains(stem + ".MAP") || !files.contains(stem + ".SSH"))
                 throw std::runtime_error("Course archive is incomplete");
             result.push_back({stem, entry.size});

@@ -49,10 +49,17 @@ void interleave(PcmClip& clip, const std::array<std::vector<std::int16_t>, 2>& c
         throw std::runtime_error("Audio channels have different extents");
     if (clip.samples.size() + count * clip.channels > 32 * 1024 * 1024)
         throw std::runtime_error("Decoded audio clip exceeds its limit");
-    clip.samples.reserve(clip.samples.size() + count * clip.channels);
+    // Streamed clips append many blocks. Reserving the exact new size on each
+    // block copies the entire decoded prefix repeatedly (quadratic work).
+    // Grow geometrically, while keeping capacity inside the decoded clip limit.
+    const auto required = clip.samples.size() + count * clip.channels;
+    if (required > clip.samples.capacity())
+        clip.samples.reserve(std::min<std::size_t>(32 * 1024 * 1024, std::max(required, clip.samples.capacity() * 2)));
+    const auto start = clip.samples.size();
+    clip.samples.resize(required);
     for (std::size_t i = 0; i < count; ++i)
         for (unsigned c = 0; c < clip.channels; ++c)
-            clip.samples.push_back(channels[c][i] / 32768.f);
+            clip.samples[start + i * clip.channels + c] = channels[c][i] / 32768.f;
 }
 } // namespace
 

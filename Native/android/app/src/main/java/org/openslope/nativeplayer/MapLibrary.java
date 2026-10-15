@@ -198,6 +198,24 @@ final class MapLibrary {
             }
         }
     }
+    File importPath(File cache) throws IOException {
+        File parent = tree == null ? localRoot : cache;
+        if (!parent.isDirectory() && !parent.mkdirs()) throw new IOException("Cannot create import folder.");
+        // Native extraction creates this new, hidden directory itself.
+        return new File(parent, ".openslope-import-" + UUID.randomUUID());
+    }
+    void publishImport(String name, File source, Cancel cancel) throws IOException {
+        if (tree != null) { publish(name, source, cancel); return; }
+        if (!safeName(name) || exists(name)) throw new IOException("A map named " + name + " already exists. Existing maps are kept.");
+        // Only consume a fresh staging directory owned by this import. Local
+        // imports are already on the destination filesystem, so publication
+        // needs one rename instead of a second copy of every asset.
+        if (!source.getName().startsWith(".openslope-import-") || !source.getCanonicalFile().getParentFile().equals(localRoot.getCanonicalFile()))
+            throw new IOException("Invalid local import staging folder.");
+        cancel.check();
+        File destination = new File(localRoot, name);
+        if (destination.exists() || !source.renameTo(destination)) throw new IOException("Cannot publish map; the destination may now exist.");
+    }
     void publish(String name, File source, Cancel cancel) throws IOException {
         if (!safeName(name) || exists(name)) throw new IOException("A map named " + name + " already exists. Existing maps are kept.");
         cancel.check();

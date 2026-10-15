@@ -3,6 +3,7 @@
 #include "openslope/import.hpp"
 #include "openslope/material_animation.hpp"
 #include "openslope/model_animation.hpp"
+#include "prop_internal.hpp"
 #include <bit>
 #include <fstream>
 #include <functional>
@@ -425,11 +426,18 @@ PropPose moved_prop_pose(const PropPose& original, const Transform& delta) {
 Vec3 transform_normal(const Transform& m, Vec3 n) { return normal_transform(m, n); }
 
 std::vector<Transform> prop_placements(const std::filesystem::path& root) {
-    std::vector<Transform> result;
     if (root.empty() || !std::filesystem::exists(root / "Instances.json"))
-        return result;
+        return {};
     const auto doc = json_file(asset(root, "Instances.json"));
-    for (const auto& row : doc.at("Instances"))
+    return prop_detail::placements(doc.at("Instances"));
+}
+
+std::vector<Transform> prop_detail::placements(const Json& rows) {
+    if (!rows.is_array() || rows.size() > 100000)
+        throw std::runtime_error("Invalid prop instance count");
+    std::vector<Transform> result;
+    result.reserve(rows.size());
+    for (const auto& row : rows)
         result.push_back(map_transform(row_pose(row)));
     return result;
 }

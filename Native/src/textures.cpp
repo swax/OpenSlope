@@ -44,12 +44,19 @@ void append_be(std::vector<std::uint8_t>& bytes, std::uint32_t v) {
 }
 
 std::uint32_t crc(std::span<const std::uint8_t> bytes) {
+    static constexpr auto table = [] {
+        std::array<std::uint32_t, 256> values{};
+        for (std::uint32_t i = 0; i < values.size(); ++i) {
+            auto v = i;
+            for (unsigned bit = 0; bit < 8; ++bit)
+                v = (v >> 1) ^ ((v & 1) ? 0xedb88320 : 0);
+            values[i] = v;
+        }
+        return values;
+    }();
     std::uint32_t v = 0xffffffff;
-    for (auto b : bytes) {
-        v ^= b;
-        for (unsigned i = 0; i < 8; ++i)
-            v = (v >> 1) ^ ((v & 1) ? 0xedb88320 : 0);
-    }
+    for (auto b : bytes)
+        v = (v >> 8) ^ table[(v ^ b) & 255];
     return ~v;
 }
 
@@ -251,10 +258,17 @@ void write_png(const std::filesystem::path& path, const Image& image) {
                          image.rgba.begin() + static_cast<std::ptrdiff_t>(start + image.width * 4));
     }
     std::vector<std::uint8_t> compressed = {0x78, 0x01};
+    compressed.reserve(6 + scanlines.size() + ((scanlines.size() + 65534) / 65535) * 5);
     std::uint32_t a = 1, b = 0;
-    for (auto value : scanlines) {
-        a = (a + value) % 65521;
-        b = (b + a) % 65521;
+    // 5552 bytes is the largest batch that cannot overflow 32-bit Adler sums.
+    for (std::size_t p = 0; p < scanlines.size();) {
+        const auto end = std::min(p + 5552, scanlines.size());
+        for (; p < end; ++p) {
+            a += scanlines[p];
+            b += a;
+        }
+        a %= 65521;
+        b %= 65521;
     }
     for (std::size_t p = 0; p < scanlines.size();) {
         const auto size = std::min<std::size_t>(65535, scanlines.size() - p);

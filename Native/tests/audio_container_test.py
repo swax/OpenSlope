@@ -26,13 +26,13 @@ def bank():
     return bytes(data)
 
 
-def stream():
+def stream(blocks=1):
     header = b'PT\x05\0' + patch(0x82, 2) + patch(0x84, 8000) + patch(0xA0, 10) + b'\xff'
     frame_a, frame_b = bytes([12, 0x18]) + bytes(13), bytes([12, 0x27]) + bytes(13)
     payload = struct.pack('<3I', 28, 0, 19) + bytes(4) + frame_a + bytes(4) + frame_b
     def chunk(kind, data):
         return kind + struct.pack('<I', len(data) + 8) + data
-    return chunk(b'SCHl', header) + chunk(b'SCCl', struct.pack('<I', 1)) + chunk(b'SCDl', payload) + chunk(b'SCEl', b'')
+    return chunk(b'SCHl', header) + chunk(b'SCCl', struct.pack('<I', blocks)) + chunk(b'SCDl', payload) * blocks + chunk(b'SCEl', b'')
 
 
 def main():
@@ -58,6 +58,14 @@ def main():
         with wave.open(str(root / 'stream.wav')) as decoded:
             assert decoded.getnchannels() == 2 and decoded.getnframes() == 28
             assert struct.unpack('<4h', decoded.readframes(2)) == (1, 2, -8, 7)
+        # Cross many clip-capacity growth and WAV output-buffer boundaries.
+        source.write_bytes(stream(blocks=1031))
+        result = subprocess.run([str(executable), 'stream', str(source), str(root / 'long.wav')], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        expected_block = struct.pack('<4h', 1, 2, -8, 7) + bytes(26 * 4)
+        with wave.open(str(root / 'long.wav')) as decoded:
+            assert decoded.getnframes() == 28 * 1031
+            assert decoded.readframes(decoded.getnframes()) == expected_block * 1031
         corrupt = bytearray(stream())
         start = corrupt.index(b'SCDl')
         struct.pack_into('<I', corrupt, start + 16, 0xffffffff)
