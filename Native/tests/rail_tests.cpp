@@ -109,7 +109,7 @@ void gameplay(const std::filesystem::path& root) {
         require(flat.rider().motion == Motion::Rail, "Holding spin is not a balance failure");
         near(dot(flat.camera_forward(), {0, 0, -1}), 1, 1e-9, "Rail trick yaw stays out of the camera frame");
     }
-    near(flat.rider().rail_spin, 80, 1e-9, "Deck spin clamps at eighty degrees");
+    near(flat.rider().rail_spin, 720, 1e-9, "Held desktop spin accumulates two complete turns");
     require(flat.effects().wake().empty() && flat.effects().sheet().empty(),
             "Rail does not emit grounded snow grooves/spray");
     Player straight(Terrain::load(root)), responsive(Terrain::load(root));
@@ -132,14 +132,15 @@ void gameplay(const std::filesystem::path& root) {
     steer(1, 6);
     near(responsive.rider().rail_spin, 24, 1e-9, "Desktop deck responds at 240 degrees per second immediately");
     steer(1, 14);
-    near(responsive.rider().rail_spin, 80, 1e-9, "Desktop reaches full boardslide in one third of a second");
+    near(responsive.rider().rail_spin, 80, 1e-9, "Desktop reaches the first eighty degrees without slowing");
     steer(-1, 20);
     near(responsive.rider().rail_spin, 0, 1e-9,
          "Opposite held input reverses the visible deck without a slow rate slew");
     steer(-1, 20);
-    near(responsive.rider().rail_spin, -80, 1e-9, "Opposite boardslide respects the negative pose cap");
+    near(responsive.rider().rail_spin, -80, 1e-9, "Opposite steering continues past the travel heading");
     steer(.2, 20);
-    near(responsive.rider().rail_spin, 0, 1e-9, "Released or dead-zone input returns the deck to rail travel");
+    near(responsive.rider().rail_spin, -80, 1e-9, "Released or dead-zone input holds the deck angle");
+    near(responsive.rider().rail_spin_rate, 0, 1e-9, "Release stops angular travel immediately");
     flat.tick({0, false, false, false, 0, true});
     require(flat.rider().motion == Motion::Air && flat.rider().control == Control::Launched &&
                 flat.rider().rail_exits == 1,

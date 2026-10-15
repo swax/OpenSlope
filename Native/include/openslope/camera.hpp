@@ -27,8 +27,10 @@ public:
 private:
     CameraPose pose_;
     Vec3 eye_{}, heading_{0, 0, -1};
+    Vec3 walk_reference_{0, 0, -1};
     double pitch_ = 0, orbit_yaw_ = 0, orbit_pitch_ = 0, zoom_ = 1;
     bool ready_ = false, previous_first_ = false;
+    bool walking_ = false, dragging_ = false;
     std::uint64_t serial_ = ~std::uint64_t{};
 };
 } // namespace openslope

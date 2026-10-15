@@ -17,6 +17,8 @@ struct Canvas {
     UiFrame f;
 
     Vec3 point(double x, double y, double z = 0) const {
+        if (f.screen)
+            return {(x - .5) * f.screen_width, (y - .5) * f.screen_height, 0};
         return f.origin + f.right * x + f.down * y - normalized(cross(f.right, f.down)) * z;
     }
 
@@ -108,11 +110,17 @@ UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
 
 UiFrame RideUi::desktop(const CameraPose& c, double aspect, bool menu) {
     const auto right = normalized(cross(c.forward, c.up)), up = normalized(cross(right, c.forward));
-    const auto height = .50 * std::tan(c.fov / 2) * (menu ? 1.20 : 1.75);
+    const auto height = .50 * std::tan(c.fov / 2) * (menu ? 1.20 : 1.96);
     // The menu's row spacing is shared with the wrist panel. Keep its physical
     // aspect while shrinking so square font pixels cannot overlap adjacent rows.
-    const auto width = std::min(height * (menu ? std::min(aspect, 1.34) : aspect), .95);
-    return {c.eye + c.forward * .50 - right * (width * .5) + up * (height * .5), right * width, -up * height, true};
+    const auto width = menu ? std::min(height * std::min(aspect, 1.34), .95) : height * aspect;
+    return {c.eye + c.forward * .50 - right * (width * .5) + up * (height * .5),
+            right * width,
+            -up * height,
+            true,
+            true,
+            2 * width / (std::tan(c.fov / 2) * aspect),
+            2 * height / std::tan(c.fov / 2)};
 }
 
 UiFrame RideUi::wrist(const ControllerPose& c, Vec3 eye, Vec3 offset) {
@@ -185,46 +193,34 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                                : "ESC TO RETURN TO THE SLOPE",
                .06, .94, .0033, muted);
     } else {
-        c.rect(0, 0, .18, .15, panel);
-        c.rect(0, 0, .005, .15, accent);
-        c.text(speed, .02, .02, std::min(.009, .14 / (6 * double(speed.size()))));
-        c.text("KM/H", .02, .115, .003, muted);
-        if (run.mode == RunMode::Freeride) {
-            c.rect(.36, 0, .27, .10, panel);
-            c.text("FREERIDE", .385, .035, .004, muted);
-        }
-        if (run.mode != RunMode::Freeride) {
-            c.rect(.36, 0, .27, .13, panel);
-            c.text(run_clock(run.clock), .385, .025, .0055);
-        }
-        c.rect(.76, 0, .24, .19, panel);
-        c.text(p.carrying_board() ? "IN HAND"
-               : p.flying()       ? "FLYING"
-               : p.on_foot()      ? "ON FOOT"
-                                  : "RIDING",
-               .78, .02, .0038, accent);
-        c.text("SCORE " + std::to_string(p.scoring().status().total()), .78, .08, .0023, muted);
-        if (p.on_foot()) {
-            c.text(p.flight_boosting() ? "BOOST ACTIVE" : "BOOST UNLIMITED", .78, .13, .0023, accent);
-        } else {
-            c.text("BOOST", .78, .12, .0027, muted);
-            c.rect(.78, .16, .20, .012, {.12f, .20f, .25f});
-            c.rect(.78, .16, .20 * double(p.scoring().meter_segments()) / 15, .012, accent, .0002);
-        }
-        c.rect(.08, .935, .84, .065, panel);
-        c.text(p.carrying_board() ? (wrist ? "RELEASE GRIP THROW / TRIGGER RIDE" : "RELEASE RMB THROW / LMB RIDE")
-               : p.flying()       ? (wrist ? "A UP / STICK THRUST / B AIM BOOST" : "WASD THRUST / SPACE UP / CTRL DOWN")
-               : p.board_highlight() ? (wrist ? "TRIGGER RIDE / GRIP CARRY" : "LMB RIDE / HOLD RMB CARRY")
-               : wrist               ? "Y MENU   A JUMP   B BOOST"
+        c.rect(0, 0, 1, .048, panel);
+        c.rect(0, 0, .004, .048, accent);
+        const auto state = p.carrying_board() ? "IN HAND" : p.flying() ? "FLYING" : p.on_foot() ? "ON FOOT" : "RIDING";
+        c.text(state, .014, .013, .0022, accent);
+        c.text(speed + " KM/H", .16, .013, .0022);
+        c.text(std::string(run_name(run.mode)) + (run.mode == RunMode::Freeride ? "" : "  " + run_clock(run.clock)),
+               .30, .013, .0021, muted);
+        c.text("SCORE " + std::to_string(p.scoring().status().total()), .57, .013, .0021);
+        c.text("BOOST", .79, .015, .0017, muted);
+        c.rect(.86, .022, .12, .007, {.12f, .20f, .25f});
+        const auto energy = p.on_foot() ? 1. : double(p.scoring().meter_segments()) / 15;
+        c.rect(.86, .022, .12 * energy, .007, accent);
+        c.rect(0, .965, 1, .035, panel);
+        c.text(p.carrying_board()    ? "RELEASE RMB THROW / LMB RIDE"
+               : p.flying()          ? "WASD THRUST / SPACE UP / CTRL DOWN"
+               : p.board_highlight() ? "LMB RIDE / HOLD RMB CARRY"
                : p.on_foot()         ? "SPACE TWICE FLY / E BOARD / ESC MENU"
                                      : "LMB OFF BOARD / E SPAWN / SPACE JUMP",
-               .10, .955, .0028, p.board_highlight() ? accent : ink);
+               .014, .976, .0017, p.board_highlight() ? accent : ink);
         if (p.rider().charge > 0) {
-            c.rect(.30, .83, .40, .018, {.12f, .20f, .25f});
-            c.rect(.30, .83, .40 * p.rider().charge, .018, accent, .0003);
+            c.text("JUMP", .65, .977, .0015, muted);
+            c.rect(.70, .981, .12, .006, {.12f, .20f, .25f});
+            c.rect(.70, .981, .12 * p.rider().charge, .006, accent);
         }
+        if (stats)
+            c.text("FPS " + std::to_string(int(fps)), .87, .976, .0017, muted);
     }
-    if (stats)
+    if (stats && visible)
         c.text("FPS " + std::to_string(int(fps)), .06, .89, .0035, muted);
 }
 

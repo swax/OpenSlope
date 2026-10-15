@@ -141,7 +141,7 @@ public:
                 std::span<const PropMotion> motions = {}, double alpha = 1,
                 std::span<const PropRouteMotion> routes = {}, std::span<const PropTextureFrame> texture_frames = {},
                 std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {},
-                CelestialView glare_view = {}, std::span<const Vertex> hud = {});
+                CelestialView glare_view = {}, std::span<const Vertex> hud = {}, bool screen_hud = false);
 
     const Stats& stats() const { return stats_; }
 
@@ -166,7 +166,7 @@ private:
     VkRenderPass pass_{};
     VkPipelineLayout layout_{};
     VkPipeline pipeline_{}, blend_pipeline_{}, sprite_pipeline_{}, wake_pipeline_{}, sky_pipeline_{}, line_pipeline_{};
-    VkPipeline celestial_pipeline_{};
+    VkPipeline celestial_pipeline_{}, hud_pipeline_{};
     Stats stats_;
     VkQueryPool timing_{};
     double timestamp_period_{};

@@ -69,10 +69,10 @@ def main():
             assert grinds==1 and 'hard impacts 0' in result.stdout,result.stdout
             if name in ('flat-spin','quick-spin','quick-reverse','release-spin','curved','backward-boost'):assert attached==1 and exits==0 and 'bounces 0' in result.stdout,result.stdout
             else:assert attached==0 and exits==1,result.stdout
-            if name=='flat-spin':assert spin==80,result.stdout
+            if name=='flat-spin':assert spin==720,result.stdout
             if name=='quick-spin':assert spin==24,result.stdout
             if name=='quick-reverse':assert spin==-80,result.stdout
-            if name=='release-spin':assert spin==0,result.stdout
+            if name=='release-spin':assert spin==80,result.stdout
             if name=='jump':assert 'launches 1' in result.stdout,result.stdout
             if name=='exit':assert float(re.search(r'velocity \[([^\]]+)\]',result.stdout).group(1).split(',')[2])< -11,'Exit lost carried tangent speed'
             if name=='curved':

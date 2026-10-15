@@ -22,7 +22,12 @@ void FollowCamera::step(const Player& p, double seconds, bool boosting, bool dra
     const auto dt = std::min(seconds, .1), angular = 1 - std::pow(15. / 16, 60 * dt),
                positional = 1 - std::pow(.8, 60 * dt);
     const auto& r = p.rider();
-    auto travel = p.on_foot() ? p.camera_forward() : project(r.velocity, {0, 1, 0});
+    const bool walking = !first_person && p.on_foot() && !p.flying() && length(project(r.velocity, {0, 1, 0})) > .15;
+    if (walking && (!walking_ || !ready_))
+        walk_reference_ = ready_ ? normalized(project(pose_.forward, {0, 1, 0}), heading_) : p.camera_forward();
+    auto travel = !first_person && p.on_foot() && !p.flying() ? project(r.forward, {0, 1, 0})
+                  : p.on_foot()                               ? p.camera_forward()
+                                                              : project(r.velocity, {0, 1, 0});
     if (length(travel) < .2)
         travel = r.grounded ? p.camera_forward() : heading_;
     travel = normalized(travel, {0, 0, -1});
@@ -34,6 +39,10 @@ void FollowCamera::step(const Player& p, double seconds, bool boosting, bool dra
     }
     if (!dragging && !first_person)
         orbit_yaw_ *= std::exp(-dt * 1.6), orbit_pitch_ *= std::exp(-dt * 1.6);
+    if (walking && !dragging && !first_person) {
+        orbit_yaw_ = orbit_pitch_ = 0;
+        heading_ = travel;
+    }
     const auto turn = std::atan2(dot(cross(heading_, travel), Vec3{0, 1, 0}), dot(heading_, travel));
     heading_ = normalized(rotate(heading_, {0, 1, 0}, turn * angular));
     const auto slope =
@@ -52,7 +61,7 @@ void FollowCamera::step(const Player& p, double seconds, bool boosting, bool dra
                                                                         : boosting  ? 2.1
                                                                                     : 1.8) *
                                                                        zoom_));
-        eye_ = fresh ? candidate : eye_ + (candidate - eye_) * positional;
+        eye_ = fresh || (walking && !dragging) ? candidate : eye_ + (candidate - eye_) * positional;
         eye_ = p.camera_position(eye_);
         pose_.eye = eye_;
         pose_.forward = normalized(target - eye_);
@@ -61,6 +70,10 @@ void FollowCamera::step(const Player& p, double seconds, bool boosting, bool dra
     ready_ = true;
     serial_ = p.placement_serial();
     previous_first_ = first_person;
+    if (walking && dragging)
+        walk_reference_ = normalized(project(pose_.forward, {0, 1, 0}), walk_reference_);
+    walking_ = walking;
+    dragging_ = dragging;
 }
 
 EquipmentRay FollowCamera::ray(double x, double y, double aspect) const {
@@ -69,5 +82,10 @@ EquipmentRay FollowCamera::ray(double x, double y, double aspect) const {
             normalized(f + right * (x * std::tan(pose_.fov / 2) * aspect) + up * (y * std::tan(pose_.fov / 2))), true};
 }
 
-Vec3 FollowCamera::walk_forward() const { return normalized(project(pose_.forward, {0, 1, 0}), heading_); }
+Vec3 FollowCamera::walk_forward() const {
+    // Retain the movement basis while recentering; otherwise holding strafe
+    // would turn its own reference frame and make the player walk in circles.
+    return walking_ && !dragging_ && !first_person ? walk_reference_
+                                                   : normalized(project(pose_.forward, {0, 1, 0}), heading_);
+}
 } // namespace openslope

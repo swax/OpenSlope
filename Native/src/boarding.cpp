@@ -248,6 +248,13 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
                              destination - Vec3{0, rider_.grounded ? .5 : .05, 0});
     bool seated =
         floor && rider_.velocity.y <= floor->velocity.y && (rider_.grounded || floor->point.y >= destination.y);
+    if (!seated && was_grounded && !jump && !foot_motion_.boosting())
+        if (const auto crossed = walk_ground(before.position + Vec3{0, .35, 0}, destination);
+            crossed && dot(rider_.velocity - crossed->velocity, crossed->normal) < 0) {
+            floor = crossed;
+            destination = crossed->point;
+            seated = true;
+        }
     if (seated && !dispatch_fragile_ground(*floor)) {
         floor = walk_ground(destination + Vec3{0, rider_.grounded ? .35 : 0, 0},
                             destination - Vec3{0, rider_.grounded ? .5 : .05, 0});

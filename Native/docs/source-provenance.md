@@ -233,3 +233,10 @@ expression sequences. A separate tool compares the compiled Native response with
 the public first-party API; Native does not import that runtime. WAV/loop matching,
 cache admission, ramping and revision-checked background music use ordinary PCM,
 string matching and synchronization operations. See board-audio-performance.md.
+
+The MESA/contact and desktop follow-up uses the user's requested behavior,
+clean contact/charge/rail interfaces and independently authored swept spheres,
+projection and rigid frames. Continuous desktop rail turning is an explicit
+presentation choice beyond the earlier selector cap. Screen UI uses Native's
+existing font geometry and a standard identity clip transform. No external
+runtime or format decoder supplies these fixes. See playtest-safety.md.

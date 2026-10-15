@@ -317,6 +317,9 @@ void VulkanRenderer::clear_targets() {
     if (celestial_pipeline_)
         vkDestroyPipeline(context_.device, celestial_pipeline_, nullptr);
     celestial_pipeline_ = {};
+    if (hud_pipeline_)
+        vkDestroyPipeline(context_.device, hud_pipeline_, nullptr);
+    hud_pipeline_ = {};
     line_pipeline_ = {};
     if (pass_)
         vkDestroyRenderPass(context_.device, pass_, nullptr);
@@ -526,6 +529,9 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &celestial_pipeline_),
              "Create celestial additive pipeline");
+    blend.blendEnable = VK_FALSE;
+    vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &hud_pipeline_),
+             "Create HUD overlay pipeline");
     vkDestroyShaderModule(context_.device, vertex, nullptr);
     vkDestroyShaderModule(context_.device, fragment, nullptr);
     vk_check(pipeline_result, "Create terrain pipeline");
@@ -605,7 +611,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                             std::span<const PropMotion> motions, double alpha, std::span<const PropRouteMotion> routes,
                             std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost,
                             std::span<const ParticleSprite> particles, CelestialView glare_view,
-                            std::span<const Vertex> hud) {
+                            std::span<const Vertex> hud, bool screen_hud) {
     if (boost.size() > 84 || boost.size() % 12)
         throw std::invalid_argument("Boost trail submission exceeds its history bound");
     for (const auto& point : boost) {
@@ -1352,9 +1358,9 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         stats_.celestial_triangles = unsigned(celestial.fan.size() / 3);
     }
     if (!hud.empty()) {
-        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, hud_pipeline_);
         vkCmdBindVertexBuffers(command_, 0, 1, &hud_vertices_.buffer, &offset);
-        push.mvp = camera;
+        push.mvp = screen_hud ? Matrix::identity() : camera;
         push.options[0] = push.options[2] = push.options[3] = 0;
         push.eye_end[3] = 0;
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);

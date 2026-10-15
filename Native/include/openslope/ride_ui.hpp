@@ -25,6 +25,8 @@ enum class UiAction {
 struct UiFrame {
     Vec3 origin{}, right{1, 0, 0}, down{0, -1, 0};
     bool valid = false;
+    bool screen = false;
+    double screen_width = 2, screen_height = 2;
 };
 
 struct UiButton {

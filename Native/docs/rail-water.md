@@ -3,10 +3,10 @@
 Build 0.41 addresses the desktop playtest's slow rail rotation and reversed Aloha
 water. Clean Trailmap 350 retains rail travel, snap, speed, collision and selector
 authority. Slopesmith's public docs/016-ride.md specifies a separate desktop
-presentation response: approach the quantized held direction's ±80 degree pose
+presentation response: approach the quantized held direction's Ã‚Â±80 degree pose
 at 240 degrees/s. Native now reaches that pose in one third of a second, reverses
 immediately at the same visual rate, and returns to travel alignment on release.
-The slow 75 degrees/s² selector rate remains separate. The visual change does not
+The slow 75 degrees/sÃ‚Â² selector rate remains separate. The visual change does not
 steer the rail tangent, alter velocity or rotate the desktop chase camera.
 
 VR retains its free deck pose and manual view carry. Public ride-contract tests
@@ -25,7 +25,7 @@ at the Vulkan placement boundary. Static UVs, images and saved maps are unchange
 No ISO re-import is needed. This fixes all V-driven consumers together, including
 river/waterslide, caustic and scanline material families; U-driven motion keeps
 its existing sign. A new public Slopesmith browser test independently checks the
-same sampled PNG coordinate through Three's texture API at ±0.25 phase.
+same sampled PNG coordinate through Three's texture API at Ã‚Â±0.25 phase.
 
 Validation includes all 40 native suites, 608 rail assertions and 26,743 VR input
 assertions. Nine actual-player rail cases render 773 frames, covering prompt
@@ -57,3 +57,9 @@ retain their pre-update hashes. Worn confirmation of rail turn feel and water
 appearance remains separate from these checks. Complete trick windows,
 animation selection, rail audio and wider world presentation still
 belong to the active parity goal.
+
+Build 0.47.1 supersedes the earlier desktop pose cap at the user's request: held
+steering now accumulates continuous turns at 240 degrees/second, with release
+holding the chosen angle. The original selector's cap is not a desktop turn
+limit. Analytic tangent travel and the VR path remain separate. See
+[playtest-safety.md](playtest-safety.md) for the regression checks.

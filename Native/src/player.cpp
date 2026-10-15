@@ -63,6 +63,7 @@ void Player::release_inputs() {
     board_highlight_ = false;
     held_boost_ = 0;
     boost_engaged_ = false;
+    boost_requested_ = false;
     jump_held_ = false;
     jump_edges_.clear();
     reset_held_ = false;
@@ -517,7 +518,8 @@ void Player::notify_tick(const Rider& before) {
     foot_trail_ = attachment == 2;
     const BoostTrailPose trail_pose =
         foot_trail_ ? BoostTrailPose{rider_.position, rider_.forward, {0, 1, 0}, true}
-                    : BoostTrailPose{carry_.held() ? carry_.pose().position : deck, render_forward(), render_up()};
+                    : BoostTrailPose{carry_.held() ? carry_.pose().position : deck,
+                                     render_forward() * double(carry_.held() ? 1 : rider_.boost_end), render_up()};
     boost_trail_.step(game_frame_, trail_pose,
                       carry_.held() && carry_thrust_     ? 1
                       : foot_trail_ && flight_boosting() ? 1
@@ -710,12 +712,9 @@ void Player::ride_rail(const RailHit& hit, const RideInput& input, const Rider& 
         if (input.vr.stick)
             rider_.view_yaw += turn;
     } else {
-        // [Trailmap: 350-control] Keep the selector's rate separate from the
-        // public Slopesmith desktop presentation rate (240 degrees/second).
-        rider_.rail_spin_rate = approach(rider_.rail_spin_rate, quantized * 80 * gain, 75 * gain * dt);
-        rider_.rail_spin = approach(rider_.rail_spin, quantized * 80, 240 * dt);
-        if (std::abs(rider_.rail_spin) >= 80 && rider_.rail_spin * quantized > 0)
-            rider_.rail_spin_rate = 0;
+        // Desktop steering accumulates full turns; release holds the deck angle.
+        rider_.rail_spin_rate = quantized * 240 * gain;
+        rider_.rail_spin += rider_.rail_spin_rate * dt;
     }
     if (std::abs(rider_.rail_spin_rate) < 2 && (std::abs(input.steer) > .25 || std::abs(input.posture) > .25)) {
         const auto x = std::abs(input.steer) > .25 ? (input.steer < 0 ? -1. : 1.) : 0.,
@@ -762,6 +761,11 @@ void Player::tick(const RideInput& input) {
     world_actions_.clear();
     logic_contacts_.clear();
     sample_input(input);
+    boost_requested_ = input.boost;
+    if (!boost_requested_) {
+        held_boost_ = 0;
+        boost_engaged_ = false;
+    }
     const auto before_pose = rider_;
     foot_contact_velocity_ = before_pose.velocity;
     const auto dt = contract_.tick_seconds();
@@ -859,8 +863,10 @@ void Player::tick(const RideInput& input) {
     held_boost_ = active.boost ? score_.boost_amount() : 0;
     active.boost = held_boost_ > 0;
     if (active.boost && !boost_engaged_) {
-        rider_.boost_end =
-            tuning_.symmetric_deck && dot(rider_.forward, project(rider_.velocity, {0, 1, 0})) < 0 ? -1 : 1;
+        const auto end = tuning_.symmetric_deck && dot(render_forward(), rider_.velocity) < 0 ? -1 : 1;
+        if (end != rider_.boost_end)
+            boost_trail_.reset();
+        rider_.boost_end = end;
         world_actions_.push_back({WorldActionKind::BoostSound,
                                   held_boost_ > .666   ? 120.
                                   : held_boost_ > .334 ? 121.
@@ -1222,9 +1228,21 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
                 break;
             }
         auto floor = landing_allowed ? trace_ground(start.position, rider_.position) : std::nullopt;
+        // Orientation grace never disables terrain collision. Ground travel also
+        // has a small swept root guard beyond the ordinary spring's allowance.
+        if (!rider_.grounded)
+            if (const auto hit = terrain_.intersect(start.position, rider_.position);
+                hit && (!floor || hit->t < floor->t))
+                floor = GroundContact{hit->point, hit->normal, hit->t, hit->surface, {}};
         if (floor && dot(rider_.velocity - floor->velocity, floor->normal) >= 0)
             floor.reset();
-        const auto stop = std::min(solid ? solid->t : 1.0, floor ? floor->t : 1.0),
+        const auto allowance = std::max(.2, rider_.budget + .05);
+        const auto offset = normalized(rider_.normal) * (.2 + allowance);
+        auto guard =
+            rail ? std::optional<TerrainHit>{} : terrain_.sweep(start.position + offset, rider_.position + offset, .2);
+        if (guard && guard->depth <= 1e-7 && dot(rider_.position - start.position, guard->normal) >= -1e-9)
+            guard.reset();
+        const auto stop = std::min({solid ? solid->t : 1.0, floor ? floor->t : 1.0, guard ? guard->t : 1.0}),
                    portion = remaining / contract_.tick_seconds();
         bool activated_body = false;
         for (const auto& contact : hits)
@@ -1239,7 +1257,7 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             }
         if (activated_body)
             continue;
-        if (floor && (!solid || floor->t <= solid->t))
+        if (floor && (!solid || floor->t <= solid->t) && (!guard || floor->t <= guard->t))
             dispatch_fragile_ground(*floor);
         if (teleport_pending_)
             return false;
@@ -1247,11 +1265,26 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         if ((solid && !flags.empty() && !(flags[solid->instance] & WorldCollide)) ||
             (floor && floor->instance && !flags.empty() && !(flags[*floor->instance] & WorldCollide)))
             continue;
-        if (floor && (!solid || floor->t <= solid->t)) {
+        if (floor && (!solid || floor->t <= solid->t) && (!guard || floor->t <= guard->t)) {
             if (floor->surface == 0 && run_active() && recover_course(false))
                 return false;
             land(*floor);
             break;
+        }
+        if (guard && (!solid || guard->t <= solid->t)) {
+            if (guard->surface == 0 && run_active() && recover_course(false))
+                return false;
+            const auto delta = rider_.position - start.position;
+            rider_.position =
+                start.position + delta * std::max(0., guard->t - .001) + guard->normal * (guard->depth + .002);
+            rider_.velocity -= guard->normal * std::min(0., dot(rider_.velocity, guard->normal));
+            elapsed += guard->t * portion;
+            remaining *= 1 - guard->t;
+            start = rider_;
+            if (pass == 7 || remaining < 1e-10)
+                break;
+            rider_.position += project(delta * (1 - guard->t), guard->normal);
+            continue;
         }
         if (!solid)
             break;

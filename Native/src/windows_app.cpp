@@ -150,7 +150,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), chase.pose().eye), glare_view, hud);
+                        player.logic().particles(player.frame_alpha(), chase.pose().eye), glare_view, hud, true);
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         gpu += renderer.stats().gpu_ms;
         cull += renderer.stats().cull_ms;
@@ -490,7 +490,7 @@ struct Window {
                         player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), camera.pose().eye), glare_view, hud);
+                        player.logic().particles(player.frame_alpha(), camera.pose().eye), glare_view, hud, true);
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &finished;

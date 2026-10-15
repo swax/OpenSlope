@@ -52,3 +52,9 @@ Implementation and validation are recorded as work lands. A compiled APK does
 not establish physical reach, controller alignment or headset comfort; desktop
 progress continues without waiting for a worn-headset test. Existing imported
 course data remains private and is never copied into a distributable package.
+
+The later MESA playtest report is covered in [playtest-safety.md](playtest-safety.md):
+terrain crossing protection, boost release/end alignment, continuous rail turns,
+walking camera recentering and thin desktop HUD bars. These have portable and
+production regression checks; the exact user's route and worn feel remain for
+follow-up playtesting.

@@ -164,7 +164,8 @@ public:
     BoostTrailMesh boost_trail_mesh() const {
         if (foot_trail_)
             return boost_trail_.draw({render_position(), rider_.forward, {0, 1, 0}, true});
-        return boost_trail_.draw({render_board_position(), render_forward(), render_up()});
+        return boost_trail_.draw(
+            {render_board_position(), render_forward() * double(on_foot_ ? 1 : rider_.boost_end), render_up()});
     }
 
     bool recovering() const { return rider_.control == Control::Wipeout || rider_.control == Control::RecoverWait; }
@@ -190,9 +191,15 @@ public:
 
     bool flying() const { return on_foot_ && foot_motion_.flying(); }
 
-    bool flight_boosting() const { return on_foot_ && foot_motion_.boosting(); }
+    bool flight_boosting() const {
+        return boost_requested_ && on_foot_ && foot_motion_.boosting() && run_.status().phase == RunPhase::Running &&
+               !reset_pending();
+    }
 
-    bool board_boosting() const { return !on_foot_ && boost_engaged_; }
+    bool board_boosting() const {
+        return boost_requested_ && !on_foot_ && boost_engaged_ && run_.status().phase == RunPhase::Running &&
+               !reset_pending() && !recovering();
+    }
 
     unsigned boost_sound_slot() const { return held_boost_ > .666 ? 120 : held_boost_ > .334 ? 121 : 122; }
 
@@ -264,6 +271,7 @@ private:
     bool score_started_ = false;
     double held_boost_ = 0;
     bool boost_engaged_ = false;
+    bool boost_requested_ = false;
     RideContract contract_;
     FixedClock clock_;
     Rider rider_;

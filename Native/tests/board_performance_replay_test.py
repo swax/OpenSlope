@@ -4,9 +4,11 @@ import json,re,subprocess,sys,tempfile,wave,struct
 from audio_scene_test import fixture,tone,write,rms
 from desktop_rails_test import fixture as rail_fixture
 
-def run(exe,root,steps,placement):
+def run(exe,root,steps,placement,mode=None):
     write(root/'input.json',dict(Schema='openslope-replay/v1',Placement=placement,Steps=steps))
-    p=subprocess.run([str(exe),'--map',str(root),'--replay',str(root/'input.json'),'--capture',str(root/'frame.ppm'),'--audio-capture',str(root/'mix.wav')],capture_output=True,text=True,timeout=120)
+    args=[str(exe),'--map',str(root),'--replay',str(root/'input.json'),'--capture',str(root/'frame.ppm'),'--audio-capture',str(root/'mix.wav')]
+    if mode:args+=['--mode',mode]
+    p=subprocess.run(args,capture_output=True,text=True,timeout=120)
     assert p.returncode==0,p.stdout+p.stderr
     with wave.open(str(root/'mix.wav')) as w: data=struct.unpack('<'+str(w.getnframes()*2)+'h',w.readframes(w.getnframes()))
     return data[::2],p.stdout
@@ -57,5 +59,10 @@ def main():
         bank(root,[('main',32,1000)])
         data,report=run(exe,root,[dict(Ticks=30)],dict(Position=[5,60,0],Forward=[1,0,0],Velocity=[12,0,0]));frames+=30
         assert rms(window(data,.2,.5))>500 and abs(frequency(data,.2,.5)-1000)<6,'Long-flight spawn did not start predicted big-air wind: '+report
+        root=base/'expired';fixture(root,mass=0);bank(root,[('main',120,600),('main',121,600),('main',122,600)])
+        write(root/'Slopesmith.json',dict(schema=1,kind='slopesmith-export',showoffSeconds=.1))
+        data,report=run(exe,root,[dict(Ticks=210,Boost=True),dict(Ticks=60)],place,'showoff');frames+=270
+        assert rms(data)>50,'Timed run never exercised boost: '+report
+        assert rms(window(data,4,4.5))==0,'Boost remained latched after run expiry and release: '+report
     print(f'PASS: {frames} production Vulkan/PCM frames verify authored bed, no-program/full-loop fallback, mix, unchanged physics, rail handoff, boost envelope, launch-only pop and initial-air wind')
 if __name__=='__main__':main()

@@ -334,22 +334,23 @@ int main(int argc, char** argv) {
             ui.third_person = false;
             ui.frame(wrist ? RideUi::wrist(tracking.controllers[0], eye) : RideUi::desktop(c, 1, ui.visible));
             const auto body = avatar.mesh(avatar_pose(player, &tracking), true, false, eye);
-            std::vector<Vertex> mesh(body.begin(), body.end());
+            std::vector<Vertex> hud;
             const auto button = ui.frame().origin + ui.frame().right * .25 + ui.frame().down * .35;
             EquipmentRay pointer{tracking.controllers[1].position,
                                  normalized(button - tracking.controllers[1].position), true};
             ui.release();
             ui.pointer(pointer, true);
-            ui.append(mesh, player, wrist, 90);
+            ui.append(hud, player, wrist, 90);
             if (wrist)
-                ui.append_pointer(mesh, pointer);
+                ui.append_pointer(hud, pointer);
             const auto tangent = std::tan(c.fov / 2);
             const auto matrix = projection(-tangent, tangent, -tangent, tangent, c.near_clip) * view(eye, direction);
             for (auto* renderer : {&a, &b}) {
                 renderer->render(
                     0, matrix,
                     board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, mesh);
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body, 0, {}, {}, 1, {}, {}, {}, {},
+                    {}, hud, !wrist);
                 const auto path = root / (name + (renderer == &a ? "-unorm.ppm" : "-srgb.ppm"));
                 renderer->capture(0, path);
                 const auto image = pixels(path);
@@ -360,7 +361,8 @@ int main(int argc, char** argv) {
                 }
                 check(mint > 80, "Menu accents really reach the GPU target");
                 check(white > 100, "UI text draws in front of panel background");
-                check(renderer->stats().avatar_triangles == mesh.size() / 3, "UI and avatar share a bounded real draw");
+                check(renderer->stats().avatar_triangles == body.size() / 3,
+                      "Avatar draw stays separate from the late UI overlay");
             }
         };
         render_ui("desktop-menu", false, false, true);
