@@ -11,6 +11,12 @@ public `texture-array.test.ts` acceptance behavior. Private map data is used for
 comparison only. No other runtime or differently licensed library implementation
 was read or ported for this work; see shatter.md for the remaining sound gap.
 
+Build 0.38's live rigid props use the sanitized 130/230/370 bodies and standard
+rigid-body impulse, rotation and constraint identities. Terrain/compound contact
+gathering and the sequential manifold solver are independently authored. Shared
+map output is comparison data only. Application launch/friction/sleep tuning,
+desktop evidence and remaining solver/device limits are explicit in rigid-props.md.
+
 | Importer part | Implementation authority |
 |---|---|
 | Primary ISO9660 directory access | [Trailmap: 200-iso]; bounded, seekable document/file reads. |

@@ -4,6 +4,7 @@
 #include "openslope/material_animation.hpp"
 #include "openslope/mesh_throw.hpp"
 #include "openslope/props.hpp"
+#include "openslope/rigid_prop.hpp"
 #include "openslope/texture_playback.hpp"
 #include "prop_internal.hpp"
 #include <bit>
@@ -136,12 +137,19 @@ struct WorldLogic::Data {
     };
 
     struct Property {
+        struct Roller {
+            double mass = 0;
+            Vec3 launch;
+        };
+
         int kind = -1, mode = 0;
         double time = 0;
         std::optional<PropPlayback> animation{};
         std::optional<PropChecklist> checklist{};
         std::optional<FragileProp> fragile{};
         std::optional<MeshThrow> pieces{};
+        std::optional<Roller> roller{};
+        std::unique_ptr<RigidProp> body{};
         std::optional<ScrollPlayback> scroll{};
         std::optional<FlagPlayback> flag{};
         std::unique_ptr<TexturePlayback> flip{};
@@ -186,6 +194,7 @@ struct WorldLogic::Data {
     std::set<std::size_t> frame_owners;
     bool fragile_possible = false;
     std::set<std::size_t> force_hosts, force_wait_exit, collected_pads;
+    std::set<std::size_t> body_hosts;
     std::vector<bool> pad_instances;
     std::vector<std::size_t> flag_models;
     std::vector<PropTextureFrame> texture_states;
@@ -248,11 +257,14 @@ struct WorldLogic::Data {
     }
 
     void update_motion(std::size_t host, bool snap = false) {
-        if (!properties[host].animation && !properties[host].pieces)
+        if (!properties[host].animation && !properties[host].pieces && !properties[host].body)
             return;
-        auto current = properties[host].pieces ? properties[host].pieces->pose()
-                                               : clips.delta(hosts[host].model, properties[host].animation->frame(),
-                                                             properties[host].animation->basis());
+        auto current = properties[host].body
+                           ? std::vector<Transform>(clips.objects(hosts[host].model),
+                                                    multiply(hosts[host].inverse, properties[host].body->pose()))
+                       : properties[host].pieces ? properties[host].pieces->pose()
+                                                 : clips.delta(hosts[host].model, properties[host].animation->frame(),
+                                                               properties[host].animation->basis());
         const auto index = motion_ids[host];
         if (index == none) {
             motion_ids[host] = motions.size();
@@ -399,6 +411,7 @@ struct WorldLogic::Data {
     }
 
     void destroy(std::size_t host, bool restore_flags = true) {
+        body_hosts.erase(host);
         if (properties[host].force && properties[host].force->occupied())
             force_wait_exit.insert(host);
         force_hosts.erase(host);
@@ -939,7 +952,18 @@ struct WorldLogic::Data {
                 else if (node.main == 0 && host < hosts.size()) {
                     const auto& property = p.at("type0");
                     const auto sub = property.at("SubType").get<int>();
-                    if (sub == 2) {
+                    if (sub == 0) {
+                        const auto& fields = property.at("type0Sub0");
+                        const auto mass = number(fields, "U0");
+                        if (mass <= 0)
+                            throw std::runtime_error("Roller mass must be positive");
+                        const Vec3 launch{number(fields, "U3"), number(fields, "U5"), -number(fields, "U4")};
+                        destroy(host, false);
+                        properties[host].kind = 0;
+                        properties[host].roller = Property::Roller{mass, launch};
+                        body_hosts.insert(host);
+                        flags[host] = WorldDraw | WorldCollide | WorldDynamic;
+                    } else if (sub == 2) {
                         destroy(host);
                         properties[host].kind = 2;
                         properties[host].time = number(property, "Debounce");
@@ -1238,6 +1262,7 @@ void WorldLogic::restart(RunMode mode, bool preserve_collected_pads) {
     if (!preserve_collected_pads)
         d.collected_pads.clear();
     d.force_hosts.clear();
+    d.body_hosts.clear();
     d.force_wait_exit.clear();
     d.actions.clear();
     d.ready.clear();
@@ -1438,6 +1463,8 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
     if (instance >= d.hosts.size() || !(d.flags[instance] & WorldCollide))
         return;
     d.hosts[instance].impact = normalized(direction, {});
+    if (d.properties[instance].roller)
+        return;
     if (d.properties[instance].fragile) {
         d.properties[instance].fragile->hit(force);
         if (d.properties[instance].fragile->take_trigger()) {
@@ -1471,6 +1498,67 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
 }
 
 std::span<const std::uint8_t> WorldLogic::flags() const { return data_->flags; }
+
+void WorldLogic::prepare_bodies(const CollisionWorld& world) {
+    auto& d = *data_;
+    for (auto i = d.body_hosts.begin(); i != d.body_hosts.end();) {
+        const auto host = *i++;
+        auto& p = d.properties[host];
+        if (p.body || !p.roller)
+            continue;
+        auto shape = world.body_shape(host);
+        if (!shape) {
+            ++d.unknown;
+            d.body_hosts.erase(host);
+            p.roller.reset();
+            p.kind = 2;
+            p.time = -1;
+            d.flags[host] &= ~WorldDynamic;
+            continue;
+        }
+        p.body = std::make_unique<RigidProp>(std::move(*shape), p.roller->mass, p.roller->launch);
+        d.update_motion(host, true);
+    }
+}
+
+void WorldLogic::step_bodies(double seconds, const Terrain& terrain, const CollisionWorld& world) {
+    prepare_bodies(world);
+    auto& d = *data_;
+    for (const auto host : d.body_hosts) {
+        auto& p = d.properties[host];
+        if (!p.body || p.paused)
+            continue;
+        p.body->step(seconds, [&](std::span<const ProbeSphere> from, std::span<const ProbeSphere> to) {
+            std::vector<PropBodyContact> contacts;
+            for (const auto& hit : terrain.body_contacts(from, to))
+                contacts.push_back({{hit.point, hit.normal, hit.t, hit.depth}, {}});
+            for (const auto& hit : world.sweep_body(from, to, host))
+                contacts.push_back({{hit.point, hit.normal, hit.t, hit.depth}, hit.surface_velocity});
+            return contacts;
+        });
+        d.update_motion(host);
+    }
+}
+
+std::optional<CollisionResponse> WorldLogic::shove(const WorldContact& contact, Vec3 velocity, Vec3 up) {
+    auto& d = *data_;
+    if (contact.instance >= d.properties.size() || !(d.flags[contact.instance] & WorldDynamic))
+        return {};
+    auto& p = d.properties[contact.instance];
+    if (!p.body || p.paused)
+        return {};
+    return p.body->shove(contact, velocity, up);
+}
+
+std::size_t WorldLogic::bodies() const { return data_->body_hosts.size(); }
+
+std::size_t WorldLogic::sleeping_bodies() const {
+    std::size_t result = 0;
+    for (const auto host : data_->body_hosts)
+        if (const auto& body = data_->properties[host].body; body && body->sleeping())
+            ++result;
+    return result;
+}
 
 std::vector<WorldAction> WorldLogic::take_actions() {
     auto actions = std::move(data_->actions);

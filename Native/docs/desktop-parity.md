@@ -42,6 +42,10 @@ behavioral or first-party, and any grab or named trick would be original OpenSlo
 | Performance | Android Debug native code is optimized and XR submission defers completion until renderer resource reuse, with separate placement buffers per eye. Five-second phase/timestamp logs show 71.5â€“72 fps at 72 Hz on Quest 3 ALASKA with 4x MSAA, versus 31â€“36 fps in the preceding live build. See graphics-quality.md for sampling limits. Terrain submission also has two-course fixed-replay measurements. Worst-case full-course baselines, memory profiling, batching/upload work and wider trajectories remain. |
 | VR | The user confirms walking, mounting and much improved performance on Quest. Build 0.21.0 has focused ALASKA rendering at 72 Hz, runtime full-body poses and actual high fidelity, with per-joint/procedural fallback. 55 device JNI/custom-library/SAF checks and 52 avatar Vulkan checks pass. User-imported ALASKA is preserved. Targeted comfort, wider quality/device coverage, all controls and lifecycle checks remain. |
 
+Build 0.38 connects effect-activated Roller bodies, including collision bags and scripted lids, to
+shared render/collision motion, impulses and sleep. Validation and remaining
+solver/device limits are recorded in rigid-props.md.
+
 Milestones use a descriptive commit subject and bullet-point body. Each milestone
 records its supported behavior, tests, comparison evidence and remaining limits.
 Playable test EXEs are versioned in ignored build folders so a later change does

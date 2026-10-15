@@ -16,7 +16,10 @@ not replace its broader audio, world, performance and multiplayer requirements.
 - [ ] Quest behind-head draw reaches the hand correctly through real input.
   The implementation and production gesture replays are present; worn reach
   still needs confirmation.
-- [ ] Collision bags and other supported movable bodies respond to a rider hit.
+- [x] Collision bags and other supported movable bodies respond to a rider hit.
+  Build 0.38 connects Roller bodies to walking/riding impact, moved collision,
+  gravity and settling. Actual GARI has desktop evidence; worn Quest validation
+  remains separate. See rigid-props.md for tuning and solver limits.
 - [x] Desktop menus and HUD leave more of the course visible, with an actual
   16:9 renderer check guarding menu text separation.
 - [ ] Authored fireworks produce visible particles at their live graph locations.

@@ -256,6 +256,7 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
     }
     if (seated)
         destination.y = floor->point.y;
+    foot_contact_velocity_ = rider_.velocity;
     destination = walk_move(before.position, destination, rider_.velocity, .28, 1.65 - .35 * rider_.crouch);
     if (seated) {
         const auto resting = walk_ground(destination + Vec3{0, .1, 0}, destination - Vec3{0, .1, 0});

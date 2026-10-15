@@ -331,14 +331,46 @@ Vec3 Terrain::clear_eye(Vec3 eye, Vec3 safe, double radius) const {
 }
 
 std::optional<TerrainHit> Terrain::sweep(Vec3 start, Vec3 end, double radius) const {
-    if (!finite(start) || !finite(end) || !std::isfinite(radius) || radius <= 0)
-        throw std::invalid_argument("Invalid terrain sphere sweep");
+    const std::array<ProbeSphere, 1> from{{{start, radius}}}, to{{{end, radius}}};
+    return sweep(from, to, false);
+}
+
+std::optional<TerrainHit> Terrain::sweep(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
+                                         bool skip_separating) const {
+    const auto hits = body_contacts(start, end, skip_separating);
     std::optional<TerrainHit> closest;
+    for (const auto& hit : hits)
+        if (!closest || hit.t < closest->t || (hit.t == closest->t && hit.depth > closest->depth))
+            closest = hit;
+    return closest;
+}
+
+std::vector<TerrainHit> Terrain::body_contacts(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
+                                               bool skip_separating) const {
+    if (start.size() != end.size() || start.size() > 32768)
+        throw std::invalid_argument("Invalid terrain compound sweep");
+    if (start.empty())
+        return {};
+    std::vector<std::optional<TerrainHit>> contacts(start.size());
     Bounds swept;
-    for (const auto p : {start, end}) {
-        swept.add(p - Vec3{radius, radius, radius});
-        swept.add(p + Vec3{radius, radius, radius});
+    std::vector<Bounds> bounds;
+    for (std::size_t i = 0; i < start.size(); ++i) {
+        Bounds box;
+        for (const auto probe : {start[i], end[i]}) {
+            if (!finite(probe.centre) || !std::isfinite(probe.radius) || probe.radius <= 0)
+                throw std::invalid_argument("Invalid terrain sphere sweep");
+            const Vec3 r{probe.radius, probe.radius, probe.radius};
+            box.add(probe.centre - r);
+            box.add(probe.centre + r);
+        }
+        swept.add(box.min);
+        swept.add(box.max);
+        bounds.push_back(box);
     }
+    const auto overlaps = [](const Bounds& a, const Bounds& b) {
+        return a.min.x <= b.max.x && a.max.x >= b.min.x && a.min.y <= b.max.y && a.max.y >= b.min.y &&
+               a.min.z <= b.max.z && a.max.z >= b.min.z;
+    };
     const auto visit = [&](auto&& self, int index) -> void {
         const auto& node = nodes_[index];
         if (node.bounds.max.x < swept.min.x || node.bounds.min.x > swept.max.x || node.bounds.max.y < swept.min.y ||
@@ -358,17 +390,33 @@ std::optional<TerrainHit> Terrain::sweep(Vec3 start, Vec3 end, double radius) co
                 for (unsigned w = 0; w < 8; ++w) {
                     const auto a = v[u * 9 + w], b = v[(u + 1) * 9 + w], c = v[(u + 1) * 9 + w + 1],
                                d = v[u * 9 + w + 1];
-                    for (const auto& hit : {swept_triangle(a, b, c, {start, radius}, {end, radius}),
-                                            swept_triangle(a, c, d, {start, radius}, {end, radius})})
-                        if (hit &&
-                            (!closest || hit->t < closest->t || (hit->t == closest->t && hit->depth > closest->depth)))
-                            closest = TerrainHit{hit->point, hit->normal, hit->t, 0, 0, patch, patches_[patch].surface,
-                                                 false,      hit->depth};
+                    Bounds quad;
+                    for (const auto p : {a, b, c, d})
+                        quad.add(p);
+                    for (std::size_t sphere = 0; sphere < start.size(); ++sphere) {
+                        if (!overlaps(quad, bounds[sphere]))
+                            continue;
+                        auto& closest = contacts[sphere];
+                        for (const auto& hit : {swept_triangle(a, b, c, start[sphere], end[sphere]),
+                                                swept_triangle(a, c, d, start[sphere], end[sphere])})
+                            if (hit &&
+                                !(skip_separating && hit->depth <= 1e-8 &&
+                                  dot(end[sphere].centre - start[sphere].centre, hit->normal) >= -1e-9) &&
+                                (!closest || hit->t < closest->t ||
+                                 (hit->t == closest->t && hit->depth > closest->depth)))
+                                closest =
+                                    TerrainHit{hit->point, hit->normal, hit->t, 0, 0, patch, patches_[patch].surface,
+                                               false,      hit->depth};
+                    }
                 }
         }
     };
     visit(visit, 0);
-    return closest;
+    std::vector<TerrainHit> result;
+    for (const auto& contact : contacts)
+        if (contact)
+            result.push_back(*contact);
+    return result;
 }
 
 Mesh Terrain::mesh(unsigned subdivisions) const {

@@ -3,10 +3,16 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace openslope {
+struct ProbeSphere {
+    Vec3 centre;
+    double radius{};
+};
+
 // [Trailmap: 002-axes, 110-patch-model, 110-analytic-normal]
 struct Patch {
     std::array<Vec3, 16> points;
@@ -72,6 +78,10 @@ public:
     Mesh mesh(unsigned subdivisions = 8) const;
     std::optional<TerrainHit> intersect(Vec3 start, Vec3 end) const;
     std::optional<TerrainHit> sweep(Vec3 start, Vec3 end, double radius) const;
+    std::optional<TerrainHit> sweep(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
+                                    bool skip_separating = true) const;
+    std::vector<TerrainHit> body_contacts(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
+                                          bool skip_separating = true) const;
     std::pair<Vec3, Vec3> spawn() const;
     Vec3 clear_eye(Vec3 eye, Vec3 safe, double radius = .45) const;
 

@@ -107,3 +107,7 @@ Build 0.37 also publishes walking sweeps to the common Begin/Stay/End contact
 stream, allowing map-routed impact audio on foot. It carries the impact direction
 through break graphs and deferred triggers into per-piece mesh throws. See
 shatter.md for the GARI comparison and unresolved executable sound routes.
+
+Build 0.38 gives authored Roller bodies a live normal-impulse path and shared
+render/collision transforms. Walking preserves its pre-clip incoming velocity;
+native compound terrain contact uses a simultaneous manifold. See rigid-props.md.

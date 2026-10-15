@@ -316,6 +316,7 @@ private:
     std::optional<GroundContact> walk_ground(Vec3 start, Vec3 end) const;
     Vec3 walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radius = .28, double height = 1.65) const;
     std::map<std::size_t, WorldContact> previous_contacts_;
+    Vec3 foot_contact_velocity_{};
     std::vector<ContactEvent> contact_events_;
     std::function<void(const Player&, const Rider&)> tick_observer_;
     std::uint64_t placement_serial_ = 0, transport_placements_ = 0, teleports_ = 0;

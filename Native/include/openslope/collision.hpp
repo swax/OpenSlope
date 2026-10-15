@@ -5,9 +5,11 @@
 namespace openslope {
 struct PropMotion;
 
-struct ProbeSphere {
+struct PropBodyShape {
+    Transform placement = identity_transform();
     Vec3 centre;
-    double radius{};
+    std::array<double, 9> inverse_inertia{};
+    std::vector<ProbeSphere> probes;
 };
 
 struct ShapeContact {
@@ -49,6 +51,9 @@ public:
     CollisionWorld& operator=(CollisionWorld&&) noexcept;
     static CollisionWorld load(const std::filesystem::path& root);
     std::vector<WorldContact> sweep(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end) const;
+    std::vector<WorldContact> sweep_body(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
+                                         std::size_t exclude) const;
+    std::optional<PropBodyShape> body_shape(std::size_t instance) const;
     std::optional<WorldContact> ray(Vec3 start, Vec3 end, bool rideable_only = false) const;
     std::optional<WorldVolume> volume(std::size_t instance, Vec3 start, Vec3 end) const;
     std::size_t objects() const;

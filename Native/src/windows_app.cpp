@@ -233,6 +233,16 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
               << "; route movers " << player.logic().route_motions().size() << "; active regions "
               << player.logic().active_regions() << char(10);
     std::cout << "Course recovery: pending " << player.reset_pending() << "; fade " << player.reset_fade() << char(10);
+    std::cout << "Dynamic props: " << player.logic().bodies() << " bodies; " << player.logic().sleeping_bodies()
+              << " sleeping\n";
+    unsigned reported_bodies = 0;
+    for (const auto& motion : player.logic().motions())
+        if ((player.logic().flags()[motion.instance] & WorldDynamic) && !motion.current.empty() &&
+            reported_bodies++ < 8) {
+            const auto& m = motion.current.front();
+            std::cout << "Dynamic pose: instance " << motion.instance << "; translation [" << m[12] << ',' << m[13]
+                      << ',' << m[14] << "]\n";
+        }
     renderer.capture(0, output);
     std::cout << "Vulkan capture: " << output.string() << '\n';
     return 0;

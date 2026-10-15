@@ -253,7 +253,8 @@ struct Level {
 };
 
 struct Body {
-    Vec3 centre;
+    Vec3 centre, mass_centre;
+    std::array<double, 9> inverse_inertia{};
     std::vector<Level> levels;
     std::vector<std::uint8_t> masks;
     Bounds box;
@@ -283,6 +284,22 @@ std::vector<std::vector<std::shared_ptr<Body>>> read_bodies(const std::filesyste
         for (const auto& row : data) {
             auto body = std::make_shared<Body>();
             body->centre = axes({row.at("UFloat0"), row.at("UFloat1"), row.at("UFloat2")}) / 100;
+            body->mass_centre = row.contains("UFloat3") && row.contains("UFloat4") && row.contains("UFloat5")
+                                    ? axes({row.at("UFloat3"), row.at("UFloat4"), row.at("UFloat5")}) / 100
+                                    : body->centre;
+            // [Trailmap: 230-mass] 0.075 times the stored inverse, with cm² -> m² and axes changed.
+            const std::array<unsigned, 3> component{0, 2, 1};
+            const std::array<double, 3> sign{1, 1, -1};
+            for (unsigned r = 0; r < 3; ++r)
+                for (unsigned c = 0; c < 3; ++c) {
+                    const auto key = "UFloat" + std::to_string(15 + component[r] * 3 + component[c]);
+                    const auto value = row.value(key, 0.);
+                    if (!std::isfinite(value) || std::abs(value) > 1e9)
+                        throw std::runtime_error("Invalid body inverse inertia");
+                    body->inverse_inertia[r * 3 + c] = value * 750 * sign[r] * sign[c];
+                }
+            if (!finite(body->mass_centre))
+                throw std::runtime_error("Invalid body centre of mass");
             const auto& levels = row.at("uPhysicsStruct0");
             if (!levels.is_array() || levels.empty() || levels.size() > 7 || !finite(body->centre))
                 throw std::runtime_error("Invalid occupancy levels");
@@ -554,6 +571,10 @@ struct CollisionWorld::Data {
     double seconds = 1. / 60;
     Tree tree;
     std::size_t triangle_count{}, body_count{};
+
+    bool responsive(const Object& object) const {
+        return object.response || (!flags.empty() && (flags[object.instance] & 8));
+    }
 
     std::optional<ShapeContact> hit_current(const Object& object, ProbeSphere start, ProbeSphere end) const {
         if (object.mode == 2)
@@ -846,7 +867,7 @@ std::vector<WorldContact> CollisionWorld::sweep(std::span<const ProbeSphere> sta
                 contact.bounce = object.bounce;
                 contact.surface = object.surface;
                 contact.effect = object.effect;
-                contact.response = object.response;
+                contact.response = data_->responsive(object);
                 const auto old = contacts.find(object.instance);
                 if (old == contacts.end() || hit->t < old->second.t)
                     contacts[object.instance] = contact;
@@ -855,6 +876,97 @@ std::vector<WorldContact> CollisionWorld::sweep(std::span<const ProbeSphere> sta
     std::vector<WorldContact> result;
     for (const auto& [id, contact] : contacts) {
         static_cast<void>(id);
+        result.push_back(contact);
+    }
+    std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.t < b.t; });
+    return result;
+}
+
+std::optional<PropBodyShape> CollisionWorld::body_shape(std::size_t instance) const {
+    if (instance >= data_->instance_objects.size())
+        return {};
+    for (const auto index : data_->instance_objects[instance]) {
+        const auto& object = data_->objects[index];
+        if (!object.body)
+            continue;
+        PropBodyShape shape;
+        shape.placement = multiply(object.world, inverse_transform(object.rest));
+        // [Trailmap: 230-mass] The mass centre and inverse inertia are model-space data.
+        shape.centre = object.body->mass_centre;
+        shape.inverse_inertia = object.body->inverse_inertia;
+        const auto principal_rest = principal(object.rest);
+        const auto scale = *std::max_element(principal_rest.scale.begin(), principal_rest.scale.end());
+        const auto visit = [&](auto&& self, unsigned depth, std::size_t mask, Vec3 centre) -> void {
+            const auto bits = object.body->masks.at(mask);
+            if (!bits || depth + 1 == object.body->levels.size()) {
+                if (shape.probes.size() >= 32768)
+                    throw std::runtime_error("Dynamic body exceeds sphere budget");
+                shape.probes.push_back(
+                    {transform_point(object.rest, centre), object.body->levels[depth].radius * scale});
+            } else
+                for (unsigned bit = 0; bit < 8; ++bit)
+                    if (bits & (1u << bit))
+                        self(self, depth + 1, mask + (bit + 1) * object.body->levels[depth].stride,
+                             child(centre, object.body->levels[depth + 1].offset, bit));
+        };
+        visit(visit, 0, 0, object.body->centre);
+        return shape; // Scripted knock-off bodies use physics payload zero.
+    }
+    return {};
+}
+
+std::vector<WorldContact> CollisionWorld::sweep_body(std::span<const ProbeSphere> start,
+                                                     std::span<const ProbeSphere> end, std::size_t exclude) const {
+    if (start.empty() || start.size() != end.size() || start.size() > 32768)
+        throw std::invalid_argument("Invalid moving body sweep");
+    Bounds query;
+    std::vector<Bounds> boxes;
+    for (std::size_t i = 0; i < start.size(); ++i) {
+        Bounds box;
+        for (const auto p : {start[i], end[i]}) {
+            if (!finite(p.centre) || !std::isfinite(p.radius) || p.radius <= 0)
+                throw std::invalid_argument("Invalid moving body sphere");
+            box.add(expanded(Bounds{p.centre, p.centre}, p.radius).min);
+            box.add(expanded(Bounds{p.centre, p.centre}, p.radius).max);
+        }
+        boxes.push_back(box);
+        query.add(box.min);
+        query.add(box.max);
+    }
+    std::vector<std::size_t> candidates;
+    data_->tree.query(query, candidates);
+    std::map<std::pair<std::size_t, std::size_t>, WorldContact> contacts;
+    for (const auto index : candidates) {
+        const auto& object = data_->objects[index];
+        if (object.instance == exclude || !data_->responsive(object) ||
+            (!data_->flags.empty() && !(data_->flags[object.instance] & 2)) || !overlaps(query, data_->boxes[index]))
+            continue;
+        for (std::size_t i = 0; i < start.size(); ++i) {
+            if (!overlaps(boxes[i], data_->boxes[index]))
+                continue;
+            const auto hit = data_->hit_current(object, start[i], end[i]);
+            if (!hit || (hit->depth <= 1e-8 && dot(end[i].centre - start[i].centre, hit->normal) >= -1e-9))
+                continue;
+            WorldContact contact;
+            static_cast<ShapeContact&>(contact) = *hit;
+            contact.instance = object.instance;
+            contact.object = index;
+            contact.response = true;
+            contact.surface_velocity = data_->velocity(object, hit->point);
+            contact.surface = object.surface;
+            contact.mass = object.mass;
+            contact.bounce = object.bounce;
+            contact.effect = object.effect;
+            const auto key = std::pair{contact.instance, i};
+            const auto old = contacts.find(key);
+            if (old == contacts.end() || hit->t < old->second.t ||
+                (hit->t == old->second.t && hit->depth > old->second.depth))
+                contacts[key] = contact;
+        }
+    }
+    std::vector<WorldContact> result;
+    for (const auto& [instance, contact] : contacts) {
+        static_cast<void>(instance);
         result.push_back(contact);
     }
     std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.t < b.t; });
@@ -873,7 +985,8 @@ std::optional<WorldContact> CollisionWorld::ray(Vec3 start, Vec3 end, bool ridea
     for (const auto index : candidates) {
         const auto& object = data_->objects[index];
         const bool fragile = !data_->flags.empty() && (data_->flags[object.instance] & 4);
-        if ((!data_->flags.empty() && !(data_->flags[object.instance] & 2)) || (!object.response && !fragile) ||
+        if ((!data_->flags.empty() && !(data_->flags[object.instance] & 2)) ||
+            (!data_->responsive(object) && !fragile) ||
             (rideable && !fragile && (object.surface < 0 || object.surface == 17)))
             continue;
         if (const auto hit = data_->ray_hit(object, start, end); hit && (!result || hit->t < result->t)) {
@@ -886,7 +999,7 @@ std::optional<WorldContact> CollisionWorld::ray(Vec3 start, Vec3 end, bool ridea
             contact.effect = object.effect;
             contact.mass = object.mass;
             contact.bounce = object.bounce;
-            contact.response = object.response;
+            contact.response = data_->responsive(object);
             if (dot(contact.normal, end - start) > 0)
                 contact.normal = -contact.normal;
             result = contact;

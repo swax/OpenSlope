@@ -28,6 +28,11 @@ Build 0.37 fixes GARI's black barrier overlay and adds per-piece break animation
 with shared walking/riding contact events. Automatic collision-event sound routing
 still needs executable extraction; see [barrier validation and limits](docs/shatter.md).
 
+Build 0.38 adds [live collision bags and scripted knock-off props](docs/rigid-props.md).
+Walking and riding transfer linear and angular momentum, the native collision
+shape follows the moving model, and props settle in place. Desktop and Quest use
+the same runtime; exact solver tuning and worn-device checks remain.
+
 Build 0.30 adds timed speed/trick pads, authored conveyors/vents/wind, altitude
 lifts and staged tube launches. See [boost volumes](docs/boost-volumes.md) for
 source alignment, test evidence and the remaining original lap-ride/air-profile

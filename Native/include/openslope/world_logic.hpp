@@ -1,5 +1,6 @@
 #pragma once
 #include "boost.hpp"
+#include "collision.hpp"
 #include "course_run.hpp"
 #include "crowd.hpp"
 #include "spline_motion.hpp"
@@ -20,7 +21,7 @@ struct WorldAction {
 };
 
 // Runtime flags are separate from immutable authored properties and geometry.
-enum WorldInstanceFlag : std::uint8_t { WorldDraw = 1, WorldCollide = 2, WorldFragile = 4 };
+enum WorldInstanceFlag : std::uint8_t { WorldDraw = 1, WorldCollide = 2, WorldFragile = 4, WorldDynamic = 8 };
 
 class WorldLogic {
 public:
@@ -37,6 +38,11 @@ public:
     std::size_t forces() const;
     std::optional<std::pair<Vec3, Vec3>> teleport_destination(std::size_t instance, unsigned rider_slot = 0) const;
     void contact(std::size_t instance, double speed, bool human = true, double force = 1, Vec3 direction = {});
+    void prepare_bodies(const CollisionWorld& world);
+    void step_bodies(double seconds, const Terrain& terrain, const CollisionWorld& world);
+    std::optional<CollisionResponse> shove(const WorldContact& contact, Vec3 velocity, Vec3 up);
+    std::size_t bodies() const;
+    std::size_t sleeping_bodies() const;
     std::span<const std::uint8_t> flags() const;
     std::vector<WorldAction> take_actions();
     std::span<const PropMotion> motions() const;

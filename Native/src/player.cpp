@@ -428,11 +428,15 @@ void Player::notify_tick(const Rider& before) {
                     to{{{rider_.position + Vec3{0, height, 0}, .28}}};
                 for (const auto& hit : world_.sweep(from, to)) {
                     const auto old = seen.find(hit.instance);
+                    const bool first = old == seen.end();
                     if (old == seen.end() || hit.t < old->second.t)
                         seen[hit.instance] = hit;
-                    dispatch_world_contact(hit, length(before.velocity));
+                    dispatch_world_contact(hit, length(foot_contact_velocity_));
                     if (teleport_pending_)
                         break;
+                    if (first)
+                        if (const auto response = logic_.shove(hit, foot_contact_velocity_, {0, 1, 0}))
+                            rider_.velocity += response->velocity - foot_contact_velocity_;
                 }
             }
             record_contacts(std::move(seen));
@@ -568,6 +572,7 @@ void Player::dispatch_world_contact(const WorldContact& contact, double speed, s
             support_normal.has_value() || (rider_.grounded && rider_.ground_instance == contact.instance);
         logic_.contact(contact.instance, speed, true, fragile_contact_cost(normal_speed, normal, supported),
                        rider_.velocity - contact.surface_velocity);
+        logic_.prepare_bodies(world_);
         apply_world_actions();
     }
 }
@@ -745,12 +750,15 @@ void Player::tick(const RideInput& input) {
     logic_contacts_.clear();
     sample_input(input);
     const auto before_pose = rider_;
+    foot_contact_velocity_ = before_pose.velocity;
     const auto dt = contract_.tick_seconds();
     rider_.pads.tick(dt);
     const std::array<Vec3, 2> observers{rider_.position, world_view_.value_or(rider_.position + Vec3{0, 1.7, 0})};
     const std::array<CrowdActivity, 1> crowd_riders{
         {{rider_.position, 1, run_.status().phase == RunPhase::Running && !reset_pending()}}};
     logic_.tick(dt, length(rider_.velocity), observers, crowd_riders);
+    world_.instance_flags(logic_.flags());
+    logic_.step_bodies(dt, terrain_, world_);
     apply_world_actions();
     if (on_foot_ && rider_.grounded && rider_.ground_object)
         rider_.position += world_.carry(*rider_.ground_object, rider_.position);
@@ -1205,12 +1213,19 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             floor.reset();
         const auto stop = std::min(solid ? solid->t : 1.0, floor ? floor->t : 1.0),
                    portion = remaining / contract_.tick_seconds();
+        bool activated_body = false;
         for (const auto& contact : hits)
             if (contact.t <= stop + 1e-8) {
                 collect(contact, portion);
                 if (reset_pending() || teleport_pending_)
                     return false;
+                if (!contact.response && (logic_.flags()[contact.instance] & WorldDynamic)) {
+                    activated_body = true;
+                    break;
+                }
             }
+        if (activated_body)
+            continue;
         if (floor && (!solid || floor->t <= solid->t))
             dispatch_fragile_ground(*floor);
         if (teleport_pending_)
@@ -1228,7 +1243,9 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         if (!solid)
             break;
         rider_.position = start.position + (rider_.position - start.position) * solid->t;
-        const auto response = collision_response(*solid, rider_.velocity, render_up());
+        const auto dynamic_response = logic_.shove(*solid, rider_.velocity, render_up());
+        const auto response =
+            dynamic_response ? *dynamic_response : collision_response(*solid, rider_.velocity, render_up());
         responses[solid->instance] = response;
         resolved.insert(solid->instance);
         rider_.position += response.position_delta;
