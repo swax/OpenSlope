@@ -275,6 +275,9 @@ private:
     Vec3 reset_camera_forward_{0, 0, -1};
     void finish_course_recovery();
     std::set<std::size_t> reset_contact_latches_;
+    static constexpr double trigger_margin = .03;
+    bool step_ride_surface(const WorldContact& contact);
+    bool scripted_ascent_ = false;
     bool in_reset_volume(std::size_t host) const;
     void latch_reset_contacts();
     TrickScore score_;

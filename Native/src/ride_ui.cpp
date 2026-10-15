@@ -245,7 +245,8 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.text("SCORE " + std::to_string(p.scoring().status().total()), .57, .013, .0021);
         c.text("BOOST", .79, .015, .0017, muted);
         c.rect(.86, .022, .12, .007, {.12f, .20f, .25f});
-        const auto energy = p.on_foot() ? 1. : double(p.scoring().meter_segments()) / 15;
+        const auto energy =
+            p.on_foot() || run.mode == RunMode::Freeride ? 1. : double(p.scoring().meter_segments()) / 15;
         c.rect(.86, .022, .12 * energy, .007, accent);
         c.rect(0, .965, 1, .035, panel);
         c.text(p.carrying_board()    ? "RELEASE RMB THROW / LMB RIDE"

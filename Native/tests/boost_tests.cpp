@@ -199,10 +199,23 @@ void lap_and_tube() {
         left = 3;
     }
     ScriptedBoost final(law);
+    ScriptedBoost captured(law);
+    BoostRider entry{0, {}, {7, 4, 6}, {8, 0, 9}};
+    entry.scripted_transport = true;
+    apply(captured, entry, true, counter);
+    check(entry.snapped && entry.position.x == 0 && entry.position.z == 0 && entry.stage == 0,
+          "Application tube capture centres once while preserving the entry stage");
+    entry.position.x = 1;
+    entry.snapped = false;
+    apply(captured, entry, true, counter);
+    check(!entry.snapped && entry.position.x == 1, "A live tube does not repeatedly snap position");
     left = 0;
-    BoostRider rider{0, {}, {0, 4, 0}, {8, 2, 9}};
+    BoostRider rider{0, {}, {7, 4, 6}, {8, 2, 9}};
+    rider.scripted_transport = true;
     apply(final, rider, true, counter);
     equal(rider.velocity, {8, 2, 9}, "zero remaining laps permits untouched ride-through");
+    check(rider.position.x == 7 && !rider.transporting && !rider.snapped,
+          "Final-pass ride-through cannot capture or control position");
     check(final.expired(), "final pass installs no persistent lift");
     law.kind = 24;
     law.mode = 1;
@@ -336,6 +349,11 @@ void geometry(const std::filesystem::path& root) {
     check(world.volume(0, {0, 40, 0}, {0, 40, 0}).has_value(),
           "invisible contact-only box admits a stationary interior rider");
     check(!world.volume(0, {20, 40, 0}, {20, 40, 0}), "box rejects an outside rider");
+    const std::array<ProbeSphere, 1> separated{{{{-10.86, 4, 0}, .85}}};
+    check(world.sweep(separated, separated).empty(), "Exact trigger query retains its geometric boundary");
+    const auto near_trigger = world.sweep(separated, separated, .03);
+    check(near_trigger.size() == 1 && near_trigger[0].instance == 0 && !near_trigger[0].response,
+          "Trigger skin bridges solver separation without adding a solid response");
     check(!world.volume(0, {10.2, 40, 0}, {10.2, 40, 0}) && world.volume(0, {10.2, 40, 0}, {10.2, 40, 0}, .3),
           "Volume coverage includes an overlapping body sphere while feet remain outside");
     check(world.volume(1, {30, 40, 0}, {30, 40, 0}).has_value(),
@@ -351,6 +369,12 @@ void geometry(const std::filesystem::path& root) {
     world.instance_flags(flags);
     check(!world.volume(0, {0, 4, 0}, {0, 4, 0}),
           "runtime collision tombstone disables volume despite visible geometry");
+    auto rows = fixture(root);
+    rows[0]["U0"] = 1;
+    rows[0]["PlayerBounce"] = true;
+    write(root, "Instances.json", {{"Instances", rows}});
+    const auto solid = CollisionWorld::load(root);
+    check(solid.sweep(separated, separated, .03).empty(), "Trigger margin cannot inflate a solid obstacle");
 }
 
 void graph_pads(const std::filesystem::path& root) {
@@ -627,6 +651,39 @@ void owned(const std::filesystem::path& maps, const std::filesystem::path& refer
             }
         }
     check(actors == 67 && pads_count > 0, "full owned corpus covers every placed driver and real pad");
+    const auto mega = maps / "MEGAPLE";
+    const auto instances = Json::parse(std::ifstream(mega / "Instances.json")).at("Instances");
+    const auto placements = prop_placements(mega);
+    const auto traverse = [&](const char* name, bool foot, double required_rise) {
+        const auto instance = std::find_if(instances.begin(), instances.end(),
+                                           [&](const auto& row) { return row.at("InstanceName") == name; });
+        check(instance != instances.end(), "Owned vent regression finds its named host");
+        const auto centre = transform_point(placements.at(std::distance(instances.begin(), instance)), {});
+        Player player(Terrain::load(mega));
+        auto start = centre + Vec3{7, 0, 0};
+        const auto floor = player.terrain().intersect(start + Vec3{0, 10, 0}, start - Vec3{0, 20, 0});
+        check(bool(floor), "Owned vent approach starts on actual course terrain");
+        start = floor->point;
+        player.warp(start, {-1, 0, 0}, {-15, 0, 0});
+        if (foot)
+            player.start_on_foot();
+        double high = start.y;
+        for (unsigned i = 0; i < 150; ++i) {
+            player.tick({});
+            high = std::max(high, player.rider().position.y);
+        }
+        check(high - start.y > required_rise,
+              "Owned vent approach reaches its launch or complete upper-shaft transport");
+        if (!foot) {
+            for (unsigned i = 0; i < 5; ++i)
+                player.tick({.boost = true});
+            check(player.board_boosting(), "Ordinary boost control resumes after leaving authored transport");
+        } else
+            check(player.on_foot(), "A walking shaft entry preserves the off-board state");
+    };
+    traverse("Mdl_Exaust_BOOST_Volume_7", false, 20);
+    traverse("Mdl_Endboost_Lap_1000", false, 400);
+    traverse("Mdl_Endboost_Lap_1000", true, 400);
     std::cout << "Owned boosts: " << actors << " drivers, " << pads_count << " pads across eleven courses\n";
 }
 

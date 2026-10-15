@@ -28,6 +28,8 @@ struct BoostRider {
     unsigned stage = 0;
     bool snapped = false, driven = false;
     std::span<const ProbeSphere> previous_probes{}, probes{};
+    double contact_margin = 0;
+    bool scripted_transport = false, transporting = false;
 };
 
 using LapEntry = std::function<std::optional<unsigned>(std::uint64_t)>;

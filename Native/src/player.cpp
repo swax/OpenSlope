@@ -86,6 +86,7 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
         length(cross(forward, up)) < 1e-9)
         throw std::runtime_error("Invalid rider placement");
     interpolate_board_ = false;
+    scripted_ascent_ = false;
     teleport_pending_.reset();
     recovery_target_.reset();
     reset_age_ = reset_fade_in_ = 0;
@@ -137,7 +138,7 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
 
 bool Player::in_reset_volume(std::size_t host) const {
     for (const auto& probe : volume(rider_, !rider_.grounded))
-        if (world_.volume(host, probe.centre, probe.centre, probe.radius))
+        if (world_.volume(host, probe.centre, probe.centre, probe.radius + trigger_margin))
             return true;
     return bool(world_.volume(host, rider_.position, rider_.position));
 }
@@ -446,6 +447,8 @@ void Player::notify_tick(const Rider& before) {
         if (on_foot_) {
             std::map<std::size_t, WorldContact> seen;
             const auto contact = [&](const WorldContact& hit) {
+                if (scripted_ascent_ && hit.response)
+                    return;
                 const auto old = seen.find(hit.instance);
                 const bool first = old == seen.end();
                 if (first || hit.t < old->second.t)
@@ -468,7 +471,7 @@ void Player::notify_tick(const Rider& before) {
                     break;
                 const std::array<ProbeSphere, 1> from{{{start + Vec3{0, height, 0}, .28}}},
                     to{{{rider_.position + foot_room_offset_ + Vec3{0, height, 0}, .28}}};
-                for (const auto& hit : world_.sweep(from, to)) {
+                for (const auto& hit : world_.sweep(from, to, trigger_margin)) {
                     contact(hit);
                     if (teleport_pending_)
                         break;
@@ -493,9 +496,17 @@ void Player::notify_tick(const Rider& before) {
                       !placed && (on_foot_ || run_.status().phase == RunPhase::Running) && !reset_pending() &&
                           !recovering(),
                       rider_.tube_stage};
-    const auto previous_probes = volume(before, !before.grounded), probes = volume(rider_, !rider_.grounded);
+    auto previous_probes = volume(before, !before.grounded), probes = volume(rider_, !rider_.grounded);
+    if (on_foot_) {
+        for (auto& probe : previous_probes)
+            probe.centre += previous_foot_room_offset_;
+        for (auto& probe : probes)
+            probe.centre += foot_room_offset_;
+    }
     driven.previous_probes = previous_probes;
     driven.probes = probes;
+    driven.contact_margin = trigger_margin;
+    driven.scripted_transport = true;
     logic_.apply_forces(dt, world_, std::span(&driven, 1), [&](std::uint64_t) -> std::optional<unsigned> {
         if (run_.status().mode == RunMode::Freeride || run_.status().passes <= 1)
             return {};
@@ -503,6 +514,9 @@ void Player::notify_tick(const Rider& before) {
         return run_.status().remaining;
     });
     rider_.tube_stage = driven.stage;
+    if (driven.transporting && !scripted_ascent_)
+        foot_motion_.release();
+    scripted_ascent_ = driven.transporting;
     rider_.position = driven.position;
     rider_.velocity = driven.velocity;
     if (driven.snapped) {
@@ -896,7 +910,35 @@ void Player::tick(const RideInput& input) {
     }
     if (on_foot_) {
         boost_engaged_ = false;
+        if (scripted_ascent_) {
+            jump_edges_.clear();
+            held_boost_ = 0;
+            foot_contact_velocity_ = rider_.velocity;
+            rider_.position += rider_.velocity * dt;
+            rider_.velocity.y -= contract_.value("gravity", "airRising") * dt;
+            notify_tick(before_pose);
+            return;
+        }
         tick_foot(input, before_pose);
+        notify_tick(before_pose);
+        return;
+    }
+    if (scripted_ascent_) {
+        jump_edges_.clear();
+        held_boost_ = 0;
+        boost_engaged_ = false;
+        rider_.position += rider_.velocity * dt;
+        rider_.velocity.y -= contract_.value("gravity", "airRising") * dt;
+        rider_.air_time += dt;
+        const auto from = volume(before_pose, true), to = volume(rider_, true);
+        std::map<std::size_t, WorldContact> seen;
+        for (const auto& hit : world_.sweep(from, to, trigger_margin))
+            if (!hit.response) {
+                seen[hit.instance] = hit;
+                dispatch_world_contact(hit, length(rider_.velocity));
+            }
+        record_contacts(std::move(seen));
+        score_.step(dt, ScoreMotion::Air);
         notify_tick(before_pose);
         return;
     }
@@ -1252,6 +1294,48 @@ std::vector<ProbeSphere> Player::volume(const Rider& pose, bool airborne, bool r
     return result;
 }
 
+bool Player::step_ride_surface(const WorldContact& contact) {
+    if (!rider_.grounded || recovering() || contact.surface < 0 || contact.surface == 17)
+        return false;
+    const auto horizontal = project(rider_.velocity - contact.surface_velocity, {0, 1, 0});
+    if (length(horizontal) < .5)
+        return false;
+    const auto forward = normalized(horizontal);
+    for (const auto reach : {0., .35, .65}) {
+        const auto point = rider_.position + forward * reach;
+        const auto floor = trace_ground(point + Vec3{0, .65, 0}, point - Vec3{0, .02, 0});
+        if (!floor || floor->instance != contact.instance || floor->normal.y < .55 ||
+            floor->point.y - rider_.position.y < .01 || floor->point.y - rider_.position.y > .65)
+            continue;
+        auto candidate = rider_;
+        candidate.position = floor->point;
+        const auto probes = volume(candidate, false);
+        const auto clear = [&](const WorldContact& hit) {
+            return !hit.response || hit.depth < .005 || (hit.surface >= 0 && hit.surface != 17 && hit.normal.y > .5);
+        };
+        const auto destination_hits = world_.sweep(probes, probes);
+        if (!std::all_of(destination_hits.begin(), destination_hits.end(), clear))
+            continue;
+        auto lifted = rider_;
+        lifted.position.y = floor->point.y;
+        const auto raised = volume(lifted, false);
+        const auto crossing = world_.sweep(raised, probes);
+        if (std::any_of(crossing.begin(), crossing.end(),
+                        [&](const auto& hit) { return hit.instance != contact.instance && !clear(hit); }))
+            continue;
+        rider_.position = floor->point;
+        rider_.normal = floor->normal;
+        rider_.surface = floor->surface;
+        rider_.ground_instance = floor->instance;
+        rider_.ground_object = floor->object;
+        rider_.ground_velocity = floor->velocity;
+        rider_.contact_error = 0;
+        rider_.velocity = floor->velocity + project(rider_.velocity - floor->velocity, floor->normal);
+        return true;
+    }
+    return false;
+}
+
 bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allowed) {
     if (teleport_pending_)
         return false;
@@ -1273,7 +1357,7 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
     for (unsigned pass = 0; pass < 8; ++pass) {
         const bool rail = rider_.motion == Motion::Rail;
         const auto initial = volume(start, airborne, rail), final = volume(rider_, airborne, rail);
-        const auto hits = world_.sweep(initial, final);
+        const auto hits = world_.sweep(initial, final, trigger_margin);
         const auto support = [&](const WorldContact& contact) {
             return contact.surface >= 0 && contact.surface != 17 && dot(contact.normal, rider_.normal) > .5;
         };
@@ -1345,6 +1429,8 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         }
         if (!solid)
             break;
+        if (!airborne && step_ride_surface(*solid))
+            break;
         rider_.position = start.position + (rider_.position - start.position) * solid->t;
         const auto dynamic_response = logic_.shove(*solid, rider_.velocity, render_up());
         const auto response =
@@ -1367,7 +1453,7 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         rider_.position += rider_.velocity * remaining;
     }
     const auto stationary = volume(rider_, airborne, rider_.motion == Motion::Rail);
-    for (const auto& contact : world_.sweep(stationary, stationary))
+    for (const auto& contact : world_.sweep(stationary, stationary, trigger_margin))
         if (!seen.contains(contact.instance)) {
             auto hit = contact;
             hit.t = 1;

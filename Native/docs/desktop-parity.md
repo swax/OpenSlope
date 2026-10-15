@@ -142,3 +142,9 @@ trigger-entry cues without requiring an impact normal, and adds authored lamp
 glints/halos. Quest defaults to 150% with a configurable 120 fps target. See
 `playtest-0.54.md` for validation, actual installed version and remaining vent
 approach, prop-lighting and Quest train limitations.
+
+Build 0.54.1 completes the reproduced Tokyo fan/lap-shaft entries with bounded
+rideable steps, matching trigger reach and a first-party controlled ascent.
+Mounted and walking entries reach the upper transport, and ordinary boost
+returns afterward. The freeriding HUD also displays its unlimited boost.
+See `vent-entry.md` for exact validation, application policy and installed build.

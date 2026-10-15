@@ -164,6 +164,23 @@ void playable(const std::filesystem::path& root, const Json& original_rows, cons
             "Explicit box bounds work without any render geometry");
     write(root / "Instances.json", {{"Instances", original_rows}});
     write(root / "Models.json", original_models);
+    Json curb = original_models;
+    curb["Models"][0]["ModelObjects"][0]["CollisionBounds"] = {{"Min", {0, -100, 0}}, {"Max", {500, 100, 30}}};
+    write(root / "Models.json", curb);
+    auto curb_rows = original_rows;
+    curb_rows[0]["SurfaceType"] = 5;
+    write(root / "Instances.json", {{"Instances", curb_rows}});
+    Player step(Terrain::load(root));
+    step.warp({-2, -.005, 0}, {1, 0, 0}, {12, 0, 0});
+    bool supported = false;
+    for (unsigned i = 0; i < 30; ++i) {
+        step.tick({});
+        supported |= step.rider().ground_instance == 0;
+    }
+    require(supported && step.rider().position.x > 1 && step.rider().bounces == 0,
+            "Low rideable rims admit a supported step instead of a side rebound");
+    write(root / "Instances.json", {{"Instances", original_rows}});
+    write(root / "Models.json", original_models);
 }
 } // namespace
 

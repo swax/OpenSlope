@@ -50,7 +50,8 @@ public:
     CollisionWorld(CollisionWorld&&) noexcept;
     CollisionWorld& operator=(CollisionWorld&&) noexcept;
     static CollisionWorld load(const std::filesystem::path& root);
-    std::vector<WorldContact> sweep(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end) const;
+    std::vector<WorldContact> sweep(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
+                                    double trigger_margin = 0) const;
     std::vector<WorldContact> sweep_body(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
                                          std::size_t exclude) const;
     std::optional<PropBodyShape> body_shape(std::size_t instance) const;

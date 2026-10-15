@@ -826,29 +826,39 @@ CollisionWorld CollisionWorld::load(const std::filesystem::path& root) {
     return world;
 }
 
-std::vector<WorldContact> CollisionWorld::sweep(std::span<const ProbeSphere> start,
-                                                std::span<const ProbeSphere> end) const {
+std::vector<WorldContact> CollisionWorld::sweep(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
+                                                double trigger_margin) const {
+    if (!std::isfinite(trigger_margin) || trigger_margin < 0 || trigger_margin > .1)
+        throw std::invalid_argument("Invalid trigger contact margin");
     if (start.empty() || start.size() != end.size() || start.size() > 19)
         throw std::runtime_error("Invalid rider probe volume");
-    Bounds query;
+    Bounds query, trigger_query;
     for (std::size_t i = 0; i < start.size(); ++i) {
         if (!finite(start[i].centre) || !finite(end[i].centre) || start[i].radius < 0 || end[i].radius < 0 ||
             !std::isfinite(start[i].radius) || !std::isfinite(end[i].radius))
             throw std::runtime_error("Invalid collision sphere");
+        const auto radius = std::max(start[i].radius, end[i].radius);
+        trigger_query.add(expanded(Bounds{start[i].centre, start[i].centre}, radius + trigger_margin).min);
+        trigger_query.add(expanded(Bounds{start[i].centre, start[i].centre}, radius + trigger_margin).max);
+        trigger_query.add(expanded(Bounds{end[i].centre, end[i].centre}, radius + trigger_margin).min);
+        trigger_query.add(expanded(Bounds{end[i].centre, end[i].centre}, radius + trigger_margin).max);
         if (i == 0 && start.size() > 1)
             continue;
-        const auto radius = std::max(start[i].radius, end[i].radius);
         query.add(expanded(Bounds{start[i].centre, start[i].centre}, radius).min);
         query.add(expanded(Bounds{start[i].centre, start[i].centre}, radius).max);
         query.add(expanded(Bounds{end[i].centre, end[i].centre}, radius).min);
         query.add(expanded(Bounds{end[i].centre, end[i].centre}, radius).max);
     }
     std::vector<std::size_t> candidates;
-    data_->tree.query(query, candidates);
+    if (trigger_margin == 0)
+        trigger_query = query;
+    data_->tree.query(trigger_query, candidates);
     std::map<std::size_t, WorldContact> contacts;
     for (const auto index : candidates) {
         const auto& object = data_->objects[index];
-        if ((!data_->flags.empty() && !(data_->flags[object.instance] & 2)) || !overlaps(query, data_->boxes[index]))
+        const auto responsive = data_->responsive(object);
+        if ((!data_->flags.empty() && !(data_->flags[object.instance] & 2)) ||
+            !overlaps(responsive ? query : trigger_query, data_->boxes[index]))
             continue;
         const auto first = object.mode == 3 && start.size() > 1 ? 1u : 0u,
                    limit = object.mode == 2 ? 1u : unsigned(start.size());
@@ -856,8 +866,13 @@ std::vector<WorldContact> CollisionWorld::sweep(std::span<const ProbeSphere> sta
             !sphere(data_->relative(object, start[0]), end[0], transform_point(object.world, object.body->centre),
                     object.body->levels[0].radius, object.principal))
             continue;
-        for (unsigned j = first; j < limit; ++j)
-            if (const auto hit = data_->hit(object, start[j], end[j])) {
+        for (unsigned j = first; j < limit; ++j) {
+            auto from = start[j], to = end[j];
+            if (!responsive) {
+                from.radius += trigger_margin;
+                to.radius += trigger_margin;
+            }
+            if (const auto hit = data_->hit(object, from, to)) {
                 WorldContact contact;
                 static_cast<ShapeContact&>(contact) = *hit;
                 contact.instance = object.instance;
@@ -872,6 +887,7 @@ std::vector<WorldContact> CollisionWorld::sweep(std::span<const ProbeSphere> sta
                 if (old == contacts.end() || hit->t < old->second.t)
                     contacts[object.instance] = contact;
             }
+        }
     }
     std::vector<WorldContact> result;
     for (const auto& [id, contact] : contacts) {

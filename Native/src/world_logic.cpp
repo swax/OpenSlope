@@ -1638,7 +1638,8 @@ void WorldLogic::apply_forces(double seconds, const CollisionWorld& world, std::
             const auto current = rider.probes[i];
             const auto previous =
                 rider.previous_probes.size() == rider.probes.size() ? rider.previous_probes[i] : current;
-            hit = world.volume(host, previous.centre, current.centre, std::max(previous.radius, current.radius));
+            hit = world.volume(host, previous.centre, current.centre,
+                               std::max(previous.radius, current.radius) + rider.contact_margin);
         }
         return hit;
     };

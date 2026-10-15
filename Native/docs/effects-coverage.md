@@ -62,6 +62,7 @@ python Native/tests/audio_scene_test.py temp/native/Release/openslope_player.exe
 ```
 
 Build 0.53 completes the ordinary interaction restoration described above; see
-`interaction-resets.md` for current evidence. Subsequent effects work includes
-Tokyo Megaplex vent/contact integration and pressure-button cues, point-light
-glints/halos, ambient voice selection and fence flex. Screen video remains open.
+`interaction-resets.md` for current evidence. Builds 0.54/0.54.1 add authored lamp
+glints/halos, pressure-button cues and Tokyo vent/shaft entry; see
+`playtest-0.54.md` and `vent-entry.md` for scope and evidence. Ambient voice
+selection, fence flex and screen video remain open, alongside broader parity.

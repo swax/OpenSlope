@@ -128,6 +128,13 @@ void ScriptedBoost::apply(double seconds, std::span<BoostRider> riders,
                 rider.stage = rider.position.y < volume.box.min.y + 10                     ? 0
                               : dot(rider.position - volume.box.center(), volume.axis) < 0 ? 1
                                                                                            : 2;
+                // Application transport policy: capture before cancelling horizontal entry speed.
+                if (latch.allowed && rider.scripted_transport && std::abs(normalized(law_.direction, {}).y) > .95) {
+                    const auto centre = volume.box.center();
+                    rider.snapped |= std::hypot(rider.position.x - centre.x, rider.position.z - centre.z) > 1e-6;
+                    rider.position.x = centre.x;
+                    rider.position.z = centre.z;
+                }
             }
             latch.direction =
                 law_.kind == 24 ? normalized(law_.stage_direction[rider.stage], {}) : normalized(law_.direction, {});
@@ -139,6 +146,8 @@ void ScriptedBoost::apply(double seconds, std::span<BoostRider> riders,
             continue;
         if (law_.kind == 18 && rider.position.y >= law_.height)
             continue;
+        rider.transporting |= rider.scripted_transport && (law_.kind == 15 || law_.kind == 18) &&
+                              std::abs(normalized(law_.direction, {}).y) > .95;
         const auto before = rider.velocity;
         if (law_.kind == 18) {
             if (law_.tolerance > 0 && law_.height - rider.position.y < law_.tolerance) {

@@ -89,8 +89,8 @@ Saved builds use `temp/native/desktop-playtest-0.54.0` and
 `temp/native/OpenSlopeNative-quest-0.54.0-playtest-debug.apk`.
 
 Additional ground-level approach probes identify a remaining fan-housing/contact
-margin issue and require a gentler tube lift to separate from ground support.
-These remain follow-up work rather than being claimed fixed by force occupancy
-alone. Broader prop brightness, the
+margin issue. These remain follow-up work rather than being claimed fixed by force occupancy
+alone. Build 0.54.1 subsequently addresses those entries with bounded rideable
+steps and a first-party shaft-transport profile; see `vent-entry.md`. Broader prop brightness, the
 Quest-only train report, ambient voice budgeting, fence flex and screen video
 remain separate parity work.
