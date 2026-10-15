@@ -149,6 +149,85 @@ void warm_cache() {
         scene.service();
     }
 }
+
+void library_cache() {
+    const auto base =
+        std::filesystem::temp_directory_path() /
+        ("openslope-library-cache-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+
+    struct Cleanup {
+        std::filesystem::path root;
+
+        ~Cleanup() { std::filesystem::remove_all(root); }
+    } cleanup{base};
+
+    const auto root = base / "Custom", shared = base / "Shared", donor = base / "Older";
+    std::filesystem::create_directories(root);
+    std::ofstream(root / "Patches.json") << "{}";
+    std::filesystem::create_directories(shared / "Audio/SFX/ZBOARD");
+    PcmClip pcm;
+    pcm.samples.assign(4800, .2f);
+    write_wave(shared / "Audio/SFX/ZBOARD/004.WAV", pcm);
+    write_wave(shared / "Audio/SFX/ZBOARD/004.loop.wav", pcm);
+    {
+        AudioScene scene(root);
+        check(scene.stats().prewarmed == 1, "map without Audio finds a case-insensitive shared board bank");
+    }
+    {
+        AudioScene scene(std::filesystem::relative(root));
+        check(scene.stats().prewarmed == 1, "relative map paths retain the same shared source containment");
+    }
+    std::filesystem::create_directories(donor / "Audio/SFX/zboard");
+    std::ofstream(donor / "Patches.json") << "{}";
+    write_wave(donor / "Audio/SFX/zboard/012.wav", pcm);
+    {
+        AudioScene scene(root);
+        check(scene.stats().prewarmed == 2, "older per-course common banks fill missing shared slots");
+    }
+    std::filesystem::create_directories(root / "Audio");
+    std::ofstream(root / "Audio/SoundIndex.json") << Json{{"Schema", "openslope-sound-index/v1"},
+                                                          {"Banks", {{"1", "private-board"}}},
+                                                          {"CollisionEvents", Json::object()}};
+    {
+        AudioScene scene(root);
+        check(scene.stats().prewarmed == 0, "explicit custom bank never borrows unrelated common audio");
+    }
+    std::filesystem::create_directories(root / "Sounds");
+    write_wave(root / "Sounds/custom.wav", pcm);
+    std::ofstream(root / "Effects.json") << Json{
+        {"extensions", {{"slopesmith", {{"customSounds", {{"98", "custom.wav"}}}}}}}};
+    AudioScene scene(root);
+    check(scene.stats().prewarmed == 1, "authored effect slot is prewarmed without local bank routing");
+    std::filesystem::remove_all(root / "Sounds");
+    scene.play_course(98, {0, 0, -1});
+    std::array<float, 4000> rendered{};
+    scene.mixer().render(rendered);
+    check(std::any_of(rendered.begin(), rendered.end(), [](float v) { return v > .05f; }),
+          "authored effect plays after its file has gone");
+    scene.play_course(4, {0, 0, -1});
+    check(scene.mixer().voices() == 1, "common banks do not become a course bank");
+    std::ofstream(root / "Effects.json") << Json{
+        {"extensions", {{"slopesmith", {{"customSounds", {{"98", "../escape.wav"}}}}}}}};
+    bool rejected = false;
+    try {
+        AudioScene unsafe(root);
+    } catch (const std::exception&) {
+        rejected = true;
+    }
+    check(rejected, "authored filenames cannot escape Sounds");
+    std::filesystem::remove(root / "Effects.json");
+    std::filesystem::remove(root / "Audio/SoundIndex.json");
+    for (unsigned i = 0; i < 257; ++i) {
+        const auto extra = base / ("Map" + std::to_string(i));
+        std::filesystem::create_directory(extra);
+        std::ofstream(extra / "Patches.json") << "{}";
+    }
+    {
+        AudioScene bounded(root);
+        check(bounded.stats().prewarmed == 1, "oversized sibling libraries preserve local and Shared audio");
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -166,6 +245,7 @@ int main(int argc, char** argv) {
         }
         performance();
         warm_cache();
+        library_cache();
         std::cout << "PASS: " << checks << " board performance, rail, pop, landing, flight/boost and prewarm checks\n";
         return 0;
     } catch (const std::exception& e) {

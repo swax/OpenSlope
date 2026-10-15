@@ -67,7 +67,7 @@ final class MapLibrary {
                 if (patches != null && !patches.directory) maps.add(entry);
             }
         }
-        maps.sort(Comparator.comparing(e -> e.name.toLowerCase(Locale.ROOT)));
+        maps.sort(Comparator.comparing((Entry e) -> e.name.toLowerCase(Locale.ROOT)).thenComparing(e -> e.name));
         return maps;
     }
     boolean exists(String name) throws IOException {
@@ -136,19 +136,22 @@ final class MapLibrary {
                     try (InputStream input = resolver.openInputStream(metadata.uri); OutputStream file = new FileOutputStream(new File(skyFolder, name))) { copy(input, file, PATCH_LIMIT, cancel); }
                 }
             }
+            long[] audioBudget = {0, 0};
+            File audioFolder = new File(output, "Audio");
+            if (!audioFolder.mkdir()) throw new IOException("Cannot prepare map audio.");
             Entry audio = child(map.uri, "Audio");
             if (audio != null) {
                 if (!audio.directory) throw new IOException("Audio must be a folder.");
-                File audioFolder = new File(output, "Audio");
-                if (!audioFolder.mkdir()) throw new IOException("Cannot prepare map audio.");
-                copyAudio(audio.uri, audioFolder, cancel, new long[]{0, 0}, 0);
-                if (!new File(audioFolder, "BoardSoundIndex.json").isFile()) {
-                    Entry shared = child(root, "Shared");
-                    Entry sharedAudio = shared != null && shared.directory ? child(shared.uri, "Audio") : null;
-                    Entry routing = sharedAudio != null && sharedAudio.directory ? child(sharedAudio.uri, "BoardSoundIndex.json") : null;
-                    if (routing != null && !routing.directory) try (InputStream input = resolver.openInputStream(routing.uri); OutputStream file = new FileOutputStream(new File(audioFolder, "BoardSoundIndex.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
-                }
+                copyAudio(audio.uri, audioFolder, cancel, audioBudget, 0);
             }
+            Entry sounds = child(map.uri, "Sounds");
+            if (sounds != null) {
+                if (!sounds.directory) throw new IOException("Sounds must be a folder.");
+                File soundsFolder = new File(output, "Sounds");
+                if (!soundsFolder.mkdir()) throw new IOException("Cannot prepare authored sounds.");
+                copyAudio(sounds.uri, soundsFolder, cancel, audioBudget, 0);
+            }
+            copyCommonAudio(map, audioFolder, cancel, audioBudget);
             JSONArray images;
             try { images = new JSONArray(nativeAssetFiles(output.getAbsolutePath())); }
             catch (JSONException e) { throw new IOException("Cannot read map image references.", e); }
@@ -189,6 +192,77 @@ final class MapLibrary {
             cancel.check();
             return output;
         } catch (Exception e) { deleteLocal(output); throw e; }
+    }
+    private Entry foldedChild(Uri directory, String name) throws IOException {
+        Entry found = null;
+        for (Entry entry : children(directory)) if (entry.name.equalsIgnoreCase(name)) {
+            if (found != null) throw new IOException("Ambiguous audio filename.");
+            found = entry;
+        }
+        return found;
+    }
+    private File foldedFile(File directory, String name) throws IOException {
+        File found = null; File[] files = directory.listFiles();
+        if (files != null) for (File file : files) if (file.getName().equalsIgnoreCase(name)) {
+            if (found != null) throw new IOException("Ambiguous cached audio filename.");
+            found = file;
+        }
+        return found;
+    }
+    private void copyCommonAudio(Entry map, File output, Cancel cancel, long[] budget) throws IOException {
+        List<Entry> sources = new ArrayList<>();
+        Entry shared = child(root, "Shared");
+        if (shared != null && shared.directory) sources.add(shared);
+        List<Entry> courses = new ArrayList<>();
+        for (Entry course : maps()) if (!course.uri.equals(map.uri) && !course.name.equals("Shared")) courses.add(course);
+        if (courses.size() <= 256) sources.addAll(courses);
+        String[] banks = {"zBxsfx", "zboard"};
+        File index = new File(output, "SoundIndex.json");
+        if (index.isFile()) try {
+            JSONObject doc = new JSONObject(new String(java.nio.file.Files.readAllBytes(index.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            if (doc.optString("Schema").equals("openslope-sound-index/v1")) {
+                JSONObject names = doc.optJSONObject("Banks");
+                for (int i = 0; i < banks.length; ++i) if (names != null && names.has(Integer.toString(i))) {
+                    String name = names.getString(Integer.toString(i));
+                    banks[i] = name.equalsIgnoreCase(banks[i]) ? name : null;
+                }
+            }
+        } catch (JSONException e) { throw new IOException("Invalid map sound routing.", e); }
+        for (Entry source : sources) {
+            cancel.check(); Entry audio = child(source.uri, "Audio");
+            if (audio == null || !audio.directory) continue;
+            File routingTarget = new File(output, "BoardSoundIndex.json");
+            if (!routingTarget.isFile()) {
+                Entry routing = child(audio.uri, "BoardSoundIndex.json");
+                if (routing != null && !routing.directory) try (InputStream input = resolver.openInputStream(routing.uri); OutputStream file = new FileOutputStream(routingTarget)) { budget[0] += copy(input, file, Math.min(PATCH_LIMIT, AUDIO_BUDGET - budget[0]), cancel); }
+            }
+            Entry sfx = child(audio.uri, "SFX");
+            if (sfx == null || !sfx.directory) continue;
+            File sfxTarget = new File(output, "SFX");
+            if (!sfxTarget.isDirectory() && !sfxTarget.mkdir()) throw new IOException("Cannot prepare shared audio.");
+            for (String bank : banks) {
+                if (bank == null) continue;
+                Entry folder = foldedChild(sfx.uri, bank);
+                if (folder == null || !folder.directory) continue;
+                File target = foldedFile(sfxTarget, bank);
+                if (target == null) { target = new File(sfxTarget, bank); if (!target.mkdir()) throw new IOException("Cannot prepare common sound bank."); }
+                if (!target.isDirectory()) throw new IOException("Common sound bank must be a folder.");
+                List<Entry> files = children(folder.uri);
+                for (Entry file : files) {
+                    cancel.check();
+                    if (!file.name.matches("(?i)[0-9]{1,5}\\.wav") || file.directory) continue;
+                    if (++budget[1] > 20000) throw new IOException("Audio library contains too many files.");
+                    if (foldedFile(target, file.name) != null) continue;
+                    String stem = file.name.substring(0, file.name.length() - 4);
+                    Entry loop = foldedChild(folder.uri, stem + ".loop.wav");
+                    File staleLoop = foldedFile(target, stem + ".loop.wav");
+                    if (staleLoop != null && !staleLoop.delete()) throw new IOException("Cannot replace cached loop region.");
+                    for (Entry clip : new Entry[]{file, loop}) if (clip != null && !clip.directory) {
+                        try (InputStream input = resolver.openInputStream(clip.uri); OutputStream destination = new FileOutputStream(new File(target, clip.name))) { budget[0] += copy(input, destination, Math.min(IMAGE_LIMIT, AUDIO_BUDGET - budget[0]), cancel); }
+                    }
+                }
+            }
+        }
     }
     private void copyAudio(Uri source, File destination, Cancel cancel, long[] budget, int depth) throws IOException {
         if (depth > 5) throw new IOException("Audio folder nesting exceeds its limit.");

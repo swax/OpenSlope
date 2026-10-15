@@ -3,6 +3,7 @@
 #include "openslope/board_audio.hpp"
 #include "openslope/import.hpp"
 #include "openslope/music.hpp"
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -27,6 +28,68 @@ std::filesystem::path asset(const std::filesystem::path& root, const std::string
     if (relative.empty() || relative.is_absolute() || *relative.begin() == "..")
         throw std::runtime_error("Audio asset escapes its course");
     return path;
+}
+
+std::string folded(std::string value) {
+    for (auto& c : value)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+    return value;
+}
+
+std::string audio_key(const std::string& name) { return name.starts_with("Audio/SFX/") ? folded(name) : name; }
+
+std::filesystem::path named_child(const std::filesystem::path& folder, const std::string& name) {
+    if (!std::filesystem::is_directory(folder))
+        return folder / name;
+    std::filesystem::path result;
+    unsigned count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+        if (++count > 20000)
+            throw std::runtime_error("Audio directory exceeds its limit");
+        if (folded(entry.path().filename().string()) != folded(name))
+            continue;
+        if (!result.empty())
+            throw std::runtime_error("Ambiguous audio asset name");
+        result = asset(folder, entry.path().filename().string());
+    }
+    return result.empty() ? folder / name : result;
+}
+
+unsigned authored_key(const std::string& key) {
+    if (key.empty() || key.size() > 5 ||
+        !std::all_of(key.begin(), key.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }))
+        throw std::runtime_error("Invalid authored audio identity");
+    const auto value = std::stoul(key);
+    if (value > 65535)
+        throw std::runtime_error("Authored audio identity exceeds its limit");
+    return unsigned(value);
+}
+
+std::string authored_clip(const Json& name) {
+    if (!name.is_string() || !valid_map_name(name.get<std::string>()) ||
+        folded(std::filesystem::path(name.get<std::string>()).extension().string()) != ".wav")
+        throw std::runtime_error("Unsafe authored audio filename");
+    return "Sounds/" + name.get<std::string>();
+}
+
+BoardMix board_mix(const Json& value) {
+    BoardMix mix;
+    if (!value.is_object())
+        return mix;
+    if (value.contains("enabled") && value.at("enabled").is_boolean())
+        mix.enabled = value.at("enabled");
+    const auto trim = [&](const char* key, double fallback) {
+        if (!value.contains(key) || !value.at(key).is_number())
+            return fallback;
+        const auto v = value.at(key).get<double>();
+        return std::isfinite(v) ? std::clamp(v, 0., 1.) : fallback;
+    };
+    mix.volume = trim("volume", mix.volume);
+    mix.glide = trim("glide", mix.glide);
+    mix.carve = trim("carve", mix.carve);
+    mix.transients = trim("transients", mix.transients);
+    mix.cues = trim("cues", mix.cues);
+    return mix;
 }
 
 std::string slot_name(unsigned slot) {
@@ -80,12 +143,19 @@ struct AudioScene::Data {
     std::set<std::string> failed;
     std::map<unsigned, std::string> banks;
     std::map<int, std::string> events;
+    std::map<unsigned, std::string> course_clips;
+    std::map<std::string, std::filesystem::path> sources;
+    std::vector<std::filesystem::path> audio_roots;
+    std::string environment_clip;
+    double environment_gain = 0, environment_fade = 0;
+    std::uint64_t environment_voice = 0;
     BoardMix mix;
     BoardAudio performance;
     std::vector<unsigned> surface_groups;
 
     struct Sound {
         int event = -1;
+        std::string clip;
         Vec3 position;
         bool enabled = false;
         double debounce = 0;
@@ -96,6 +166,7 @@ struct AudioScene::Data {
     struct Emitter {
         std::size_t instance{};
         unsigned type{}, event{}, radial{}, angular{};
+        std::string clip;
         Vec3 offset, extents, axis{0, 1, 0};
         double radius{}, cone{};
         std::uint64_t voice{};
@@ -123,7 +194,8 @@ struct AudioScene::Data {
     bool music_reroute = false;
     std::uint64_t serial = 0, teleports = 0;
 
-    explicit Data(std::filesystem::path folder) : root(std::move(folder)) {
+    explicit Data(std::filesystem::path map_root)
+        : root(map_root.empty() ? map_root : std::filesystem::weakly_canonical(map_root)) {
         if (root.empty())
             return;
         if (std::filesystem::exists(root / "Audio/SoundIndex.json")) {
@@ -139,10 +211,16 @@ struct AudioScene::Data {
                     events[std::stoi(key)] = value.at("Clip");
             }
         }
-        auto board_path = root / "Audio/BoardSoundIndex.json";
-        if (!std::filesystem::exists(board_path))
-            board_path = root.parent_path() / "Shared/Audio/BoardSoundIndex.json";
-        if (std::filesystem::exists(board_path)) {
+        discover_banks();
+        std::filesystem::path board_path;
+        for (const auto& folder : audio_roots) {
+            const auto path = asset(folder, "Audio/BoardSoundIndex.json");
+            if (std::filesystem::is_regular_file(path)) {
+                board_path = path;
+                break;
+            }
+        }
+        if (!board_path.empty()) {
             const auto index = read(board_path);
             if (index.value("Schema", "") == "openslope-board-sound-index/v1") {
                 surface_groups = index.at("SurfaceGroups").get<std::vector<unsigned>>();
@@ -151,22 +229,26 @@ struct AudioScene::Data {
                     throw std::runtime_error("Invalid board surface groups");
             }
         }
+        if (std::filesystem::exists(root / "Slopesmith.json")) {
+            const auto doc = read(asset(root, "Slopesmith.json"));
+            if (doc.value("schema", 0) == 1 && doc.value("kind", "") == "slopesmith-export" &&
+                doc.contains("boardSound"))
+                mix = board_mix(doc.at("boardSound"));
+        }
         if (std::filesystem::exists(root / "Audio/BoardMix.json")) {
             const auto doc = read(asset(root, "Audio/BoardMix.json"));
-            if (doc.value("schema", "") == "openslope-board-mix/v1") {
-                const auto& value = doc.at("boardSound");
-                mix.enabled = value.value("enabled", true);
-                const auto trim = [&](const char* key, double fallback) {
-                    if (!value.contains(key) || !value.at(key).is_number())
-                        return fallback;
-                    const auto v = value.at(key).get<double>();
-                    return std::isfinite(v) ? std::clamp(v, 0., 1.) : fallback;
-                };
-                mix.volume = trim("volume", mix.volume);
-                mix.glide = trim("glide", mix.glide);
-                mix.carve = trim("carve", mix.carve);
-                mix.transients = trim("transients", mix.transients);
-                mix.cues = trim("cues", mix.cues);
+            if (doc.value("schema", "") == "openslope-board-mix/v1")
+                mix = board_mix(doc.at("boardSound"));
+        }
+        if (std::filesystem::exists(root / "Audio/Environment.json")) {
+            const auto doc = read(asset(root, "Audio/Environment.json"));
+            if (doc.value("Schema", "") == "openslope-environment-audio/v1" && doc.contains("Bed") &&
+                !doc.at("Bed").is_null()) {
+                const auto& bed = doc.at("Bed");
+                environment_clip = bed.at("Clip");
+                environment_gain = bed.value("Volume", .15);
+                if (!std::isfinite(environment_gain) || environment_gain < 0 || environment_gain > 1)
+                    throw std::runtime_error("Invalid environment audio volume");
             }
         }
         if (std::filesystem::exists(root / "Instances.json")) {
@@ -182,12 +264,16 @@ struct AudioScene::Data {
                     continue;
                 const auto& sound = row.at("Sounds");
                 sounds[i].event = sound.value("CollisonSound", -1);
+                if (row.contains("SoundClip") && !row.at("SoundClip").is_null())
+                    sounds[i].clip = authored_clip(row.at("SoundClip"));
                 if (sound.contains("ExternalSounds"))
                     for (const auto& source : sound.at("ExternalSounds")) {
                         Emitter e;
                         e.instance = i;
                         e.type = source.at("U0");
                         e.event = source.at("SoundIndex");
+                        if (source.contains("SoundClip") && !source.at("SoundClip").is_null())
+                            e.clip = authored_clip(source.at("SoundClip"));
                         e.offset = axes({source.at("U2"), source.at("U3"), source.at("U4")}) / 100.;
                         e.radius = source.at("U5").get<double>() / 100.;
                         if (!finite(e.offset) || !std::isfinite(e.radius) || e.radius <= 0 || e.type > 3)
@@ -220,6 +306,19 @@ struct AudioScene::Data {
                 for (const auto& [key, row] : index.at("Events").items())
                     events[std::stoi(key)] = row.at("Clip");
         }
+        if (std::filesystem::exists(root / "Effects.json")) {
+            const auto doc = read(asset(root, "Effects.json"));
+            if (doc.contains("extensions") && doc.at("extensions").contains("slopesmith")) {
+                const auto& authored = doc.at("extensions").at("slopesmith");
+                if (authored.contains("customSoundEvents"))
+                    for (const auto& [key, name] : authored.at("customSoundEvents").items())
+                        events[int(authored_key(key))] = authored_clip(name);
+                if (authored.contains("customSounds"))
+                    for (const auto& [key, name] : authored.at("customSounds").items()) {
+                        course_clips[authored_key(key)] = authored_clip(name);
+                    }
+            }
+        }
         if (std::filesystem::exists(root / "Audio/Music/playlist.json")) {
             const auto list = read(asset(root, "Audio/Music/playlist.json"));
             if (list.is_array())
@@ -235,9 +334,74 @@ struct AudioScene::Data {
         start_music(lock);
     }
 
+    void discover_banks() {
+        audio_roots.push_back(root);
+        const auto library = root.parent_path();
+        if (!std::filesystem::is_directory(library))
+            return;
+        const auto shared = asset(library, "Shared");
+        if (std::filesystem::is_directory(shared) && shared != std::filesystem::weakly_canonical(root))
+            audio_roots.push_back(shared);
+        std::vector<std::filesystem::path> courses;
+        unsigned entries = 0;
+        if (std::filesystem::is_regular_file(asset(root, "Patches.json")))
+            for (const auto& entry : std::filesystem::directory_iterator(library)) {
+                if (++entries > 20000) {
+                    courses.clear();
+                    break;
+                }
+                if (!valid_map_name(entry.path().filename().string()) || !entry.is_directory() ||
+                    entry.path() == root || entry.path().filename() == "Shared")
+                    continue;
+                const auto course = asset(library, entry.path().filename().string());
+                if (!std::filesystem::is_regular_file(asset(course, "Patches.json")))
+                    continue;
+                courses.push_back(course);
+                if (courses.size() > 256) {
+                    courses.clear();
+                    break;
+                }
+            }
+        std::sort(courses.begin(), courses.end(), [](const auto& a, const auto& b) {
+            const auto x = folded(a.filename().string()), y = folded(b.filename().string());
+            return x == y ? a.filename() < b.filename() : x < y;
+        });
+        audio_roots.insert(audio_roots.end(), courses.begin(), courses.end());
+        if (!banks.contains(0))
+            banks[0] = "zBxsfx";
+        if (!banks.contains(1))
+            banks[1] = "zboard";
+        for (const auto& [group, bank] : banks) {
+            const bool common = (group == 0 && folded(bank) == "zbxsfx") || (group == 1 && folded(bank) == "zboard");
+            for (std::size_t i = 0; i < (common ? audio_roots.size() : 1); ++i) {
+                const auto& folder = audio_roots[i];
+                const auto directory = named_child(asset(folder, "Audio/SFX"), bank);
+                if (!std::filesystem::is_directory(directory))
+                    continue;
+                unsigned count = 0;
+                std::set<std::string> folder_names;
+                for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+                    if (++count > 20000)
+                        throw std::runtime_error("Sound bank exceeds its limit");
+                    const auto stem = entry.path().stem().string();
+                    if (folded(entry.path().extension().string()) != ".wav" || stem.empty() || stem.size() > 5 ||
+                        !std::all_of(stem.begin(), stem.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }))
+                        continue;
+                    const auto key = audio_key("Audio/SFX/" + bank + "/" + entry.path().filename().string());
+                    if (!folder_names.insert(key).second)
+                        throw std::runtime_error("Ambiguous sound slot filename");
+                    sources.try_emplace(key, asset(folder, entry.path().lexically_relative(folder).generic_string()));
+                    if (sources.size() > 4096)
+                        throw std::runtime_error("Too many course audio clips");
+                }
+            }
+        }
+    }
+
     // Only course opening and the serialized music service may load files.
-    std::shared_ptr<PcmClip> load_clip(const std::string& name, bool resident = false,
+    std::shared_ptr<PcmClip> load_clip(const std::string& requested, bool resident = false,
                                        std::unique_lock<std::mutex>* state_lock = nullptr) {
+        const auto name = audio_key(requested);
         if (failed.contains(name))
             return {};
         if (auto found = clips.find(name); found != clips.end()) {
@@ -249,12 +413,12 @@ struct AudioScene::Data {
         if (state_lock)
             state_lock->unlock();
         try {
-            const auto path = asset(root, name);
+            const auto source = sources.find(name);
+            const auto path = source == sources.end() ? asset(root, requested) : source->second;
             if (std::filesystem::exists(path)) {
                 value = std::make_shared<PcmClip>(PcmClip::load(path));
                 if (resident) {
-                    auto loop_path = path;
-                    loop_path.replace_filename(path.stem().string() + ".loop.wav");
+                    const auto loop_path = named_child(path.parent_path(), path.stem().string() + ".loop.wav");
                     if (std::filesystem::exists(loop_path)) {
                         const auto region = PcmClip::load(loop_path);
                         if (region.channels != value->channels || region.rate != value->rate)
@@ -306,27 +470,26 @@ struct AudioScene::Data {
     }
 
     std::shared_ptr<PcmClip> clip(const std::string& name) {
-        const auto found = clips.find(name);
+        const auto found = clips.find(audio_key(name));
         return found == clips.end() ? nullptr : found->second.clip;
     }
 
     void prewarm() {
         std::set<std::string> names;
-        for (const auto& [group, bank] : banks) {
-            const auto path = asset(root, "Audio/SFX/" + bank);
-            if (!std::filesystem::is_directory(path))
-                continue;
-            for (const auto& entry : std::filesystem::directory_iterator(path)) {
-                const auto stem = entry.path().stem().string();
-                if (entry.path().extension() == ".wav" && !stem.empty() && stem.size() <= 5 &&
-                    std::all_of(stem.begin(), stem.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }))
-                    names.insert("Audio/SFX/" + bank + "/" + entry.path().filename().string());
-                if (names.size() > 4096)
-                    throw std::runtime_error("Too many course audio clips");
-            }
-        }
+        for (const auto& [name, path] : sources)
+            names.insert(name);
+        for (const auto& [slot, name] : course_clips)
+            names.insert(name);
+        if (!environment_clip.empty())
+            names.insert(environment_clip);
         for (const auto& [event, name] : events)
             names.insert(name);
+        for (const auto& sound : sounds)
+            if (!sound.clip.empty())
+                names.insert(sound.clip);
+        for (const auto& emitter : emitters)
+            if (!emitter.clip.empty())
+                names.insert(emitter.clip);
         if (names.size() > 4096)
             throw std::runtime_error("Too many course audio clips");
         for (const auto& name : names)
@@ -334,6 +497,8 @@ struct AudioScene::Data {
     }
 
     std::shared_ptr<PcmClip> slot(unsigned group, unsigned number) {
+        if (group == 2 && course_clips.contains(number))
+            return clip(course_clips.at(number));
         const auto bank = banks.find(group);
         return bank == banks.end() ? nullptr : clip("Audio/SFX/" + bank->second + "/" + slot_name(number) + ".wav");
     }
@@ -457,6 +622,8 @@ struct AudioScene::Data {
     void reset() {
         mixer.clear();
         board = {};
+        environment_voice = 0;
+        environment_fade = 0;
         boost = 0;
         performance.reset();
         predicting_air = false;
@@ -537,6 +704,22 @@ void AudioScene::tick(const Player& player, const Rider& before) {
     if (d.serial && d.serial != player.audio_reset_serial())
         d.reset();
     d.serial = player.audio_reset_serial();
+    const auto bed_target = player.on_foot() ? 1. : 0.;
+    d.environment_fade += std::clamp(bed_target - d.environment_fade, -dt / 1.5, dt / 1.5);
+    if (!d.environment_clip.empty()) {
+        VoiceParams params;
+        params.gain = d.environment_gain * d.environment_fade;
+        params.loop = true;
+        params.sustain_only = true;
+        if (params.gain > 0) {
+            if (!d.mixer.update(d.environment_voice, params))
+                if (auto clip = d.clip(d.environment_clip))
+                    d.environment_voice = d.mixer.play(clip, params);
+        } else if (d.environment_voice) {
+            d.mixer.stop(d.environment_voice);
+            d.environment_voice = 0;
+        }
+    }
     const bool transported = player.teleports() != d.teleports;
     d.teleports = player.teleports();
     for (const auto& action : player.world_actions())
@@ -557,9 +740,9 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             s.enabled = true;
             const auto speed = std::max(0., -dot(before.velocity, e.contact.normal));
             const auto event = d.events.find(s.event);
-            if (s.debounce <= 0 && speed > .05 && event != d.events.end() &&
-                length(s.position - d.listener.position) < 100) {
-                d.one_shot(d.clip(event->second), s.position, std::min(1., speed / 20), true);
+            const auto name = !s.clip.empty() ? s.clip : event != d.events.end() ? event->second : std::string{};
+            if (s.debounce <= 0 && speed > .05 && !name.empty() && length(s.position - d.listener.position) < 100) {
+                d.one_shot(d.clip(name), s.position, std::min(1., speed / 20), true);
                 s.debounce = .8;
                 ++d.stats.contacts;
             }
@@ -589,7 +772,8 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             }
         }
         const auto event = d.events.find(int(e.event));
-        if (gain > 0 && event != d.events.end()) {
+        const auto name = !e.clip.empty() ? e.clip : event != d.events.end() ? event->second : std::string{};
+        if (gain > 0 && !name.empty()) {
             VoiceParams params;
             params.gain = gain;
             params.loop = e.type != 3;
@@ -599,10 +783,10 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             params.distance_falloff = false;
             if (e.type == 3) {
                 if (!e.inside)
-                    if (auto value = d.clip(event->second))
+                    if (auto value = d.clip(name))
                         d.mixer.play(value, params);
             } else if (!d.mixer.update(e.voice, params)) {
-                if (auto value = d.clip(event->second)) {
+                if (auto value = d.clip(name)) {
                     e.voice = d.mixer.play(value, params);
                     ++d.stats.ambient;
                 }

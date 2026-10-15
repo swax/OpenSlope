@@ -317,3 +317,8 @@ reads `Mdl_StageArea_Start_0` and `Mdl_StageArea_Finish_0` off `Instances.json`,
 minimum-DTF race line's horizontal arc to its own `DistanceToFinish` for the finish crossing. The viewport
 draws all three with the recovered line, so a reference level shows where it really starts, where it is won,
 and where its podium stands.
+
+`Slopesmith.json.boardSound` carries the normalized board and gameplay-cue mix
+(`enabled`, `volume`, `glide`, `carve`, `transients`, `cues`) for standalone folder
+players. It is optional on older schema-1 exports; absent values use the editor's
+default mix. Native also supports an explicit `Audio/BoardMix.json` override.

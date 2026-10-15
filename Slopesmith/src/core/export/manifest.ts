@@ -1,3 +1,4 @@
+import type { BoardSoundMix } from '../doc/types';
 import type { EditDoc } from '../doc/doc-edit';
 import { AUTHORED_MODEL_LEVEL } from '../doc/models';
 import { IMPORTED_PROP_LEVEL } from '../props/imported';
@@ -53,6 +54,8 @@ export interface SlopesmithExportManifest {
    *  ([Trailmap: 390-showoff-clock]), so no native file has a field for it either. snowknife's bundle reads it
    *  here in preference to its own retail table; a map that never set one inherits the packed slot's. */
   showoffSeconds?: number;
+  /** Authored board and gameplay-cue mix, normalized at export. */
+  boardSound?: BoardSoundMix;
   /** The stable quad id behind each `Patches.json` record, in that file's own order (docs/039). The engine
    *  consumes an ordered patch array with no id column, so the id→ordinal table lives here: it is what lets a
    *  re-export made after topology surgery be rejoined to its predecessor and diffed patch for patch, rather

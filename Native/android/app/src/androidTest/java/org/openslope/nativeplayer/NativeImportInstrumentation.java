@@ -133,6 +133,17 @@ public final class NativeImportInstrumentation extends Instrumentation {
             java.nio.file.Files.copy(new File(extracted, "Textures/particle-part.png").toPath(), new File(particleFolder, "part.png").toPath());
             java.nio.file.Files.copy(new File(extracted, "Textures/particle-part.png").toPath(), new File(particleFolder, "lens.png").toPath());
             java.nio.file.Files.copy(new File(extracted, "World.json").toPath(), new File(authoredParticles, "World.json").toPath());
+            File commonAudio = new File(temporary, "common-audio");
+            require(new File(commonAudio, "Audio/SFX/ZBOARD").mkdirs(), "Create synthetic common bank");
+            java.nio.file.Files.copy(new File(authoredParticles, "Patches.json").toPath(), new File(commonAudio, "Patches.json").toPath());
+            java.nio.file.Files.copy(new File(extracted, "Audio/SFX/tone/000.wav").toPath(), new File(commonAudio, "Audio/SFX/ZBOARD/004.WAV").toPath());
+            java.nio.file.Files.copy(new File(extracted, "Audio/SFX/tone/000.wav").toPath(), new File(commonAudio, "Audio/SFX/ZBOARD/004.loop.wav").toPath());
+            File boardRouting = new File(extracted, "Audio/BoardSoundIndex.json");
+            if (boardRouting.isFile()) java.nio.file.Files.copy(boardRouting.toPath(), new File(commonAudio, "Audio/BoardSoundIndex.json").toPath());
+            String commonName = "Common " + UUID.randomUUID(); documents.publish(commonName, commonAudio, () -> {});
+            File authoredSounds = new File(authoredParticles, "Sounds");
+            require(authoredSounds.mkdir(), "Create authored sound folder without an Audio folder");
+            java.nio.file.Files.copy(new File(extracted, "Audio/SFX/tone/000.wav").toPath(), new File(authoredSounds, "custom.wav").toPath());
             String particleName = "Particles " + UUID.randomUUID(); documents.publish(particleName, authoredParticles, () -> {});
             MapLibrary.Entry particleMap = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(particleName)) particleMap = row;
             require(particleMap != null, "Discover authored particles through the opaque SAF provider");
@@ -140,8 +151,39 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(particleCache, "Textures/Particles/part.png").isFile(), "SAF plan copies optional named art before it exists in the play cache");
             require(new File(particleCache, "Textures/Particles/lens.png").isFile(), "SAF plan retains authored corona art without an imported profile");
             require(new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(particleCache, "World.json").toPath()), java.nio.charset.StandardCharsets.UTF_8)).getJSONObject("Glare").getBoolean("Enabled"), "Authored celestial settings reach the native play cache");
+            require(new File(particleCache, "Sounds/custom.wav").isFile(), "SAF cache retains authored WAVs outside Audio");
+            require(new File(particleCache, "Audio/SFX/zboard/004.WAV").isFile(), "Map without Audio borrows a common bank from an older import with case-insensitive names");
+            require(new File(particleCache, "Audio/SFX/zboard/004.loop.wav").isFile(), "Borrowed full and sustain WAVs stay paired");
+            require(!new File(particleCache, "Audio/SFX/tone").exists(), "SAF fallback does not copy another map's course bank");
+            for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(commonName)) DocumentsContract.deleteDocument(getContext().getContentResolver(), row.uri);
             require(!new File(particleCache, "RidingEffects.json").exists() && !new File(particleCache, "Origin.json").exists(), "Authored particle art requires no imported profile or origin");
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, particleCache.getAbsolutePath());
+            Uri sharedRoot = fixtureFolder(documents, documents.root, "Shared");
+            Uri sharedAudio = fixtureFolder(documents, sharedRoot, "Audio");
+            Uri sharedBank = fixtureFolder(documents, fixtureFolder(documents, sharedAudio, "SFX"), "ZBOARD");
+            byte[] commonClip = java.nio.file.Files.readAllBytes(new File(extracted, "Audio/SFX/tone/000.wav").toPath());
+            for (String filename : new String[]{"004.wav", "004.loop.wav", "005.wav"}) {
+                MapLibrary.Entry existing = documents.child(sharedBank, filename);
+                Uri clip = existing == null ? DocumentsContract.createDocument(documents.resolver, sharedBank, "application/octet-stream", filename) : existing.uri;
+                try (OutputStream stream = documents.resolver.openOutputStream(clip, "wt")) { stream.write(commonClip); }
+            }
+            File sharedCache = documents.prepare(particleMap, temporary, () -> {});
+            require(new File(sharedCache, "Audio/SFX/zboard/005.wav").isFile(), "SAF cache discovers Shared without a Patches file");
+            require(new File(sharedCache, "Audio/SFX/zboard/004.loop.wav").isFile(), "Shared sustain region accompanies its full clip");
+            File localBank = new File(authoredParticles, "Audio/SFX/zboard");
+            require(localBank.mkdirs(), "Create a local common-bank override");
+            byte[] overrideClip = commonClip.clone(); overrideClip[overrideClip.length - 1] ^= 1;
+            java.nio.file.Files.write(new File(localBank, "004.wav").toPath(), overrideClip);
+            String overrideName = "Override " + UUID.randomUUID(); documents.publish(overrideName, authoredParticles, () -> {});
+            MapLibrary.Entry overrideMap = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(overrideName)) overrideMap = row;
+            require(overrideMap != null, "Discover the local override test map");
+            File overrideCache = documents.prepare(overrideMap, temporary, () -> {});
+            require(java.util.Arrays.equals(overrideClip, java.nio.file.Files.readAllBytes(new File(overrideCache, "Audio/SFX/zboard/004.wav").toPath())), "Local WAV overrides Shared bytes");
+            require(!new File(overrideCache, "Audio/SFX/zboard/004.loop.wav").exists(), "A local full clip never borrows an unrelated sustain region");
+            require(new File(overrideCache, "Audio/SFX/zboard/005.wav").isFile(), "Shared still fills another missing slot beside a local override");
+            DocumentsContract.deleteDocument(documents.resolver, overrideMap.uri);
+            DocumentsContract.deleteDocument(documents.resolver, sharedRoot);
+
             DocumentsContract.deleteDocument(getContext().getContentResolver(), particleMap.uri);
             int before = temporary.list().length; final int[] playProbes = {0}; rejected = false;
             try { documents.prepare(selected, temporary, () -> { if (++playProbes[0] > 4) throw new IOException("cancelled"); }); } catch (IOException e) { rejected = true; }
@@ -170,4 +212,12 @@ public final class NativeImportInstrumentation extends Instrumentation {
         } catch (Throwable e) { results.putString("stream", "FAIL: " + e + "\n"); code=Activity.RESULT_CANCELED; }
         finally { if (temporary != null) MapLibrary.deleteLocal(temporary); if (activity != null) { LauncherActivity launched = activity; runOnMainSync(launched::finish); } finish(code, results); }
     }
+    private Uri fixtureFolder(MapLibrary library, Uri parent, String name) throws IOException {
+        MapLibrary.Entry existing = library.child(parent, name);
+        if (existing != null) { if (!existing.directory) throw new IOException("Fixture folder is a file"); return existing.uri; }
+        Uri folder = DocumentsContract.createDocument(library.resolver, parent, MapLibrary.DIRECTORY, name);
+        if (folder == null) throw new IOException("Cannot create audio fixture folder");
+        return folder;
+    }
+
 }

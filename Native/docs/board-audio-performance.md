@@ -68,5 +68,6 @@ This does not establish worn listening or sustained FPS.
 
 Saved builds are under `temp/native/desktop-board-performance-0.46.0` and
 `temp/native/OpenSlopeNative-quest-0.46.0-board-performance-debug.apk`.
-Wider music/announcer behavior, shared-bank-only custom-map loading, editor mix
-export and broader gameplay/graphics/performance parity remain active.
+Build 0.48 adds shared-bank-only custom-map loading and portable editor mix export;
+see `audio-library.md`. Wider music/announcer behavior and broader
+gameplay/graphics/performance parity remain active.

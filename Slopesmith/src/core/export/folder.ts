@@ -1,3 +1,4 @@
+import { normalizeBoardSound } from '../audio/board-sound';
 import type { EditDoc } from '../doc/doc-edit';
 import { authoredParticleTextures } from '../effects/particle-textures';
 import { parseTexRef } from '../paint/textures';
@@ -778,6 +779,7 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     kind: 'slopesmith-export',
     level: name,
     documentVersion: doc.version,
+    boardSound: normalizeBoardSound(doc.boardSound),
     provenance,
     ...(doc.laps && doc.laps !== DEFAULT_LAPS ? { laps: doc.laps } : {}),
     // Written whenever the map carries one, default included: what the editor shows is what the bundle gets,

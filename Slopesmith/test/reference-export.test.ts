@@ -95,11 +95,16 @@ try {
   raced.name = 'RACED_REF';
   raced.laps = 3;
   raced.showoffSeconds = 150;
+  raced.boardSound = { enabled: false, volume: .35, glide: .4, carve: .5, transients: .6, cues: .7 };
   const racedOut = join(root, raced.name);
   await exportLevel(raced, { outDir: racedOut, lighting: false });
   const racedManifest = await readSlopesmithExportManifest(racedOut);
   check(racedManifest?.laps === 3 && racedManifest?.showoffSeconds === 150,
     'an authored lap count and showoff clock ride out in Slopesmith.json for snowknife to prefer');
+  check(manifest?.boardSound?.enabled === true && manifest.boardSound.volume === .8,
+    'an export carries the normalized default board mix');
+  check(JSON.stringify(racedManifest?.boardSound) === JSON.stringify(raced.boardSound),
+    'an authored board and cue mix travels in the portable manifest');
   check(manifest?.textures['DONOR_0012.png']?.level === 'DONOR'
     && manifest?.textures['DONOR_0012.png']?.staged === 'DONOR_0012.png',
   'a page lifted from a level ships under a portable slot name and keeps its donor in the manifest');

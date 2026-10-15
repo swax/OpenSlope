@@ -87,3 +87,8 @@ aligns exhaust with the selected thrust end; allows continuous desktop rail
 turns; and snaps the walking chase camera behind the avatar. Desktop HUD bars
 use a stable screen-space overlay. Broader parity requirements above remain
 active. See playtest-safety.md for measured regressions and device limits.
+
+Build 0.48 adds portable authored board-mix export, custom hit/ambient/effect WAV
+routing, shared/older-import common-bank fallback and off-board environment beds.
+Quest folder caching retains those assets for maps without local audio metadata.
+See `audio-library.md`; broader gameplay, music and graphics parity remains active.

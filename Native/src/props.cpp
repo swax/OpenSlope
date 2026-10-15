@@ -530,7 +530,11 @@ std::vector<std::string> prop_files(const std::filesystem::path& root, bool mode
         for (const auto& object : model.at("ModelObjects"))
             for (const auto& part : object.at("MeshData")) {
                 names.insert("Meshes/" + safe(part.at("MeshPath")));
-                const auto id = part.at("MaterialID").get<std::size_t>();
+                const auto id = part.at("MaterialID").get<int>();
+                if (id == -1)
+                    continue;
+                if (id < -1)
+                    throw std::runtime_error("Invalid prop material");
                 const auto name = texture_name(t.materials.at(id));
                 if (!name.empty())
                     names.insert("Textures/" + safe(name));
@@ -578,15 +582,18 @@ Props Props::load(const std::filesystem::path& root, bool model_only, std::span<
             resolve(i);
         for (std::size_t i = 0; i < objects.size(); ++i)
             for (const auto& data : objects[i].at("MeshData")) {
-                const auto material = data.at("MaterialID").get<std::size_t>();
-                const auto& mat = t.materials.at(material);
+                const auto material = data.at("MaterialID").get<int>();
+                if (material < -1)
+                    throw std::runtime_error("Invalid prop material");
+                const auto mat = material == -1 ? Json{{"TexturePath", nullptr}} : t.materials.at(material);
                 PropPart part;
                 part.texture = texture_name(mat);
                 if (!part.texture.empty())
                     safe(part.texture);
                 part.flags = mat.value("UnknownInt18", 0u);
-                part.material = material;
-                part.frames = frames.at(material);
+                part.material = std::size_t(material);
+                if (material >= 0)
+                    part.frames = frames.at(material);
                 if (!part.frames.empty())
                     part.texture = part.frames.front();
                 part.object = i;
