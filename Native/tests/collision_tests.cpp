@@ -294,10 +294,27 @@ int main(int argc, char** argv) {
         require(scaled.size() == 1 && scaled[0].instance == 2, "Query an affine occupancy sphere");
         near(scaled[0].t, .55, "Nonuniform body extent is retained");
         near(scaled[0].point.x, 22, "Ellipsoid contact surface");
+        require(sweep(world, {25, .8, 0}, {15, .8, 0}).empty(),
+                "A true compressed ellipsoid retains the gap inside its enclosing sphere");
         const auto body_exit = world.ray({20, 0, 0}, {23, 0, 0});
         require(body_exit.has_value(), "Inside ellipsoid ray exits the surface");
         near(body_exit->t, 2. / 3, "Exact ellipsoid ray parameter");
         near(body_exit->point.x, 22, "Ellipsoid ray point lies on its segment");
+        auto round_rows = rows;
+        round_rows[2]["Scale"] = {1 + 2e-6, 1., 1 - 1e-6};
+        write(root / "Instances.json", {{"Instances", round_rows}});
+        const auto round_world = CollisionWorld::load(root);
+        const auto round_hit = sweep(round_world, {25, 0, 0}, {20, 0, 0});
+        require(round_hit.size() == 1 && round_hit[0].instance == 2,
+                "Imported float scale noise retains the round occupancy contact");
+        near(round_hit[0].t, .75, "Nearly round occupancy preserves analytic contact time");
+        near(round_hit[0].point.x, 21.000002, "Nearly round surface differs only within the numerical envelope");
+        require(sweep(round_world, {25, 2, 0}, {15, 2, 0}).empty(),
+                "Conservative rejection cannot turn an off-axis miss into a contact");
+        const auto initial_overlap = sweep(round_world, {20, 0, 0}, {20, 0, 0});
+        require(initial_overlap.size() == 1 && initial_overlap[0].depth > 1,
+                "Round fast path retains stationary initial penetration");
+        write(root / "Instances.json", {{"Instances", rows}});
         require(sweep(world, {30, 0, -5}, {30, 0, 5}).empty(), "Hollow occupancy gap stays empty");
         require(!sweep(world, {31, 1, -5}, {31, 1, 2}).empty(), "Occupied octant remains solid");
         const auto pass = sweep(world, {35, 0, 0}, {45, 0, 0});

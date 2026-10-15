@@ -156,6 +156,19 @@ def fixtures(root):
             instances = [dict(ModelID=0, Location=[0, -25, 0], Visable=True)]
         for filename, key, rows in (("Models.json", "Models", models), ("Materials.json", "Materials", materials), ("Instances.json", "Instances", instances)):
             (folder / filename).write_text(json.dumps({key: rows}), encoding="utf-8")
+    folder = course(root, 'props_depth_precision', 'background.png')
+    (folder / 'Textures/background.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+    (folder / 'Textures/near.png').write_bytes(rgba(1, 1, [20, 40, 220, 255]))
+    (folder / 'Textures/far.png').write_bytes(rgba(1, 1, [220, 20, 40, 255]))
+    (folder / 'Meshes').mkdir()
+    (folder / 'Meshes/quad.obj').write_text('v -10000 0 -10000\nv 10000 0 -10000\nv 10000 0 10000\nv -10000 0 10000\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 0 -1 0\nf 1/1/1 2/2/1 3/3/1 4/4/1\n')
+    # Rear material draws last. Millimetre-separated facades at 300 m must still
+    # reject it; ordinary forward float depth rounds both surfaces together.
+    models = [dict(ModelObjects=[dict(ParentID=-1, MeshData=[dict(MeshPath='quad.obj', MaterialID=i)])]) for i in range(2)]
+    rows = [dict(ModelID=i, Location=[0, 30000 + i * .1, 0], Visable=True) for i in range(2)]
+    for filename, key, data in [('Models.json', 'Models', models), ('Instances.json', 'Instances', rows),
+                                ('Materials.json', 'Materials', [dict(TexturePath='near.png'), dict(TexturePath='far.png')])]:
+        (folder / filename).write_text(json.dumps({key: data}))
     folder = root/'props_uv'
     shutil.copytree(root/'props', folder)
     palette = [[240,20,40,255],[20,220,40,255],[20,40,240,255],[240,190,10,255]]

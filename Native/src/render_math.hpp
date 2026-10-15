@@ -28,9 +28,10 @@ inline Matrix projection(double left, double right, double down, double up, doub
     m.values[5] = float(2 / height);
     m.values[8] = float((right + left) / width);
     m.values[9] = float((up + down) / height);
-    m.values[10] = float(-far / (far - near));
+    // Reversed floating-point depth retains separation on distant layered facades.
+    m.values[10] = float(near / (far - near));
     m.values[11] = -1;
-    m.values[14] = float(-far * near / (far - near));
+    m.values[14] = float(far * near / (far - near));
     return m;
 }
 

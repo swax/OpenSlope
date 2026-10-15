@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
-project(OpenSlopeNative VERSION 0.1.0 LANGUAGES C CXX)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" OPENSLOPE_VERSION LIMIT_COUNT 1)
+project(OpenSlopeNative VERSION ${OPENSLOPE_VERSION} LANGUAGES C CXX)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION.txt)
+configure_file(cmake/build_version.hpp.in generated/build_version.hpp @ONLY)
 
 option(OPENSLOPE_BUILD_PLAYER "Build the Vulkan/OpenXR prototype" OFF)
 option(OPENSLOPE_BUILD_TESTS "Build portable conformance tests" ON)
@@ -68,6 +71,7 @@ target_include_directories(openslope_core PUBLIC include PRIVATE "${CMAKE_CURREN
 target_sources(openslope_core PRIVATE src/foot_motion.cpp)
 target_sources(openslope_core PRIVATE src/audio_preferences.cpp)
 target_sources(openslope_core PRIVATE src/gear.cpp)
+target_sources(openslope_core PRIVATE src/version.cpp)
 target_sources(openslope_core PRIVATE src/mesh_throw.cpp)
 target_sources(openslope_core PRIVATE src/rigid_prop.cpp)
 target_sources(openslope_core PRIVATE src/rider_motion.cpp)

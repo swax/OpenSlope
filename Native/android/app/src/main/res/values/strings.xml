@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_version">Version %1$s</string>
     <string name="app_name">OpenSlope</string>
     <string name="play_course">Play %1$s</string>
     <string name="launcher_title">OpenSlope</string>

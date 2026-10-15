@@ -29,6 +29,7 @@ final class LauncherUi {
         content.setPadding(padding, dp(24), padding, dp(24)); root.addView(content);
         TextView title = text(content, R.string.launcher_title, 30, false); title.setId(R.id.launcher_title); heading(title);
         text(content, R.string.launcher_subtitle, 18, true);
+        text(content, context.getString(R.string.app_version, BuildConfig.VERSION_NAME), 16, true).setId(R.id.launcher_version);
 
         LinearLayout library = card(content);
         heading(text(library, R.string.your_courses, 22, false));

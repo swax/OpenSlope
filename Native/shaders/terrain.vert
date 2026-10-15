@@ -45,5 +45,5 @@ void main() {
     lightmapTile=tile;
     gl_Position=transform.mvp*vec4(worldPosition,1.0);
     if(transform.options.x==10||transform.options.x==11)gl_Position=vec4(position.xy,0.5*lightUV.y,lightUV.y);
-    if(transform.options.x==7)gl_Position.z=gl_Position.w;
+    if(transform.options.x==7)gl_Position.z=0.0;
 }

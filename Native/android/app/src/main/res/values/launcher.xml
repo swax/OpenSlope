@@ -32,6 +32,7 @@
     </style>
     <item name="launcher_root" type="id" />
     <item name="launcher_title" type="id" />
+    <item name="launcher_version" type="id" />
     <item name="launcher_courses" type="id" />
     <item name="launcher_mode" type="id" />
     <item name="launcher_scale" type="id" />

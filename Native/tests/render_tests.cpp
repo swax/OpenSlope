@@ -135,12 +135,36 @@ int main(int argc, char** argv) {
         VulkanContext context;
         context.create(false);
         for (const auto samples : {1u, 4u})
-            for (const auto name :
-                 {"handedness",   "orientation",  "lighting",     "repeat",      "props",          "props_uv",
-                  "props_flag",   "props_crowd",  "props_cutout", "props_blend", "props_priority", "props_layers",
-                  "minification", "antialiasing", "visibility",   "sprites",     "boost",          "boost_fog",
-                  "wake",         "wake_repeat",  "sheet",        "sky",         "sky_foreground", "sky_authored",
-                  "fog",          "sprites_fog",  "wake_fog",     "sheet_fog",   "props_fog"}) {
+            for (const auto name : {"handedness",
+                                    "orientation",
+                                    "lighting",
+                                    "repeat",
+                                    "props",
+                                    "props_uv",
+                                    "props_flag",
+                                    "props_crowd",
+                                    "props_cutout",
+                                    "props_blend",
+                                    "props_priority",
+                                    "props_layers",
+                                    "props_depth_precision",
+                                    "minification",
+                                    "antialiasing",
+                                    "visibility",
+                                    "sprites",
+                                    "boost",
+                                    "boost_fog",
+                                    "wake",
+                                    "wake_repeat",
+                                    "sheet",
+                                    "sky",
+                                    "sky_foreground",
+                                    "sky_authored",
+                                    "fog",
+                                    "sprites_fog",
+                                    "wake_fog",
+                                    "sheet_fog",
+                                    "props_fog"}) {
                 auto scene = std::make_shared<VulkanScene>(context);
                 Mesh mesh;
                 if (std::string(name) == "antialiasing") {
@@ -180,9 +204,12 @@ int main(int argc, char** argv) {
                 second.use_scene(scene);
                 first.targets(std::span(&unorm.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128, samples);
                 second.targets(std::span(&srgb.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 128, 128, samples);
-                const auto camera = std::string(name) == "handedness"
+                auto orthographic = Matrix::identity();
+                orthographic.values[10] = -1;
+                orthographic.values[14] = 1;
+                const auto camera = std::string(name) == "handedness" || std::string(name) == "props_depth_precision"
                                         ? projection(-1, 1, -1, 1) * view({0, 0, 0}, {0, 0, -1})
-                                        : Matrix::identity();
+                                        : orthographic;
                 if (std::string(name).ends_with("_fog")) {
                     for (auto* renderer : {&first, &second}) {
                         const auto plain = capture(*renderer, root / "effects-fog-plain.ppm", camera);
@@ -1036,6 +1063,8 @@ int main(int argc, char** argv) {
                         if (first.stats().visible_props != 2 || first.stats().prop_draws != 1 ||
                             second.stats().prop_draws != 1)
                             throw std::runtime_error("Props are not culled/instanced as expected");
+                    } else if (std::string(name) == "props_depth_precision") {
+                        pixel(*pixels, .5, .5, {20, 40, 220});
                     } else if (std::string(name) == "props_cutout") {
                         pixel(*pixels, .40625, .5, {40, 80, 120});
                         pixel(*pixels, .59375, .5, {240, 100, 40});
@@ -1058,8 +1087,11 @@ int main(int argc, char** argv) {
                     target.create(format);
                     renderer.targets(std::span(&target.image, 1), format, 128, 128, samples);
                     const auto render = [&](std::span<const ParticleSprite> particles) {
-                        return capture(renderer, root / "world-particles.ppm", Matrix::identity(), {}, {}, {}, {}, 0,
-                                       {}, {}, 1, {}, {}, {}, particles);
+                        auto orthographic = Matrix::identity();
+                        orthographic.values[10] = -1;
+                        orthographic.values[14] = 1;
+                        return capture(renderer, root / "world-particles.ppm", orthographic, {}, {}, {}, {}, 0, {}, {},
+                                       1, {}, {}, {}, particles);
                     };
                     const auto baseline = render({});
                     ParticleSprite p{{0, 0, .25}, .3f, {.8f, .2f, .1f, .5f}, 0, ParticleBlend::Additive};

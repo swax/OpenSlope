@@ -457,10 +457,19 @@ Distance ellipsoid(Vec3 point, Vec3 centre, double radius, const Principal& p) {
 std::optional<ShapeContact> sphere(ProbeSphere start, ProbeSphere end, Vec3 centre, double radius, const Principal& p) {
     const auto velocity = end.centre - start.centre;
     const auto speed = length(velocity), probe = std::max(start.radius, end.radius);
+    const auto [smallest, largest] = std::minmax_element(p.scale.begin(), p.scale.end());
+    const auto outer_radius = radius * *largest;
+    const auto offset = start.centre - centre;
+    const auto along = speed > 0 ? std::clamp(-dot(offset, velocity) / (speed * speed), 0., 1.) : 0.;
+    // Reject outside a conservative sphere before running the affine distance solver.
+    const auto reach = outer_radius + probe + 1e-8;
+    if (dot(offset + velocity * along, offset + velocity * along) > reach * reach)
+        return {};
     double t = 0;
-    if (p.scale[0] == p.scale[1] && p.scale[1] == p.scale[2]) {
-        const auto r = radius * p.scale[0], sum = r + probe;
-        const auto offset = start.centre - centre;
+    // Imported float transforms and their composed poses leave nominal spheres out of round.
+    // This application envelope differs from the affine surface by at most 0.01 millimetre.
+    if (radius * (*largest - *smallest) <= 1e-5) {
+        const auto r = outer_radius, sum = r + probe;
         const auto distance = length(offset);
         if (distance <= sum) {
             const auto normal = normalized(offset, -normalized(velocity));

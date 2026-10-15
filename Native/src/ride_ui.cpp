@@ -1,5 +1,6 @@
 #include "openslope/ride_ui.hpp"
 #include "openslope/ui_font.hpp"
+#include "openslope/version.hpp"
 #include <cctype>
 
 namespace openslope {
@@ -189,7 +190,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
     if (visible) {
         c.rect(0, 0, 1, 1, panel);
         c.rect(0, 0, 1, .012, accent);
-        c.text("OPEN SLOPE", .06, .045, .007, accent);
+        c.text("OPEN SLOPE " + std::string(application_version()), .06, .045, .005, accent);
         c.text(audio_options ? (song_picker ? "CHOOSE SONG" : "AUDIO")
                : library     ? "MAP LIBRARY"
                : controls    ? "CONTROLS"

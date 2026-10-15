@@ -87,6 +87,7 @@ final class LauncherUiChecks {
                 require(ui.status.getText().toString().contains("Course could not open"), "Launch failure survives initial refresh and resume");
                 require(ui.status.getAccessibilityLiveRegion() == View.ACCESSIBILITY_LIVE_REGION_POLITE, "Status uses polite accessibility announcements");
                 require(ui.root.findViewById(R.id.launcher_title).isAccessibilityHeading(), "Page title is an accessibility heading");
+                require(((TextView) ui.root.findViewById(R.id.launcher_version)).getText().toString().equals("Version " + BuildConfig.VERSION_NAME), "Visible version matches the installed package");
                 require(ui.targetRefreshRate.getCount() == 4, "Four target frame rates are available");
                 require(ui.targetRefreshRate.getSelectedItemPosition() == launched.getPreferences(0).getInt("target_refresh_rate", 3), "Saved refresh target or 120 fps default is selected");
                 require(ui.renderScale.getSelectedItemPosition() == launched.getPreferences(0).getInt("render_scale", 2), "Saved render scale or 150 percent default is selected");

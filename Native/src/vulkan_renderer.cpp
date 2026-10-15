@@ -86,7 +86,9 @@ void VulkanContext::create(bool window) {
     queue_info.queueFamilyIndex = family;
     queue_info.queueCount = 1;
     queue_info.pQueuePriorities = &priority;
+    const auto features = texture_features();
     VkDeviceCreateInfo device_info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+    device_info.pEnabledFeatures = &features;
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
     const char* swapchain = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
@@ -97,6 +99,19 @@ void VulkanContext::create(bool window) {
     vk_check(vkCreateDevice(physical, &device_info, nullptr, &device), "Create Vulkan device");
     volkLoadDevice(device);
     vkGetDeviceQueue(device, family, 0, &queue);
+}
+
+VkPhysicalDeviceFeatures VulkanContext::texture_features() {
+    VkPhysicalDeviceFeatures supported{}, enabled{};
+    vkGetPhysicalDeviceFeatures(physical, &supported);
+    enabled.samplerAnisotropy = supported.samplerAnisotropy;
+    texture_anisotropy = 1;
+    if (enabled.samplerAnisotropy) {
+        VkPhysicalDeviceProperties properties;
+        vkGetPhysicalDeviceProperties(physical, &properties);
+        texture_anisotropy = std::min(4.f, properties.limits.maxSamplerAnisotropy);
+    }
+    return enabled;
 }
 
 std::uint32_t VulkanRenderer::memory_type(std::uint32_t bits, VkMemoryPropertyFlags flags) const {
@@ -466,7 +481,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     depth_state.depthTestEnable = VK_TRUE;
     depth_state.depthWriteEnable = VK_TRUE;
-    depth_state.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    depth_state.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
     VkPipelineColorBlendAttachmentState blend{};
     blend.colorWriteMask = 15;
     VkPipelineColorBlendStateCreateInfo blend_state{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
@@ -1184,7 +1199,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         clear[0].color.float32[c] = srgb ? (v <= .04045f ? v / 12.92f : std::pow((v + .055f) / 1.055f, 2.4f)) : v;
     }
     clear[0].color.float32[3] = 1;
-    clear[1].depthStencil = {1, 0};
+    clear[1].depthStencil = {0, 0};
     VkRenderPassBeginInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     pass.renderPass = pass_;
     pass.framebuffer = targets_.at(image).framebuffer;

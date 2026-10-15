@@ -287,7 +287,9 @@ struct State {
         queue.queueFamilyIndex = vulkan.family;
         queue.queueCount = 1;
         queue.pQueuePriorities = &priority;
+        const auto texture_features = vulkan.texture_features();
         VkDeviceCreateInfo device{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+        device.pEnabledFeatures = &texture_features;
         device.queueCreateInfoCount = 1;
         device.pQueueCreateInfos = &queue;
         XrVulkanDeviceCreateInfoKHR device_info{XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR};

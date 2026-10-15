@@ -326,7 +326,11 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     sampler.maxLod = VK_LOD_CLAMP_NONE;
     sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler.anisotropyEnable = context_.texture_anisotropy > 1;
+    sampler.maxAnisotropy = context_.texture_anisotropy;
     vk_check(vkCreateSampler(context_.device, &sampler, nullptr, &repeat_), "Create diffuse sampler");
+    sampler.anisotropyEnable = VK_FALSE;
+    sampler.maxAnisotropy = 1;
     sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     vk_check(vkCreateSampler(context_.device, &sampler, nullptr, &sky_sampler_), "Create sky sampler");
     sampler.maxLod = 0;

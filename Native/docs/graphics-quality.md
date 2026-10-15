@@ -1,5 +1,10 @@
 # Native graphics quality
 
+Build 0.56 uses reversed D32 depth for distant layered surfaces and enables up
+to 4x diffuse anisotropic filtering when supported. Sky and lightmap samplers
+retain their own filtering. See `merquer-playtest-0.56.md` for the millimetre-gap
+GPU regression, all-scene checks and remaining worn-appearance verification.
+
 Windows window/capture rendering defaults to four samples per pixel. The desktop
 `--msaa 1|2|4|8` option requests a count; the renderer selects the highest count
 at or below it supported by both the colour format and D32 depth format, also

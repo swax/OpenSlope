@@ -23,10 +23,12 @@ struct VulkanContext {
     VkDevice device{};
     VkQueue queue{};
     std::uint32_t family{};
+    float texture_anisotropy = 1;
     VulkanContext() = default;
     VulkanContext(const VulkanContext&) = delete;
     ~VulkanContext();
     void create(bool window);
+    VkPhysicalDeviceFeatures texture_features();
 };
 
 // Geometry, samplers and sampled images are shared by stereo eye renderers.

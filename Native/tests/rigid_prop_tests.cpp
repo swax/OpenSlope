@@ -1,5 +1,6 @@
 #include "openslope/player.hpp"
 #include "openslope/rigid_prop.hpp"
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -211,6 +212,77 @@ void scripted(const std::filesystem::path& root) {
     check(logic.motions()[0].current[0][13] > .5, "authored lightweight lid launches along its own transform");
 }
 
+void merquer(const std::filesystem::path& maps) {
+    const auto root = maps / "MERQUER";
+    auto world = CollisionWorld::load(root);
+    const auto terrain = Terrain::load(root);
+    auto logic = WorldLogic::load(root);
+    const auto rows = nlohmann::json::parse(std::ifstream(root / "Instances.json")).at("Instances");
+    unsigned count = 0;
+    double maximum = 0, total = 0;
+    for (std::size_t host = 0; host < rows.size(); ++host) {
+        if (!rows[host].value("InstanceName", std::string{}).starts_with("Mdl_GarbageCan_"))
+            continue;
+        const auto shape = world.body_shape(host);
+        check(shape && shape->probes.size() > 1, "Owned trash can retains its compound occupancy shape");
+        logic.restart(RunMode::Freeride);
+        world.instance_flags(logic.flags());
+        world.motion(logic.motions(), 1. / 60);
+        const auto centre = transform_point(shape->placement, shape->centre);
+        const std::array<Vec3, 1> observer{centre};
+        logic.tick(1. / 60, 12, observer);
+        logic.contact(host, 14, true, 100, {1, 0, 0});
+        logic.prepare_bodies(world);
+        WorldContact hit;
+        hit.instance = host;
+        hit.point = centre;
+        hit.normal = {-1, 0, 0};
+        check(logic.shove(hit, {14, 0, 0}, {0, 1, 0}).has_value(), "Owned can accepts the incoming rider impulse");
+        for (unsigned frame = 0; frame < 72; ++frame) {
+            logic.tick(1. / 60, 12, observer);
+            world.instance_flags(logic.flags());
+            world.motion(logic.motions(), 1. / 60);
+            const auto began = std::chrono::steady_clock::now();
+            logic.step_bodies(1. / 60, terrain, world);
+            const auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
+            maximum = std::max(maximum, ms);
+            total += ms;
+            logic.take_actions();
+        }
+        check(logic.bodies() == 2, "Owned can and lid stay live together");
+        const auto motions = logic.motions();
+        const auto moved =
+            std::find_if(motions.begin(), motions.end(), [host](const auto& p) { return p.instance == host; });
+        check(moved != motions.end() && !moved->current.empty(), "Owned can retains a rendered/collidable body pose");
+        bool finite_pose = true;
+        for (const auto& pose : moved->current)
+            for (const auto value : pose)
+                finite_pose &= std::isfinite(value);
+        check(finite_pose, "Compound can contact keeps its pose finite");
+        ++count;
+    }
+    check(count == 88, "Exercise all owned Merquer trash-can placements");
+    std::cout << "Owned MERQUER: " << count << " can/lid chains; 72 ticks each; maximum body step " << maximum
+              << " ms; total " << total << " ms\n";
+    for (const auto host : {1957u, 2442u}) {
+        Player player(Terrain::load(root));
+        const auto shape = world.body_shape(host);
+        const auto centre = transform_point(shape->placement, shape->centre);
+        const auto floor = terrain.intersect(centre + Vec3{0, 3, 0}, centre - Vec3{0, 6, 0});
+        check(floor.has_value(), "Owned crowded-can approach has a terrain floor");
+        player.warp(floor->point + Vec3{-3, -.005, 0}, {1, 0, 0}, {14, 0, 0});
+        unsigned contacts = 0;
+        for (unsigned frame = 0; frame < 90; ++frame) {
+            player.tick({});
+            for (const auto& event : player.contacts())
+                contacts += event.contact.instance == host;
+        }
+        check(contacts > 0 && player.logic().bodies() >= 2, "Real mounted contact activates the crowded can/lid field");
+        check(player.rider().motion != Motion::Wipeout && finite(player.rider().position),
+              "Crowded can contacts retain the rider's controls and finite position");
+    }
+}
+
 void owned(const std::filesystem::path& maps) {
     auto world = CollisionWorld::load(maps / "GARI");
     const auto shape = world.body_shape(149);
@@ -247,8 +319,10 @@ int main(int argc, char** argv) {
         laws(terrain);
         integration(argv[1]);
         scripted(argv[1]);
-        if (argc > 2)
+        if (argc > 2) {
             owned(argv[2]);
+            merquer(argv[2]);
+        }
         std::cout << "PASS: " << checks << " live body impulse, mass-centre, shape, sleep, rider and restart checks\n";
         return 0;
     } catch (const std::exception& e) {
