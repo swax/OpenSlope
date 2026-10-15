@@ -20,7 +20,8 @@ analytic rails, timed runs, spin/flip/rail scoring and the visible stick figure 
 beside the board, with walking/jumping and nearby mounting. Authored reset volumes, multiplier pickups, mode hides and graph-triggered sound
 now run through the shared world logic. Persistent model-object animations move
 rendered parts and matching collision/support. Full live prop behavior, executable audio
-resolvers, grabs, uber tiers, AI races and multiplayer remain later stages. See
+resolvers, uber tiers, AI races and multiplayer remain later stages. The retail cast and trick
+repertoire are out of scope, as CONTRIBUTING.md sets out. See
 [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 Build 0.30 adds timed speed/trick pads, authored conveyors/vents/wind, altitude

@@ -40,9 +40,9 @@ at the standing pose with a `get-up-finished` marker. The player consumes that
 marker; it has no get-up-duration test that independently restores control.
 A track which reaches its final pose without that marker remains in recover-wait
 until explicitly reset. Pause/focus loss freezes simulation and cannot fabricate
-completion. Imported character/skeletal animation, visible rider rendering and
-original clip parity remain outstanding; the existing visible board and posed
-collision volume consume the current track.
+completion. Custom-character skeletal animation and visible rider rendering
+remain outstanding, and retail character clips are out of scope; the existing
+visible board and posed collision volume consume the current track.
 
 `RiderAnimations.json` optionally supplies an authored track:
 
@@ -92,6 +92,6 @@ Existing jump, collision, audio, wake and sheet host cases and 1,112 Vulkan
 appearance assertions also pass. An ordinary 120-frame GARI replay has identical
 rider/contact state and final pixels in builds 0.15 and 0.16. The ARM64 main/test
 APKs compile; lint, signature and media-exclusion checks pass. The full parity
-matrix remains active: original
-character poses/tumble, exact landing classification, race/path reset, authored
+matrix remains active: exact
+tumble timing, exact landing classification, race/path reset, authored
 world logic, breakables and remaining presentation/audio/effects are separate work.

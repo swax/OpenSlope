@@ -10,6 +10,8 @@
 
   "files": {
 
+    "Native/assets/stick-figure-rigged.glb": "Unchanged byte-for-byte copy of Slopesmith/public/characters/stick-figure-rigged.glb, embedded into the native player as its rider. Built by Slopesmith/tools/character-models/stick-figure.ts. Original, reproducible.",
+
     "Slopesmith/media/slopesmith-authoring.png": "2187x1522 screenshot of an authored course open in the Slopesmith editor. Captured from the running editor. Original.",
     "Slopesmith/media/slopesmith-riding.png": "2189x1520 screenshot of test-riding in the Slopesmith editor. Captured from the running editor. Original.",
     "Slopesmith/media/slopesmith_anvil_icon_source.png": "1408x1408 master brand mark, designed and drawn by the project author and used as the input every other icon is traced from. Original.",

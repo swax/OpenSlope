@@ -67,7 +67,7 @@ license/notice assets and no course media are packaged. The source-boundary
 audit checks 225 files. Desktop/APK snapshots and a commit/hash manifest stay
 in the ignored build tree. Device instrumentation is compiled, not newly run.
 
-Full original score/time/energy opcode dispatch, grabs, uber tiers, AI races,
+Full original score/time/energy opcode dispatch, uber tiers, AI races,
 remaining effects/world properties, original lap transport and wider rendering/
 performance/HUD work remain in desktop-parity.md. Those extra score/time opcodes
 are absent from the shipped graph corpus and remain explicit work rather than

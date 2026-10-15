@@ -30,7 +30,8 @@ shared charge/release launch, with a short recapture cooldown. E on desktop or
 left-stick click in VR exits with carried velocity. Lost contact returns to air;
 adjacent nearest curves can chain. Wake and snow spray stop during a grind.
 Runtime rail toggles exist; event-graph dispatch and LTG/mode visibility do not.
-Original pose, rail audio switching and rail tricks remain outstanding.
+A grind pose and rail audio switching remain outstanding; the retail rail
+tricks and poses are out of scope.
 
 Validation includes 588 portable assertions, malformed/import rollback fixtures,
 six production Vulkan cases totalling 664 rendered frames, and Android main/test

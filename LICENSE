@@ -39,6 +39,12 @@ THE PROJECTS
   Contracts/               Apache-2.0      LICENSE · NOTICE
       Shared runtime facts and cross-platform verification fixtures.
 
+  Native/                  Apache-2.0      LICENSE · NOTICE
+      The experimental C++ desktop and Quest player. One carve-out:
+      Native/ThirdPartyNotices/ reproduces the upstream license and notice texts
+      of the build dependencies, which keep their own terms; this row does not
+      relicense them.
+
 Except for the canonical standard-license texts under LICENSES/, everything else
 tracked in this repository is Apache-2.0. That is a rule, not an inventory: any
 tracked path not inside one of the folders named above or LICENSES/ is covered by

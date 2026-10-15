@@ -61,8 +61,9 @@ Tracking drives presentation only. It does not replace the virtual rider's
 physics/collision profile or feed headset motion into trick controls. VR keeps
 physical body pose and comfortable head orientation while the board animates.
 Exact hand grips, finger articulation, runtime render models, avatar-driven
-collision masks, calibrated proportions and original rider animations remain
-future presentation work in the parity matrix.
+collision masks, calibrated proportions and first-party rider animations remain
+future presentation work in the parity matrix. Retail rider animations are out
+of scope.
 
 Validation covers portable pose/skin tests, malformed/partial/lost tracking,
 controller anchoring, head removal, crouch, yaw and physics independence. Actual

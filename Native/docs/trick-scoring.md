@@ -30,13 +30,15 @@ Slopesmith's public `ride-score.test.ts` provides behavioral examples, not sourc
 implementation. Native's play profile starts with 0.25 energy and fills on bank
 from rounded **unmultiplied style points / 10000**. Consequently a 360 adds exactly
 0.17, irrespective of its gem tier. Flat big-air points fill nothing. This matches
-those public examples; it does not claim the complete clean 360 character-stat
-formula, flip divisor, passive airborne bleed or uber/infinite tier escalation.
-Those remain explicit work. Actual gems now collect through authored shape
+those public examples; it does not claim the clean 360 flip divisor, passive
+airborne bleed or uber/infinite tier escalation, which remain explicit work.
+Retail character stats are not recreated, so this single first-party profile
+stands in for per-character scaling. Actual gems now collect through authored shape
 contacts, apply the Showoff gate, tombstone draw/collision and chime through the
-MAIN bank; see world-logic.md. Unscored hops preserve the tier until a scored bank. Named tricks, held-board grabs/flat hold tiers, live rail energy
+MAIN bank; see world-logic.md. Unscored hops preserve the tier until a scored bank. Live rail energy
 registration, trick audio, score pickups, score targets and a complete HUD
-remain outstanding. Held engage and pad chimes now use their MAIN slots through
+remain outstanding. The retail named-trick and grab repertoire is out of scope
+(see the Scope section of CONTRIBUTING.md). Held engage and pad chimes now use their MAIN slots through
 the audio mixer; boost-volumes.md describes the updated application air-thrust
 profile and its remaining recovered-behavior gap.
 

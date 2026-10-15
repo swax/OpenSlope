@@ -10,7 +10,7 @@ formal notice to get our attention, and we would much rather have the conversati
 
 This page is the summary. The binding scope statements are the `NOTICE` file in each component —
 [Slopesmith](Slopesmith/NOTICE), [Snowknife](Snowknife/NOTICE), [Contracts](Contracts/NOTICE),
-[Unity](Unity/NOTICE) — and [`LICENSE`](LICENSE), which maps every path to its terms. Where this page
+[Unity](Unity/NOTICE), [Native](Native/NOTICE) — and [`LICENSE`](LICENSE), which maps every path to its terms. Where this page
 and a `NOTICE` differ, the `NOTICE` governs.
 
 Security vulnerabilities go somewhere else: see [SECURITY.md](SECURITY.md).
@@ -93,9 +93,9 @@ unrelated third-party uses of identical or similar names.
 
 Rights in the music and the voice performances on a retail disc are held by their publishers, labels,
 and performers, and are licensed to Electronic Arts rather than owned by it. Permission from
-Electronic Arts would not extend to them. Snowknife can decode those streams from a user-supplied copy;
-their output is subject to the same rule as everything else derived from a disc, and no grant in this
-repository reaches them.
+Electronic Arts would not extend to them. Snowknife and the Native player's disc import can decode those
+streams from a user-supplied copy; their output is subject to the same rule as everything else derived
+from a disc, and no grant in this repository reaches them.
 
 ## Video playback
 

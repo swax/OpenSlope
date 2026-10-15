@@ -69,7 +69,7 @@ application captures are not original-game pixel comparisons. Existing boost,
 teleport, crowd, material, glass, world, score and recovery replays remain checks.
 
 Original folded attachment vectors, exact blend/ramp, future equipment, other
-particle/world effects, character-stat/uber behavior, grabs, AI and full gameplay/
+particle/world effects, uber meter behavior, AI and full gameplay/
 rendering/HUD parity remain in desktop-parity.md. No new worn-headset or VR frame
 budget result is claimed. The installed steering build and imported ALASKA stay
 preserved.

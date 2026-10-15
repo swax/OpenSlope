@@ -58,8 +58,8 @@ pose now animates the shared tumble/relative get-up path, and the get-up track
 emits completion to restore control. Hard landings and unrideable-surface triggers are also connected; see
 [crash recovery](crash-recovery.md) for provisional thresholds, pose tuning and
 run gating. Nearby path/fade recovery and authored reset entry are implemented;
-see course-recovery.md. Original character/tumble fidelity and remaining reset
-triggers are still outstanding. R still exits explicitly.
+see course-recovery.md. Exact tumble fidelity and remaining reset triggers are
+still outstanding. R still exits explicitly.
 
 The desktop chase camera shortens its arm against terrain and solid prop rays,
 with 15 cm clearance. This is a point-ray obstruction check; camera-radius
