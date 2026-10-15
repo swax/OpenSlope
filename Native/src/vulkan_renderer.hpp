@@ -1,5 +1,6 @@
 #pragma once
 #include "openslope/spline_motion.hpp"
+#include "openslope/world_properties.hpp"
 #include <volk.h>
 #include "openslope/terrain.hpp"
 #include "render_math.hpp"
@@ -36,7 +37,8 @@ private:
     std::vector<Image> images_;std::vector<Draw> draws_;
     std::vector<TerrainRange> terrain_ranges_;std::vector<std::uint32_t> terrain_indices_;
     VisibilityTree terrain_visibility_;std::uint64_t terrain_total_indices_{};
-    struct PropDraw {std::uint32_t first{},count{};VkDescriptorSet set{};int alpha{};};
+    struct PropFrame {VkDescriptorSet set{};int alpha{};};
+    struct PropDraw {std::uint32_t first{},count{};VkDescriptorSet set{};int alpha{};std::vector<PropFrame> frames;};
     Props props_;std::vector<PropDraw> prop_draws_;std::size_t pose_capacity_{};
     World world_;std::vector<Draw> sky_draws_;
     std::uint32_t board_first_{};VkDescriptorSet board_set_{};
@@ -61,7 +63,7 @@ public:
     void deferred(bool enabled){deferred_=enabled;}
     void finish();
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
-        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={},std::span<const PropMotion> motions={},double alpha=1,std::span<const PropRouteMotion> routes={});
+        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={},std::span<const PropMotion> motions={},double alpha=1,std::span<const PropRouteMotion> routes={},std::span<const PropTextureFrame> texture_frames={});
     const Stats& stats() const {return stats_;}
     void capture(unsigned image,const std::filesystem::path& output);
     void clear_targets();

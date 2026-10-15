@@ -90,7 +90,7 @@ void VulkanScene::upload(const Mesh& source) {
         terrain_visibility_.build(boxes);terrain_ranges_=source.terrain_ranges;terrain_indices_=source.indices;
     }
     props_=Props::load(source.map_root);world_=World::load(source.map_root);auto batches=source.batches;
-    for(const auto& part:props_.parts)batches.push_back({0,0,part.texture,-1});
+    for(const auto& part:props_.parts){batches.push_back({0,0,part.texture,-1});for(const auto& frame:part.frames)batches.push_back({0,0,frame,-1});}
     const auto sprite=riding_sprite(source.map_root);if(!sprite.empty())batches.push_back({0,0,sprite,-1});
     const auto wake=riding_sprite(source.map_root,"Wake");if(!wake.empty())batches.push_back({0,0,wake,-1});
     const auto sheet=riding_sprite(source.map_root,"Sheet");if(!sheet.empty())batches.push_back({0,0,sheet,-1});
@@ -128,7 +128,7 @@ void VulkanScene::upload(const Mesh& source) {
     }
     auto mesh=source;const auto prop_first=std::uint32_t(mesh.indices.size()),prop_vertex=std::uint32_t(mesh.vertices.size());
     mesh.vertices.insert(mesh.vertices.end(),props_.geometry.vertices.begin(),props_.geometry.vertices.end());for(const auto i:props_.geometry.indices)mesh.indices.push_back(i+prop_vertex);
-    for(const auto& part:props_.parts){const auto name="Textures/"+part.texture;const auto found=names.find(name);const auto alpha=(part.flags&(1u<<18))?(fractional[name]?2:1):0;prop_draws_.push_back({part.first+prop_first,part.count,descriptor(found==names.end()?0:found->second,1),alpha});}
+    for(const auto& part:props_.parts){const auto bind=[&](const std::string& texture){const auto name="Textures/"+texture;const auto found=names.find(name);return PropFrame{descriptor(found==names.end()?0:found->second,1),(part.flags&(1u<<18))?(fractional[name]?2:1):0};};const auto base=bind(part.texture);PropDraw draw{part.first+prop_first,part.count,base.set,base.alpha,{}};for(const auto& frame:part.frames)draw.frames.push_back(bind(frame));prop_draws_.push_back(std::move(draw));}
     // Geometry is uploaded once; CPU retained data is only bounds and placements.
     props_.geometry={};
     const auto sky_first=std::uint32_t(mesh.indices.size()),sky_vertex=std::uint32_t(mesh.vertices.size());mesh.vertices.insert(mesh.vertices.end(),world_.sky.geometry.vertices.begin(),world_.sky.geometry.vertices.end());for(const auto i:world_.sky.geometry.indices)mesh.indices.push_back(i+sky_vertex);

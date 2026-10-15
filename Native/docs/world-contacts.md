@@ -95,3 +95,10 @@ refits changed BVH leaves/ancestors and reports surface velocity for relative
 response. Grounded controls and launch strength preserve carrier momentum;
 walking and parked boards follow support transforms. See prop-animations.md
 for shared-player checks and the remaining rotational/time-interval limits.
+
+Build 0.27 joins supported contact to nearby native crack proxies, preserving
+the distinct solid floor and damage receiver used by real glass. Authored
+trigger graphs disarm both; material-matched targets share private cracked
+frames. Custom mass-zero crack proxies can supply support until shatter while
+other pass-through objects retain their behavior. The 0.3 m reach, 1/87 contact
+profile and fallback surface are application choices; see deferred-world.md.

@@ -124,7 +124,12 @@ def fixtures(root):
         (folder / "Meshes/quad.obj").write_text("v -30 0 -30\nv 30 0 -30\nv 30 0 30\nv -30 0 30\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 1 0 0\nf 1/1/1 2/2/1 3/3/1 4/4/1\n")
         models = [{"ModelName": "Authored shared quad", "ModelObjects": [{"ParentID": -1, "MeshData": [{"MeshPath": "quad.obj", "MaterialID": 0}]}]}]
         materials = [{"TexturePath": "prop.png", "UnknownInt18": flags}]
+        if name == "props_cutout":
+            materials[0]["TextureFlipbook"] = ["prop.png", "prop-state.png"]
+            (folder / "Textures/prop-state.png").write_bytes(rgba(1, 1, [240, 100, 40, 128]))
         if name == "props":
+            materials[0]["TextureFlipbook"] = ["prop.png", "prop-state.png"]
+            (folder / "Textures/prop-state.png").write_bytes(rgba(1, 1, [80, 120, 200, 255]))
             instances = [dict(ModelID=0, Location=[-40, -25, 0], Rotation=[0, 0, 0, 1], Scale=[.7, .7, .7], Visable=True, AmbentLightColour=[0, 0, 0, 128], LightVector1=[1, 0, 0, 0], LightColour1=[192, 128, 64, 0]),
                          dict(ModelID=0, Location=[40, -25, 0], Rotation=[0, 1, 0, 0], Scale=[.7, .7, .7], Visable=True, AmbentLightColour=[0, 0, 0, 128], LightVector1=[1, 0, 0, 0], LightColour1=[384, 256, 128, 0]),
                          dict(ModelID=0, Location=[0, -25, 0], Visable=False),

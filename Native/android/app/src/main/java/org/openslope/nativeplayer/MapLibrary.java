@@ -89,17 +89,40 @@ final class MapLibrary {
                 if (metadata.directory) throw new IOException("Map metadata is a folder: " + name);
                 try (InputStream input = resolver.openInputStream(metadata.uri); OutputStream file = new FileOutputStream(new File(output, name))) { copy(input, file, PATCH_LIMIT, cancel); }
             }
-            if (!new File(output, "Effects.json").isFile() && !new File(output, "SSFLogic.json").isFile()) {
-                Entry source = child(map.uri, "Source"); Entry behavior = null;
-                if (source != null && source.directory) for (Entry file : children(source.uri)) {
-                    if (file.directory || !safeName(file.name) || !file.name.toLowerCase(Locale.ROOT).endsWith(".ssf")) continue;
-                    if (behavior != null) throw new IOException("Map has multiple behavior sidecars.");
-                    behavior = file;
+            boolean needBehavior = !new File(output, "Effects.json").isFile() && !new File(output, "SSFLogic.json").isFile();
+            boolean needMaterialSource = false;
+            File materialFile = new File(output, "Materials.json");
+            if (materialFile.isFile()) try {
+                JSONArray materials = new JSONObject(new String(java.nio.file.Files.readAllBytes(materialFile.toPath()), java.nio.charset.StandardCharsets.UTF_8)).getJSONArray("Materials");
+                for (int i = 0; i < materials.length(); ++i) needMaterialSource |= !materials.getJSONObject(i).has("TextureFlipbook");
+            } catch (JSONException e) { throw new IOException("Invalid animated material metadata.", e); }
+            if (needBehavior || needMaterialSource) {
+                Entry source = child(map.uri, "Source"); Entry behavior = null, geometry = null, art = null;
+                if (source != null && source.directory) {
+                    List<Entry> sidecars = children(source.uri);
+                    for (Entry file : sidecars) {
+                        if (file.directory || !safeName(file.name)) continue;
+                        String name = file.name.toLowerCase(Locale.ROOT);
+                        if (needBehavior && name.endsWith(".ssf")) {
+                            if (behavior != null) throw new IOException("Map has multiple behavior sidecars.");
+                            behavior = file;
+                        }
+                        if (needMaterialSource && name.endsWith(".pbd") && !name.endsWith("_sky.pbd")) {
+                            String paired = name.substring(0, name.length() - 4) + ".ssh";
+                            for (Entry texture : sidecars) if (!texture.directory && safeName(texture.name) && texture.name.equalsIgnoreCase(paired)) {
+                                if (geometry != null) throw new IOException("Map has multiple material sidecar pairs.");
+                                geometry = file; art = texture;
+                            }
+                        }
+                    }
                 }
-                if (behavior != null) {
+                if (behavior != null || geometry != null) {
                     File sourceFolder = new File(output, "Source");
-                    if (!sourceFolder.mkdir()) throw new IOException("Cannot prepare map behavior.");
-                    try (InputStream input = resolver.openInputStream(behavior.uri); OutputStream file = new FileOutputStream(new File(sourceFolder, behavior.name))) { copy(input, file, PATCH_LIMIT, cancel); }
+                    if (!sourceFolder.mkdir()) throw new IOException("Cannot prepare map sidecars.");
+                    for (Entry file : new Entry[]{behavior, geometry, art}) if (file != null) {
+                        cancel.check();
+                        try (InputStream input = resolver.openInputStream(file.uri); OutputStream destination = new FileOutputStream(new File(sourceFolder, file.name))) { copy(input, destination, PATCH_LIMIT, cancel); }
+                    }
                 }
             }
             Entry sky = child(map.uri, "Skybox");

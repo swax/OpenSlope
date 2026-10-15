@@ -1,5 +1,6 @@
 #include "openslope/props.hpp"
 #include "openslope/model_animation.hpp"
+#include "openslope/material_animation.hpp"
 #include "openslope/import.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -117,19 +118,19 @@ std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::pa
     }return result;
 }
 std::vector<std::string> prop_files(const std::filesystem::path& root,bool model_only){
-    const auto t=tables(root,model_only);if(t.models.is_null())return {};std::set<std::string> names;
-    for(const auto& model:t.models)for(const auto& object:model.at("ModelObjects"))for(const auto& part:object.at("MeshData")){names.insert("Meshes/"+safe(part.at("MeshPath")));const auto id=part.at("MaterialID").get<std::size_t>();const auto name=texture_name(t.materials.at(id));if(!name.empty())names.insert("Textures/"+safe(name));}
+    const auto t=tables(root,model_only);if(t.models.is_null())return {};const auto frames=material_flipbooks(root);std::set<std::string> names;
+    for(const auto& model:t.models)for(const auto& object:model.at("ModelObjects"))for(const auto& part:object.at("MeshData")){names.insert("Meshes/"+safe(part.at("MeshPath")));const auto id=part.at("MaterialID").get<std::size_t>();const auto name=texture_name(t.materials.at(id));if(!name.empty())names.insert("Textures/"+safe(name));for(const auto& frame:frames.at(id))names.insert("Textures/"+safe(frame));}
     return {names.begin(),names.end()};
 }
 Props Props::load(const std::filesystem::path& root,bool model_only){
-    Props result;const auto t=tables(root,model_only);if(t.models.is_null())return result;result.models.resize(t.models.size());result.geometry.map_root=root;
+    Props result;const auto t=tables(root,model_only);if(t.models.is_null())return result;const auto frames=material_flipbooks(root);result.models.resize(t.models.size());result.geometry.map_root=root;
     for(std::size_t model=0;model<t.models.size();++model){
         const auto& objects=t.models[model].at("ModelObjects");if(!objects.is_array()||objects.size()>256)throw std::runtime_error("Invalid model object count");std::vector<Transform> rest(objects.size());std::vector<unsigned> state(objects.size());
         std::function<Transform(std::size_t)> resolve=[&](std::size_t i){if(state[i]==1)throw std::runtime_error("Model hierarchy contains a cycle");if(state[i]==2)return rest[i];state[i]=1;auto m=object_pose(objects[i]);const auto parent=objects[i].value("ParentID",-1);if(parent< -1)throw std::runtime_error("Invalid model parent");if(parent>=0){if(std::size_t(parent)>=objects.size())throw std::runtime_error("Invalid model parent");m=multiply(resolve(std::size_t(parent)),m);}state[i]=2;return rest[i]=m;};
         for(std::size_t i=0;i<objects.size();++i)resolve(i);
         for(std::size_t i=0;i<objects.size();++i)for(const auto& data:objects[i].at("MeshData")){
             const auto material=data.at("MaterialID").get<std::size_t>();const auto& mat=t.materials.at(material);PropPart part;part.texture=texture_name(mat);if(!part.texture.empty())safe(part.texture);part.flags=mat.value("UnknownInt18",0u);
-            part.object=i;mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,part.bounds);if(!part.count)continue;result.models[model].bounds.add(part.bounds.min);result.models[model].bounds.add(part.bounds.max);
+            part.frames=frames.at(material);part.object=i;mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,part.bounds);if(!part.count)continue;result.models[model].bounds.add(part.bounds.min);result.models[model].bounds.add(part.bounds.max);
             result.models[model].parts.push_back(result.parts.size());result.parts.push_back(std::move(part));
         }
     }

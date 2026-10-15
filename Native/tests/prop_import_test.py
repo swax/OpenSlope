@@ -47,10 +47,14 @@ def members():
         struct.pack_into("<4f", placements, p + 176, 64, 128, 192, 128)
     instance_offset = append(placements)
     material = bytearray(144)
+    struct.pack_into("<h", material, 68, -1)
+    struct.pack_into("<h", material, 140, -1)
     struct.pack_into("<h", material, 0, 0)
     struct.pack_into("<h", material, 72, -1)
     struct.pack_into("<I", material, 64, 1 << 18)
+    struct.pack_into("<h", material, 68, 0)
     material_offset = append(material)
+    flip_offset = append(struct.pack("<4I", 3, 1, 0, 1))
     block_offset = append(struct.pack("<3I", 2, 1, 0))
     pointer_offset = append(le(0))
     model = bytearray(432)
@@ -75,9 +79,11 @@ def members():
     blob_offset = append(first_mesh + second_mesh)
     for field, value in ((12, 2), (20, 2), (24, 1), (44, 1), (72, instance_offset),
                          (80, material_offset), (84, block_offset), (104, pointer_offset),
-                         (108, model_offset), (132, blob_offset)):
+                         (108, model_offset), (132, blob_offset), (40, 1), (100, flip_offset), (52, 2)):
         struct.pack_into("<I", data, field, value)
     files["fixture.pbd"] = bytes(data)
+    art = files["fixture.ssh"][32:]
+    files["fixture.ssh"] = b"SHPS" + le(32 + len(art) * 2) + le(2) + b"TEST0000" + le(32) + b"0001" + le(32 + len(art)) + art * 2
     for section, names in (("MODELS", ["Authored shared prop"]), ("INSTANCES", ["Visible prop", "Hidden volume"])):
         files["fixture.map"] += ("### " + section + " BEGIN\n" + "".join(name.ljust(82) + "0\n" for name in names) + "### " + section + " END\n").encode()
     behavior = bytearray(132)
@@ -124,6 +130,7 @@ def main():
         assert animation["AnimationEntries"][0]["AnimationMaths"] == [
             {"Value1": 0, "Value2": 0, "Value3": 0, "Value4": 90, "Value5": 0, "Value6": 2}]
         assert json.loads((output / "Materials.json").read_text())["Materials"][1]["TexturePath"] is None
+        assert json.loads((output / "Materials.json").read_text())["Materials"][0]["TextureFlipbook"] == ["0001.png", "0000.png", "0001.png"]
         assert instances[0]["Visable"] and not instances[1]["Visable"]
         assert instances[0]["LightVector1"] == [1, 0, 0, 0]
         assert instances[0]["AmbentLightColour"] == [64, 128, 192, 128]
@@ -144,7 +151,19 @@ def main():
         bad["fixture.pbd"] = bytes(pbd); image.write_bytes(iso(big(bad)))
         run(executable, "extract", image, "FIXTURE", root / "bad-animation", succeeds=False)
         assert not list((root / "bad-animation").iterdir())
-    print("PASS: authored prop packets, material indirection, hierarchy, visibility, normals, strips and failed-import cleanup")
+        empty = members(); pbd = bytearray(empty["fixture.pbd"])
+        flip_offset, = struct.unpack_from("<I", pbd, 100)
+        struct.pack_into("<I", pbd, flip_offset, 0)
+        empty["fixture.pbd"] = bytes(pbd); image.write_bytes(iso(big(empty)))
+        run(executable, "extract", image, "FIXTURE", root / "empty-flipbook")
+        assert json.loads((root / "empty-flipbook/FIXTURE/Materials.json").read_text())["Materials"][0]["TextureFlipbook"] == []
+        bad = members(); pbd = bytearray(bad["fixture.pbd"])
+        material_offset, = struct.unpack_from("<I", pbd, 80)
+        struct.pack_into("<h", pbd, material_offset + 68, 2)
+        bad["fixture.pbd"] = bytes(pbd); image.write_bytes(iso(big(bad)))
+        run(executable, "extract", image, "FIXTURE", root / "bad-flipbook", succeeds=False)
+        assert not list((root / "bad-flipbook").iterdir())
+    print("PASS: authored prop packets, material/flipbook indirection, hierarchy, visibility, normals, strips and failed-import cleanup")
 
 
 if __name__ == "__main__":

@@ -106,7 +106,9 @@ private:
     std::vector<WorldAction> world_actions_;
     void apply_world_actions();
     std::set<std::size_t> logic_contacts_;
-    void dispatch_world_contact(const WorldContact& contact,double speed);
+    void dispatch_world_contact(const WorldContact& contact,double speed,std::optional<Vec3> support_normal={});
+    struct GroundContact;
+    bool dispatch_fragile_ground(const GroundContact& contact);
     bool request_course_recovery(bool manual,bool authored);
     CourseRecovery course_recovery_;
     std::optional<RecoveryPose> last_recovery_;

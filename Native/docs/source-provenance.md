@@ -126,3 +126,12 @@ code supplies the sampler, cursor, scheduler or Vulkan cable/copy path. Existing
 course geometry/behavior data is used only for interoperability and local renders.
 Application bounds and unsupported collision/lifecycle profiles remain explicit
 in spline-movers.md.
+
+Counter/checklist state, gated fragile properties, legacy material-directory
+reads, private frame descriptors and paired contact/material integration are
+independently authored from clean 150/170/220/230/370, first-party public
+behavioral tests and exported contact-profile constants. Existing Maps and saved
+source bytes are comparison inputs only; all eleven frame lists are compared to
+independent existing exports. No other decoder/runtime implementation supplies
+these algorithms. Application force/proximity choices and outstanding throw,
+UV, respawn and exact-trajectory scope are explicit in deferred-world.md.

@@ -23,6 +23,7 @@ void write_collision(const std::vector<std::uint8_t>& bytes,const std::filesyste
 std::string logic_document(std::span<const std::uint8_t> bytes,const std::string& course,const ImportCancel& cancelled={});
 void write_logic(const std::vector<std::uint8_t>& bytes,const std::filesystem::path& output,const std::string& course,const ImportCancel& cancelled);
 void write_rails(const std::vector<std::uint8_t>& geometry,const std::vector<std::uint8_t>& linker,const std::vector<std::uint8_t>* behavior,const std::filesystem::path& output,const ImportCancel& cancelled);
+std::vector<std::vector<std::uint32_t>> material_frame_indices(std::span<const std::uint8_t> source);
 void write_props(const std::vector<std::uint8_t>& pbd,const std::vector<std::uint8_t>& linker,
                  const std::vector<Image>& textures,const std::vector<std::uint8_t>* behavior,
                  const std::filesystem::path& output,const ImportCancel& cancelled,bool anonymous=false);

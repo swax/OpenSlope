@@ -85,3 +85,9 @@ velocity retains world momentum while grounded walking control uses motion
 relative to the support. Mount/dismount and walking/mounted jumps inherit the
 carrier once. The animation runtime suite covers these paths; see
 [prop animations](prop-animations.md) for evidence and dynamic collision limits.
+
+The shared fragile pool survives mounting and dismounting. On-foot event casts
+cover lower-body/torso/head regions with three sphere sweeps and
+still deduplicate each instance per tick. A raised pane can react to the head
+while feet pass below; actual split glass proxies also charge from supported
+contact. See deferred-world.md for evidence, material state and remaining work.

@@ -101,6 +101,15 @@ public final class NativeImportInstrumentation extends Instrumentation {
             File oldPrepared = documents.prepare(selected, temporary, () -> {});
             require(new File(oldPrepared, "Source/FIXTURE.SSF").isFile() && new File(oldPrepared, "Source").list().length == 1, "Old SAF import caches only its bounded behavior sidecar");
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, oldPrepared.getAbsolutePath());
+            MapLibrary.Entry materialEntry = documents.child(selected.uri, "Materials.json");
+            JSONObject oldMaterials = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(extracted, "Materials.json").toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            JSONArray oldRows = oldMaterials.getJSONArray("Materials");
+            for (int i = 0; i < oldRows.length(); ++i) oldRows.getJSONObject(i).remove("TextureFlipbook");
+            try (OutputStream stream = getContext().getContentResolver().openOutputStream(materialEntry.uri, "wt")) { stream.write(oldMaterials.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            File oldFrames = documents.prepare(selected, temporary, () -> {});
+            require(new File(oldFrames, "Source/FIXTURE.PBD").isFile() && new File(oldFrames, "Source/FIXTURE.SSH").isFile() && new File(oldFrames, "Source").list().length == 3, "Old SAF import caches only paired material and behavior sidecars");
+            require(new File(oldFrames, "Textures/0001.png").isFile(), "Legacy flipbook frame art is referenced and cached");
+            invoke(activity, "nativeValidate", new Class<?>[]{String.class}, oldFrames.getAbsolutePath());
             DocumentsContract.deleteDocument(getContext().getContentResolver(), selected.uri);
             results.putString("stream", "PASS: " + checks + " device-side JNI, custom-library and SAF checks\n");
         } catch (Throwable e) { results.putString("stream", "FAIL: " + e + "\n"); code=Activity.RESULT_CANCELED; }

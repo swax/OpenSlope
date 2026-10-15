@@ -46,6 +46,10 @@ The implemented graph operations are:
   Base controls 7/8 and dead-node mode 3 can kill that drawing node; ordinary
   tombstones retain it. See [spline movers](spline-movers.md) for ownership,
   route activation, explicit re-arm and host-collision separation.
+- Property 6 handles numbered/ordered marks and tally decrements; property 14
+  holds gated crack strength and lifetime. They dispatch their own trigger slot.
+  Cracked material state, paired native support and private frame rendering are
+  connected; see [deferred world interactions](deferred-world.md).
 - Main 13/14 reset or collect, main 8 plays course audio, and main 25 changes
   rail candidacy. Warping preserves those runtime rail toggles; restart restores
   initial candidacy and re-applies the mode graph.
@@ -110,8 +114,9 @@ the Quest remains on 0.22 for the user's steering test.
 
 Build 0.25 adds persistent regions, model-animation ownership, installed-player
 controls and region/node-end continuations. See prop-animations.md for evidence.
-Deferred triggers, complete hide/rearm lifetimes, breakable twins and debris,
-particle effects, speed/trick/directional pads, counters, teleport, remaining
+Build 0.27 connects counter/crack deferred triggers and material frame state;
+see deferred-world.md for exact scope. Complete hide/rearm lifetimes, mesh-throw
+and debris, particle effects, speed/trick/directional pads, teleport, remaining
 score/time opcodes and rigid-body movers still need consumers. Detached spline
 path drawing is now connected; see spline-movers.md. Collected
 gems use clean 390's run-long tombstone; Slopesmith's application pickup grow-back

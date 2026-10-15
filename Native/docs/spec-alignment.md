@@ -122,3 +122,10 @@ arc-spaced copies, cursor/end modes, tangent-only orientation, stop flags and
 cable lines. Host placement/collision remains authored. Route-aware cell gathering,
 quadrature/inversion, explicit constructor re-arm and presentation snapping are
 application choices, documented with evidence and limits in spline-movers.md.
+
+Counters/deferred triggers and crack lifetimes/gates follow clean 150/230/370;
+material flipbook joins follow clean 170/220. The published first-party 1/87
+contact profile, normal-speed classification, 0.3 m native-proxy reach, explicit
+surface fallback, paired-material projection and safe continuation scheduling
+are application choices, not exact recovered force/trajectory claims. The
+binary/frame-data and shared physics/Vulkan evidence is in deferred-world.md.
