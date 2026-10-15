@@ -86,6 +86,9 @@ for (const mode of ['authored', 'reference', 'intro']) {
     assert.equal(source.loop, false); ++checks;
     assert.match(source.buffer.url, /Course-C1/); ++checks;
   }
+  const activeSource = starts.at(-1).node;
+  api.step(1 / 60, { ...frame, active: false });
+  assert.ok(stops.includes(activeSource), 'disabling music stops its current source immediately'); ++checks;
   api.stop();
 }
 setGameAudioVolume(1);

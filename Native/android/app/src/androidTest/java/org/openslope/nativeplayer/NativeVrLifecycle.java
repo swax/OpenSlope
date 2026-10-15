@@ -20,6 +20,7 @@ final class NativeVrLifecycle {
     static void run(Instrumentation host) {
         Bundle results = new Bundle(); int code = Activity.RESULT_OK; File map = null;
         Context context = host.getTargetContext(); Application application = (Application) context.getApplicationContext();
+        File preferences = new File(context.getFilesDir(), "audio-preferences.json"); byte[] previousPreferences = null; boolean preferencesRead = false;
         Application.ActivityLifecycleCallbacks observer = new Application.ActivityLifecycleCallbacks() {
             public void onActivityCreated(Activity a, Bundle b) {}
             public void onActivityStarted(Activity a) {}
@@ -31,6 +32,11 @@ final class NativeVrLifecycle {
         };
         application.registerActivityLifecycleCallbacks(observer);
         try {
+            previousPreferences = preferences.isFile() ? java.nio.file.Files.readAllBytes(preferences.toPath()) : null; preferencesRead = true;
+            byte[] fixturePreferences = new JSONObject().put("schema", "openslope-audio-preferences/v1").put("musicEnabled", false)
+                .put("volume", .4).put("audibleVolume", .4).put("songs", new JSONObject().put("Lifecycle Music", "alpha"))
+                .toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            java.nio.file.Files.write(preferences.toPath(), fixturePreferences);
             gameResumes = gamePauses = launcherResumes = 0;
             map = new File(context.getCacheDir(), "lifecycle-" + UUID.randomUUID()); require(map.mkdir(), "create synthetic lifecycle floor");
             JSONArray points = new JSONArray();
@@ -38,9 +44,11 @@ final class NativeVrLifecycle {
             JSONObject patch = new JSONObject().put("PatchName","Lifecycle floor").put("SurfaceType",1).put("TrickOnlyPatch",false)
                 .put("Points",points).put("TexturePath","").put("LightmapID",-1).put("UVPoints",new JSONArray("[[0,0],[0,1],[1,0],[1,1]]")).put("LightMapPoint",new JSONArray("[0,0,0,0]"));
             try (OutputStream out = new FileOutputStream(new File(map,"Patches.json"))) { out.write(new JSONObject().put("Patches",new JSONArray().put(patch)).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            File music = new File(map, "Audio/Music"); require(music.mkdirs(), "create synthetic playlist folder");
+            java.nio.file.Files.write(new File(music, "playlist.json").toPath(), "[\"alpha\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             Intent gameIntent = new Intent(context, GameActivity.class).setAction(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .addCategory("com.oculus.intent.category.VR").addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD")
-                .putExtra("map_path",map.getAbsolutePath()).putExtra("msaa",4).putExtra("render_scale",1.0);
+                .putExtra("map_path",map.getAbsolutePath()).putExtra("map_name", "Lifecycle Music").putExtra("msaa",4).putExtra("render_scale",1.0);
             Intent pickerIntent = new Intent(context, LauncherActivity.class).setAction(Intent.ACTION_MAIN)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("show_library", true);
             LauncherActivity initialPicker = (LauncherActivity) host.startActivitySync(pickerIntent);
@@ -58,6 +66,8 @@ final class NativeVrLifecycle {
             host.runOnMainSync(() -> context.startActivity(icon));
             waitFor(() -> gameResumes > initialResumes, "app icon resumes the immersive task");
             require(GameActivity.running() == game && !game.isFinishing(), "app switching preserves the same course activity");
+            require("Lifecycle Music".equals(game.getMapName()), "cache-folder playback retains the selected course identity");
+            require(java.util.Arrays.equals(fixturePreferences, java.nio.file.Files.readAllBytes(preferences.toPath())), "app switching retains private audio settings");
             Thread.sleep(700);
             int beforeQuit = launcherResumes;
             host.runOnMainSync(game::onBackPressed);
@@ -78,11 +88,14 @@ final class NativeVrLifecycle {
             GameActivity third = (GameActivity) host.startActivitySync(gameIntent); host.waitForIdleSync(); Thread.sleep(2000);
             host.runOnMainSync(() -> third.requestExit(false));
             waitFor(third::isDestroyed, "repeated launch and app exit release XR resources");
+            require(java.util.Arrays.equals(fixturePreferences, java.nio.file.Files.readAllBytes(preferences.toPath())), "repeated app exit preserves audio preferences");
             results.putString("stream", "PASS: Horizon startup, Home pause, app-icon resume, same course instance, Android Back/app exit, map-picker return and repeat launch/exit; resumes=" + gameResumes + ", pauses=" + gamePauses + "\n");
         } catch (Throwable error) { results.putString("stream", "FAIL: " + error + "\n"); code = Activity.RESULT_CANCELED; }
         finally {
             GameActivity game = GameActivity.running(); if (game != null) host.runOnMainSync(game::finish);
             application.unregisterActivityLifecycleCallbacks(observer);
+            if (preferencesRead) try { if (previousPreferences == null) java.nio.file.Files.deleteIfExists(preferences.toPath()); else java.nio.file.Files.write(preferences.toPath(), previousPreferences); }
+            catch (Exception error) { code = Activity.RESULT_CANCELED; results.putString("stream", "FAIL: cannot restore prior audio settings: " + error + "\n"); }
             if (map != null) MapLibrary.deleteLocal(map);
             host.finish(code, results);
         }

@@ -39,6 +39,7 @@ public final class NativeVrSmoke {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).addCategory("com.oculus.intent.category.VR")
                 .addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD");
             intent.putExtra("map_path", map.getAbsolutePath());intent.putExtra("map_cache",map.getName().startsWith("play-vr-smoke-"));
+            intent.putExtra("map_name", course);
             intent.putExtra("run_mode",arguments==null?"freeride":arguments.getString("mode","freeride"));
             intent.putExtra("render_scale",Double.parseDouble(arguments==null?"1.0":arguments.getString("scale","1.0")));intent.putExtra("msaa",Integer.parseInt(arguments==null?"4":arguments.getString("msaa","4")));
             intent.putExtra("head_steering",arguments!=null&&Boolean.parseBoolean(arguments.getString("head","false")));

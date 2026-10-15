@@ -10,6 +10,14 @@ enum class UiAction {
     View,
     Controls,
     Sound,
+    Music,
+    MasterMute,
+    VolumeDown,
+    VolumeUp,
+    Songs,
+    SelectSong,
+    PreviousSongPage,
+    NextSongPage,
     Stats,
     Calibrate,
     Recall,
@@ -34,18 +42,25 @@ struct UiButton {
     std::string text;
     UiAction action;
     std::filesystem::path map{};
+    std::string value{};
 };
 
 struct UiResult {
     UiAction action = UiAction::None;
     bool consumed = false;
     std::filesystem::path map{};
+    std::string value{};
 };
 
 class RideUi {
 public:
     bool visible = false, controls = false, stats = false, sound_muted = false, third_person = true, head_steer = false,
          immersive = false, library = false, map_picker = false;
+    bool audio_options = false, song_picker = false, music_enabled = true, authored_music = false;
+    double master_volume = 1;
+    std::string song_selection, current_song;
+    std::vector<std::string> song_choices;
+    std::size_t song_page = 0;
     std::vector<std::filesystem::path> map_paths;
     std::size_t page = 0;
     std::string notice;

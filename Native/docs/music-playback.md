@@ -34,7 +34,7 @@ scene API also accepts an explicit song and independent music enable state.
 Recovering or teleporting preserves song choice and music transport; a full run
 restart resets transport and may choose another random song. Dismount, music
 disable and explicit song selection retain the run's preference. Music controls
-are not yet exposed in the desktop/wrist menus or saved to preferences.
+are exposed and saved by build 0.51; see [audio settings](audio-settings.md).
 
 Long masters and intro phrases use bounded, seekable WAV reads outside the
 gameplay mutex. Each stream queues two half-second 48 kHz stereo output blocks

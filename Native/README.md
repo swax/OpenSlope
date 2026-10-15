@@ -137,6 +137,9 @@ without variable-remap data need re-import with the independent audio utility.
 Mounting crossfades from the environment/intro to a run-selected song. Authored
 `Music/track.wav` and its loop arrangement stream on desktop and Quest;
 see [music lifecycle](docs/music-playback.md).
+The desktop and wrist **Audio** menus provide volume, music enable and per-course
+song selection, saved between sessions. M restores the previous audible volume;
+see [audio settings](docs/audio-settings.md).
 See [native audio](docs/audio-playback.md) for supported contracts, capture/testing
 commands, extraction tools and remaining music/speech work. A fresh ISO import now
 stages the configured banks, music graph/chunks, loop banks and intro stems;

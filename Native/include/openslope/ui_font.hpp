@@ -45,6 +45,8 @@ inline std::array<unsigned char, 7> ui_glyph(char c) {
     case ':': return {0, 4, 4, 0, 4, 4, 0};
     case '.': return {0, 0, 0, 0, 0, 4, 4};
     case '+': return {0, 4, 4, 31, 4, 4, 0};
+    case '%': return {25, 26, 2, 4, 8, 11, 19};
+    case '>': return {16, 8, 4, 2, 4, 8, 16};
     default: return {};
     }
 }

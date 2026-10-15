@@ -22,6 +22,7 @@ public final class GameActivity extends NativeActivity {
     public void setReturnToMaps(boolean maps) { returnToMaps = maps; }
     @Override public void onBackPressed() { requestExit(false); }
     public String getMapPath() { return getIntent().getStringExtra("map_path"); }
+    public String getMapName() { String name = getIntent().getStringExtra("map_name"); return name == null ? new File(getMapPath()).getName() : name; }
     public String getRunMode() { String mode=getIntent().getStringExtra("run_mode");return mode==null?"freeride":mode; }
     public double getRenderScale(){return getIntent().getDoubleExtra("render_scale",1.0);}
     public int getMsaa(){return getIntent().getIntExtra("msaa",4);}

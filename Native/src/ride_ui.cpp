@@ -42,6 +42,36 @@ struct Canvas {
 } // namespace
 
 std::vector<UiButton> RideUi::buttons() const {
+    if (audio_options) {
+        if (song_picker) {
+            std::vector<UiButton> list{
+                {.06, .30, .88, .075, song_selection.empty() ? "RANDOM (SELECTED)" : "RANDOM", UiAction::SelectSong}};
+            for (std::size_t i = song_page * 5; i < std::min(song_choices.size(), song_page * 5 + 5); ++i)
+                list.push_back({.06,
+                                .39 + double(i - song_page * 5) * .09,
+                                .88,
+                                .075,
+                                (song_selection == song_choices[i] ? "> " : "") + song_choices[i],
+                                UiAction::SelectSong,
+                                {},
+                                song_choices[i]});
+            list.push_back({.06, .85, .26, .085, "PREV", UiAction::PreviousSongPage});
+            list.push_back({.37, .85, .26, .085, "BACK", UiAction::Songs});
+            list.push_back({.68, .85, .26, .085, "NEXT", UiAction::NextSongPage});
+            return list;
+        }
+        return {{.06, .34, .18, .10, "-", UiAction::VolumeDown},
+                {.27, .34, .46, .10,
+                 master_volume == 0 ? "MUTED / RESTORE"
+                                    : "VOLUME: " + std::to_string(int(std::round(master_volume * 100))) + "% / MUTE",
+                 UiAction::MasterMute},
+                {.76, .34, .18, .10, "+", UiAction::VolumeUp},
+                {.06, .48, .88, .10, music_enabled ? "MUSIC: ON" : "MUSIC: OFF", UiAction::Music},
+                {.06, .62, .88, .10,
+                 authored_music ? "AUTHORED TRACK" : "SONG: " + (song_selection.empty() ? "RANDOM" : song_selection),
+                 authored_music ? UiAction::None : UiAction::Songs},
+                {.06, .85, .88, .085, "BACK TO MENU", UiAction::Sound}};
+    }
     if (library) {
         std::vector<UiButton> list;
         for (std::size_t i = page * 5; i < std::min(map_paths.size(), page * 5 + 5); ++i)
@@ -59,7 +89,7 @@ std::vector<UiButton> RideUi::buttons() const {
         {.52, .30, .42, .095, "RESTART", UiAction::Restart},
         {.06, .42, .42, .095, third_person ? "VIEW: 3RD PERSON" : "VIEW: 1ST PERSON", UiAction::View},
         {.52, .42, .42, .095, "CONTROLS", UiAction::Controls},
-        {.06, .54, .42, .095, sound_muted ? "SOUND: OFF" : "SOUND: ON", UiAction::Sound},
+        {.06, .54, .42, .095, "AUDIO", UiAction::Sound},
         {.52, .54, .42, .095, stats ? "STATS: ON" : "STATS: OFF", UiAction::Stats},
         {.06, .66, .42, .095, immersive ? "RECALL BOARD" : "MODE / NEW RUN",
          immersive ? UiAction::Recall : UiAction::Mode},
@@ -104,6 +134,7 @@ UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
             const auto& b = list[std::size_t(hover_)];
             result.action = b.action;
             result.map = b.map;
+            result.value = b.value;
         }
     }
     result.consumed = captured_ || inside;
@@ -160,14 +191,21 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.rect(0, 0, 1, 1, panel);
         c.rect(0, 0, 1, .012, accent);
         c.text("OPEN SLOPE", .06, .045, .007, accent);
-        c.text(library ? "MAP LIBRARY" : controls ? "CONTROLS" : "ON THE MOUNTAIN", .06, .13, .008);
-        c.text(speed + " KM/H  /  " +
-                   (p.carrying_board() ? "CARRYING"
-                    : p.on_foot()      ? "ON FOOT"
-                                       : "RIDING"),
-               .06, .235, .004, muted);
-        c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
-        if (controls && !library) {
+        c.text(audio_options ? (song_picker ? "CHOOSE SONG" : "AUDIO")
+               : library     ? "MAP LIBRARY"
+               : controls    ? "CONTROLS"
+                             : "ON THE MOUNTAIN",
+               .06, .13, .008);
+        c.text(audio_options ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
+                                               : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
+                             : speed + " KM/H  /  " +
+                                   (p.carrying_board() ? "CARRYING"
+                                    : p.on_foot()      ? "ON FOOT"
+                                                       : "RIDING"),
+               .06, .235, audio_options ? .0036 : .004, muted);
+        if (!audio_options)
+            c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
+        if (controls && !library && !audio_options) {
             const std::array<std::string, 10> rows =
                 wrist
                     ? std::array<std::string, 10>{"A   JUMP / DOUBLE JUMP FLY",      "B   AIM BOOST / BOARD THRUST",
@@ -226,7 +264,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             c.text("FPS " + std::to_string(int(fps)), .87, .976, .0017, muted);
     }
     if (stats && visible)
-        c.text("FPS " + std::to_string(int(fps)), .06, .89, .0035, muted);
+        c.text("FPS " + std::to_string(int(fps)), .74, .065, .0035, muted);
 }
 
 void RideUi::append_pointer(std::vector<Vertex>& out, const EquipmentRay& ray) const {

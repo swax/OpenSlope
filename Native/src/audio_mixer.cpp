@@ -147,11 +147,13 @@ void AudioMixer::paused(bool value) {
     data_->paused = value;
 }
 
-void AudioMixer::volume(double value) {
+void AudioMixer::volume(double value, bool immediate) {
     if (!std::isfinite(value) || value < 0 || value > 1)
         throw std::runtime_error("Invalid audio master volume");
     std::lock_guard lock(data_->mutex);
     data_->master = value;
+    if (immediate)
+        data_->current_master = value;
 }
 
 unsigned AudioMixer::rate() const { return data_->rate; }

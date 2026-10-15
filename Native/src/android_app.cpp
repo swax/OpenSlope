@@ -237,8 +237,17 @@ extern "C" void android_main(android_app* app) {
             platform.render_scale = scale;
             platform.msaa = unsigned(samples);
             platform.head_steering = head_steering;
-            platform.is_resumed = [&] { return app->activityState == APP_CMD_RESUME && app->window; };
+            platform.audio_preferences =
+                std::filesystem::path(app->activity->internalDataPath) / "audio-preferences.json";
             const auto game_type = environment->GetObjectClass(app->activity->clazz);
+            const auto name_getter = environment->GetMethodID(game_type, "getMapName", "()Ljava/lang/String;");
+            if (!name_getter)
+                throw std::runtime_error("Course identity host is missing");
+            const auto map_name =
+                static_cast<jstring>(environment->CallObjectMethod(app->activity->clazz, name_getter));
+            platform.course_id = string_value(environment, map_name);
+            environment->DeleteLocalRef(map_name);
+            platform.is_resumed = [&] { return app->activityState == APP_CMD_RESUME && app->window; };
             const auto exit_getter = environment->GetMethodID(game_type, "getExitRequest", "()I");
             const auto destination_setter = environment->GetMethodID(game_type, "setReturnToMaps", "(Z)V");
             if (!exit_getter || !destination_setter)

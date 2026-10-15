@@ -84,7 +84,7 @@ public:
     void music_mix(double race, double ambience, bool immediate = false);
     void listener(AudioListener listener);
     void paused(bool value);
-    void volume(double value);
+    void volume(double value, bool immediate = false);
     void render(std::span<float> stereo);
     unsigned rate() const;
     std::size_t voices() const;

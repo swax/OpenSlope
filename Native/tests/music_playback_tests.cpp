@@ -277,9 +277,13 @@ void scene_lifecycle(const std::filesystem::path& root) {
     pcm = advance(240);
     near(frequency(std::span(pcm).last(48000)), 880, 4, "explicit reference song selection takes effect on remount");
     scene.music_enabled(false);
+    std::array<float, 800> disabled{};
+    scene.mixer().render(disabled);
+    check(rms(disabled) == 0 && scene.music_status().song == "beta",
+          "music checkbox stops the current bus immediately without changing its run song");
     pcm = advance(240);
     check(rms(std::span(pcm).last(16000)) == 0 && scene.music_status().song == "beta",
-          "music mute preserves the chosen song and stops at the end of its fade");
+          "disabled music remains silent through later gameplay ticks");
     player.restart_run();
     advance(2);
     check(player.run_serial() != run_serial && scene.music_status().song == "beta",

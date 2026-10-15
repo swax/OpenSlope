@@ -102,3 +102,9 @@ authored master/loop export playback and retained song choice across recovery.
 The public scene API supports music enable and explicit song selection; menus
 and persisted preferences still need wiring. Live graph performance routing,
 async/announcer and broader parity remain active. See `music-playback.md`.
+
+Build 0.51 connects music enable, master mute/volume and paged per-course song
+selection to the desktop and wrist menus. App-private preferences survive
+restarts and document-picker cache changes. Live graph performance events,
+async/announcer, AI field/standings and wider rendering/gameplay parity remain.
+See `audio-settings.md` for controls, persistence and verification scope.

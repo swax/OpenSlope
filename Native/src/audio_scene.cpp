@@ -826,7 +826,29 @@ void AudioScene::restart() {
 
 void AudioScene::music_enabled(bool value) {
     std::lock_guard lock(data_->mutex);
-    data_->music_on = value;
+    auto& d = *data_;
+    if (d.music_on == value)
+        return;
+    d.music_on = value;
+    if (value)
+        return;
+    d.race_wanted = false;
+    d.race_fade = d.environment_fade = 0;
+    d.mixer.music_mix(0, 0, true);
+    d.mixer.stop(d.music_voice);
+    d.mixer.stop(d.environment_voice);
+    d.music_voice = d.environment_voice = 0;
+    d.music_ready = d.pending_ready = false;
+    d.music_start_pending = true;
+    d.pending_event.reset();
+    d.music_reroute = false;
+    d.stats.music_node = -1;
+    ++d.music_revision;
+    for (auto* stream : {d.authored_music.get(), d.intro_music.get()})
+        if (stream) {
+            stream->playing(false);
+            stream->restart();
+        }
 }
 
 void AudioScene::music_song(const std::string& selection) {

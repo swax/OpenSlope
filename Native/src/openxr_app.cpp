@@ -1,6 +1,7 @@
 #include "openxr_app.hpp"
 #include "audio_device.hpp"
 #include "body_tracking_compat.hpp"
+#include "openslope/audio_preferences.hpp"
 #include "openslope/avatar.hpp"
 #include "openslope/ride_ui.hpp"
 #include "vulkan_renderer.hpp"
@@ -67,6 +68,10 @@ struct State {
     VrPresentation presentation;
     VrInputGate input_gate;
     RideUi ui;
+    AudioPreferences audio_preferences;
+    std::filesystem::path audio_preferences_path;
+    std::string course_id;
+    AudioScene* audio_scene{};
     EquipmentInput equipment;
     XrQuaternionf input_rotation{0, 0, 0, 1};
     double fps = 0;
@@ -715,6 +720,7 @@ struct State {
         ui.visible = presentation.controls;
         ui.third_person = presentation.third_person;
         ui.head_steer = head_steering;
+        audio_preferences.present(ui, audio_scene, course_id);
         const auto offset = presentation.camera_offset(player.camera_forward());
         const auto left = grip_hand(equipment.hands[0]);
         ui.frame(RideUi::wrist(
@@ -723,6 +729,9 @@ struct State {
         auto pointer = equipment.rays[1];
         pointer.origin += player.rider().position + offset;
         const auto selected = ui.pointer(pointer, equipment.trigger[1]);
+        if (audio_preferences.handle(selected, ui, audio_scene, course_id) && !audio_preferences_path.empty() &&
+            !audio_preferences.save(audio_preferences_path))
+            ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
         if (selected.consumed)
             equipment.trigger[1] = false;
         switch (selected.action) {
@@ -733,7 +742,6 @@ struct State {
             break;
         case UiAction::View: presentation.third_person = !presentation.third_person; break;
         case UiAction::Controls: ui.controls = !ui.controls; break;
-        case UiAction::Sound: ui.sound_muted = !ui.sound_muted; break;
         case UiAction::Stats: ui.stats = !ui.stats; break;
         case UiAction::Calibrate: anchored = false; break;
         case UiAction::Recall: player.recall_board(walk_forward); break;
@@ -795,6 +803,16 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
     state.create(platform, player.terrain().mesh(), player.logic().flag_models());
     AudioScene audio(player.terrain().map_root());
     audio.mixer().paused(true);
+    state.course_id = platform.course_id.empty() ? player.terrain().map_root().filename().string() : platform.course_id;
+    state.audio_preferences_path =
+        platform.audio_preferences.empty() ? AudioPreferences::default_path() : platform.audio_preferences;
+    state.audio_preferences = AudioPreferences::load(state.audio_preferences_path);
+    state.audio_preferences.apply(audio, state.course_id, true);
+    state.audio_scene = &audio;
+    tracking_log("Audio settings: course " + state.course_id + "; music " +
+                 std::to_string(state.audio_preferences.music_enabled) + "; volume " +
+                 std::to_string(state.audio_preferences.volume) + "; song " +
+                 state.audio_preferences.song(state.course_id));
     AudioDevice audio_device(audio.mixer());
     AudioService audio_service(audio);
     player.observe_ticks([&](const Player& p, const Rider& before) { audio.tick(p, before); });
@@ -948,7 +966,6 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                 glare_view.anchor = tracked.head + camera_offset;
                 glare_view.visibility = state.glare_visibility.step(player.terrain(), state.eyes[0].renderer->glare(),
                                                                     glare_view.anchor, std::clamp(dt, 0., 1.));
-                audio.mixer().volume(state.ui.sound_muted ? 0 : 1);
                 for (unsigned i = 0; i < 2; ++i) {
                     if (i == 0)
                         pose_time += ms(simulated, Clock::now());

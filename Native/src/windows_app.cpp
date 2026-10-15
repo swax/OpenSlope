@@ -1,4 +1,5 @@
 #include "audio_device.hpp"
+#include "openslope/audio_preferences.hpp"
 #include "openslope/audio_scene.hpp"
 #include "openslope/avatar.hpp"
 #include "openslope/replay.hpp"
@@ -93,7 +94,8 @@ struct Image {
 
 int capture(Player& player, const std::filesystem::path& output, double seconds, const std::filesystem::path& replay,
             const std::filesystem::path& audio_output, unsigned msaa, bool terrain_culling, bool first_person,
-            bool look_down, bool menu = false, bool controls = false) {
+            bool look_down, bool menu = false, bool controls = false, bool audio_menu = false,
+            const AudioPreferences& preferences = {}) {
     VulkanContext context;
     context.create(false);
     Image image(context);
@@ -106,8 +108,11 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     std::unique_ptr<AudioScene> audio;
     PcmClip recorded;
     recorded.channels = 2;
-    if (!audio_output.empty()) {
+    if (!audio_output.empty() || audio_menu) {
         audio = std::make_unique<AudioScene>(player.terrain().map_root());
+        preferences.apply(*audio, player.terrain().map_root().filename().string(), true);
+    }
+    if (!audio_output.empty()) {
         player.observe_ticks([&](const Player& p, const Rider& before) {
             audio->listener({camera_eye(p), p.camera_forward(), {0, 1, 0}});
             audio->service();
@@ -126,6 +131,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     RideUi ui;
     ui.visible = menu;
     ui.controls = controls;
+    ui.audio_options = audio_menu;
+    preferences.present(ui, audio.get(), player.terrain().map_root().filename().string());
     unsigned frames = 0, packed_frames = 0;
     double wall = 0, gpu = 0, cull = 0;
     std::uint64_t submitted = 0;
@@ -204,7 +211,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
               << grinding.rail_exits << " exits; on rail " << (grinding.motion == Motion::Rail) << "; spin "
               << grinding.rail_spin << " deg; spline "
               << (grinding.rail_spline ? std::to_string(*grinding.rail_spline) : "none") << '\n';
-    if (audio) {
+    if (audio && !audio_output.empty()) {
         write_wave(audio_output, recorded);
         const auto sound = audio->stats();
         std::cout << "Audio capture: " << recorded.frames() << " stereo frames; contact sounds " << sound.contacts
@@ -510,13 +517,14 @@ struct Window {
 
 int main(int argc, char** argv) {
     try {
-        std::filesystem::path map, output, replay, audio_output;
+        std::filesystem::path map, output, replay, audio_output, preferences_path;
         bool xr = false, smoke_window = false, no_audio = false, audio_smoke = false, msaa_set = false,
              terrain_culling = true, first_person_option = false, look_down_option = false, on_foot_option = false;
         double seconds = 0;
         unsigned msaa = 4;
         RunMode run_option = RunMode::Freeride;
-        bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_smoke = false;
+        bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_audio_option = false,
+             ui_smoke = false;
         for (int i = 1; i < argc; ++i) {
             const std::string option = argv[i];
             if (option == "--xr")
@@ -530,6 +538,10 @@ int main(int argc, char** argv) {
                 smoke_window = true;
             } else if (option == "--ui-menu")
                 ui_menu_option = true;
+            else if (option == "--ui-audio") {
+                ui_menu_option = ui_audio_option = true;
+            } else if (option == "--audio-preferences" && i + 1 < argc)
+                preferences_path = argv[++i];
             else if (option == "--ui-controls") {
                 ui_menu_option = true;
                 ui_controls_option = true;
@@ -573,7 +585,8 @@ int main(int argc, char** argv) {
                     << "openslope_player [--map <map folder>] [--xr [--head-steering]] [--mode freeride|race|showoff] "
                        "[--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture "
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
-                       "[--msaa 1|2|4|8] [--no-terrain-culling]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space "
+                       "[--msaa 1|2|4|8] [--no-terrain-culling] [--audio-preferences <file>] [--ui-audio]\nDesktop: "
+                       "A/D steer/spin, W/S tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
                        "spawn board, G "
                        "mount/dismount, T restart run, RMB carry/throw or drag to orbit, wheel zoom, LMB aimed ride, "
@@ -606,12 +619,16 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Choose either OpenXR or offline capture");
         if (!replay.empty() && (output.empty() || seconds != 0))
             throw std::runtime_error("Replay requires --capture and cannot combine with --seconds");
+        if (preferences_path.empty() && output.empty() && !smoke_window)
+            preferences_path = AudioPreferences::default_path();
+        auto preferences = AudioPreferences::load(preferences_path);
         auto player = std::make_unique<Player>(map.empty() ? Terrain::demo() : Terrain::load(map));
         if (run_option != RunMode::Freeride)
             player->configure_run(run_option);
         if (xr) {
             XrPlatform platform;
             platform.head_steering = head_steering;
+            platform.audio_preferences = preferences_path;
             return run_openxr(*player, platform, seconds);
         }
         if (!audio_output.empty() && output.empty())
@@ -620,7 +637,7 @@ int main(int argc, char** argv) {
             player->start_on_foot();
         if (!output.empty())
             return capture(*player, output, seconds, replay, audio_output, msaa, terrain_culling, first_person_option,
-                           look_down_option, ui_menu_option, ui_controls_option);
+                           look_down_option, ui_menu_option, ui_controls_option, ui_audio_option, preferences);
         if (smoke_window && seconds == 0)
             seconds = 3;
         VulkanContext context;
@@ -632,13 +649,16 @@ int main(int argc, char** argv) {
         std::unique_ptr<AudioScene> audio;
         std::unique_ptr<AudioDevice> device;
         std::unique_ptr<AudioService> audio_service;
-        if (!no_audio && !smoke_window) {
+        if (!no_audio && (!smoke_window || ui_smoke)) {
             audio = std::make_unique<AudioScene>(player->terrain().map_root());
             audio->mixer().paused(true);
-            device = std::make_unique<AudioDevice>(audio->mixer());
-            audio_service = std::make_unique<AudioService>(*audio);
+            preferences.apply(*audio, player->terrain().map_root().filename().string(), true);
+            if (!smoke_window) {
+                device = std::make_unique<AudioDevice>(audio->mixer());
+                audio_service = std::make_unique<AudioService>(*audio);
+            }
             player->observe_ticks([&](const Player& p, const Rider& before) { audio->tick(p, before); });
-            if (!device->active())
+            if (device && !device->active())
                 std::cerr << "Audio output unavailable; use --no-audio for silent playback\n";
         }
         RAWINPUTDEVICE mouse{1, 2, 0, window.handle};
@@ -660,11 +680,12 @@ int main(int argc, char** argv) {
         const auto started = std::chrono::steady_clock::now();
         auto previous = started;
         bool first_person = first_person_option, last_camera = false, paused = false, last_pause = false,
-             last_focus = false, muted = false, last_mute = false;
+             last_focus = false, last_mute = false;
         bool last_escape = false, last_right = false, mouse_carry = false, first_released = false;
-        const std::array<UiAction, 8> ui_script{UiAction::Controls, UiAction::Controls, UiAction::View,
-                                                UiAction::Sound,    UiAction::Stats,    UiAction::Mode,
-                                                UiAction::Maps,     UiAction::LoadMap};
+        const std::array<UiAction, 15> ui_script{
+            UiAction::Controls, UiAction::Controls,   UiAction::View,       UiAction::Sound, UiAction::VolumeDown,
+            UiAction::Music,    UiAction::MasterMute, UiAction::MasterMute, UiAction::Songs, UiAction::SelectSong,
+            UiAction::Sound,    UiAction::Stats,      UiAction::Mode,       UiAction::Maps,  UiAction::LoadMap};
         std::size_t ui_step = 0;
         RunMode ui_expected_mode = RunMode::Freeride;
         unsigned ui_frame = 0;
@@ -708,13 +729,17 @@ int main(int argc, char** argv) {
             }
             last_pause = pause;
             const auto mute = key('M');
-            if (mute && !last_mute)
-                muted = !muted;
+            if (mute && !last_mute) {
+                preferences.toggle_mute();
+                if (audio)
+                    preferences.apply(*audio, player->terrain().map_root().filename().string());
+                if (!preferences_path.empty() && !preferences.save(preferences_path))
+                    window.ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
+            }
             last_mute = mute;
             if (audio) {
                 audio->listener({window.camera.pose().eye, window.camera.pose().forward, {0, 1, 0}});
                 audio->mixer().paused(paused || !focused);
-                audio->mixer().volume(muted ? 0 : 1);
             }
             if (!focused && last_focus)
                 player->release_inputs();
@@ -722,7 +747,7 @@ int main(int argc, char** argv) {
             const double aspect = double(std::max(1u, window.width)) / std::max(1u, window.height);
             window.camera.first_person = first_person;
             window.ui.third_person = !first_person;
-            window.ui.sound_muted = muted;
+            preferences.present(window.ui, audio.get(), player->terrain().map_root().filename().string());
             window.ui.frame(RideUi::desktop(window.camera.pose(), aspect, window.ui.visible));
             POINT cursor{};
             GetCursorPos(&cursor);
@@ -735,7 +760,10 @@ int main(int argc, char** argv) {
                 const auto choices = window.ui.buttons();
                 auto choice = std::find_if(choices.begin(), choices.end(), [&](const UiButton& b) {
                     return b.action == ui_script[ui_step] &&
-                           (b.action != UiAction::LoadMap || b.map != std::filesystem::weakly_canonical(original_map));
+                           (b.action != UiAction::LoadMap ||
+                            b.map != std::filesystem::weakly_canonical(original_map)) &&
+                           (b.action != UiAction::SelectSong || window.ui.song_choices.empty() ||
+                            b.value == window.ui.song_choices.front());
                 });
                 if (choice == choices.end())
                     throw std::runtime_error("UI smoke action unavailable");
@@ -746,6 +774,9 @@ int main(int argc, char** argv) {
                 pointer_down = (ui_frame++ % 2) == 0;
             }
             const auto click = window.ui.pointer(ray, pointer_down);
+            if (preferences.handle(click, window.ui, audio.get(), player->terrain().map_root().filename().string()) &&
+                !preferences_path.empty() && !preferences.save(preferences_path))
+                window.ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
             if (ui_smoke && click.action != UiAction::None) {
                 if (click.action != ui_script.at(ui_step))
                     throw std::runtime_error("UI smoke selected wrong action");
@@ -768,13 +799,13 @@ int main(int argc, char** argv) {
                 first_released = false;
                 break;
             case UiAction::Controls: window.ui.controls = !window.ui.controls; break;
-            case UiAction::Sound: muted = !muted; break;
             case UiAction::Stats: window.ui.stats = !window.ui.stats; break;
             case UiAction::Calibrate: window.camera.reset(); break;
             case UiAction::Recall: player->recall_board(window.camera.walk_forward()); break;
             case UiAction::Maps:
                 window.ui.library = !window.ui.library;
                 window.ui.controls = false;
+                window.ui.audio_options = window.ui.song_picker = false;
                 break;
             case UiAction::Previous:
                 if (window.ui.page > 0)
@@ -821,10 +852,14 @@ int main(int argc, char** argv) {
                     device.reset();
                     audio.reset();
                     player = std::move(next);
-                    if (!no_audio && !smoke_window) {
+                    if (!no_audio && (!smoke_window || ui_smoke)) {
                         audio = std::make_unique<AudioScene>(player->terrain().map_root());
-                        device = std::make_unique<AudioDevice>(audio->mixer());
-                        audio_service = std::make_unique<AudioService>(*audio);
+                        audio->mixer().paused(true);
+                        preferences.apply(*audio, player->terrain().map_root().filename().string(), true);
+                        if (!smoke_window) {
+                            device = std::make_unique<AudioDevice>(audio->mixer());
+                            audio_service = std::make_unique<AudioService>(*audio);
+                        }
                         player->observe_ticks([&](const Player& p, const Rider& before) { audio->tick(p, before); });
                     }
                     window.ui.visible = false;
@@ -923,7 +958,7 @@ int main(int argc, char** argv) {
             title << L" | " << stats.visible_props << L" props / " << stats.prop_draws
                   << L" draws | A/D steer | W/S tuck/brake | Space jump | Shift boost | P pause | F/V camera | C look "
                      L"down | M "
-                  << (muted ? L"unmute" : L"mute");
+                  << (preferences.volume == 0 ? L"unmute" : L"mute");
             SetWindowTextW(window.handle, title.str().c_str());
             window.draw(*player, first_person, key('C') || look_down_option, dt);
             if (IsIconic(window.handle))
