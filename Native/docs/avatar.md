@@ -22,9 +22,10 @@ the player's own head. F/V toggles desktop first person; hold C to look down.
 OpenXR reads both grip-pose actions at predicted display time. The procedural
 controller models have handles, top plates, sticks, buttons and triggers, with
 depth-tested text anchored above each model and facing the viewer. Touch labels
-explain stick steer/tuck/brake, stick-click rail exit, X reset, trigger boost,
-A hold/release jump and B dismount. On foot they show stick walk, trigger run,
-A jump and B mount board. The simple-controller profile has Select jump,
+explain stick steer/tuck/brake, stick-click rail exit, mounted X reset/on-foot X recall,
+A hold/release jump, B boost and either trigger mount/dismount. Right stick turns the
+view; its click toggles first/third person. Y shows/hides control/clock/score panels.
+On foot they show stick walk, B run and A jump. The simple-controller profile has Select jump,
 left Menu reset and right Menu mount/dismount bindings and matching help.
 These are original generic models, not device art.
 Missing grip poses hide the affected model immediately and use a procedural arm.
@@ -88,3 +89,10 @@ Build 0.22.0 adds a right-controller score/boost panel. 84 actual Vulkan checks
 verify body/controllers, numeric clock/score, green bank/red loss pixels and
 stereo/target formats. Worn-headset readability and the new steering controls
 remain separate device checks; see trick-scoring.md and vr-steering.md.
+
+Build 0.34 corrects the controller model from its old local-Y handle to the actual
+OpenXR thumbward grip axis. Controller poses stay unmodified. The original hand
+bind frames now map all three axes to grip, preserving wrist roll and the finger
+geometry instead of aiming a thumb-root vector as the entire hand. Third-person
+presentation moves the eyes/controllers/panels while avatar IK remains on the
+undisplaced body. See quest-controls.md for physical verification limits.

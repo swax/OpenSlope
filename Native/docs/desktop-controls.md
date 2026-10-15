@@ -10,7 +10,7 @@ speed bands, braking, tuck pose state and pause/focus handling. The broader
 Desktop input follows Slopesmith's control vocabulary: A/D or horizontal arrows
 carve on the ground and spin in the air; W/S or vertical arrows tuck/brake on the
 ground and flip in the air; Space holds a jump charge; Shift boosts; R resets;
-F/V changes camera; C looks down; G mounts/dismounts; P pauses; Escape exits.
+F/V changes camera; C looks down; E (or G) mounts/dismounts; P pauses; Escape exits.
 The title reports speed, charge, ground/air/switch or on-foot state and visible
 prop/draw counts. The stick figure depicts stance and crouch. Mouse look,
 gamepad and the complete HUD remain outstanding. See boarding.md for walking,
@@ -58,8 +58,9 @@ and the full momentum-preserving cap bend remain outstanding.
 The board draws bank and flip from its presentation frame. The camera uses the
 travel-facing frame on ground and the takeoff heading in air, so a flip/half-spin
 does not rotate the camera around the rider. OpenXR uses the same separation;
-right A is mapped to jump, left-stick Y to posture and the existing trigger/X
-bindings remain boost/reset. B mounts/dismounts; Quest starts on foot. Automated
+right A is mapped to jump, left-stick Y to posture, B to boost, and either trigger
+to mount/dismount. X recalls equipment on foot and resets the course while mounted.
+Quest starts on foot. Automated
 device launch does not verify physical controller presses or comfort.
 
 Falling motion sweeps the previous/new position against terrain, catching a
@@ -137,8 +138,8 @@ run against UNORM/sRGB attachments. Timing during these checks is diagnostic,
 not an isolated performance baseline or evidence of headset performance.
 
 Rail controls: A/D slews deck spin, Shift adds tangent boost, Space retains the
-shared charged jump, and E exits carrying velocity. VR uses left-stick steering,
-right trigger boost, A jump and left-stick click exit. See rails.md.
+shared charged jump, and Q exits carrying velocity. VR uses left-stick steering,
+B boost, A jump and left-stick click exit. See rails.md.
 
 The stick figure follows crouch and board presentation. F/V selects first person;
 hold C to look down at the body and board. `--first-person` / `--look-down` also
@@ -148,4 +149,4 @@ see avatar.md for optional body tracking and fallback behavior.
 `--mode race` / `--mode showoff` selects a timed event; the default is Freeride.
 Mounting starts the countdown, the title displays the clock/checkpoints/lap,
 and T restarts the event. Quest's library has the same mode selector; its
-left-controller clock panel labels Y restart. See course-runs.md.
+left-controller clock panel labels Y controls. See course-runs.md.

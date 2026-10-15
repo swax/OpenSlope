@@ -1,7 +1,24 @@
 #pragma once
 #include "math.hpp"
+#include <string_view>
+#include <span>
 namespace openslope {
 struct VrInput {bool enabled=false,head=false,stick=false;Vec3 gaze{};double spin=0;};
+enum class VrBindingAction {Steer,Look,Boost,Jump,Board,Reset,Menu,Camera,RailExit,Grip};
+struct VrBinding {VrBindingAction action;std::string_view path;};
+std::span<const VrBinding> touch_bindings();
+struct VrButtons {double x=0,y=0,look=0;bool boost=false,jump=false,board=false,reset=false,menu=false,camera=false;};
+struct VrIntent {double steer=0,posture=0,spin=0;bool boost=false,jump=false,board=false,reset=false,recall=false,stick=false;};
+VrIntent vr_intent(const VrButtons& buttons,bool walking);
+class VrPresentation {
+public:
+    bool controls=true,third_person=false;double yaw=0;
+    void step(double seconds,const VrButtons& buttons);
+    void release(){menu_held_=camera_held_=false;}
+    Vec3 camera_offset(Vec3 facing) const;
+private:
+    bool menu_held_=false,camera_held_=false;
+};
 double vr_axis(double raw,bool precision);
 double gaze_yaw(Vec3 gaze,Vec3 reference,Vec3 normal);
 double gaze_carve(Vec3 gaze,Vec3 travel,Vec3 normal,Vec3 fallback);

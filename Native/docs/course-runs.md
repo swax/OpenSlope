@@ -9,9 +9,10 @@ time awards. Pause/focus loss freezes simulation and its clock together.
 
 Desktop shows the clock, phase, checkpoint count and lap in the window title.
 VR shows a depth-tested clock/status panel above the left controller, with
-checkpoint acknowledgement and restart help. T on desktop or Y on Touch restarts
-the event and returns to the start without reloading the world. The simple
-controller profile uses left Select. X/R retains the current placement-reset
+checkpoint acknowledgement and control help. T on desktop restarts
+the event and returns to the start without reloading the world. Touch Y now
+toggles controls; a complete interactive wrist-menu restart is still pending.
+The simple controller profile retains left Select. X/R retains the current placement-reset
 behavior and preserves the event clock; complete path-driven carry-back is still
 outstanding. Quest restart preserves its on-foot start preference.
 

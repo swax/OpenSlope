@@ -157,3 +157,9 @@ Existing owned map data validates strip topology, units and activation only.
 No external runtime or decoder supplies the cloth implementation. Application
 randomness and outstanding lighting/contact fidelity are recorded in
 flag-cloth.md.
+
+Quest button alignment uses Slopesmith's public manual/tests as behavior evidence.
+Native binding tables, equipment-only recall and presentation state are authored
+independently. Controller/hand frames use Khronos OpenXR grip definitions and
+ordinary orthonormal bind transforms; no runtime control or avatar implementation
+from another project supplies the code. See quest-controls.md for primary links.

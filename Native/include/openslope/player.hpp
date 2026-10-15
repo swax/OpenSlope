@@ -18,7 +18,7 @@
 #include <functional>
 
 namespace openslope {
-struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{};bool run_restart=false;VrInput vr{}; }; // Left steer; positive posture is tuck/forward flip.
+struct RideInput { double steer{}; bool boost{},reset{},jump{}; double posture{}; bool rail_exit=false,mount=false;Vec3 walk_forward{},room_offset{};bool run_restart=false;VrInput vr{};bool spawn_board=false; }; // Left steer; positive posture is tuck/forward flip.
 enum class Motion {Air=1,Ground=2,Rail=3,Wipeout=5,RecoverContact=6,OnFoot=100};
 enum class Control {Cruise=3,Release=10,Air=13,Charge=14,OnRail=15,Launched=16,Wipeout=19,RecoverWait=20,ResetWarp=22,OnFoot=100};
 enum class CrashCause {None,PropImpact,Landing,Unrideable};
@@ -96,6 +96,7 @@ public:
     void start_on_foot();
     bool on_foot() const {return on_foot_;}
     bool interact_board(Vec3 room_offset={});
+    bool recall_board(Vec3 facing={});
     double board_distance(Vec3 room_offset={}) const;
     double walk_phase() const {return walk_phase_;}
     bool board_coasting() const {return on_foot_&&length(loose_board_.velocity)>.02;}
@@ -140,7 +141,7 @@ private:
     double settled_=0;
     bool run_active_=false;
     bool jump_held_=false,reset_held_=false;
-    bool restart_held_=false,restart_pending_=false;
+    bool restart_held_=false,restart_pending_=false,spawn_held_=false,spawn_pending_=false;
     double jump_cooldown_=0,air_grace_=0,rail_cooldown_=0;
     std::deque<bool> jump_edges_;
     struct GroundContact {Vec3 point,normal;double t;int surface;std::optional<std::size_t> instance{},object{};Vec3 velocity{};};

@@ -1,13 +1,14 @@
 # Walking and boarding
 
-The Quest/OpenXR player starts on foot beside a parked snowboard. Right B mounts
-it within 1.6 metres; B while riding steps off. Reset returns to the on-foot start.
+The Quest/OpenXR player starts on foot beside a parked snowboard. Either trigger mounts
+it within 1.6 metres; a trigger while riding steps off. Mounted X resets to the on-foot start;
+on-foot X recalls the equipment ahead without moving the player.
 The physical headset's horizontal room offset contributes to mounting distance.
-Left stick walks relative to the current head direction, right trigger runs and
+Left stick walks relative to the current head direction, B runs and
 right A jumps. Riding retains the existing carve, boost and charged-jump controls.
 The labelled controller models change their help with the current mode.
 
-Desktop keeps its riding start. G mounts/dismounts; `--on-foot` starts beside the
+Desktop keeps its riding start. E (or G) mounts/dismounts; `--on-foot` starts beside the
 board. A/D and W/S walk, Shift runs and Space jumps while on foot. F/V selects
 first person and C looks down. The stick figure stands upright, with procedural
 walking legs when runtime body joints are unavailable. The board remains visible
@@ -91,3 +92,6 @@ cover lower-body/torso/head regions with three sphere sweeps and
 still deduplicate each instance per tick. A raised pane can react to the head
 while feet pass below; actual split glass proxies also charge from supported
 contact. See deferred-world.md for evidence, material state and remaining work.
+
+Build 0.34 updates the controls and adds equipment-only recall; see quest-controls.md.
+Physical pickup/carry/transfer/throw and pointed-trigger mounting remain active work.

@@ -10,6 +10,8 @@ struct ControllerPose {
     Vec3 position{},right{1,0,0},up{0,1,0},forward{0,0,-1};
     bool valid=false,touch=true;
 };
+// Model axes differ from the unmodified OpenXR grip frame.
+ControllerPose controller_draw_pose(const ControllerPose& grip);
 struct AvatarTracking {
     Vec3 head{},forward{0,0,-1},up{0,1,0};
     std::array<Vec3,avatar_joint_count> joints{};
@@ -33,11 +35,11 @@ AvatarPose avatar_pose(const Player& player,const AvatarTracking* tracking=nullp
 class Avatar {
 public:
     Avatar();
-    std::span<const Vertex> mesh(const AvatarPose& pose,bool first_person=false,bool labels=true,Vec3 eye={});
+    std::span<const Vertex> mesh(const AvatarPose& pose,bool first_person=false,bool labels=true,Vec3 eye={},Vec3 controller_offset={});
     std::size_t source_vertices() const {return vertices_.size();}
     std::size_t source_triangles() const {return corners_.size()/3;}
 private:
-    struct Bone {std::string name;Vec3 head,tail;unsigned parent{};};
+    struct Bone {std::string name;Vec3 head,tail;unsigned parent{};std::array<Vec3,3> axes{};};
     struct SkinVertex {Vec3 position,normal;unsigned bone{};};
     struct Corner {unsigned vertex{};std::array<float,3> colour{};};
     std::vector<Bone> bones_;

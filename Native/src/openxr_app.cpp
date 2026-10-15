@@ -46,7 +46,7 @@ struct Eye {
 };
 struct State {
     XrInstance instance{};XrSystemId system{};XrSession session{};XrSpace space{};
-    XrActionSet actions{};XrAction steer{},boost{},reset{},jump{},rail_exit{},mount{},restart{},grip{};
+    XrActionSet actions{};XrAction steer{},look{},boost{},reset{},jump{},rail_exit{},mount{},restart{},grip{},menu{},camera_toggle{};VrPresentation presentation;
     std::array<XrPath,2> hands{};std::array<XrSpace,2> grips{};
     Vec3 walk_forward{},room_offset{};bool walking=true,head_steering=false;
     XrPath touch_profile{};
@@ -153,19 +153,20 @@ struct State {
             eye.renderer=std::make_unique<VulkanRenderer>(vulkan);eye.renderer->use_scene(scene);eye.renderer->deferred(true);eye.renderer->targets(images,format,eye.width,eye.height,platform.msaa);
             tracking_log("XR eye "+std::to_string(eyes.size()-1)+": recommended "+std::to_string(config.recommendedImageRectWidth)+"x"+std::to_string(config.recommendedImageRectHeight)+"; actual "+std::to_string(eye.width)+"x"+std::to_string(eye.height)+"; MSAA "+std::to_string(eye.renderer->samples())+"; queued GPU submission");
         }
-        std::cout<<"OpenXR stereo session prepared. Left stick: steer/posture; right trigger: boost; A: charged jump; X: reset; left stick click: exit rail; B: mount/dismount. Start on foot.\n";
+        std::cout<<"OpenXR stereo session prepared. Left stick: steer/posture; A: charged jump; B: boost; either trigger: mount/dismount; X: recall/reset; Y: controls; right stick: turn/click camera; left stick click: exit rail. Start on foot.\n";
     }
     void create_input() {
         XrActionSetCreateInfo set{XR_TYPE_ACTION_SET_CREATE_INFO};std::strcpy(set.actionSetName,"ride");std::strcpy(set.localizedActionSetName,"Riding");
         xr_check(xrCreateActionSet(instance,&set,&actions),"Create riding action set");
         const auto action=[&](const char* name,XrActionType type,XrAction& result){
             XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};info.actionType=type;std::strcpy(info.actionName,name);std::strcpy(info.localizedActionName,name);xr_check(xrCreateAction(actions,&info,&result),"Create riding action");};
-        action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("boost",XR_ACTION_TYPE_FLOAT_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);action("rail_exit",XR_ACTION_TYPE_BOOLEAN_INPUT,rail_exit);action("mount",XR_ACTION_TYPE_BOOLEAN_INPUT,mount);
-        action("restart_run",XR_ACTION_TYPE_BOOLEAN_INPUT,restart);
+        action("steer",XR_ACTION_TYPE_VECTOR2F_INPUT,steer);action("look",XR_ACTION_TYPE_VECTOR2F_INPUT,look);action("boost",XR_ACTION_TYPE_BOOLEAN_INPUT,boost);action("reset",XR_ACTION_TYPE_BOOLEAN_INPUT,reset);action("jump",XR_ACTION_TYPE_BOOLEAN_INPUT,jump);action("rail_exit",XR_ACTION_TYPE_BOOLEAN_INPUT,rail_exit);action("mount",XR_ACTION_TYPE_BOOLEAN_INPUT,mount);
+        action("restart_run",XR_ACTION_TYPE_BOOLEAN_INPUT,restart);action("controls_menu",XR_ACTION_TYPE_BOOLEAN_INPUT,menu);action("camera_toggle",XR_ACTION_TYPE_BOOLEAN_INPUT,camera_toggle);
         touch_profile=path("/interaction_profiles/oculus/touch_controller");
         hands={path("/user/hand/left"),path("/user/hand/right")};
         XrActionCreateInfo pose{XR_TYPE_ACTION_CREATE_INFO};pose.actionType=XR_ACTION_TYPE_POSE_INPUT;std::strcpy(pose.actionName,"grip_pose");std::strcpy(pose.localizedActionName,"Controller grip");pose.countSubactionPaths=2;pose.subactionPaths=hands.data();xr_check(xrCreateAction(actions,&pose,&grip),"Create controller poses");
-        const std::array<XrActionSuggestedBinding,9> bindings{{{steer,path("/user/hand/left/input/thumbstick")},{boost,path("/user/hand/right/input/trigger/value")},{reset,path("/user/hand/left/input/x/click")},{jump,path("/user/hand/right/input/a/click")},{rail_exit,path("/user/hand/left/input/thumbstick/click")},{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{mount,path("/user/hand/right/input/b/click")},{restart,path("/user/hand/left/input/y/click")}}};
+        const auto bound_action=[&](VrBindingAction value){switch(value){case VrBindingAction::Steer:return steer;case VrBindingAction::Look:return look;case VrBindingAction::Boost:return boost;case VrBindingAction::Jump:return jump;case VrBindingAction::Board:return mount;case VrBindingAction::Reset:return reset;case VrBindingAction::Menu:return menu;case VrBindingAction::Camera:return camera_toggle;case VrBindingAction::RailExit:return rail_exit;case VrBindingAction::Grip:return grip;}throw std::runtime_error("Unknown controller binding");};
+        std::vector<XrActionSuggestedBinding> bindings;for(const auto& binding:touch_bindings())bindings.push_back({bound_action(binding.action),path(binding.path.data())});
         XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};suggested.interactionProfile=path("/interaction_profiles/oculus/touch_controller");suggested.countSuggestedBindings=std::uint32_t(bindings.size());suggested.suggestedBindings=bindings.data();
         xr_check(xrSuggestInteractionProfileBindings(instance,&suggested),"Suggest Touch-compatible bindings");
         const std::array<XrActionSuggestedBinding,6> simple{{{grip,path("/user/hand/left/input/grip/pose")},{grip,path("/user/hand/right/input/grip/pose")},{reset,path("/user/hand/left/input/menu/click")},{jump,path("/user/hand/right/input/select/click")},{mount,path("/user/hand/right/input/menu/click")},{restart,path("/user/hand/left/input/select/click")}}};
@@ -212,20 +213,22 @@ struct State {
         const auto mode=result.body_active&&std::isfinite(result.confidence)&&result.confidence>.05f?(result.full_body?2:1):0;if(mode!=tracking_mode){tracking_mode=mode;tracking_log(mode==2?"Avatar pose: full body / runtime legs":mode==1?"Avatar pose: upper body / procedural legs":"Avatar pose: head/controllers / procedural body");}
         return result;
     }
-    RideInput input() const {
+    RideInput input(double seconds) {
         if(!focused)return {};
         const XrActiveActionSet active{actions,XR_NULL_PATH};XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};sync.countActiveActionSets=1;sync.activeActionSets=&active;xr_check(xrSyncActions(session,&sync),"Read controller actions");
         XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=steer;
         XrActionStateVector2f steering{XR_TYPE_ACTION_STATE_VECTOR2F};xr_check(xrGetActionStateVector2f(session,&info,&steering),"Read steering");
-        info.action=boost;XrActionStateFloat boosting{XR_TYPE_ACTION_STATE_FLOAT};xr_check(xrGetActionStateFloat(session,&info,&boosting),"Read boost");
+        info.action=boost;XrActionStateBoolean boosting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&boosting),"Read boost");
         info.action=reset;XrActionStateBoolean resetting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&resetting),"Read reset");
         info.action=jump;XrActionStateBoolean jumping{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&jumping),"Read charged jump");
         info.action=mount;XrActionStateBoolean mounting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&mounting),"Read board mounting");
         info.action=restart;XrActionStateBoolean restarting{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&restarting),"Read run restart");
         info.action=rail_exit;XrActionStateBoolean leaving{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&leaving),"Read rail exit");
-        const auto y=walking?(steering.isActive?steering.currentState.y:0):steering.isActive&&std::abs(steering.currentState.y)>.1f&&std::abs(steering.currentState.y)>=std::abs(steering.currentState.x)?steering.currentState.y:0;
-        const auto x=steering.isActive?steering.currentState.x:0;RideInput result{walking?-x:-vr_axis(x,true),boosting.isActive&&boosting.currentState>.5f,resetting.isActive&&resetting.changedSinceLastSync&&resetting.currentState,jumping.isActive&&jumping.currentState,y,leaving.isActive&&leaving.currentState,mounting.isActive&&mounting.currentState,walk_forward,room_offset,restarting.isActive&&restarting.currentState};
-        result.vr={!walking,head_steering,steering.isActive&&std::abs(x)>.18,walk_forward,-vr_axis(x,false)};return result;
+        info.action=look;XrActionStateVector2f looking{XR_TYPE_ACTION_STATE_VECTOR2F};xr_check(xrGetActionStateVector2f(session,&info,&looking),"Read view turn");
+        const auto held=[&](XrAction action){info.action=action;XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};xr_check(xrGetActionStateBoolean(session,&info,&state),"Read presentation button");return state.isActive&&state.currentState;};
+        VrButtons buttons;buttons.x=steering.isActive?steering.currentState.x:0;buttons.y=steering.isActive?steering.currentState.y:0;buttons.look=looking.isActive?looking.currentState.x:0;buttons.boost=boosting.isActive&&boosting.currentState;buttons.jump=jumping.isActive&&jumping.currentState;buttons.board=mounting.isActive&&mounting.currentState;buttons.reset=resetting.isActive&&resetting.currentState;buttons.menu=held(menu);buttons.camera=held(camera_toggle);presentation.step(std::clamp(seconds,0.,.1),buttons);
+        const auto intent=vr_intent(buttons,walking);RideInput result{intent.steer,intent.boost,intent.reset,intent.jump,intent.posture,leaving.isActive&&leaving.currentState,intent.board,walk_forward,room_offset,restarting.isActive&&restarting.currentState};result.spawn_board=intent.recall;
+        result.vr={!walking,head_steering,intent.stick,walk_forward,intent.spin};return result;
     }
     void events() {
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};XrResult result;
@@ -261,8 +264,8 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
         XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};XrFrameState frame{XR_TYPE_FRAME_STATE};xr_check(xrWaitFrame(state.session,&wait,&frame),"Wait for VR frame");const auto waited=Clock::now();
         XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};xr_check(xrBeginFrame(state.session,&begin),"Begin VR frame");
         const auto dt=previous_time?double(frame.predictedDisplayTime-previous_time)*1e-9:0;previous_time=frame.predictedDisplayTime;
-        state.walking=player.on_foot();if(state.focused)player.advance(std::max(0.0,dt),state.input());else player.release_inputs();
-        const auto boarding=player.on_foot()?1:0;if(boarding!=state.boarding_mode){state.boarding_mode=boarding;tracking_log(boarding?"Boarding: on foot; B to mount nearby board":"Boarding: mounted; B to dismount");}
+        state.walking=player.on_foot();if(state.focused)player.advance(std::max(0.0,dt),state.input(std::max(0.0,dt)));else{player.release_inputs();state.presentation.release();}
+        const auto boarding=player.on_foot()?1:0;if(boarding!=state.boarding_mode){state.boarding_mode=boarding;tracking_log(boarding?"Boarding: on foot; trigger to mount nearby board":"Boarding: mounted; trigger to dismount");}
         const auto& run=player.course_run().status();if(int(run.phase)!=state.run_phase||run.checkpoints!=state.run_checkpoints){state.run_phase=int(run.phase);state.run_checkpoints=run.checkpoints;tracking_log((std::string("Run: ")+run_name(run.mode)+" "+run_name(run.phase)+" "+run_clock(run.clock)+"; checkpoints "+std::to_string(run.checkpoints)).c_str());}
         const auto simulated=Clock::now();double this_image_wait=0,this_render=0,this_resource_wait=0,this_gpu=0;bool gpu_valid=true;
         std::array<XrCompositionLayerProjectionView,2> projections{{{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}}};
@@ -276,16 +279,16 @@ int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
                 const auto body=player.render_position();
                 XrPosef head=views[0].pose;head.position.x=(views[0].pose.position.x+views[1].pose.position.x)*.5f;head.position.y=(views[0].pose.position.y+views[1].pose.position.y)*.5f;head.position.z=(views[0].pose.position.z+views[1].pose.position.z)*.5f;
                 if(state.reference_change&&frame.predictedDisplayTime>=state.reference_change){state.anchored=false;state.reference_change=0;}
-                if(!state.anchored||state.anchor_serial!=player.placement_serial()){state.origin={head.position.x,state.floor_space?0:head.position.y-1.65,head.position.z};const auto direction=quaternion_rotate(head.orientation,{0,0,-1});state.reference_yaw=std::atan2(-direction.x,-direction.z);const auto facing=player.camera_forward();state.seat_heading=std::atan2(-facing.x,-facing.z);state.seat_origin=player.rider().view_yaw;state.anchor_serial=player.placement_serial();state.anchored=true;}
-                const auto yaw=state.seat_heading+player.rider().view_yaw-state.seat_origin-state.reference_yaw;const XrQuaternionf body_rotation{0,float(std::sin(yaw*.5)),0,float(std::cos(yaw*.5))};
-                const auto tracked=state.tracking(frame.predictedDisplayTime,head,body,body_rotation);state.walk_forward=normalized(project(tracked.forward,{0,1,0}),player.camera_forward());state.room_offset=finite(tracked.head)?project(tracked.head-body,{0,1,0}):Vec3{};const auto pose=avatar_pose(player,&tracked);const auto mode=pose.tracked_body?(pose.tracked_legs?2:1):0;if(mode!=state.pose_mode){state.pose_mode=mode;tracking_log(mode==2?"Avatar rendered pose: tracked full body and legs":mode==1?"Avatar rendered pose: tracked upper body, procedural legs":"Avatar rendered pose: procedural head/controller fallback");}const auto avatar_mesh=state.avatar.mesh(pose,true,true,tracked.head);
+                if(!state.anchored||state.anchor_serial!=player.placement_serial()){state.origin={head.position.x,state.floor_space?0:head.position.y-1.65,head.position.z};const auto direction=quaternion_rotate(head.orientation,{0,0,-1});state.reference_yaw=std::atan2(-direction.x,-direction.z);const auto facing=player.camera_forward();state.seat_heading=std::atan2(-facing.x,-facing.z);state.seat_origin=player.rider().view_yaw;state.anchor_serial=player.placement_serial();state.anchored=true;state.presentation.yaw=0;}
+                const auto yaw=state.seat_heading+player.rider().view_yaw-state.seat_origin-state.reference_yaw+state.presentation.yaw;const XrQuaternionf body_rotation{0,float(std::sin(yaw*.5)),0,float(std::cos(yaw*.5))};
+                const auto tracked=state.tracking(frame.predictedDisplayTime,head,body,body_rotation);state.walk_forward=normalized(project(tracked.forward,{0,1,0}),player.camera_forward());state.room_offset=finite(tracked.head)?project(tracked.head-body,{0,1,0}):Vec3{};const auto pose=avatar_pose(player,&tracked);const auto mode=pose.tracked_body?(pose.tracked_legs?2:1):0;if(mode!=state.pose_mode){state.pose_mode=mode;tracking_log(mode==2?"Avatar rendered pose: tracked full body and legs":mode==1?"Avatar rendered pose: tracked upper body, procedural legs":"Avatar rendered pose: procedural head/controller fallback");}const auto camera_offset=state.presentation.camera_offset(player.camera_forward());const auto avatar_mesh=state.avatar.mesh(pose,!state.presentation.third_person,state.presentation.controls,tracked.head+camera_offset,camera_offset);
                 for(unsigned i=0;i<2;++i) {
                     if(i==0)pose_time+=ms(simulated,Clock::now());const auto image_start=Clock::now();
                     auto& eye=state.eyes[i];std::uint32_t image=0;XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};xr_check(xrAcquireSwapchainImage(eye.swapchain,&acquire,&image),"Acquire eye image");
                     XrSwapchainImageWaitInfo image_wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};image_wait.timeout=XR_INFINITE_DURATION;xr_check(xrWaitSwapchainImage(eye.swapchain,&image_wait),"Wait for eye image");
                     this_image_wait+=ms(image_start,Clock::now());const auto render_start=Clock::now();
                     const auto& camera=views[i];
-                    const auto eye_position=body+quaternion_rotate(body_rotation,Vec3{camera.pose.position.x,camera.pose.position.y,camera.pose.position.z}-state.origin);
+                    const auto eye_position=body+quaternion_rotate(body_rotation,Vec3{camera.pose.position.x,camera.pose.position.y,camera.pose.position.z}-state.origin)+camera_offset;
                     player.world_view(eye_position);
                     const auto forward=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,0,-1}));
                     const auto up=quaternion_rotate(body_rotation,quaternion_rotate(camera.pose.orientation,{0,1,0}));

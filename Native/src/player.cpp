@@ -18,7 +18,7 @@ Player::Player(Terrain terrain,PlayTuning tuning):terrain_(std::move(terrain)),w
     apply_world_actions();const auto spawn=terrain_.spawn();spawn_position_=spawn.first;spawn_forward_=spawn.second;reset();
 }
 void Player::release_inputs(){
-    held_boost_=0;boost_engaged_=false;jump_held_=false;jump_edges_.clear();reset_held_=false;mount_held_=false;mount_pending_=false;restart_held_=false;restart_pending_=false;
+    held_boost_=0;boost_engaged_=false;jump_held_=false;jump_edges_.clear();reset_held_=false;mount_held_=false;mount_pending_=false;restart_held_=false;restart_pending_=false;spawn_held_=spawn_pending_=false;
     if(rider_.control==Control::Charge){rider_.charge=0;rider_.control=rider_.motion==Motion::Rail?Control::OnRail:rider_.grounded?Control::Cruise:Control::Air;}
 }
 void Player::warp(Vec3 position,Vec3 forward,Vec3 velocity,Vec3 up){
@@ -56,6 +56,7 @@ void Player::finish_course_recovery(){
 }
 void Player::sample_input(const RideInput& input){
     if(!std::isfinite(input.steer)||!std::isfinite(input.posture)||!finite(input.walk_forward)||!finite(input.room_offset)||length(input.room_offset)>10||!finite(input.vr.gaze)||!std::isfinite(input.vr.spin)||std::abs(input.vr.spin)>1)throw std::invalid_argument("Rider input must be finite");
+    if(input.spawn_board&&!spawn_held_)spawn_pending_=true;spawn_held_=input.spawn_board;
     if(input.mount&&!mount_held_)mount_pending_=true;mount_held_=input.mount;
     if(input.run_restart&&!restart_held_)restart_pending_=true;restart_held_=input.run_restart;
     if(input.jump!=jump_held_){if(jump_edges_.size()>=16)throw std::runtime_error("Too many unconsumed jump edges");jump_edges_.push_back(input.jump);jump_held_=input.jump;}
@@ -196,6 +197,7 @@ void Player::tick(const RideInput& input){
     reset_fade_in_=std::max(0.,reset_fade_in_-dt);
     if(restart_pending_){restart_run();restart_held_=input.run_restart;notify_tick(before_pose);return;}
     if(input.reset&&!reset_held_){reset(true);reset_held_=true;notify_tick(before_pose);return;}reset_held_=input.reset;
+    if(spawn_pending_){spawn_pending_=false;recall_board(input.walk_forward);}
     if(mount_pending_){mount_pending_=false;const auto changed=interact_board(input.room_offset);mount_held_=input.mount;if(changed){jump_held_=input.jump;jump_edges_.clear();notify_tick(before_pose);return;}}
     const auto running=run_.begin_tick(dt,!on_foot_);
     if(recovery_target_){reset_age_+=dt;jump_edges_.clear();if(reset_age_>=.8-1e-9){finish_course_recovery();jump_held_=input.jump;mount_held_=input.mount;reset_held_=input.reset;restart_held_=input.run_restart;}notify_tick(before_pose);return;}

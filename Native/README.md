@@ -51,7 +51,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 ```
 
 A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
-F/V switches first/chase camera, C looks down, G mounts/dismounts, P pauses and Escape exits.
+F/V switches first/chase camera, C looks down, E (or G) mounts/dismounts, P pauses and Escape exits.
 Use `--on-foot` to start beside the board; A/D/W/S walk, Shift runs and Space jumps in that mode.
 See [walking and boarding](docs/boarding.md). Input pauses when the preview loses
 focus; an uncommitted jump charge is cancelled.
@@ -64,6 +64,11 @@ the runtime's recommended eye dimensions, plus Off/2x/4x edge smoothing. Start a
 Flag and banner graphs now drive eight-section cloth waves, with private phase,
 both fixed ends, lifecycle and conservative culling. See [flag-cloth.md](docs/flag-cloth.md)
 for supported geometry, validation and remaining fidelity work.
+
+Quest controls now match the supported Slopesmith actions, including right-stick
+view turn/click camera and Y controls. Controller models use the OpenXR grip frame,
+and hand skin follows full wrist orientation. See [quest-controls.md](docs/quest-controls.md)
+for the mapping, validation and pending physical/fidelity checks.
 
 Quest's **Riding steering** selector offers Stick only or Head + stick override.
 Head mode uses look-to-carve with a neutral zone; the stick takes priority when
@@ -156,9 +161,9 @@ sRGB output targets. They require a Vulkan GPU and are separate from the portabl
 Use an active OpenXR runtime and a connected headset. Errors are reported if no headset is
 available. The host creates the Vulkan instance/device through `XR_KHR_vulkan_enable2`, uses
 runtime-selected stereo views and swapchain formats, and pauses simulation outside input focus.
-VR starts on foot: left stick walks, right trigger runs, right A jumps and B mounts a nearby
-board. B while riding steps off; X resets to the on-foot start. While riding, left stick
-steers and right trigger boosts. Touch-compatible bindings are the
+VR starts on foot: left stick walks, B runs, A jumps and either trigger mounts a nearby
+board. A trigger while riding steps off. X recalls the board on foot and resets the course
+while mounted. B boosts while riding. Touch-compatible bindings are the
 initial profile; dedicated Steam Frame bindings and device-specific extensions remain device work.
 Right A charges/releases the jump, and left-stick Y controls posture/flip when vertically dominant.
 Locomotion rotates the world camera by heading without applying board bank to the tracked head.
@@ -211,9 +216,9 @@ After installation, find **OpenSlope Native** in the headset's sideloaded applic
    you select which to import into the current Maps folder. Existing map names are kept. Cancel
    stops the current course; courses already imported remain available.
 4. **Play** validates the selected terrain, props and PNGs, then loads them into the immersive OpenXR activity.
-   You start on foot; right B mounts the nearby board. Left stick walks, trigger runs and A jumps.
-   Once mounted, stick steers/postures, trigger boosts and A charges/releases a jump. B dismounts;
-   X resets beside the board.
+   You start on foot; either trigger mounts the nearby board. Left stick walks, B runs and A jumps.
+   Once mounted, stick steers/postures, B boosts and A charges/releases a jump. Either trigger dismounts;
+   X resets beside the board. On foot X recalls the equipment without moving you.
    Returning from the game returns to the library.
 
 System document providers must support seekable ISO reads and writable/renameable folders for import.
@@ -318,6 +323,6 @@ and supported Quest runtimes can supply upper-body/full-body joints. See
 
 Timed events are available through `--mode race|showoff` or the Quest library's
 Event selector. Mount to start the countdown; Race counts up and Showoff counts
-down with checkpoint time awards. T/Y restarts. The desktop title and left VR
+down with checkpoint time awards. T restarts on desktop; Y toggles the Quest controls display. The desktop title and left VR
 controller panel show clock/state. See [course runs](docs/course-runs.md) for
 the course metric, finish/lap rules, authored settings and remaining race systems.

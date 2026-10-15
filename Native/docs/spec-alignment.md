@@ -169,3 +169,10 @@ eight-section growing model-X wave, pole selection and lifetime, plus clean
 are independently authored. The seeded random profile, rest-normal lighting,
 authored collision proxies and remaining exact-fidelity limits are explicit
 in flag-cloth.md. All 119 owned flag placements validate geometry/activation.
+
+Quest button/UI mapping and equipment-only recall are first-party application
+behavior compared against Slopesmith public manual/tests, outside the recovered
+riding state machine. Clean 300/340 jump and motion authority is unchanged.
+OpenXR grip conventions, not model/camera compensation, now drive generic
+controllers and full hand bind frames. See quest-controls.md for primary frame
+references, lifecycle evidence and pending physical/device checks.

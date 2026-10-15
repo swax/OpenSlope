@@ -34,6 +34,11 @@ void Player::start_on_foot(){
     for(const auto offset:std::array<Vec3,4>{-right*.7,right*.7,-heading*.7,heading*.7}){const auto candidate=position+offset;const auto floor=walk_ground(candidate+Vec3{0,.4,0},candidate-Vec3{0,1,0});if(!floor)continue;auto target=floor->point;Vec3 velocity{};const auto resolved=walk_move(target,target,velocity);if(length(resolved-target)<.01){feet=target;break;}}
     place_foot(feet,heading);
 }
+bool Player::recall_board(Vec3 facing){
+    if(!finite(facing))throw std::invalid_argument("Invalid board recall heading");if(!on_foot_||reset_pending()||recovering())return false;
+    const auto forward=normalized(project(facing,{0,1,0}),camera_forward());auto position=rider_.position+forward;Vec3 up{0,1,0};const auto floor=walk_ground(position+Vec3{0,2,0},position-Vec3{0,10,0});if(floor){position=floor->point;up=floor->normal;}
+    loose_board_={position,position,{},normalized(project(forward,up),forward),up,bool(floor),1,0};if(floor){loose_board_.ground_object=floor->object;loose_board_.ground_velocity=floor->velocity;}return true;
+}
 double Player::board_distance(Vec3 room_offset) const {return on_foot_?length(rider_.position+project(room_offset,{0,1,0})-loose_board_.position):0;}
 bool Player::interact_board(Vec3 room_offset){
     if(!finite(room_offset)||length(room_offset)>10)throw std::invalid_argument("Invalid room offset");if(recovering()||reset_pending())return false;
