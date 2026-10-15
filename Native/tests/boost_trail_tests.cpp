@@ -1,0 +1,31 @@
+#include "openslope/player.hpp"
+#include <iostream>
+#include <stdexcept>
+
+namespace {
+using namespace openslope;unsigned checks=0;
+void check(bool ok,const char* why){++checks;if(!ok)throw std::runtime_error(why);}
+void near(double a,double b,const char* why){check(std::abs(a-b)<1e-6,why);}
+void equal(Vec3 a,Vec3 b,const char* why){near(length(a-b),0,why);}
+template<class F> void rejects(F call,const char* why){bool bad=false;try{call();}catch(const std::invalid_argument&){bad=true;}check(bad,why);}
+BoostTrailPose pose(double x=0){return {{x,20,0},{0,0,-1},{0,1,0}};}
+void lifecycle(){
+    BoostTrail trail;for(unsigned frame=1;frame<3;++frame){trail.step(frame,pose(frame),1,.8,false);check(trail.records()==0&&trail.draw(pose(frame)).vertices().empty(),"non-third frames neither sample nor flash geometry");}trail.step(3,pose(3),1,.8,false);check(trail.records()==1&&trail.draw(pose(3)).vertices().empty(),"first record waits for a second sample before drawing");trail.step(6,pose(6),1,.8,false);check(trail.records()==2&&trail.draw(pose(6)).vertices().size()==24,"two history records plus live board produce two connected sheets");
+    for(unsigned frame=9;frame<=24;frame+=3)trail.step(frame,pose(frame),1,.8,false);const auto mesh=trail.draw(pose(24));check(trail.records()==7&&mesh.vertices().size()==84,"long boosts saturate the seven-record ring and bounded mesh");double lo=1e9,hi=-1e9;for(const auto& v:mesh.vertices()){lo=std::min(lo,v.position.x);hi=std::max(hi,v.position.x);}near(lo,6-.22,"ring wrap drops the oldest overwritten board pose");near(hi,24+.22,"live pose and newest sample remain world-space");
+    trail.step(24,pose(500),0,0,false);check(trail.records()==7,"duplicate frame cannot drain or overwrite a sample");for(unsigned i=0;i<200;++i)trail.draw(pose(24+i*.01));check(trail.records()==7,"rendering live geometry never advances simulation history");trail.step(25,pose(25),0,0,false);check(trail.records()==7,"release does not drain before the next third frame");for(unsigned i=1;i<=7;++i){trail.step(24+i*3,pose(24+i*3),0,0,false);check(trail.records()==7-i,"release removes one oldest extent each 20 Hz step");check(trail.draw(pose(24+i*3)).vertices().empty()==(7-i<2),"release becomes nondrawable before bookkeeping reaches zero");}trail.reset();check(!trail.records()&&trail.draw(pose()).vertices().empty(),"reset removes geometry, pose history and stale draws");
+}
+void colours(){
+    for(const auto& [meter,expected]:std::array<std::pair<double,std::array<double,3>>,6>{{{0,{1,.9645,0}},{.33363,{1,.9645,0}},{.333631,{1,.4746,0}},{.66648,{1,.4746,0}},{.666481,{1,.0758,.002}},{1,{1,.0758,.002}}}}){BoostTrail trail;trail.step(3,pose(),1,meter,false);check(trail.colour()==expected,"source colour thirds use their exact inclusive thresholds");trail.step(6,pose(),0,0,false);check(trail.colour()==expected,"release retains the last colour while records drain");}
+    BoostTrail pad;pad.step(3,pose(),0,0,true);pad.step(6,pose(1),0,0,true);check(pad.records()==2&&pad.colour()==std::array<double,3>{1,.0758,.002},"speed pad alone samples and bypasses the meter to strongest red");const auto mesh=pad.draw(pose(2));check(mesh.points[0].colour[0]>mesh.points[2].colour[0],"age ramp decreases the stored RGB along history");near(mesh.vertices().back().colour[0],0,"oldest sheet endpoint tapers to black for additive rendering");
+}
+void pose_and_validation(){
+    BoostTrail trail;trail.step(3,pose(),1,1,false);trail.step(6,pose(1),1,1,false);const BoostTrailPose banked{{5,40,7},{-1,0,0},{0,0,1}};const auto mesh=trail.draw(banked);equal(mesh.points[0].position,{5.8,39.78,7.015},"live deck roll and yaw transform attachment points in full 3D");const auto previous=trail.draw(pose(1));check(mesh.points[0].position.y!=previous.points[0].position.y,"live rendering follows the current board rather than stale sampled pose");
+    rejects([&]{trail.step(9,pose(),-1,.5,false);},"negative held request rejected");rejects([&]{trail.step(9,pose(),1,1.1,false);},"invalid energy rejected");rejects([&]{trail.step(9,{{},{},{0,1,0}},1,1,false);},"degenerate deck pose rejected");rejects([&]{trail.step(5,pose(),1,1,false);},"backward simulation frame rejected without reset");check(trail.records()==2,"rejected updates cannot change live history");
+}
+Patch floor(){Patch p;p.surface=1;for(unsigned u=0;u<4;++u)for(unsigned v=0;v<4;++v)p.points[u*4+v]={-500+1000.*u/3,0,-500+1000.*v/3};return p;}
+void player(){
+    Player rider(Terrain({floor()}));rider.warp({0,100,0},{0,0,-1},{0,0,-20});RideInput input;input.boost=true;for(unsigned i=0;i<21;++i)rider.tick(input);check(!rider.rider().grounded&&rider.boost_trail().records()==7,"actual airborne held boost fills geometry without a ground or texture gate");check(rider.boost_trail_mesh().vertices().size()==84,"render interface exposes bounded live-pose geometry");rider.warp({0,200,0},{0,0,-1},{0,0,-20});check(!rider.boost_trail().records(),"placement clears history rather than drawing across a warp");rider.tick(input);rider.tick(input);check(!rider.boost_trail().records(),"warp does not reset the global modulo-three sampling phase");rider.tick(input);check(rider.boost_trail().records()==1,"original sampling phase resumes after spatial placement");for(unsigned i=0;i<18;++i)rider.tick(input);check(rider.interact_board(),"test dismount keeps board nearby");for(unsigned i=0;i<24;++i)rider.tick(input);check(rider.on_foot()&&!rider.boost_trail().records(),"walking sprint cannot emit a mounted board afterimage");
+    Player resetter(Terrain({floor()}));resetter.warp({0,100,0},{0,0,-1});for(unsigned i=0;i<8;++i)resetter.tick(input);RideInput reset;reset.run_restart=true;resetter.tick(reset);check(!resetter.boost_trail().records(),"early run restart cannot sample the previously held boost on the new pose");for(unsigned i=0;i<3;++i)resetter.tick({});check(!resetter.boost_trail().records(),"released input stays clear after restart on the next sampling frame");
+}
+}
+int main(){try{lifecycle();colours();pose_and_validation();player();std::cout<<"PASS: "<<checks<<" boost trail cadence, ring, colours, live deck pose, release and actual player checks\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

@@ -8,6 +8,7 @@
 #include "openslope/world.hpp"
 #include "openslope/visibility.hpp"
 #include "openslope/riding_effects.hpp"
+#include "openslope/boost_trail.hpp"
 #include <filesystem>
 #include <span>
 #include <memory>
@@ -51,7 +52,7 @@ private:
 };
 class VulkanRenderer {
 public:
-    struct Stats {unsigned route_copies{},route_lines{},line_draws{},avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},wait_ms{},gpu_ms=-1;};
+    struct Stats {unsigned route_copies{},route_lines{},line_draws{},avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{},boost_segments{},boost_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},wait_ms{},gpu_ms=-1;};
     explicit VulkanRenderer(VulkanContext& context):context_(context){}
     ~VulkanRenderer();
     VulkanRenderer(const VulkanRenderer&)=delete;
@@ -63,7 +64,7 @@ public:
     void deferred(bool enabled){deferred_=enabled;}
     void finish();
     void render(unsigned image,const Matrix& camera,const Matrix& board,VkImageLayout final_layout,
-        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={},std::span<const PropMotion> motions={},double alpha=1,std::span<const PropRouteMotion> routes={},std::span<const PropTextureFrame> texture_frames={});
+        VkSemaphore wait={},VkSemaphore signal={},Vec3 eye={},std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},std::span<const Vertex> avatar={},float fade=0,std::span<const std::uint8_t> instance_flags={},std::span<const PropMotion> motions={},double alpha=1,std::span<const PropRouteMotion> routes={},std::span<const PropTextureFrame> texture_frames={},std::span<const BoostTrailVertex> boost={});
     const Stats& stats() const {return stats_;}
     void capture(unsigned image,const std::filesystem::path& output);
     void clear_targets();
@@ -86,6 +87,7 @@ private:
     Buffer wake_vertices_;std::size_t wake_capacity_{};std::vector<Vertex> wake_mesh_;
     Buffer avatar_vertices_;std::size_t avatar_capacity_{};
     Buffer line_vertices_;std::size_t line_capacity_=0;std::vector<Vertex> line_mesh_;
+    Buffer boost_vertices_;std::size_t boost_capacity_{};std::vector<Vertex> boost_mesh_;
     Buffer sheet_vertices_;std::size_t sheet_capacity_{};std::vector<Vertex> sheet_mesh_;
     struct Target { VkImage colour{},depth{},multisample{};VkDeviceMemory depth_memory{},multisample_memory{};VkImageView colour_view{},depth_view{},multisample_view{};VkFramebuffer framebuffer{}; };
     std::vector<Target> targets_;

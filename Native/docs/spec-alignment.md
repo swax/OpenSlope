@@ -155,3 +155,10 @@ Native queries, tick interruption and placement history prevent false travel
 through the skipped world. The custom scale policy, walking/parked board,
 placement arbitration and queued cue mixing are application choices documented
 in teleports.md, including an actual imported portal capture.
+
+Boost afterimage uses clean 360 and research/boost-trail for the seven-record
+four-point ring, global third-frame cadence, positive held/speed-pad gate,
+two-record draw threshold, release drain, source RGB thirds and two-sheet
+topology. Diagnostic-deck attachments, age ramp, additive fog/blend and extra
+walking/lifecycle gates are explicit application choices in boost-trail.md.
+Original folded attachment vectors and exact pixel profile remain open.

@@ -26,9 +26,9 @@ std::vector<unsigned char> read_capture(VulkanRenderer& renderer,const std::file
     if(magic!="P6"||width!=128||height!=128||maximum!=255)throw std::runtime_error("Invalid GPU capture");
     std::vector<unsigned char> pixels(128*128*3);file.read(reinterpret_cast<char*>(pixels.data()),pixels.size());if(!file)throw std::runtime_error("Truncated GPU capture");return pixels;
 }
-std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={},float fade=0,std::span<const std::uint8_t> flags={},std::span<const PropMotion> motions={},double alpha=1,std::span<const PropRouteMotion> routes={},std::span<const PropTextureFrame> texture_frames={}) {
+std::vector<unsigned char> capture(VulkanRenderer& renderer,const std::filesystem::path& output,const Matrix& camera,std::span<const Sprite> sprites={},std::span<const WakeVertex> wake={},std::span<const SprayVertex> sheet={},Vec3 eye={},float fade=0,std::span<const std::uint8_t> flags={},std::span<const PropMotion> motions={},double alpha=1,std::span<const PropRouteMotion> routes={},std::span<const PropTextureFrame> texture_frames={},std::span<const BoostTrailVertex> boost={}) {
     auto board=Matrix::identity();board.values[12]=10;
-    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet,{},fade,flags,motions,alpha,routes,texture_frames);return read_capture(renderer,output);
+    renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},eye,sprites,wake,sheet,{},fade,flags,motions,alpha,routes,texture_frames,boost);return read_capture(renderer,output);
 }
 void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array<int,3> expected) {
     const auto x=unsigned((.1+.8*u)*128),y=unsigned((.1+.8*v)*128);
@@ -37,6 +37,9 @@ void pixel(const std::vector<unsigned char>& pixels,double u,double v,std::array
 std::array<WakeVertex,6> ribbon(double z,float alpha=.5f){
     const WakeVertex a{{-.8,-.8,z},{0,0,-1},0,0,alpha},b{{.8,-.8,z},{0,0,-1},1,0,alpha},c{{.8,.8,z},{0,0,-1},1,2,alpha},d{{-.8,.8,z},{0,0,-1},0,2,alpha};return {a,b,c,a,c,d};
 }
+std::array<BoostTrailVertex,12> boost_sheet(double z,float alpha=.5f){
+    std::array<BoostTrailVertex,12> result;unsigned i=0;for(const auto x:{-.8,0.}){const std::array<float,4> colour{.8f,.2f,0,alpha};const BoostTrailVertex a{{x,-.8,z},colour},b{{x+.8,-.8,z},colour},c{{x+.8,.8,z},colour},d{{x,.8,z},colour};for(const auto vertex:{a,b,c,a,c,d})result[i++]=vertex;}return result;
+}
 std::vector<SprayVertex> spray_sheet(double z,float alpha=.5f){
     std::vector<SprayVertex> result;for(unsigned rail=0;rail<3;++rail){const auto lo=float(rail)/3,hi=float(rail+1)/3;const SprayVertex a{{-.8,-.8+1.6*lo,z},0,lo,alpha},b{{.8,-.8+1.6*lo,z},1,lo,alpha},c{{.8,-.8+1.6*hi,z},1,hi,alpha},d{{-.8,-.8+1.6*hi,z},0,hi,alpha};result.insert(result.end(),{a,b,c,a,c,d});}return result;
 }
@@ -44,7 +47,7 @@ std::vector<SprayVertex> spray_sheet(double z,float alpha=.5f){
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_uv","props_crowd","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_uv","props_crowd","props_cutout","props_blend","minification","antialiasing","visibility","sprites","boost","boost_fog","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
@@ -81,6 +84,19 @@ int main(int argc,char** argv) {
             if(std::string(name)=="fog"){
                 for(auto* renderer:{&first,&second}){const auto pixels=capture(*renderer,root/"fog.ppm",camera);pixel(pixels,.5,.5,{120,60,70});pixel(pixels,.01,.01,{200,40,20});pixel(pixels,1.1,.5,{23,61,127});}
                 first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);pixel(capture(first,root/"fog-recreated.ppm",camera),.5,.5,{120,60,70});continue;
+            }
+            if(std::string(name)=="boost"||std::string(name)=="boost_fog"){
+                const auto sample=[&](VulkanRenderer& renderer,std::span<const BoostTrailVertex> trail,float fade=0){return capture(renderer,root/"boost.ppm",camera,{},{},{},{},fade,{},{},1,{},{},trail);};
+                const auto front=boost_sheet(.25),behind=boost_sheet(.75);const auto plain=sample(first,{});
+                if(std::string(name)=="boost_fog"){++checks;if(sample(first,front)!=plain)throw std::runtime_error("Fog adds colour instead of fading additive boost geometry");continue;}
+                ++checks;if(sample(first,behind)!=plain)throw std::runtime_error("Boost trail ignores opaque scene depth");const auto red=sample(first,front);pixel(red,.5,.5,{142,106,120});++checks;if(first.stats().boost_segments!=1||first.stats().boost_draws!=1)throw std::runtime_error("Boost sheets are not one bounded batch");
+                const auto encoded=sample(second,front);pixel(encoded,.5,.5,{154,88,120});pixel(sample(first,front,.5f),.5,.5,{71,53,60});++checks;if(sample(first,boost_sheet(.25,0))!=plain)throw std::runtime_error("Transparent boost geometry changed pixels");
+                std::vector<BoostTrailVertex> stacked(front.begin(),front.end());const auto farther=boost_sheet(.35);stacked.insert(stacked.end(),farther.begin(),farther.end());pixel(sample(first,stacked),.5,.5,{244,131,120});
+                auto gradient=front;for(auto& point:gradient){const auto weight=float((point.position.y+.8)/1.6);for(unsigned c=0;c<3;++c)point.colour[c]*=weight;}pixel(sample(first,gradient),.5,.125,{53,83,120});pixel(sample(first,gradient),.5,.875,{129,102,120});
+                auto green=front;for(auto& point:green)point.colour={.1f,.8f,.1f,.5f};const auto green_reference=sample(second,green);first.deferred(true);second.deferred(true);auto board=Matrix::identity();board.values[12]=10;
+                for(unsigned frame=0;frame<4;++frame){first.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},{},{},{},{},0,{},{},1,{},{},front);second.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},{},{},{},{},0,{},{},1,{},{},green);checks+=2;if(read_capture(first,root/"boost-left.ppm")!=red||read_capture(second,root/"boost-right.ppm")!=green_reference)throw std::runtime_error("Queued stereo renderers share mutable boost geometry");}
+                first.deferred(false);second.deferred(false);for(unsigned bad_case=0;bad_case<3;++bad_case){auto bad=front;std::span<const BoostTrailVertex> view=bad;if(bad_case==0)bad[0].colour[0]=std::numeric_limits<float>::quiet_NaN();else if(bad_case==1)bad[0].colour[3]=2;else view=view.first(11);bool rejected=false;try{sample(first,view);}catch(const std::invalid_argument&){rejected=true;}checks+=2;if(!rejected||sample(first,{})!=plain)throw std::runtime_error("Invalid boost submission corrupts the next frame");}
+                first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);pixel(sample(first,front),.5,.5,{142,106,120});++checks;if(sample(first,{})!=plain)throw std::runtime_error("Boost trail retained stale geometry after clear");continue;
             }
             if(std::string(name)=="sheet"){
                 const auto plain=capture(first,root/"sheet-plain.ppm",camera);const auto front=spray_sheet(.25),behind=spray_sheet(.75);

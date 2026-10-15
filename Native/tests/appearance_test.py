@@ -163,6 +163,9 @@ def fixtures(root):
         shutil.copytree(root / name, folder)
         (folder / 'World.json').write_text(json.dumps(dict(Schema='openslope-world/v1', Fog=dict(Start=0, End=.2, Color=[200,40,20]))))
 
+    shutil.copytree(root/'sprites',root/'boost')
+    shutil.copytree(root/'sprites_fog',root/'boost_fog')
+
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="openslope-appearance-") as temporary:

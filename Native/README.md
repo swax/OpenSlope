@@ -32,6 +32,10 @@ Build 0.31 connects authored [instance teleports](docs/teleports.md), including
 Merqury City's entrance/exit, stopped destination-facing arrival and retained
 run/music. Walking arrivals keep the parked board nearby.
 
+Build 0.32 adds the [boost geometry afterimage](docs/boost-trail.md), shared
+between desktop and VR: seven sampled board poses, source meter colours and
+speed-pad activation, with a draining release and no particle-art requirement.
+
 ## Build and try on Windows
 
 Install Visual Studio 2022 C++ Build Tools with its CMake component and Windows SDK. Python 3 is

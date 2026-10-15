@@ -1,4 +1,5 @@
 #pragma once
+#include "boost_trail.hpp"
 #include "ride.hpp"
 #include "terrain.hpp"
 #include "collision.hpp"
@@ -82,6 +83,8 @@ public:
     std::uint64_t placement_serial() const {return placement_serial_;}
     std::uint64_t audio_reset_serial() const {return placement_serial_-transport_placements_;}
     std::uint64_t teleports() const {return teleports_;}
+    const BoostTrail& boost_trail() const {return boost_trail_;}
+    BoostTrailMesh boost_trail_mesh() const {return boost_trail_.draw({render_board_position(),render_forward(),render_up()});}
     bool recovering() const {return rider_.control==Control::Wipeout||rider_.control==Control::RecoverWait;}
     void run_active(bool active){run_active_=active;}
     bool run_active() const {return run_active_||(run_.status().mode!=RunMode::Freeride&&run_.status().phase==RunPhase::Running);}
@@ -128,6 +131,7 @@ private:
     FixedClock clock_;
     Rider rider_;
     RidingEffects effects_;
+    BoostTrail boost_trail_;std::uint64_t game_frame_=0;
     PoseAnimation get_up_;
     PlayTuning tuning_;
     Vec3 spawn_position_,spawn_forward_;

@@ -12,8 +12,8 @@ layout(location=0) out vec4 colour;
 void main() {
     vec3 displayColour=vertexColour;
     float alpha=1.0;
-    if(transform.options.x==8)alpha=effectAlpha;
-    if(transform.options.x>0&&transform.options.x!=8) {
+    if(transform.options.x==8||transform.options.x==9)alpha=effectAlpha;
+    if(transform.options.x>0&&transform.options.x!=8&&transform.options.x!=9) {
         vec4 base=texture(diffuseImage,textureUV);
         if(transform.options.x==3) {
             if(transform.options.z==1&&base.a<0.5)discard;
@@ -35,7 +35,7 @@ void main() {
     }
     if(transform.options.x!=7&&transform.eyeEnd.w>transform.fogColourStart.w){
         float fog=clamp((length(worldPosition-transform.eyeEnd.xyz)-transform.fogColourStart.w)/(transform.eyeEnd.w-transform.fogColourStart.w),0.0,1.0);
-        if(transform.options.x==4||transform.options.x==6)displayColour*=1.0-fog;
+        if(transform.options.x==4||transform.options.x==6||transform.options.x==9)displayColour*=1.0-fog;
         else if(transform.options.x==5)alpha*=1.0-fog;
         else displayColour=mix(displayColour,transform.fogColourStart.rgb,fog);
     }

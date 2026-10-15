@@ -74,7 +74,7 @@ is application behavior. Held engage plays MAIN 120/121/122 once per press,
 chosen from the existing meter thresholds, through the real audio mixer.
 
 Character-stat scaling, passive airborne meter bleed, uber/infinite tiers,
-board afterimages, pad sparkles, all named tricks and grabs, remaining score/
+pad sparkles, all named tricks and grabs, remaining score/
 time/teleport opcodes and full original lap transport remain parity work.
 The full objective stays in desktop-parity.md. No new worn-headset test or VR
 performance result is claimed; the installed steering build is preserved.
@@ -114,3 +114,7 @@ are saved in the ignored build tree; no new headset execution is claimed.
 ./temp/native/Release/openslope_boost_tests.exe temp/native-rails-0.17.0/Maps Maps
 python Native/tests/boost_replay_test.py temp/native/Release/openslope_player.exe
 ```
+
+Build 0.32 adds the sampled geometry afterimage for held/speed-pad requests.
+Its seven-record cadence and colour tiers follow clean boost-trail research;
+attachment/ramp/draw choices and remaining limits are in boost-trail.md.
