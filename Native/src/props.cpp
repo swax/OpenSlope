@@ -130,7 +130,7 @@ Props Props::load(const std::filesystem::path& root,bool model_only){
         for(std::size_t i=0;i<objects.size();++i)resolve(i);
         for(std::size_t i=0;i<objects.size();++i)for(const auto& data:objects[i].at("MeshData")){
             const auto material=data.at("MaterialID").get<std::size_t>();const auto& mat=t.materials.at(material);PropPart part;part.texture=texture_name(mat);if(!part.texture.empty())safe(part.texture);part.flags=mat.value("UnknownInt18",0u);
-            part.frames=frames.at(material);part.object=i;mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,part.bounds);if(!part.count)continue;result.models[model].bounds.add(part.bounds.min);result.models[model].bounds.add(part.bounds.max);
+            part.material=material;part.frames=frames.at(material);if(!part.frames.empty())part.texture=part.frames.front();part.object=i;mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,part.bounds);if(!part.count)continue;result.models[model].bounds.add(part.bounds.min);result.models[model].bounds.add(part.bounds.max);
             result.models[model].parts.push_back(result.parts.size());result.parts.push_back(std::move(part));
         }
     }

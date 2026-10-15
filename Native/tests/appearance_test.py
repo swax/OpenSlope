@@ -139,6 +139,17 @@ def fixtures(root):
             instances = [dict(ModelID=0, Location=[0, -25, 0], Visable=True)]
         for filename, key, rows in (("Models.json", "Models", models), ("Materials.json", "Materials", materials), ("Instances.json", "Instances", instances)):
             (folder / filename).write_text(json.dumps({key: rows}), encoding="utf-8")
+    folder = root/'props_uv'
+    shutil.copytree(root/'props', folder)
+    palette = [[240,20,40,255],[20,220,40,255],[20,40,240,255],[240,190,10,255]]
+    (folder/'Textures/grid.png').write_bytes(rgba(16,16,sum((palette[(y//8)*2+x//8] for y in range(16) for x in range(16)),[])))
+    (folder/'Materials.json').write_text(json.dumps(dict(Materials=[dict(TexturePath='prop-state.png',TextureFlipbook=['grid.png','prop-state.png'])])))
+    rows=json.loads((folder/'Instances.json').read_text())
+    for row in rows['Instances']:
+        row['Rotation']=[0,0,0,1]
+        row['AmbentLightColour']=[256,256,256]
+        for key in ['LightVector1','LightColour1']: row.pop(key,None)
+    (folder/'Instances.json').write_text(json.dumps(rows))
     for name in ('sprites', 'wake', 'sheet', 'props'):
         folder = root / (name + '_fog')
         shutil.copytree(root / name, folder)

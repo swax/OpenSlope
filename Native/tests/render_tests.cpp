@@ -1,5 +1,6 @@
 #include "vulkan_renderer.hpp"
 #include <cmath>
+#include <limits>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -43,7 +44,7 @@ std::vector<SprayVertex> spray_sheet(double z,float alpha=.5f){
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_uv","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
@@ -121,6 +122,21 @@ int main(int argc,char** argv) {
             const auto a=capture(first,root/(std::string(name)+"-unorm.ppm"),camera),b=capture(second,root/(std::string(name)+"-srgb.ppm"),camera);
             const auto visibility=first.stats();first.cull_terrain(false);second.cull_terrain(false);
             const auto baseline_a=capture(first,root/"baseline-unorm.ppm",camera),baseline_b=capture(second,root/"baseline-srgb.ppm",camera);checks+=2;if(a!=baseline_a||b!=baseline_b)throw std::runtime_error("Culled pixels differ from complete terrain submission");first.cull_terrain(true);second.cull_terrain(true);
+            if(std::string(name)=="props_uv"){
+                const PropTextureFrame horizontal{0,PropTextureFrame::resting,{.5,0}},vertical{0,PropTextureFrame::resting,{0,.5}};
+                const auto sample=[&](VulkanRenderer& renderer,const PropTextureFrame& state,std::span<const PropMotion> motions=std::span<const PropMotion>{}){return capture(renderer,root/"uv-phase.ppm",camera,{},{},{},{},0,{},motions,1,{},std::span(&state,1));};
+                const auto colour_at=[&](const auto& pixels,double u,double v){const auto p=(unsigned((.1+.8*v)*128)*128+unsigned((.1+.8*u)*128))*3;return std::array<int,3>{pixels[p],pixels[p+1],pixels[p+2]};};
+                pixel(a,.1875,.4125,{20,40,240});pixel(a,.3125,.4125,{240,190,10});pixel(a,.1875,.5875,{240,20,40});pixel(a,.3125,.5875,{20,220,40});
+                const auto shifted_u=sample(first,horizontal),shifted_v=sample(second,vertical);
+                for(const auto v:{.4125,.5875}){pixel(shifted_u,.1875,v,colour_at(a,.3125,v));pixel(shifted_u,.3125,v,colour_at(a,.1875,v));pixel(shifted_u,.6875,v,colour_at(a,.6875,v));pixel(shifted_u,.8125,v,colour_at(a,.8125,v));}
+                for(const auto u:{.1875,.3125}){pixel(shifted_v,u,.4125,colour_at(b,u,.5875));pixel(shifted_v,u,.5875,colour_at(b,u,.4125));}
+                const PropTextureFrame native_v{0,PropTextureFrame::resting,{0,.25}};const auto signed_v=sample(first,native_v);pixel(signed_v,.1875,.45,{240,20,40});pixel(signed_v,.3125,.45,{20,220,40});
+                const auto identity=identity_transform();const PropMotion held{0,{identity},{identity}};++checks;if(sample(first,horizontal,std::span(&held,1))!=shifted_u)throw std::runtime_error("Model pose composition drops private UV phase");
+                const PropTextureFrame selected{0,PropTextureFrame::resting,{},{{0,1}}};const auto picked=sample(first,selected);pixel(picked,.1875,.4125,{80,120,200});pixel(picked,.8125,.5875,colour_at(a,.8125,.5875));
+                first.deferred(true);second.deferred(true);auto board=Matrix::identity();board.values[12]=10;
+                for(unsigned turn=0;turn<4;++turn){const auto submit=[&](VulkanRenderer& renderer,const PropTextureFrame& state){renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},{},{},{},{},0,{},{},1,{},std::span(&state,1));};if(turn%2){submit(second,vertical);submit(first,horizontal);}else{submit(first,horizontal);submit(second,vertical);}checks+=2;if(read_capture(first,root/"uv-first.ppm")!=shifted_u||read_capture(second,root/"uv-second.ppm")!=shifted_v)throw std::runtime_error("Queued eyes overwrite private UV offsets");}first.deferred(false);second.deferred(false);
+                for(unsigned failure=0;failure<3;++failure){auto invalid=horizontal;if(failure==0)invalid.uv[0]=std::numeric_limits<double>::infinity();if(failure==1)invalid.materials={{999,0}};if(failure==2)invalid.materials={{0,0},{0,1}};bool refused=false;try{sample(first,invalid);}catch(const std::invalid_argument&){refused=true;}++checks;if(!refused)throw std::runtime_error("Invalid UV/material submission was accepted");++checks;if(capture(first,root/"uv-invalid-restored.ppm",camera)!=a)throw std::runtime_error("Invalid UV/material submission corrupts the next frame");}continue;
+            }
             if(std::string(name)=="props_cutout")for(auto* renderer:{&first,&second}){const std::array<PropTextureFrame,1> state{{{0,1}}};const auto swapped=capture(*renderer,root/"private-alpha.ppm",camera,{},{},{},{},0,{},{},1,{},state);pixel(swapped,.5,.5,renderer==&first?std::array<int,3>{140,90,80}:std::array<int,3>{178,91,91});const auto restored=capture(*renderer,root/"private-alpha-restored.ppm",camera);pixel(restored,.40625,.5,{40,80,120});pixel(restored,.59375,.5,{240,100,40});}
             if(std::string(name)=="props"){
                 auto shifted=camera;shifted.values[12]=-1.2f;

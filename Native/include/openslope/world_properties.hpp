@@ -2,6 +2,7 @@
 #include "math.hpp"
 #include <set>
 #include <cstdint>
+#include <vector>
 
 namespace openslope {
 class PropChecklist {
@@ -26,5 +27,10 @@ private:
 };
 // First-party play profile: measured gate, carried cost and representative impact price.
 double fragile_contact_cost(double normal_speed,Vec3 normal,bool supported);
-struct PropTextureFrame {std::size_t instance=0;unsigned frame=0;};
+struct PropMaterialFrame {std::size_t material=0;unsigned frame=0;};
+struct PropTextureFrame {
+    static constexpr unsigned resting=~0u;
+    std::size_t instance=0;unsigned frame=resting;std::array<double,2> uv{};
+    std::vector<PropMaterialFrame> materials{};
+};
 }

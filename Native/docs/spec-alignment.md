@@ -129,3 +129,8 @@ contact profile, normal-speed classification, 0.3 m native-proxy reach, explicit
 surface fallback, paired-material projection and safe continuation scheduling
 are application choices, not exact recovered force/trajectory claims. The
 binary/frame-data and shared physics/Vulkan evidence is in deferred-world.md.
+
+Material playback consumes clean 150/170/230/410: fixed-tick UV motion,
+per-material flip banks, pulse lifetimes, dwell timing and private overrides.
+The standard PRNG stream and unauthored-control equivalence limits are explicit
+in material-playback.md. Native V sampling follows the existing OBJ conversion.

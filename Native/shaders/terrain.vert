@@ -5,7 +5,7 @@ layout(location=2) in vec2 diffuseUV;
 layout(location=3) in vec2 lightUV;
 layout(location=4) in vec4 tile;
 layout(location=5) in vec3 modelNormal;
-struct Pose {mat4 matrix;vec4 ambient;vec4 direction[3];vec4 colour[3];};
+struct Pose {mat4 matrix;vec4 ambient;vec4 direction[3];vec4 colour[3];vec4 uv;};
 layout(std430,set=1,binding=0) readonly buffer Placements {Pose poses[];};
 layout(location=0) out vec3 vertexColour;
 layout(location=1) out vec2 textureUV;
@@ -37,6 +37,7 @@ void main() {
         vertexColour=clamp(light,0.0,255.0/128.0);
     }
     textureUV=diffuseUV;
+    if(transform.options.x==3)textureUV+=poses[gl_InstanceIndex].uv.xy;
     if(transform.options.x==5&&transform.options.w==1)textureUV.x=1.0-diffuseUV.x;
     lightmapUV=lightUV;
     lightmapTile=tile;

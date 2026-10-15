@@ -122,3 +122,7 @@ path drawing is now connected; see spline-movers.md. Collected
 gems use clean 390's run-long tombstone; Slopesmith's application pickup grow-back
 and breakable timers are a separate play-profile gap. Full LTG/world-grid import,
 exact mode coverage, reset sound and wedge/death-plane triggers also remain.
+
+Build 0.28 installs subtype 10/11 material clocks and their bound-node controls,
+with fixed-tick UV/flip playback, finite pulses and private teardown/restoration.
+See material-playback.md; crowd and combined material properties remain.

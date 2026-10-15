@@ -69,6 +69,8 @@ arc-spaced playback, route-aware activation and one-pixel running cables.
 [Deferred world interactions](docs/deferred-world.md) adds checklist counters,
 contact-gated glass cracking/shatter, paired support removal and private material
 frames, with old-import frame recovery and no ISO re-import.
+[Material playback](docs/material-playback.md) adds fixed-tick UV scroll and
+per-instance flip/pulse/dwell clocks with receiver controls and lifecycle teardown.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

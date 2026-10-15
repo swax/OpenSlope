@@ -135,3 +135,10 @@ source bytes are comparison inputs only; all eleven frame lists are compared to
 independent existing exports. No other decoder/runtime implementation supplies
 these algorithms. Application force/proximity choices and outstanding throw,
 UV, respawn and exact-trajectory scope are explicit in deferred-world.md.
+
+UV/flip clocks, per-material selections, graph lifecycle and private shader UV
+state are independently authored from clean 150/170/230/410 and first-party
+public behavior tests. Standard fixed-step accumulation, modular coordinates
+and Vulkan placement storage supply the implementation. Existing course data
+only validates joins, activation and output; no other runtime code supplies
+these clocks or material algorithms. See material-playback.md for scope.
