@@ -295,7 +295,7 @@ class RepoHygieneTests(unittest.TestCase):
 
     def test_git_metadata_and_submodules_do_not_trip_the_type_gate(self):
         for path in (".gitattributes", ".gitmodules", ".gitignore", "Snowknife/SSX-Library", "Slopesmith/.nvmrc",
-                     "Native/.clang-format"):
+                     "Native/.clang-format", ".git-blame-ignore-revs"):
             self.assertNotEqual("unclassified", repo_hygiene.classify(path), path)
         self.assertEqual([], repo_hygiene.scan_unclassified([".gitattributes", "Snowknife/SSX-Library"]))
 

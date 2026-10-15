@@ -310,6 +310,9 @@ uv tool install clang-format==23.1.3
 clang-format -i (git ls-files 'Native/src/*.?pp' 'Native/include/*.hpp' 'Native/tests/*.?pp')
 ```
 
+Formatting-only commits are listed in `.git-blame-ignore-revs`. GitHub skips them in blame views;
+run `git config blame.ignoreRevsFile .git-blame-ignore-revs` to do the same for local `git blame`.
+
 ## Specification alignment
 
 Trailmap's clean behavioral chapter bodies are the implementation authority. The tracked

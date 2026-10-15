@@ -122,9 +122,10 @@ EXTENSIONLESS_SOURCE = {
 VENDORED_PREFIXES = ("Slopesmith/tools/retopology/quadwild-patches/",)
 
 # An ignore file has to name the artifacts it ignores, git metadata has to name
-# paths, and a NOTICE/LICENSE has to be free to attribute the tools it credits.
+# paths or commits, and a NOTICE/LICENSE has to be free to attribute the tools it credits.
 # All would otherwise trip the scanner for saying the thing they exist to say.
 GOVERNANCE_BASENAMES = {
+    ".git-blame-ignore-revs",
     ".gitattributes",
     ".gitignore",
     ".gitmodules",
