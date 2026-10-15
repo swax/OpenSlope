@@ -642,8 +642,12 @@ int main(int argc, char** argv) {
                     }
                     const PropTextureFrame native_v{0, PropTextureFrame::resting, {0, .25}};
                     const auto signed_v = sample(first, native_v);
-                    pixel(signed_v, .1875, .45, {240, 20, 40});
-                    pixel(signed_v, .3125, .45, {20, 220, 40});
+                    pixel(signed_v, .1875, .45, {20, 40, 240});
+                    pixel(signed_v, .3125, .45, {240, 190, 10});
+                    const PropTextureFrame reverse_v{0, PropTextureFrame::resting, {0, -.25}};
+                    const auto signed_reverse_v = sample(second, reverse_v);
+                    pixel(signed_reverse_v, .1875, .45, {240, 20, 40});
+                    pixel(signed_reverse_v, .3125, .45, {20, 220, 40});
                     const auto identity = identity_transform();
                     const PropMotion held{0, {identity}, {identity}};
                     ++checks;

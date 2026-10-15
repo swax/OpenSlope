@@ -1026,7 +1026,9 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                 const auto material = material_for(part, frame);
                 auto pose = instance.pose;
                 if (state)
-                    pose.uv = {float(state->uv[0]), float(-state->uv[1]), 0, 0};
+                    // OBJ V is already inverted in the vertex stream. Unlike
+                    // an image-flipping texture upload, this offset follows it.
+                    pose.uv = {float(state->uv[0]), float(state->uv[1]), 0, 0};
                 Vec3 centre{pose.matrix[12], pose.matrix[13], pose.matrix[14]};
                 if (motion || route || wave) {
                     auto delta = identity_transform();

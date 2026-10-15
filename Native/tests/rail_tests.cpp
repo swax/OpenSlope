@@ -112,6 +112,34 @@ void gameplay(const std::filesystem::path& root) {
     near(flat.rider().rail_spin, 80, 1e-9, "Deck spin clamps at eighty degrees");
     require(flat.effects().wake().empty() && flat.effects().sheet().empty(),
             "Rail does not emit grounded snow grooves/spray");
+    Player straight(Terrain::load(root)), responsive(Terrain::load(root));
+    for (auto* player : {&straight, &responsive}) {
+        player->warp({0, 1.55, -5}, {0, 0, -1}, {0, 0, -12});
+        player->tick({});
+    }
+    const auto steer = [&](double direction, unsigned ticks) {
+        for (unsigned i = 0; i < ticks; ++i) {
+            responsive.tick({direction});
+            straight.tick({});
+        }
+        near(length(responsive.rider().position - straight.rider().position), 0, 1e-9,
+             "Visible rail yaw never steers the rider off the analytic curve");
+        near(length(responsive.rider().velocity - straight.rider().velocity), 0, 1e-9,
+             "Rail yaw leaves carried travel speed unchanged");
+        near(dot(responsive.camera_forward(), straight.camera_forward()), 1, 1e-9,
+             "Desktop rail camera retains travel heading through a boardslide");
+    };
+    steer(1, 6);
+    near(responsive.rider().rail_spin, 24, 1e-9, "Desktop deck responds at 240 degrees per second immediately");
+    steer(1, 14);
+    near(responsive.rider().rail_spin, 80, 1e-9, "Desktop reaches full boardslide in one third of a second");
+    steer(-1, 20);
+    near(responsive.rider().rail_spin, 0, 1e-9,
+         "Opposite held input reverses the visible deck without a slow rate slew");
+    steer(-1, 20);
+    near(responsive.rider().rail_spin, -80, 1e-9, "Opposite boardslide respects the negative pose cap");
+    steer(.2, 20);
+    near(responsive.rider().rail_spin, 0, 1e-9, "Released or dead-zone input returns the deck to rail travel");
     flat.tick({0, false, false, false, 0, true});
     require(flat.rider().motion == Motion::Air && flat.rider().control == Control::Launched &&
                 flat.rider().rail_exits == 1,

@@ -182,6 +182,21 @@ textures.setMaterialEffectStopped(a, true); textures.stepWorldEffects(0.1);
 check(a.map.offset.x === ax && b.map.offset.x !== bx, 'stopping one UV clock leaves the other material running');
 textures.setMaterialEffectStopped(a, false); textures.stepWorldEffects(0.1);
 check(a.map.offset.x !== ax, 'material clock resumes after reset');
+// Native uploads PNG rows without an image flip and pre-inverts OBJ V in its vertices.
+// Compare sampled image coordinates, rather than copying Three's pre-upload offset sign.
+const phaseMaterial = textures.material('TEST', 'pixel.png', { uvScroll: {
+  mode: 0, uPerTick: 0, vPerTick: 0, activeDuration: 1, pauseDuration: 0, lifetime: 0,
+} }, [], 'phase-coordinates');
+check(textures.previewMaterialEffect(phaseMaterial), 'phase receiver is owned by this preview');
+for (const phase of [0.25, -0.25]) {
+  check(textures.controlMaterial(phaseMaterial, 'uv-scroll', 6, phase), 'native V phase reaches the material');
+  phaseMaterial.map.updateMatrix();
+  const imageUV = phaseMaterial.map.transformUv(new THREE.Vector2(0.2, 0.4));
+  check(Math.abs(imageUV.y - (0.6 + phase)) < 1e-9,
+    'native V adds to sampled PNG coordinates after OBJ/image conversion');
+  check(Math.abs(imageUV.x - 0.2) < 1e-9, 'native V does not change the U sample');
+}
+textures.clearMaterialEffectPreviews();
 window.lifecyclePassed = true;
 `;
 

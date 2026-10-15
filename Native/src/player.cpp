@@ -699,17 +699,20 @@ void Player::ride_rail(const RailHit& hit, const RideInput& input, const Rider& 
     const auto quantized = std::abs(input.steer) > .25 ? (input.steer < 0 ? -1. : 1.) : 0.;
     const auto gain = (input.boost || rider_.pads.trick > 0) ? 1.6 : 1.;
     if (input.vr.enabled) {
-        const auto turn =
-            input.vr.stick  ? input.vr.spin * 90 * gain * dt * pi / 180
-            : input.vr.head ? gaze_turn(input.vr.gaze, rider_.forward * double(rider_.lead), 90 * gain * dt * pi / 180)
-                            : 0.;
+        const auto rate = contract_.value("steering", "airTurnRateDeg");
+        const auto turn = input.vr.stick ? input.vr.spin * rate * gain * dt * pi / 180
+                          : input.vr.head
+                              ? gaze_turn(input.vr.gaze, rider_.forward * double(rider_.lead), rate * dt * pi / 180)
+                              : 0.;
         rider_.rail_spin += turn * 180 / pi;
         rider_.rail_spin_rate = turn / dt * 180 / pi;
         if (input.vr.stick)
             rider_.view_yaw += turn;
     } else {
+        // [Trailmap: 350-control] Keep the selector's rate separate from the
+        // public Slopesmith desktop presentation rate (240 degrees/second).
         rider_.rail_spin_rate = approach(rider_.rail_spin_rate, quantized * 80 * gain, 75 * gain * dt);
-        rider_.rail_spin = std::clamp(rider_.rail_spin + rider_.rail_spin_rate * dt, -80., 80.);
+        rider_.rail_spin = approach(rider_.rail_spin, quantized * 80, 240 * dt);
         if (std::abs(rider_.rail_spin) >= 80 && rider_.rail_spin * quantized > 0)
             rider_.rail_spin_rate = 0;
     }

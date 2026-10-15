@@ -4,6 +4,11 @@ The implementation inputs are the clean Trailmap specification bodies, the Apach
 OpenSlope contracts and standard mathematical/protocol identities. Evidence annotations and
 other components' implementation sources are outside this implementation boundary.
 
+Build 0.41 uses clean 350/410 and public Slopesmith ride documentation/tests for
+rail presentation rates and sampled texture-coordinate behavior. Its independent
+control and Vulkan changes retain the shared ride contract. Owned Aloha mesh data
+supplies direction comparison only; see rail-water.md for evidence and limits.
+
 Build 0.37's mesh-throw fields and break-chain structure follow the sanitized
 230/370 bodies. Kinematics, piece spread/tumble and transform composition are
 independently authored application math. Priority-material alpha is a Slopesmith

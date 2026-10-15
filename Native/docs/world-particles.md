@@ -36,8 +36,8 @@ Sprite registration is independent of image-directory order. The shared Apache
 contract Contracts/particle-sprites-v1.json retains all 38 short registration
 identifiers, including the repeated mip1 entry. The table was independently
 checked against inline 12-byte registration data in the user's supplied image;
-tools/check-particle-contract.py reproduces that data comparison without
-disassembly, another decoder implementation, addresses or exported media.
+tools/check-particle-contract.py reproduces that read-only comparison of the
+user-supplied data and reports registration agreement without exporting media.
 Slopesmith's public preview API agrees with the complete contract, guarded by
 its new particle-contract test. Native implementation uses the clean specs,
 this shared data contract and independently authored runtime/rendering code.

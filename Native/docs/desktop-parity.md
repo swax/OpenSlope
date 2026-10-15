@@ -46,6 +46,11 @@ Build 0.38 connects effect-activated Roller bodies, including collision bags and
 shared render/collision motion, impulses and sleep. Validation and remaining
 solver/device limits are recorded in rigid-props.md.
 
+Build 0.41 aligns desktop rail presentation and VR rail turn rates with public
+Slopesmith behavior, and corrects V-driven water/caustic/scanline direction after
+OBJ vertex conversion. See rail-water.md for desktop, owned-course and Quest
+startup evidence; worn turn feel and appearance remain unconfirmed.
+
 Milestones use a descriptive commit subject and bullet-point body. Each milestone
 records its supported behavior, tests, comparison evidence and remaining limits.
 Playable test EXEs are versioned in ignored build folders so a later change does

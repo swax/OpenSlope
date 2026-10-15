@@ -23,8 +23,10 @@ banked surfaces and switch stance. Looking vertically supplies no yaw.
 
 In air, head mode aims the deck toward the horizontal look bearing at the
 normal air turn rate and stops inside the dead zone. A deflected stick owns
-the spin. On rails, VR head mode aims the deck at up to 90 degrees/s and manual
-spin uses the same rate. VR has a free rail pose; desktop retains the existing
+the spin. From build 0.41, rails use the shared 270 degrees/s air rate for head
+follow and manual spin. Only manual spin gets the 1.6 trick-boost multiplier;
+head follow stops at its gaze target without turning the seat.
+VR has a free rail pose; desktop retains the existing
 recovered ±80-degree pose and its state/force authority.
 
 Head-derived turns never rotate the upright headset seat. Manual steering

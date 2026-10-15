@@ -46,9 +46,13 @@ The per-instance state holds native UV offsets plus optional per-material frame
 choices. Existing fragile groups retain their private crack-frame priority.
 Draw grouping includes frame selection and uses that frame's alpha classification.
 UV phase lives in each eye's placement buffer, whose std430 stride is now 192
-bytes. Model motion and detached route copies preserve it. Shader sampling keeps
-native U and negates native V to match the existing OBJ-to-image conversion;
-texture wrapping and filtering remain active. No texture or descriptor is
+bytes. Model motion and detached route copies preserve it. Build 0.41 corrects
+the V scroll direction: both native offsets add to sampled PNG coordinates.
+OBJ V is already inverted in the vertex stream (`imageV = 1 - objV`), so the
+sample becomes `1 - objV + nativePhaseV`. Three's public texture API produces
+the same sampled coordinate by negating V before its image flip. Applying that
+negative sign after Native's vertex conversion had reversed V-driven water.
+U keeps its native sign; texture wrapping and filtering remain active. No texture or descriptor is
 rewritten while another eye owns an in-flight submission. Malformed instance,
 material, frame and phase inputs are rejected before renderer fence reset.
 

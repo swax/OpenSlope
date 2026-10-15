@@ -154,8 +154,35 @@ void air_and_rail() {
     look.vr.spin = 1;
     for (unsigned i = 0; i < 60; ++i)
         thumb.tick(look);
-    near(thumb.rider().view_yaw, pi / 2, "rail stick carries 90 degrees per second");
-    near(thumb.rider().rail_spin, 90, "VR rail deck follows manual turn");
+    near(thumb.rider().view_yaw, 3 * pi / 2, "rail stick carries the shared 270 degree air rate");
+    near(thumb.rider().rail_spin, 270, "VR rail deck follows manual turn");
+    const auto held = thumb.rider().forward;
+    look.vr = {true, false, false, {0, 0, -1}, 0};
+    look.steer = 0;
+    thumb.tick(look);
+    near(length(thumb.rider().forward - held), 0, "Unowned VR controls preserve the freely rotated rail pose");
+    for (const auto boost : {false, true}) {
+        Player head(floor()), stick(floor());
+        setup(head);
+        setup(stick);
+        head.tick({});
+        stick.tick({});
+        look = {};
+        look.boost = boost;
+        look.vr = {true, true, false, {-1, 0, 0}, 0};
+        head.tick(look);
+        near(head.rider().rail_spin, 4.5, "Rail gaze approaches its target at the unboosted air rate");
+        near(head.rider().view_yaw, 0, "Gaze-driven rail turns never feed back into headset seat yaw");
+        look.vr.stick = true;
+        look.vr.spin = -.5;
+        stick.tick(look);
+        near(stick.rider().rail_spin, -2.25 * (boost ? 1.6 : 1),
+             "Analog rail stick uses the shared air rate and trick boost multiplier");
+        near(stick.rider().view_yaw, stick.rider().rail_spin * pi / 180,
+             "Boosted rail stick carries exactly its manual turn into the view");
+        near(length(stick.rider().position - head.rider().position), 0,
+             "Head and stick rail yaw retain identical tangent travel");
+    }
 }
 } // namespace
 

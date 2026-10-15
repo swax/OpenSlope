@@ -19,9 +19,14 @@ Ground and air can enter Motion 3 / Control 15. Capture retains velocity and
 clears carve lean. Tangent alignment runs at 30/s while preserving speed;
 gravity is 9.8 m/s² and binary held boost is 24.508 m/s² along travel. The shared
 cap can lower speed. Side/up snap corrections are bounded at 2.9 metres. There
-is no friction or balance meter. Quantized steering slews spin at 75 degrees/s²
-and clamps yaw at 80 degrees; the camera keeps the travel heading. The boost
-spin multiplier is provisional pending trick windows. Eight flick bins are
+is no friction or balance meter. Quantized steering retains the 75 degrees/s²
+selector rate. Desktop presentation independently approaches the held ±80 degree
+boardslide at 240 degrees/s and returns to travel alignment when released, matching
+Slopesmith's public ride documentation. The camera keeps the travel heading.
+VR stick turns use the shared 270 degrees/s air rate with full view carry and the
+1.6 trick-boost multiplier; head follow uses the unboosted air rate, stops at its
+gaze target and never turns the seat. A free VR rail pose remains unclamped.
+The boost window is provisional pending complete trick windows. Eight flick bins are
 retained but do not yet dispatch trick animations or scoring.
 
 Only torso/head collision limbs are active on a rail, with the pelvis retained

@@ -50,10 +50,13 @@ def main():
     executable=Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix='openslope-desktop-rails-') as temporary:
         base=Path(temporary)
-        for name in ('flat-spin','curved','backward-boost','jump','exit','end'):
+        for name in ('flat-spin','quick-spin','quick-reverse','release-spin','curved','backward-boost','jump','exit','end'):
             root=base/name;fixture(root,name=='curved',8 if name=='end' else 100)
             placement=dict(Position=[0,1.55,-1],Forward=[0,0,-1],Velocity=[0,0,-12]);steps=[dict(Ticks=180,Steer=1 if name=='flat-spin' else 0)]
             if name=='backward-boost':placement.update(Position=[0,1.55,-50],Forward=[0,0,1],Velocity=[0,0,12]);steps=[dict(Ticks=60,Boost=True)]
+            if name=='quick-spin':steps=[dict(Ticks=1),dict(Ticks=6,Steer=1)]
+            if name=='quick-reverse':steps=[dict(Ticks=1),dict(Ticks=20,Steer=1),dict(Ticks=40,Steer=-1)]
+            if name=='release-spin':steps=[dict(Ticks=1),dict(Ticks=20,Steer=1),dict(Ticks=20)]
             if name=='jump':steps=[dict(Ticks=1),dict(Ticks=24,Jump=True),dict(Ticks=8)]
             if name=='exit':steps=[dict(Ticks=30),dict(Ticks=1,RailExit=True)]
             write(root/'replay.json',dict(Schema='openslope-replay/v1',Placement=placement,Steps=steps))
@@ -64,9 +67,12 @@ def main():
             assert rails,result.stdout
             grinds,transfers,exits,attached=map(int,rails.groups()[:4]);spin=float(rails.group(5))
             assert grinds==1 and 'hard impacts 0' in result.stdout,result.stdout
-            if name in ('flat-spin','curved','backward-boost'):assert attached==1 and exits==0 and 'bounces 0' in result.stdout,result.stdout
+            if name in ('flat-spin','quick-spin','quick-reverse','release-spin','curved','backward-boost'):assert attached==1 and exits==0 and 'bounces 0' in result.stdout,result.stdout
             else:assert attached==0 and exits==1,result.stdout
             if name=='flat-spin':assert spin==80,result.stdout
+            if name=='quick-spin':assert spin==24,result.stdout
+            if name=='quick-reverse':assert spin==-80,result.stdout
+            if name=='release-spin':assert spin==0,result.stdout
             if name=='jump':assert 'launches 1' in result.stdout,result.stdout
             if name=='exit':assert float(re.search(r'velocity \[([^\]]+)\]',result.stdout).group(1).split(',')[2])< -11,'Exit lost carried tangent speed'
             if name=='curved':

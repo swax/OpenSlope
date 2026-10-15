@@ -34,8 +34,12 @@ not replace its broader audio, world, performance and multiplayer requirements.
 - [x] Superman flight matches the public Slopesmith controls, with gravity,
   terrain/prop collision, unlimited aimed boost, boost audio and sole afterimages.
 - [ ] God rays follow the supported world light/occlusion controls.
-- [ ] Rail rotation matches Slopesmith's public rate and presentation behavior.
-- [ ] Aloha water moves in the correct world direction.
+- [x] Rail rotation matches Slopesmith's public rate and presentation behavior.
+  Build 0.41 separates the desktop 240 degrees/s visual response from its slow
+  selector, and uses the shared 270 degrees/s air rate for VR rail input.
+- [x] Aloha water moves in the correct world direction.
+  Build 0.41 fixes a second V inversion at the draw boundary. Signed pixel,
+  production replay and owned river-mesh data checks are in rail-water.md.
 - [x] The first-party Slopesmith snowboard replaces the diagnostic quad, with
   consistent targeting, carry attachment and visible geometry.
 
