@@ -150,6 +150,17 @@ def fixtures(root):
         row['AmbentLightColour']=[256,256,256]
         for key in ['LightVector1','LightColour1']: row.pop(key,None)
     (folder/'Instances.json').write_text(json.dumps(rows))
+    folder=root/'props_flag'
+    shutil.copytree(root/'props_uv',folder)
+    (folder/'Meshes/quad.obj').write_text('v 0 -30 30\nv 0 30 30\nv 0 -30 -30\nv 0 30 -30\nvt 0 0\nvt 0 1\nvt 1 0\nvt 1 1\nvn 1 0 0\nf 1/1/1 2/2/1 3/3/1\nf 3/3/1 2/2/1 4/4/1\n')
+    (folder/'Materials.json').write_text(json.dumps(dict(Materials=[dict(TexturePath='prop.png',UnknownInt18=1<<17)])))
+    (folder/'Textures/prop.png').write_bytes(rgba(1,1,[240,20,40,255]))
+    instances=[dict(ModelID=0,Location=[-40,-50,0],Rotation=[0,0,.3826834324,.9238795325],Scale=[1,1,1],Visable=True,AmbentLightColour=[256,256,256]),dict(ModelID=0,Location=[40,-50,0],Rotation=[0,0,.3826834324,.9238795325],Scale=[1,1,1],Visable=True,AmbentLightColour=[256,256,256])]
+    instances.append(dict(ModelID=0,Location=[140,-50,0],Rotation=[0,0,.3826834324,.9238795325],Scale=[1,1,1],Visable=True,AmbentLightColour=[256,256,256]))
+    (folder/'Instances.json').write_text(json.dumps(dict(Instances=instances)))
+    document=json.loads((folder/'Patches.json').read_text())
+    for point in document['Patches'][0]['Points']: point[1]=-99.9
+    (folder/'Patches.json').write_text(json.dumps(document))
     folder=root/'props_crowd'
     shutil.copytree(root/'props_uv',folder)
     frames=[]

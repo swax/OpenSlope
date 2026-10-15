@@ -47,14 +47,14 @@ std::vector<SprayVertex> spray_sheet(double z,float alpha=.5f){
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_uv","props_crowd","props_cutout","props_blend","minification","antialiasing","visibility","sprites","boost","boost_fog","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_uv","props_flag","props_crowd","props_cutout","props_blend","minification","antialiasing","visibility","sprites","boost","boost_fog","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
                 std::vector<Patch> patches;for(const auto center:std::array<Vec3,8>{{{-.6,0,.5},{.6,0,.5},{-3,0,.5},{3,0,.5},{0,0,-2},{0,4,.5},{0,-4,.5},{0,0,2}}}){Patch p;p.texture=patches.size()%2?"missing-b":"missing-a";for(unsigned u=0;u<4;++u)for(unsigned v=0;v<4;++v)p.points[u*4+v]=center+Vec3{u*.8/3-.4,v*.8/3-.4,0};patches.push_back(p);}mesh=Terrain(std::move(patches)).mesh(4);
             }
             else mesh=Terrain::load(root/name).mesh(4);
-            scene->upload(mesh);
+            const std::array<std::size_t,1> flag_models{{0}};scene->upload(mesh,std::string(name)=="props_flag"?std::span<const std::size_t>(flag_models):std::span<const std::size_t>{});
             // The same scene is used by two renderers, just like the stereo host.
             Target unorm{context},srgb{context};unorm.create(VK_FORMAT_R8G8B8A8_UNORM);srgb.create(VK_FORMAT_R8G8B8A8_SRGB);
             VulkanRenderer first(context),second(context);first.use_scene(scene);second.use_scene(scene);first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);second.targets(std::span(&srgb.image,1),VK_FORMAT_R8G8B8A8_SRGB,128,128,samples);
@@ -84,6 +84,18 @@ int main(int argc,char** argv) {
             if(std::string(name)=="fog"){
                 for(auto* renderer:{&first,&second}){const auto pixels=capture(*renderer,root/"fog.ppm",camera);pixel(pixels,.5,.5,{120,60,70});pixel(pixels,.01,.01,{200,40,20});pixel(pixels,1.1,.5,{23,61,127});}
                 first.targets(std::span(&unorm.image,1),VK_FORMAT_R8G8B8A8_UNORM,128,128,samples);pixel(capture(first,root/"fog-recreated.ppm",camera),.5,.5,{120,60,70});continue;
+            }
+            if(std::string(name)=="props_flag"){
+                const auto sample=[&](VulkanRenderer& renderer,const PropTextureFrame& state){return capture(renderer,root/"flag.ppm",camera,{},{},{},{},0,{},{},1,{},std::span(&state,1));};
+                const auto plain=capture(first,root/"flag-rest.ppm",camera);PropTextureFrame wave;wave.instance=0;wave.wave=FlagWave{false,40,.25};const auto a=sample(first,wave);auto opposite=wave;opposite.wave->opposite=true;const auto b=sample(second,opposite);
+                checks+=2;if(a==plain||b==plain)throw std::runtime_error("Flag ripple does not change geometry");if(first.stats().flag_sections!=8||first.stats().flag_draws!=1)throw std::runtime_error("Flag does not draw exactly eight sections");
+                // Independent screen-space strip edges: 45-degree source placement,
+                // uniform vertical stations and original 0.6-m cross-edge width.
+                const auto verify=[&](const std::vector<unsigned char>& pixels,bool flipped){const auto rgb=[&](unsigned x,unsigned y){return std::array<int,3>{pixels[(y*128+x)*3],pixels[(y*128+x)*3+1],pixels[(y*128+x)*3+2]};};for(unsigned y=49;y<79;++y){const auto world_y=2*(double(y)+.5)/128-1;const auto station=(.3-world_y)/.6;const auto at=std::clamp(station*8,0.,7.999999),t=at-std::floor(at);const auto edge=[&](double s){const auto k=flipped?1-s:s;return .4*k*std::sin(2*pi*(k-.25))/std::sqrt(2.);};const auto offset=std::lerp(edge(std::floor(at)/8),edge((std::floor(at)+1)/8),t);for(unsigned x=5;x<119;++x){const auto world_x=2*(double(x)+.5)/128-1;const auto distance=std::abs(world_x-(-.4+offset))-.3/std::sqrt(2.);const auto sibling=std::abs(world_x-.4)-.3/std::sqrt(2.);if(std::abs(distance)<.025||std::abs(sibling)<.025)continue;const bool red=distance<0||sibling<0;const auto value=rgb(x,y);++checks;if(red?(value[0]<220||value[1]>40):(value[0]>220&&value[1]<40))throw std::runtime_error("Flag pixels disagree with independently sampled eight-station silhouette");}}};
+                verify(a,false);verify(b,true);auto outside=wave;outside.instance=2;outside.wave->amplitude=80;const auto expanded=sample(first,outside);checks+=2;if(expanded==plain||first.stats().flag_sections!=8)throw std::runtime_error("Rest-pose frustum culling clips a flag waving into view");auto zero=wave;zero.wave->amplitude=0;++checks;if(sample(first,zero)!=plain)throw std::runtime_error("Zero-amplitude flag changes original geometry");
+                first.deferred(true);second.deferred(true);auto board=Matrix::identity();board.values[12]=10;for(unsigned turn=0;turn<4;++turn){const auto submit=[&](VulkanRenderer& renderer,const PropTextureFrame& state){renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},{},{},{},{},0,{},{},1,{},std::span(&state,1));};if(turn%2){submit(second,opposite);submit(first,wave);}else{submit(first,wave);submit(second,opposite);}checks+=2;if(read_capture(first,root/"flag-left.ppm")!=a||read_capture(second,root/"flag-right.ppm")!=b)throw std::runtime_error("Queued stereo flag phases overwrite each other");}first.deferred(false);second.deferred(false);
+                for(unsigned invalid=0;invalid<3;++invalid){auto bad=wave;if(invalid==0)bad.wave->phase=std::numeric_limits<double>::quiet_NaN();else if(invalid==1)bad.wave->phase=2;else bad.wave->amplitude=std::numeric_limits<double>::infinity();bool refused=false;try{sample(first,bad);}catch(const std::invalid_argument&){refused=true;}checks+=2;if(!refused||capture(first,root/"flag-recovered.ppm",camera)!=plain)throw std::runtime_error("Invalid flag state damages later frame");}
+                continue;
             }
             if(std::string(name)=="boost"||std::string(name)=="boost_fog"){
                 const auto sample=[&](VulkanRenderer& renderer,std::span<const BoostTrailVertex> trail,float fade=0){return capture(renderer,root/"boost.ppm",camera,{},{},{},{},fade,{},{},1,{},{},trail);};

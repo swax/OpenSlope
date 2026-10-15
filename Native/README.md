@@ -61,6 +61,10 @@ sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
 OpenXR also defaults to 4x MSAA. The Quest launcher offers 100%, 125% and 150% of
 the runtime's recommended eye dimensions, plus Off/2x/4x edge smoothing. Start at
 100%/4x; higher resolution increases attachment memory and GPU cost.
+Flag and banner graphs now drive eight-section cloth waves, with private phase,
+both fixed ends, lifecycle and conservative culling. See [flag-cloth.md](docs/flag-cloth.md)
+for supported geometry, validation and remaining fidelity work.
+
 Quest's **Riding steering** selector offers Stick only or Head + stick override.
 Head mode uses look-to-carve with a neutral zone; the stick takes priority when
 deflected. See [VR steering](docs/vr-steering.md) for controls, view carry and

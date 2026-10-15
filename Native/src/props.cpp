@@ -55,9 +55,10 @@ Vec3 normal_transform(const Transform& m,Vec3 n){
     return (cross(b,c)*n.x+cross(c,a)*n.y+cross(a,b)*n.z)/determinant;
 }
 int index(const std::string& field,std::size_t size){if(field.empty())return -1;std::size_t used=0;const int value=std::stoi(field,&used);const auto i=value>0?value-1:static_cast<int>(size)+value;if(used!=field.size()||!value||i<0||std::size_t(i)>=size)throw std::runtime_error("OBJ index outside its array");return i;}
-void mesh_file(Props& props,const std::filesystem::path& path,const Transform& rest,PropPart& part,Bounds& bounds){
+void mesh_file(Props& props,const std::filesystem::path& path,const Transform& rest,PropPart& part,Bounds& bounds,bool flag){
     if(std::filesystem::file_size(path)>64*1024*1024)throw std::runtime_error("OBJ exceeds 64 MiB");std::ifstream file(path);std::string line;
     std::vector<Vec3> points,normals;std::vector<std::array<double,2>> uv;std::map<std::tuple<int,int,int>,std::uint32_t> vertices;
+    std::vector<int> point_order;
     part.first=static_cast<std::uint32_t>(props.geometry.indices.size());
     while(std::getline(file,line)){
         if(line.size()>1024*1024)throw std::runtime_error("OBJ line exceeds limit");std::istringstream input(line);std::string kind;input>>kind;
@@ -70,7 +71,7 @@ void mesh_file(Props& props,const std::filesystem::path& path,const Transform& r
             for(std::size_t triangle=1;triangle+1<face.size();++triangle){
                 const auto normal=normalized(cross(points[std::get<0>(face[triangle])]-points[std::get<0>(face[0])],points[std::get<0>(face[triangle+1])]-points[std::get<0>(face[0])]));
                 for(const auto& corner:{face[0],face[triangle],face[triangle+1]}){
-                    const auto [p,t,n]=corner;auto found=n<0?vertices.end():vertices.find(corner);
+                    const auto [p,t,n]=corner;if(flag)point_order.push_back(p);auto found=n<0?vertices.end():vertices.find(corner);
                     std::uint32_t vertex;
                     if(found==vertices.end()){
                         const auto position=axes(transform_point(rest,points[std::size_t(p)]))/100;const auto shaded=normal_transform(rest,n<0?normal:normals[std::size_t(n)]);const auto tex=t<0?std::array<double,2>{0,0}:uv[std::size_t(t)];
@@ -84,6 +85,21 @@ void mesh_file(Props& props,const std::filesystem::path& path,const Transform& r
         if(points.size()+normals.size()+uv.size()>8000000)throw std::runtime_error("OBJ arrays exceed their limit");
     }
     part.count=static_cast<std::uint32_t>(props.geometry.indices.size())-part.first;
+    if(flag){
+        if(points.size()!=4||point_order.size()!=6)throw std::runtime_error("Flag mesh requires a four-corner strip: "+path.filename().string());
+        std::map<std::pair<int,int>,unsigned> edges;for(unsigned triangle=0;triangle<2;++triangle)for(unsigned e=0;e<3;++e){auto a=point_order[triangle*3+e],b=point_order[triangle*3+(e+1)%3];if(a>b)std::swap(a,b);++edges[{a,b}];}
+        const auto boundary=[&](int a,int b){if(a>b)std::swap(a,b);return edges[{a,b}]==1;};if(!boundary(0,1))throw std::runtime_error("Flag first sampled pair is not an edge");const int c=boundary(0,2)?2:3,d=c==2?3:2;if(!boundary(1,d)||!boundary(c,d))throw std::runtime_error("Invalid flag strip topology");
+        std::array<Vertex,4> corners{};std::array<bool,4> found{};for(unsigned i=0;i<6;++i){const auto raw=std::size_t(point_order[i]);corners[raw]=props.geometry.vertices[props.geometry.indices[part.first+i]];found[raw]=true;}if(!std::all_of(found.begin(),found.end(),[](bool x){return x;}))throw std::runtime_error("Incomplete flag corners");
+        const auto interpolate=[](const Vertex& a,const Vertex& b,float t){Vertex v{std::lerp(a.x,b.x,t),std::lerp(a.y,b.y,t),std::lerp(a.z,b.z,t),1,1,1};v.s=std::lerp(a.s,b.s,t);v.t=std::lerp(a.t,b.t,t);v.nx=std::lerp(a.nx,b.nx,t);v.ny=std::lerp(a.ny,b.ny,t);v.nz=std::lerp(a.nz,b.nz,t);v.ls=t;v.lt=1;return v;};
+        const auto start=std::uint32_t(props.geometry.vertices.size());part.wave_first=std::uint32_t(props.geometry.indices.size());
+        for(unsigned k=0;k<=8;++k){props.geometry.vertices.push_back(interpolate(corners[0],corners[std::size_t(c)],float(k)/8));props.geometry.vertices.push_back(interpolate(corners[1],corners[std::size_t(d)],float(k)/8));}
+        // Keep the source winding even when a custom quad uses the other diagonal.
+        const auto a=points[std::size_t(point_order[0])],b=points[std::size_t(point_order[1])],e=points[std::size_t(point_order[2])];const bool reverse=dot(cross(b-a,e-a),cross(points[1]-points[0],points[std::size_t(c)]-points[0]))<0;
+        for(unsigned k=0;k<8;++k){const auto q=start+2*k;for(auto triangle:std::array<std::array<std::uint32_t,3>,2>{{{q,q+1,q+2},{q+2,q+1,q+3}}}){if(reverse)std::swap(triangle[1],triangle[2]);props.geometry.indices.insert(props.geometry.indices.end(),triangle.begin(),triangle.end());}}
+        part.wave_count=48;
+        if(props.geometry.vertices.size()*sizeof(Vertex)+props.geometry.indices.size()*4>256*1024*1024)throw std::runtime_error("Flag geometry exceeds prop budget");
+    }
+
 }
 }
 Transform identity_transform(){Transform m{};m[0]=m[5]=m[10]=m[15]=1;return m;}
@@ -124,7 +140,7 @@ std::vector<std::string> prop_files(const std::filesystem::path& root,bool model
     for(const auto& name:crowd_frames(root))names.insert("Textures/"+safe(name));
     return {names.begin(),names.end()};
 }
-Props Props::load(const std::filesystem::path& root,bool model_only){
+Props Props::load(const std::filesystem::path& root,bool model_only,std::span<const std::size_t> flag_models){
     Props result;const auto t=tables(root,model_only);if(t.models.is_null())return result;const auto frames=material_flipbooks(root);result.models.resize(t.models.size());result.geometry.map_root=root;
     for(std::size_t model=0;model<t.models.size();++model){
         const auto& objects=t.models[model].at("ModelObjects");if(!objects.is_array()||objects.size()>256)throw std::runtime_error("Invalid model object count");std::vector<Transform> rest(objects.size());std::vector<unsigned> state(objects.size());
@@ -132,7 +148,7 @@ Props Props::load(const std::filesystem::path& root,bool model_only){
         for(std::size_t i=0;i<objects.size();++i)resolve(i);
         for(std::size_t i=0;i<objects.size();++i)for(const auto& data:objects[i].at("MeshData")){
             const auto material=data.at("MaterialID").get<std::size_t>();const auto& mat=t.materials.at(material);PropPart part;part.texture=texture_name(mat);if(!part.texture.empty())safe(part.texture);part.flags=mat.value("UnknownInt18",0u);
-            part.material=material;part.frames=frames.at(material);if(!part.frames.empty())part.texture=part.frames.front();part.object=i;mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,part.bounds);if(!part.count)continue;result.models[model].bounds.add(part.bounds.min);result.models[model].bounds.add(part.bounds.max);
+            part.material=material;part.frames=frames.at(material);if(!part.frames.empty())part.texture=part.frames.front();part.object=i;mesh_file(result,asset(root,"Meshes/"+safe(data.at("MeshPath"))),resolve(i),part,part.bounds,std::find(flag_models.begin(),flag_models.end(),model)!=flag_models.end());if(!part.count)continue;result.models[model].bounds.add(part.bounds.min);result.models[model].bounds.add(part.bounds.max);
             result.models[model].parts.push_back(result.parts.size());result.parts.push_back(std::move(part));
         }
     }

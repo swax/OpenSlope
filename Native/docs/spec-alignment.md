@@ -162,3 +162,10 @@ two-record draw threshold, release drain, source RGB thirds and two-sheet
 topology. Diagnostic-deck attachments, age ramp, additive fog/blend and extra
 walking/lifecycle gates are explicit application choices in boost-trail.md.
 Original folded attachment vectors and exact pixel profile remain open.
+
+Flag cloth uses clean 230's subtype-13 field types, per-instance phase,
+eight-section growing model-X wave, pole selection and lifetime, plus clean
+150 lifecycle. Native graph discovery, strip preparation and shader storage
+are independently authored. The seeded random profile, rest-normal lighting,
+authored collision proxies and remaining exact-fidelity limits are explicit
+in flag-cloth.md. All 119 owned flag placements validate geometry/activation.

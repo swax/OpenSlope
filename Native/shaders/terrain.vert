@@ -30,7 +30,9 @@ void main() {
         worldPosition=position+right*offset.x+up*offset.y;
     }
     if(transform.options.x==3) {
-        Pose pose=poses[gl_InstanceIndex];worldPosition=(pose.matrix*vec4(position,1.0)).xyz;
+        Pose pose=poses[gl_InstanceIndex];vec3 local=position;
+        if(lightUV.y>.5&&pose.uv.z!=0){float k=pose.uv.w>=2?1-lightUV.x:lightUV.x;local.x+=pose.uv.z*k*sin(6.283185307179586*(k-fract(pose.uv.w)));}
+        worldPosition=(pose.matrix*vec4(local,1.0)).xyz;
         vec3 light=pose.ambient.rgb;
         // [Trailmap: 160-instance-frame, 400-lighting] Both operands model-local.
         for(int i=0;i<3;++i)light+=max(0.0,dot(modelNormal,pose.direction[i].xyz))*pose.colour[i].rgb;

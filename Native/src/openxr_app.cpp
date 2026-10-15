@@ -66,7 +66,7 @@ struct State {
         if(actions)xrDestroyActionSet(actions);if(instance)xrDestroyInstance(instance);
     }
     XrPath path(const char* text) const { XrPath result{};xr_check(xrStringToPath(instance,text,&result),"Create input path");return result; }
-    void create(const XrPlatform& platform,const Mesh& mesh) {
+    void create(const XrPlatform& platform,const Mesh& mesh,std::span<const std::size_t> flag_models) {
         head_steering=platform.head_steering;tracking_log(head_steering?"Steering: head with stick override; grounded stick view carry 25%":"Steering: stick only; grounded stick view carry 25%");
         if(!std::isfinite(platform.render_scale)||platform.render_scale<1||platform.render_scale>1.5||(platform.msaa!=1&&platform.msaa!=2&&platform.msaa!=4))throw std::runtime_error("Invalid VR image quality");
 #ifdef __ANDROID__
@@ -140,7 +140,7 @@ struct State {
         VkFormat format=VK_FORMAT_UNDEFINED;
         for(auto candidate:{VK_FORMAT_R8G8B8A8_SRGB,VK_FORMAT_B8G8R8A8_SRGB,VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_B8G8R8A8_UNORM})if(std::find(formats.begin(),formats.end(),candidate)!=formats.end()){format=candidate;break;}
         if(format==VK_FORMAT_UNDEFINED)throw std::runtime_error("No supported XR colour format");
-        auto scene=std::make_shared<VulkanScene>(vulkan);scene->upload(mesh);
+        auto scene=std::make_shared<VulkanScene>(vulkan);scene->upload(mesh,flag_models);
         eyes.reserve(2);
         for(const auto& config:views) {
             eyes.emplace_back();auto& eye=eyes.back();eye.width=std::min(config.maxImageRectWidth,std::uint32_t(std::lround(config.recommendedImageRectWidth*platform.render_scale)));eye.height=std::min(config.maxImageRectHeight,std::uint32_t(std::lround(config.recommendedImageRectHeight*platform.render_scale)));
@@ -246,7 +246,7 @@ struct State {
 };
 }
 int run_openxr(Player& player,const XrPlatform& platform,double seconds) {
-    player.start_on_foot();State state;state.create(platform,player.terrain().mesh());
+    player.start_on_foot();State state;state.create(platform,player.terrain().mesh(),player.logic().flag_models());
     AudioScene audio(player.terrain().map_root());audio.mixer().paused(true);AudioDevice audio_device(audio.mixer());AudioService audio_service(audio);player.observe_ticks([&](const Player& p,const Rider& before){audio.tick(p,before);});
     using Clock=std::chrono::steady_clock;const auto started=Clock::now();auto sample_started=started;XrTime previous_time=0;
     unsigned sample_frames=0;double frame_wait=0,simulation=0,pose_time=0,image_wait_time=0,render_time=0,resource_wait=0,end_time=0,gpu_time=0,total_time=0;unsigned gpu_samples=0;

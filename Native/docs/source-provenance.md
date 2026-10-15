@@ -150,3 +150,10 @@ facilities. Owned source bytes and existing model exports only validate art and
 material order. No other decoder/runtime implementation supplies this controller
 or its binding algorithms. Activity and RNG fidelity limits are explicit in
 crowd-playback.md.
+
+Flag/banner clocks and mesh subdivision are independently authored from clean
+150/230 and standard sine/interpolation/graph traversal/Vulkan operations.
+Existing owned map data validates strip topology, units and activation only.
+No external runtime or decoder supplies the cloth implementation. Application
+randomness and outstanding lighting/contact fidelity are recorded in
+flag-cloth.md.

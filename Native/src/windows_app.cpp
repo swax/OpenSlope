@@ -39,7 +39,7 @@ struct Image {
 };
 int capture(Player& player,const std::filesystem::path& output,double seconds,const std::filesystem::path& replay,const std::filesystem::path& audio_output,unsigned msaa,bool terrain_culling,bool first_person,bool look_down) {
     VulkanContext context;context.create(false);Image image(context);image.create(1280,720);
-    VulkanRenderer renderer(context);renderer.cull_terrain(terrain_culling);renderer.upload(player.terrain().mesh());renderer.targets(std::span(&image.image,1),VK_FORMAT_R8G8B8A8_UNORM,1280,720,msaa);
+    VulkanRenderer renderer(context);renderer.cull_terrain(terrain_culling);renderer.upload(player.terrain().mesh(),player.logic().flag_models());renderer.targets(std::span(&image.image,1),VK_FORMAT_R8G8B8A8_UNORM,1280,720,msaa);
     std::cout<<"MSAA samples: "<<renderer.samples()<<'\n';
     std::unique_ptr<AudioScene> audio;PcmClip recorded;recorded.channels=2;if(!audio_output.empty()){audio=std::make_unique<AudioScene>(player.terrain().map_root());player.observe_ticks([&](const Player& p,const Rider& before){audio->listener({camera_eye(p),p.camera_forward(),{0,1,0}});audio->tick(p,before);std::array<float,1600> block{};audio->mixer().render(block);if(recorded.samples.size()+block.size()>32*1024*1024)throw std::runtime_error("Audio capture exceeds its sample limit");recorded.samples.insert(recorded.samples.end(),block.begin(),block.end());});}
     Avatar avatar;unsigned frames=0,packed_frames=0;double wall=0,gpu=0,cull=0;std::uint64_t submitted=0;const auto draw=[&]{player.world_view(camera_eye(player,first_person));const auto started=std::chrono::steady_clock::now();renderer.render(0,camera_for(player,1280.0/720,first_person,look_down),board_transform(player.render_board_position(),player.render_forward(),player.render_up()),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},camera_eye(player,first_person),player.effects().sprites(),player.effects().wake(),player.effects().sheet(),avatar.mesh(avatar_pose(player),first_person,false,camera_eye(player,first_person)),player.reset_fade(),player.logic().flags(),player.logic().motions(),player.frame_alpha(),player.logic().route_motions(),player.logic().texture_frames(),player.boost_trail_mesh().vertices());wall+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();gpu+=renderer.stats().gpu_ms;cull+=renderer.stats().cull_ms;submitted+=renderer.stats().terrain_indices;packed_frames+=renderer.stats().terrain_compacted;++frames;};
@@ -58,6 +58,7 @@ int capture(Player& player,const std::filesystem::path& output,double seconds,co
     std::cout<<"Boarding: on foot "<<player.on_foot()<<"; distance "<<player.board_distance()<<" m; coasting "<<player.board_coasting()<<"; board ["<<player.render_board_position().x<<','<<player.render_board_position().y<<','<<player.render_board_position().z<<"]\n";
     const auto& run=player.course_run().status();std::cout<<"Run: "<<run_name(run.mode)<<"; "<<run_name(run.phase)<<"; clock "<<run_clock(run.clock)<<"; elapsed "<<run.elapsed<<"; checkpoints "<<run.checkpoints<<"; lap "<<run.lap<<'/'<<run.passes<<"; remaining "<<run.remaining;if(run.progress)std::cout<<"; DTF "<<run.progress->distance_to_finish<<" m; progress "<<run.progress->fraction*100<<'%';std::cout<<'\n';
     std::cout<<"Transport: "<<player.teleports()<<" teleports; placement "<<player.placement_serial()<<char(10);
+    std::cout<<"Flag cloth: "<<stats.flag_sections<<" sections; "<<stats.flag_draws<<" draws\n";
     const auto trail_colour=player.boost_trail().colour();std::cout<<"Boost trail: "<<player.boost_trail().records()<<" records; "<<stats.boost_segments<<" segments; "<<stats.boost_draws<<" draws; colour ["<<trail_colour[0]<<char(44)<<trail_colour[1]<<char(44)<<trail_colour[2]<<char(93)<<char(10);
     const auto& boosted=player.rider();std::cout<<"Boost: speed pad "<<boosted.pads.speed<<" s; trick pad "<<boosted.pads.trick<<" s; drivers "<<player.logic().forces()<<"; tube stage "<<boosted.tube_stage<<"; leading end "<<boosted.boost_end<<'\n';
     const auto& score=player.scoring().status();std::cout<<"Score: "<<score.total()<<"; banked "<<score.banked<<"; preview "<<score.preview<<"; boost "<<score.meter<<"; segments "<<player.scoring().meter_segments()<<"; active "<<score.active<<"; finished "<<score.finished<<"; resolution "<<score.resolution<<"; bailed "<<score.bailed<<'\n';
@@ -81,7 +82,7 @@ struct Window {
         if(window){if(message==WM_SIZE)window->resized=true;if(message==WM_CLOSE){window->quit=true;DestroyWindow(handle);return 0;}}
         return DefWindowProcW(handle,message,wparam,lparam);
     }
-    void create(const Mesh& mesh,bool visible=true) {
+    void create(const Mesh& mesh,bool visible=true,std::span<const std::size_t> flag_models={}) {
         WNDCLASSW cls{};cls.lpfnWndProc=procedure;cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"OpenSlopeNativePreview";cls.hCursor=LoadCursor(nullptr,IDC_ARROW);
         if(!RegisterClassW(&cls)&&GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)throw std::runtime_error("Cannot register preview window");
         handle=CreateWindowExW(0,cls.lpszClassName,L"OpenSlope Native",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,1280,720,nullptr,nullptr,cls.hInstance,this);
@@ -91,7 +92,7 @@ struct Window {
         VkBool32 supported=VK_FALSE;vk_check(vkGetPhysicalDeviceSurfaceSupportKHR(context.physical,context.family,surface,&supported),"Check presentation support");
         if(!supported)throw std::runtime_error("Selected Vulkan queue cannot present to this window");
         VkSemaphoreCreateInfo semaphore{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};vk_check(vkCreateSemaphore(context.device,&semaphore,nullptr,&available),"Create acquire semaphore");vk_check(vkCreateSemaphore(context.device,&semaphore,nullptr,&finished),"Create present semaphore");
-        renderer.upload(mesh);if(visible)ShowWindow(handle,SW_SHOW);
+        renderer.upload(mesh,flag_models);if(visible)ShowWindow(handle,SW_SHOW);
     }
     bool resize() {
         RECT rect{};GetClientRect(handle,&rect);if(rect.right<=0||rect.bottom<=0)return false;
@@ -165,7 +166,7 @@ int main(int argc,char** argv) {
         if(on_foot_option)player.start_on_foot();
         if(!output.empty())return capture(player,output,seconds,replay,audio_output,msaa,terrain_culling,first_person_option,look_down_option);
         if(smoke_window&&seconds==0)seconds=3;
-        VulkanContext context;context.create(true);Window window(context);window.renderer.cull_terrain(terrain_culling);window.msaa=msaa;window.create(player.terrain().mesh(),!smoke_window);
+        VulkanContext context;context.create(true);Window window(context);window.renderer.cull_terrain(terrain_culling);window.msaa=msaa;window.create(player.terrain().mesh(),!smoke_window,player.logic().flag_models());
         std::unique_ptr<AudioScene> audio;std::unique_ptr<AudioDevice> device;std::unique_ptr<AudioService> audio_service;if(!no_audio&&!smoke_window){audio=std::make_unique<AudioScene>(player.terrain().map_root());audio->mixer().paused(true);device=std::make_unique<AudioDevice>(audio->mixer());audio_service=std::make_unique<AudioService>(*audio);player.observe_ticks([&](const Player& p,const Rider& before){audio->tick(p,before);});if(!device->active())std::cerr<<"Audio output unavailable; use --no-audio for silent playback\n";}
         const auto started=std::chrono::steady_clock::now();auto previous=started;bool first_person=first_person_option,last_camera=false,paused=false,last_pause=false,last_focus=false,muted=false,last_mute=false;
         while(window.events()) {

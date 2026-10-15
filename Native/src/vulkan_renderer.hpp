@@ -28,7 +28,7 @@ public:
     explicit VulkanScene(VulkanContext& context):context_(context){}
     ~VulkanScene();
     VulkanScene(const VulkanScene&)=delete;
-    void upload(const Mesh& mesh);
+    void upload(const Mesh& mesh,std::span<const std::size_t> flag_models={});
 private:
     friend class VulkanRenderer;
     VulkanContext& context_;
@@ -39,7 +39,7 @@ private:
     std::vector<TerrainRange> terrain_ranges_;std::vector<std::uint32_t> terrain_indices_;
     VisibilityTree terrain_visibility_;std::uint64_t terrain_total_indices_{};
     struct PropFrame {VkDescriptorSet set{};int alpha{};};
-    struct PropDraw {std::uint32_t first{},count{};VkDescriptorSet set{};int alpha{};std::vector<PropFrame> frames;};
+    struct PropDraw {std::uint32_t first{},count{};VkDescriptorSet set{};int alpha{};std::vector<PropFrame> frames;std::uint32_t wave_first=0,wave_count=0;};
     Props props_;std::vector<PropDraw> prop_draws_;std::vector<PropFrame> crowd_frames_;std::size_t pose_capacity_{};
     World world_;std::vector<Draw> sky_draws_;
     std::uint32_t board_first_{};VkDescriptorSet board_set_{};
@@ -52,11 +52,11 @@ private:
 };
 class VulkanRenderer {
 public:
-    struct Stats {unsigned route_copies{},route_lines{},line_draws{},avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{},boost_segments{},boost_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},wait_ms{},gpu_ms=-1;};
+    struct Stats {unsigned flag_sections{},flag_draws{},route_copies{},route_lines{},line_draws{},avatar_triangles{},visible_props{},prop_draws{},terrain_patches{},visible_terrain{},terrain_draws{},sprites{},wake_segments{},wake_draws{},sheet_segments{},sheet_draws{},boost_segments{},boost_draws{};std::uint64_t terrain_indices{},terrain_total_indices{};std::size_t visibility_tests{};bool terrain_compacted=false;double cull_ms{},cpu_ms{},wait_ms{},gpu_ms=-1;};
     explicit VulkanRenderer(VulkanContext& context):context_(context){}
     ~VulkanRenderer();
     VulkanRenderer(const VulkanRenderer&)=delete;
-    void upload(const Mesh& mesh);
+    void upload(const Mesh& mesh,std::span<const std::size_t> flag_models={});
     void use_scene(std::shared_ptr<VulkanScene> scene);
     void targets(std::span<const VkImage> images,VkFormat format,std::uint32_t width,std::uint32_t height,unsigned requested_samples=1);
     unsigned samples() const {return unsigned(samples_);}

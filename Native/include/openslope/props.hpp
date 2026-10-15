@@ -16,7 +16,7 @@ struct PropPose {
     std::array<float,4> uv{};
 };
 static_assert(sizeof(PropPose)==192);
-struct PropPart {std::uint32_t first{},count{};std::string texture;std::uint32_t flags{};std::size_t object=0;Bounds bounds;std::vector<std::string> frames;std::size_t material=0;};
+struct PropPart {std::uint32_t first{},count{};std::string texture;std::uint32_t flags{};std::size_t object=0;Bounds bounds;std::vector<std::string> frames;std::size_t material=0;std::uint32_t wave_first=0,wave_count=0;};
 struct PropModel {std::vector<std::size_t> parts;Bounds bounds;};
 struct PropObjectLayout {Transform rest;Bounds box;bool has_geometry=false,has_box=false;};
 std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root,std::span<const std::size_t> box_models);
@@ -32,7 +32,7 @@ struct Props {
     std::vector<PropPart> parts;
     std::vector<PropModel> models;
     std::vector<PropInstance> instances;
-    static Props load(const std::filesystem::path& root,bool model_only=false);
+    static Props load(const std::filesystem::path& root,bool model_only=false,std::span<const std::size_t> flag_models={});
 };
 // Metadata-only references used by document providers before mesh loading.
 std::vector<std::string> prop_files(const std::filesystem::path& root,bool model_only=false);

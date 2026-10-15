@@ -28,6 +28,7 @@ public:
     std::span<const PropMotion> motions() const;
     std::span<const PropRouteMotion> route_motions() const;
     std::span<const PropTextureFrame> texture_frames() const;
+    std::span<const std::size_t> flag_models() const;
     bool has_fragile_surfaces() const;
     std::size_t active_regions() const;
     std::size_t chains() const;
