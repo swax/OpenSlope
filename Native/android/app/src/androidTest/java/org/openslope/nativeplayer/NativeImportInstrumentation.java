@@ -33,6 +33,11 @@ public final class NativeImportInstrumentation extends Instrumentation {
                 String courses = (String) invoke(activity, "nativeCourses", new Class<?>[]{int.class, long.class}, descriptor.getFd(), image.length());
                 require(new JSONArray(courses).getString(0).equals("FIXTURE"), "JNI reads course list from seekable descriptor");
                 invoke(activity, "nativeExtract", new Class<?>[]{int.class, long.class, String.class, String.class}, descriptor.getFd(), image.length(), "FIXTURE", extracted.getAbsolutePath());
+                File worldCourse = new File(temporary, "world-course");
+                invoke(activity, "nativeExtract", new Class<?>[]{int.class, long.class, String.class, String.class}, descriptor.getFd(), image.length(), "GARI", worldCourse.getAbsolutePath());
+                JSONObject world = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(worldCourse, "World.json").toPath()), java.nio.charset.StandardCharsets.UTF_8));
+                require(world.getString("Course").equals("GARI") && world.getJSONArray("SkyColor").getInt(0) == 20, "JNI automatically recovers authored course and sky settings from the ISO executable");
+                require(world.getJSONObject("Glare").getBoolean("Enabled") && world.getJSONObject("Glare").getDouble("DistanceUnits") == 20000, "JNI automatically imports the independent sun profile");
             }
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, extracted.getAbsolutePath());
             require(new File(extracted, "Audio/SFX/tone/000.wav").isFile(), "JNI imports audio from the selected ISO");

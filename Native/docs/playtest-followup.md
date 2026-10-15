@@ -33,10 +33,11 @@ not replace its broader audio, world, performance and multiplayer requirements.
 - [x] Desktop click mounts/re-equips and dismounts, with held-click protection.
 - [x] Superman flight matches the public Slopesmith controls, with gravity,
   terrain/prop collision, unlimited aimed boost, boost audio and sole afterimages.
-- [ ] God rays follow the supported world light/occlusion controls.
+- [x] God rays follow the supported world light/occlusion controls.
   Build 0.42 renders portable Glare settings with desktop/VR presentations,
-  terrain visibility and late UI. Independent ISO sun-setting recovery remains
-  required for Native-only imported maps; see celestial.md.
+  terrain visibility and late UI. Build 0.43 adds automatic independent ISO
+  sun/sky recovery; see celestial.md and world-settings-import.md. Worn
+  appearance and original display-domain composition remain unconfirmed.
 - [x] Rail rotation matches Slopesmith's public rate and presentation behavior.
   Build 0.41 separates the desktop 240 degrees/s visual response from its slow
   selector, and uses the shared 270 degrees/s air rate for VR rail input.

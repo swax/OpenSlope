@@ -7,6 +7,8 @@ from collision_test import members
 from path_import_test import path_file
 from prop_import_test import members as prop_members
 from rail_import_test import members as rail_members
+from import_test import big
+from world_import_fixture import boot_files
 
 destination = Path(sys.argv[1])
 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -27,5 +29,9 @@ for filename, fields in [('fixture.pbd', ((32,92,40),(36,96,128))), ('fixture.ss
 files['fixture.map'] += rails['fixture.map'][rails['fixture.map'].index(b'### SPLINES BEGIN'):]
 files['fixture.aip'] = files['fixture.sop'] = path_file()
 data=fixture(files)
+data['DATA/MODELS/GARI.BIG']=big({k.replace('fixture','gari'):v for k,v in files.items()})
+data.update(boot_files())
+data['DATA/CONFIG/BANKS.INF']+=b'[GARI]\nMAIN="tone.bnk"\nBOARD="tone.bnk"\n'
+data['DATA/CONFIG/MUSICMAP.INF']+=b'[GARI]\n'
 data['DATA/CONFIG/SNOW.INF']=b'[PACK]\n[GLIDE]\nLOAD BOARD\nASSIGNVOL\n'
 destination.write_bytes(disc(data))

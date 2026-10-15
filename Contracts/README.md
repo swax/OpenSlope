@@ -6,6 +6,7 @@ These Apache-2.0 data files are tracked inputs to the public implementations and
 - `external-sound-banks-v1.json`: fixed bank/file identifiers for Slopesmith, Snowknife and Native.
 - `particle-sprites-v1.json`: short sprite registration identifiers, retaining registration order and duplicates.
 - `celestial-spokes-v1.json`: Slopesmith's original 32-spoke sun-beam pattern, shared as first-party presentation data.
+- `world-layout-v1.json`: course-slot identifiers and relative scalar-record field offsets for portable sun/sky metadata recovery.
 - `carving-response-cases-v1.json`: independent reference cases checked by TypeScript and C# tests.
 
 From the repository root, validate the generated views with:

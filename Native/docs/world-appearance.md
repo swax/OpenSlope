@@ -11,8 +11,9 @@ The independent ISO importer converts the optional `<course>_SKY.PBD` and
 `Meshes/*.obj` and `Textures/*.png` contract. It reuses Native's bounded model,
 material and texture readers. Sky records have neutral names and need no world
 linker or placements. A missing pair is a valid course without a panorama;
-a partial pair rejects and rolls back the new import. Original colour, sun,
-weather and other world parameters remain unconverted.
+a partial pair rejects and rolls back the new import. Build 0.43 independently
+recovers original sky colour and sun settings from the user's executable;
+see world-settings-import.md. Weather and other world parameters remain unconverted.
 
 Existing custom/extracted maps use this same `Skybox` folder without
 `Instances.json` or `Ring.json`. Local hierarchy transforms and the usual raw

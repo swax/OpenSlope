@@ -345,6 +345,9 @@ Remaining world logic, races/tricks, presentation, audio/effects and graphics/pe
 desktop-parity.md matrix. The user reports successful initial Quest play on 0.14.0.
 Targeted headset checks continue alongside desktop implementation. Sky import,
 camera-centred panorama and fog are described in [world appearance](docs/world-appearance.md).
+Build 0.43 automatically recovers the selected course's sun and sky settings
+during native ISO import. See [world settings import](docs/world-settings-import.md)
+for the independent reader, existing-map handling and validation limits.
 Hard landings, prop crashes and animated relative get-up are described in
 [crash recovery](docs/crash-recovery.md), including provisional pose/physics tuning.
 Keep platform file access behind the application host,

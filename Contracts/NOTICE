@@ -4,6 +4,8 @@ Licensed under the Apache License, Version 2.0; see LICENSE.
 
 These files contain measured functional constants, short format and bank identifiers,
 and independent verification cases used by Slopesmith, Snowknife, and Unity.
+The world layout contains relative scalar-field offsets and course-slot identifiers,
+without executable addresses, instructions or a retail settings table.
 The celestial spoke pattern is original OpenSlope presentation data, first authored
 for Slopesmith. It does not reproduce the retail engine's arbitrary spoke table.
 The measured functional facts are documented in the local Trailmap research workspace. No retail executable,

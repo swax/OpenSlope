@@ -1,5 +1,6 @@
 #include "import_internal.hpp"
 #include "openslope/import.hpp"
+#include "openslope/world_import.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -9,7 +10,7 @@ int main(int argc, char** argv) {
         if (argc < 3) {
             std::cerr << "Usage: openslope_import list <iso> | extract <iso> <course> <Maps-folder> | convert-effects "
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
-                         "<map-folder>\n";
+                         "<map-folder> | world <iso> <course>\n";
             return 1;
         }
         const std::string operation = argv[1];
@@ -79,6 +80,13 @@ int main(int argc, char** argv) {
         if (operation == "list") {
             for (const auto& course : openslope::disc_courses(disc))
                 std::cout << course.name << '\t' << course.archive_bytes << '\n';
+            return 0;
+        }
+        if (operation == "world" && argc == 4) {
+            const auto profile = openslope::disc_world_profile(disc, argv[3]);
+            if (profile.empty())
+                throw std::runtime_error("World settings are unavailable for this course and executable");
+            std::cout << profile << '\n';
             return 0;
         }
         if (operation != "extract" || argc != 5)

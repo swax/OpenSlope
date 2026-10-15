@@ -6,6 +6,7 @@
 #include "openslope/rails.hpp"
 #include "openslope/terrain.hpp"
 #include "openslope/world.hpp"
+#include "openslope/world_import.hpp"
 #include "openslope/world_logic.hpp"
 #include <algorithm>
 #include <array>
@@ -501,6 +502,12 @@ void extract_course(const DiscInput& disc, const std::string& course, const std:
         outputs.push_back("Collision");
         outputs.push_back("Physics.json");
         outputs.push_back("Effects.json");
+    }
+    notify("Recovering course sun and sky settings");
+    const auto world = disc_world_profile(disc, stem, cancelled);
+    if (!world.empty()) {
+        write_json(output / "World.json", Json::parse(world));
+        outputs.push_back("World.json");
     }
     for (const auto kind : {"AIP", "SOP"}) {
         const auto it = files.find(stem + "." + kind);

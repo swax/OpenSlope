@@ -73,25 +73,14 @@ eyes at 4x MSAA and the full-body tracker; user map and library preference hashe
 are preserved. This is startup/cache evidence, not a worn sun-rendering or FPS
 measurement.
 
-The full repository gate passes. The signed ARM64 app is 0.42.0/code 43, with
-16 notice/license assets matching their sources and no private course/media files.
-Lint reports zero errors and four existing warnings. Quest passes 94 JNI/custom
-library/SAF checks. An eight-second Alaska activity check creates both 1680x1760
-eyes at 4x MSAA and the full-body tracker; user map and library preference hashes
-are preserved. This is startup/cache evidence, not a worn sun-rendering or FPS
-measurement.
+## Import and remaining presentation work
 
-## Remaining import and presentation work
-
-Native's independent ISO importer still does not recover the executable's
-per-course sun/sky configuration. Existing maps with `World.json` and authored
-maps use their own settings now; a Native-only ISO import without that metadata
-keeps the sun disabled. For private Mesa comparison, its existing portable
-World.json was supplied to the older native map cache; this is comparison input,
-not evidence of an automatic ISO settings extraction. Do not mark that importer
-gap complete based on renderer tests. Original sky channels, weather, point-light
-flares and the wider parity matrix remain active. Worn Quest confirmation of sun
-appearance, terrain fading and comfort remains separate from APK/device checks.
+Build 0.43 adds independent automatic ISO sun/sky recovery; see
+world-settings-import.md. Build 0.42's private Mesa comparison used a portable
+World.json supplied to the older cache and remains renderer-only evidence.
+Weather, point-light flares, original display-domain composition and the wider
+parity matrix remain active. Worn Quest confirmation of sun appearance, terrain
+fading and comfort remains separate from APK/device checks.
 
 ```powershell
 ./temp/native/Release/openslope_celestial_tests.exe

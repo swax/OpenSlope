@@ -4,12 +4,18 @@ The implementation inputs are the clean Trailmap specification bodies, the Apach
 OpenSlope contracts and standard mathematical/protocol identities. Evidence annotations and
 other components' implementation sources are outside this implementation boundary.
 
+Build 0.43's independent sun/sky recovery uses clean 400/442, the shared relative
+world-layout contract, standard ELF/MIPS scalar conventions and user-supplied
+data for validation. No retail addresses, instructions or settings table are
+compiled. The bounded constant evaluator and authored ISO/ELF fixtures are new
+native code. See world-settings-import.md for limits and comparison evidence.
+
 Build 0.42's celestial layer uses clean 400, public Slopesmith documentation/tests,
 the first-party shared spoke pattern and standard homogeneous projection,
 half-plane clipping and ray-query identities. Runtime geometry, fading, Vulkan
 buffers and fallback art are independently authored. Existing private World.json
-records are input/comparison data; independent ISO sun-setting recovery remains
-pending. No other runtime implementation was read or ported; see celestial.md.
+records are input/comparison data. Build 0.43 adds independent ISO sun-setting
+recovery. No other runtime implementation was read or ported; see celestial.md.
 
 Build 0.41 uses clean 350/410 and public Slopesmith ride documentation/tests for
 rail presentation rates and sampled texture-coordinate behavior. Its independent
