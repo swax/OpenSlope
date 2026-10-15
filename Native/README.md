@@ -71,6 +71,8 @@ contact-gated glass cracking/shatter, paired support removal and private materia
 frames, with old-import frame recovery and no ISO re-import.
 [Material playback](docs/material-playback.md) adds fixed-tick UV scroll and
 per-instance flip/pulse/dwell clocks with receiver controls and lifecycle teardown.
+[Crowd playback](docs/crowd-playback.md) adds shared spectator art, independently
+phased material cells, activity/rest laws, cutout drawing and safe map supplements.
 Configured Maps now render fixed-tick carve, powder and landing/skid cloud
 sprites. Fresh ISO imports stage the particle bank and `RidingEffects.json`;
 existing maps can provide the same profile and their own PNG. See

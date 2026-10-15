@@ -126,3 +126,8 @@ exact mode coverage, reset sound and wedge/death-plane triggers also remain.
 Build 0.28 installs subtype 10/11 material clocks and their bound-node controls,
 with fixed-tick UV/flip playback, finite pulses and private teardown/restoration.
 See material-playback.md; crowd and combined material properties remain.
+
+Build 0.29 installs subtype 17 crowd grids with a shared sixteen-cell controller,
+explicit rider/activity inputs, per-stand pause and ordinary node lifecycle.
+See crowd-playback.md for art import, legacy descriptors and the first-party
+activity fallback; exact crowd/SFX classification remains parity work.

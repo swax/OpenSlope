@@ -39,7 +39,7 @@ private:
     VisibilityTree terrain_visibility_;std::uint64_t terrain_total_indices_{};
     struct PropFrame {VkDescriptorSet set{};int alpha{};};
     struct PropDraw {std::uint32_t first{},count{};VkDescriptorSet set{};int alpha{};std::vector<PropFrame> frames;};
-    Props props_;std::vector<PropDraw> prop_draws_;std::size_t pose_capacity_{};
+    Props props_;std::vector<PropDraw> prop_draws_;std::vector<PropFrame> crowd_frames_;std::size_t pose_capacity_{};
     World world_;std::vector<Draw> sky_draws_;
     std::uint32_t board_first_{};VkDescriptorSet board_set_{};
     VkDescriptorSetLayout descriptors_{};VkDescriptorPool descriptor_pool_{};

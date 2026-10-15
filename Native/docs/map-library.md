@@ -119,3 +119,9 @@ extraction comparison does not establish that the headset UI or storage provider
 Run `python tools/native-compare-rails.py <native-course> <reference-course>` for
 spline contracts, exact retained source geometry and declared float32 control bounds.
 Fresh-root imports add rails; existing course folders are still protected.
+
+Optional `Crowd.json` names sixteen shared spectator PNGs in `Textures/`. ISO
+import stages them when the loose bank exists, and SAF preparation caches all
+referenced art. Old maps can be supplemented by the desktop import utility
+without rewriting course data; in-app asset upgrading remains separate work.
+See crowd-playback.md for the profile, preservation rules and validation.

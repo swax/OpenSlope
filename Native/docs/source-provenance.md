@@ -142,3 +142,11 @@ public behavior tests. Standard fixed-step accumulation, modular coordinates
 and Vulkan placement storage supply the implementation. Existing course data
 only validates joins, activation and output; no other runtime code supplies
 these clocks or material algorithms. See material-playback.md for scope.
+
+Crowd cell playback, shared-bank/profile import, per-eye page selection and node
+lifecycle are independently authored from clean 150/170/200/230/410, public
+authoring descriptor examples and standard random/fixed-step/filesystem/Vulkan
+facilities. Owned source bytes and existing model exports only validate art and
+material order. No other decoder/runtime implementation supplies this controller
+or its binding algorithms. Activity and RNG fidelity limits are explicit in
+crowd-playback.md.

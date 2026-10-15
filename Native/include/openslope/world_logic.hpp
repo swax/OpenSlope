@@ -2,6 +2,7 @@
 #include "course_run.hpp"
 #include "spline_motion.hpp"
 #include "world_properties.hpp"
+#include "crowd.hpp"
 #include <memory>
 #include <span>
 
@@ -15,7 +16,7 @@ public:
     WorldLogic();~WorldLogic();WorldLogic(WorldLogic&&) noexcept;WorldLogic& operator=(WorldLogic&&) noexcept;
     static WorldLogic load(const std::filesystem::path& root);
     void restart(RunMode mode);
-    void tick(double seconds,double speed=0,std::span<const Vec3> observers={});
+    void tick(double seconds,double speed=0,std::span<const Vec3> observers={},std::span<const CrowdActivity> riders={},bool force_crowd=false);
     void contact(std::size_t instance,double speed,bool human=true,double force=1);
     std::span<const std::uint8_t> flags() const;
     std::vector<WorldAction> take_actions();

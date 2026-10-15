@@ -77,6 +77,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(prepared, "Collision/0.obj").isFile() && new File(prepared, "Collision/1.obj").isFile(), "SAF cache includes every collision payload");
             require(new File(prepared, "Physics.json").isFile(), "SAF cache includes independent physics metadata");
             require(new File(prepared, "Effects.json").isFile(), "SAF cache preserves the playable effect graphs");
+            require(new File(prepared, "Crowd.json").isFile() && new File(prepared, "Textures/crowd-cd00.png").isFile() && new File(prepared, "Textures/crowd-cd15.png").isFile(), "SAF cache includes shared crowd profile and frame art");
             require(new File(prepared, "RidingEffects.json").isFile() && new File(prepared, "Textures/particle-part.png").isFile(), "SAF cache includes referenced riding sprite assets");
             require(new File(prepared, "Textures/particle-tral.png").isFile(), "SAF cache includes the referenced wake texture");
             require(new File(prepared, "Textures/particle-spry.png").isFile(), "SAF cache includes the referenced spray sheet texture");

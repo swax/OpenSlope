@@ -1,5 +1,6 @@
 #include "vulkan_renderer.hpp"
 #include "openslope/appearance.hpp"
+#include "openslope/crowd.hpp"
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -89,8 +90,9 @@ void VulkanScene::upload(const Mesh& source) {
         if(cursor!=source.indices.size())throw std::runtime_error("Terrain visibility ranges do not cover the source mesh");
         terrain_visibility_.build(boxes);terrain_ranges_=source.terrain_ranges;terrain_indices_=source.indices;
     }
-    props_=Props::load(source.map_root);world_=World::load(source.map_root);auto batches=source.batches;
+    crowd_frames_.clear();props_=Props::load(source.map_root);world_=World::load(source.map_root);auto batches=source.batches;
     for(const auto& part:props_.parts){batches.push_back({0,0,part.texture,-1});for(const auto& frame:part.frames)batches.push_back({0,0,frame,-1});}
+    const auto crowd=crowd_frames(source.map_root);for(const auto& frame:crowd)batches.push_back({0,0,frame,-1});
     const auto sprite=riding_sprite(source.map_root);if(!sprite.empty())batches.push_back({0,0,sprite,-1});
     const auto wake=riding_sprite(source.map_root,"Wake");if(!wake.empty())batches.push_back({0,0,wake,-1});
     const auto sheet=riding_sprite(source.map_root,"Sheet");if(!sheet.empty())batches.push_back({0,0,sheet,-1});
@@ -118,6 +120,7 @@ void VulkanScene::upload(const Mesh& source) {
         for(unsigned i=0;i<2;++i){writes[i]={VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};writes[i].dstSet=set;writes[i].dstBinding=i;writes[i].descriptorCount=1;writes[i].descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;writes[i].pImageInfo=&images[i];}
         vkUpdateDescriptorSets(context_.device,2,writes.data(),0,nullptr);return set;
     };
+    for(const auto& frame:crowd){const auto found=names.find("Textures/"+frame);crowd_frames_.push_back({descriptor(found==names.end()?0:found->second,1),1});}
     if(const auto found=names.find("Textures/"+sprite);!sprite.empty()&&found!=names.end())effect_set_=descriptor(found->second,1);
     if(const auto found=names.find("Textures/"+wake);!wake.empty()&&found!=names.end())wake_set_=descriptor(found->second,1);
     if(const auto found=names.find("Textures/"+sheet);!sheet.empty()&&found!=names.end())sheet_set_=descriptor(found->second,1);

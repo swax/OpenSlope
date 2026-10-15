@@ -44,7 +44,7 @@ std::vector<SprayVertex> spray_sheet(double z,float alpha=.5f){
 int main(int argc,char** argv) {
     try {
         if(argc!=2)throw std::runtime_error("Supply authored rendering fixtures");const auto root=std::filesystem::path(argv[1]);VulkanContext context;context.create(false);
-        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_uv","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
+        for(const auto samples:{1u,4u})for(const auto name:{"handedness","orientation","lighting","repeat","props","props_uv","props_crowd","props_cutout","props_blend","minification","antialiasing","visibility","sprites","wake","wake_repeat","sheet","sky","sky_foreground","sky_authored","fog","sprites_fog","wake_fog","sheet_fog","props_fog"}) {
             auto scene=std::make_shared<VulkanScene>(context);Mesh mesh;
             if(std::string(name)=="antialiasing"){mesh.vertices={{-.83f,-.73f,.5f,1,1,1},{.77f,-.61f,.5f,1,1,1},{-.67f,.81f,.5f,1,1,1}};mesh.indices={0,1,2};mesh.batches={{0,3,"",-1}};}
             else if(std::string(name)=="visibility"){
@@ -122,6 +122,16 @@ int main(int argc,char** argv) {
             const auto a=capture(first,root/(std::string(name)+"-unorm.ppm"),camera),b=capture(second,root/(std::string(name)+"-srgb.ppm"),camera);
             const auto visibility=first.stats();first.cull_terrain(false);second.cull_terrain(false);
             const auto baseline_a=capture(first,root/"baseline-unorm.ppm",camera),baseline_b=capture(second,root/"baseline-srgb.ppm",camera);checks+=2;if(a!=baseline_a||b!=baseline_b)throw std::runtime_error("Culled pixels differ from complete terrain submission");first.cull_terrain(true);second.cull_terrain(true);
+            if(std::string(name)=="props_crowd"){
+                const PropTextureFrame left{0,PropTextureFrame::resting,{},{{0,3}},true},right{1,PropTextureFrame::resting,{},{{0,9}},true};
+                const auto sampled=[&](VulkanRenderer& renderer,const PropTextureFrame& state){return capture(renderer,root/"crowd-page.ppm",camera,{},{},{},{},0,{},{},1,{},std::span(&state,1));};
+                const auto left_pixels=sampled(first,left),right_pixels=sampled(second,right);
+                pixel(left_pixels,.1875,.45,{40,80,120});pixel(left_pixels,.3125,.45,{50,55,182});pixel(left_pixels,.6875,.45,{20,40,240});
+                pixel(right_pixels,.6875,.45,{40,80,120});pixel(right_pixels,.8125,.45,{110,85,146});pixel(right_pixels,.1875,.45,{20,40,240});
+                first.deferred(true);second.deferred(true);auto board=Matrix::identity();board.values[12]=10;
+                for(unsigned frame=0;frame<4;++frame){const auto submit=[&](VulkanRenderer& renderer,const PropTextureFrame& state){renderer.render(0,camera,board,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,{},{},{},{},{},{},{},0,{},{},1,{},std::span(&state,1));};if(frame%2){submit(second,right);submit(first,left);}else{submit(first,left);submit(second,right);}checks+=2;if(read_capture(first,root/"crowd-first.ppm")!=left_pixels||read_capture(second,root/"crowd-second.ppm")!=right_pixels)throw std::runtime_error("Queued crowd pages overwrite another eye's placement state");}first.deferred(false);second.deferred(false);
+                auto invalid=left;invalid.materials[0].frame=16;bool refused=false;try{sampled(first,invalid);}catch(const std::invalid_argument&){refused=true;}++checks;if(!refused)throw std::runtime_error("Out-of-bank crowd frame was accepted");++checks;if(capture(first,root/"crowd-restored.ppm",camera)!=a)throw std::runtime_error("Crowd override survives teardown or invalid input");continue;
+            }
             if(std::string(name)=="props_uv"){
                 const PropTextureFrame horizontal{0,PropTextureFrame::resting,{.5,0}},vertical{0,PropTextureFrame::resting,{0,.5}};
                 const auto sample=[&](VulkanRenderer& renderer,const PropTextureFrame& state,std::span<const PropMotion> motions=std::span<const PropMotion>{}){return capture(renderer,root/"uv-phase.ppm",camera,{},{},{},{},0,{},motions,1,{},std::span(&state,1));};

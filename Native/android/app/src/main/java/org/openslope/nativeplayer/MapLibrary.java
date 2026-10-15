@@ -83,7 +83,7 @@ final class MapLibrary {
             Entry patches = child(map.uri, "Patches.json");
             if (patches == null || patches.directory) throw new IOException("This map has no Patches.json.");
             try (InputStream input = resolver.openInputStream(patches.uri); OutputStream file = new FileOutputStream(new File(output, "Patches.json"))) { copy(input, file, PATCH_LIMIT, cancel); }
-            for (String name : new String[]{"Models.json", "Instances.json", "Materials.json", "AIP.json", "SOP.json", "Splines.json", "RidingEffects.json", "Effects.json", "Physics.json", "SSFLogic.json", "World.json", "RiderAnimations.json", "Origin.json", "Slopesmith.json"}) {
+            for (String name : new String[]{"Models.json", "Instances.json", "Materials.json", "AIP.json", "SOP.json", "Splines.json", "RidingEffects.json", "Crowd.json", "Effects.json", "Physics.json", "SSFLogic.json", "World.json", "RiderAnimations.json", "Origin.json", "Slopesmith.json"}) {
                 cancel.check(); Entry metadata = child(map.uri, name);
                 if (metadata == null) continue;
                 if (metadata.directory) throw new IOException("Map metadata is a folder: " + name);

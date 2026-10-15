@@ -44,6 +44,13 @@ def ssh(lightmap=False, palette_override=None):
     return b'SHPS' + le(32 + len(image)) + le(1) + b'TEST0000' + le(32) + bytes(8) + image
 
 
+def crowd_bank():
+    image = ssh()[32:]
+    start = 16 + 16 * 8
+    table = b''.join(f'cd{i:02d}'.encode() + le(start + i * len(image)) for i in range(16))
+    return b'SHPS' + le(start + 16 * len(image)) + le(16) + b'TEST' + table + image * 16
+
+
 def course_members():
     pbd = bytearray(136 + 448)
     pbd[:4] = b'\x00\x15\x1b\x01'

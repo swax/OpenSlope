@@ -1,6 +1,7 @@
 #include "openslope/props.hpp"
 #include "openslope/model_animation.hpp"
 #include "openslope/material_animation.hpp"
+#include "openslope/crowd.hpp"
 #include "openslope/import.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -120,6 +121,7 @@ std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::pa
 std::vector<std::string> prop_files(const std::filesystem::path& root,bool model_only){
     const auto t=tables(root,model_only);if(t.models.is_null())return {};const auto frames=material_flipbooks(root);std::set<std::string> names;
     for(const auto& model:t.models)for(const auto& object:model.at("ModelObjects"))for(const auto& part:object.at("MeshData")){names.insert("Meshes/"+safe(part.at("MeshPath")));const auto id=part.at("MaterialID").get<std::size_t>();const auto name=texture_name(t.materials.at(id));if(!name.empty())names.insert("Textures/"+safe(name));for(const auto& frame:frames.at(id))names.insert("Textures/"+safe(frame));}
+    for(const auto& name:crowd_frames(root))names.insert("Textures/"+safe(name));
     return {names.begin(),names.end()};
 }
 Props Props::load(const std::filesystem::path& root,bool model_only){

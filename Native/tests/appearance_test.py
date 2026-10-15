@@ -150,6 +150,14 @@ def fixtures(root):
         row['AmbentLightColour']=[256,256,256]
         for key in ['LightVector1','LightColour1']: row.pop(key,None)
     (folder/'Instances.json').write_text(json.dumps(rows))
+    folder=root/'props_crowd'
+    shutil.copytree(root/'props_uv',folder)
+    frames=[]
+    for i in range(16):
+        name=f'crowd-{i:02d}.png';frames.append(name)
+        colour=[20+10*i,40+5*i,200-6*i]
+        (folder/'Textures'/name).write_bytes(rgba(2,1,[*colour,0,*colour,255]))
+    (folder/'Crowd.json').write_text(json.dumps(dict(Schema='openslope-crowd/v1',Frames=frames)))
     for name in ('sprites', 'wake', 'sheet', 'props'):
         folder = root / (name + '_fog')
         shutil.copytree(root / name, folder)

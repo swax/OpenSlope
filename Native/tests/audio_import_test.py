@@ -5,7 +5,7 @@ import struct
 import sys
 import tempfile
 import wave
-from import_test import record, both, big, run, ssh, png_pixels
+from import_test import record, both, big, run, ssh, png_pixels, crowd_bank
 from prop_import_test import members
 from audio_container_test import bank, stream
 
@@ -111,6 +111,7 @@ def fixture(course=None):
         'DATA/AUDIO/MUSIC.BIG': archive({'song.mpf': graph(), 'song.mus': stream(), 'loop.bnk': bank()}),
         'DATA/AUDIO/INTRO.BIG': archive({'Quiet-A': stream(), 'end': stream()}),
         'DATA/TEXTURES/PARTICLE.SSH': particle_bank(),
+        'DATA/TEXTURES/CROWD.SSH': crowd_bank(),
     }
 
 

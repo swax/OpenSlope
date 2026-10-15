@@ -134,3 +134,9 @@ Material playback consumes clean 150/170/230/410: fixed-tick UV motion,
 per-material flip banks, pulse lifetimes, dwell timing and private overrides.
 The standard PRNG stream and unauthored-control equivalence limits are explicit
 in material-playback.md. Native V sampling follows the existing OBJ conversion.
+
+Crowd grids consume clean 150/170/200/230/410 for the shared loose bank, existing
+model material cells, four frame patterns, fifth-tick cadence, rest chances and
+cutout presentation. The code-1 single-player fallback, multi-input priority and
+standard PRNG are application choices; original SFX activity classification
+stays outstanding in crowd-playback.md.
