@@ -10,6 +10,7 @@ struct WorldContact:ShapeContact {std::size_t instance{};int surface=-1,effect=-
 std::optional<ShapeContact> swept_box(const Bounds& box,const Transform& world,ProbeSphere start,ProbeSphere end);
 std::optional<ShapeContact> swept_triangle(Vec3 a,Vec3 b,Vec3 c,ProbeSphere start,ProbeSphere end);
 std::vector<std::uint8_t> occupancy_masks(std::span<const std::uint8_t> encoded,unsigned encoding,unsigned depth);
+struct WorldVolume {Bounds box;Vec3 axis{1,0,0};};
 struct CollisionResponse {Vec3 position_delta,velocity;double impulse{};bool hard=false;};
 CollisionResponse collision_response(const WorldContact& contact,Vec3 velocity,Vec3 board_up);
 
@@ -19,6 +20,7 @@ public:
     static CollisionWorld load(const std::filesystem::path& root);
     std::vector<WorldContact> sweep(std::span<const ProbeSphere> start,std::span<const ProbeSphere> end) const;
     std::optional<WorldContact> ray(Vec3 start,Vec3 end,bool rideable_only=false) const;
+    std::optional<WorldVolume> volume(std::size_t instance,Vec3 start,Vec3 end) const;
     std::size_t objects() const;
     std::size_t triangles() const;
     std::size_t bodies() const;

@@ -35,9 +35,10 @@ formula, flip divisor, passive airborne bleed or uber/infinite tier escalation.
 Those remain explicit work. Actual gems now collect through authored shape
 contacts, apply the Showoff gate, tombstone draw/collision and chime through the
 MAIN bank; see world-logic.md. Unscored hops preserve the tier until a scored bank. Named tricks, held-board grabs/flat hold tiers, live rail energy
-registration, trick/boost audio, score pickups, score targets and a complete HUD
-remain outstanding. The existing application air-boost aiming also remains a
-separate parity gap.
+registration, trick audio, score pickups, score targets and a complete HUD
+remain outstanding. Held engage and pad chimes now use their MAIN slots through
+the audio mixer; boost-volumes.md describes the updated application air-thrust
+profile and its remaining recovered-behavior gap.
 
 Validation: 62 portable checks include production analytic touchdown, bad landing,
 manual reset, countdown/restart, on-foot exclusion, empty-meter physics gating and

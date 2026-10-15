@@ -12,7 +12,7 @@ Json node(Bytes bytes,std::size_t at,std::size_t size,std::size_t index,const st
     const auto main=bytes.le(at);const auto p=at+8;Json payload=Json::object(),refs=Json::object(),words=Json::array();for(std::size_t i=0;i<size;i+=4)words.push_back(bytes.le(at+i));
     const auto require=[&](std::size_t length){if(size<length)throw std::runtime_error("World logic node is shorter than its payload");};
     if(main==0){require(12);const auto sub=bytes.le(p);Json property={{"SubType",sub}};
-        const std::map<unsigned,std::string> layouts{{0,"ffffff"},{13,"ifff"},{14,"ff"},{15,"fffff"},{17,"iii"},{18,"fffffff"},{20,"iffiiiffff"},{24,"iffffffffffffffffff"},{256,"ifffffii"},{257,"iiffffii"},{258,"ifffffiifffi"}};
+        const std::map<unsigned,std::string> layouts{{0,"ffffff"},{13,"ifff"},{14,"ff"},{15,"fffff"},{17,"iii"},{18,"fffffff"},{20,"iffiiiffff"},{24,"i"+std::string(18,'f')},{256,"ifffffii"},{257,"iiffffii"},{258,"ifffffiifffi"}};
         if(const auto found=layouts.find(sub);found!=layouts.end()){require(12+found->second.size()*4);property[sub==17?"CrowdEffect":"type0Sub"+std::to_string(sub)]=fields(bytes,p+4,found->second);}
         else if(sub==2){require(16);property["Debounce"]=bytes.number(p+4);}
         else if(sub==5){require(16);property["DeadNodeMode"]=bytes.le(p+4);}

@@ -23,6 +23,11 @@ rendered parts and matching collision/support. Full live prop behavior, executab
 resolvers, grabs, uber tiers, AI races and multiplayer remain later stages. See
 [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
+Build 0.30 adds timed speed/trick pads, authored conveyors/vents/wind, altitude
+lifts and staged tube launches. See [boost volumes](docs/boost-volumes.md) for
+source alignment, test evidence and the remaining original lap-ride/air-profile
+gaps. Desktop and Quest use the same gameplay code.
+
 ## Build and try on Windows
 
 Install Visual Studio 2022 C++ Build Tools with its CMake component and Windows SDK. Python 3 is

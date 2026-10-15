@@ -18,7 +18,7 @@ Player::Player(Terrain terrain,PlayTuning tuning):terrain_(std::move(terrain)),w
     apply_world_actions();const auto spawn=terrain_.spawn();spawn_position_=spawn.first;spawn_forward_=spawn.second;reset();
 }
 void Player::release_inputs(){
-    jump_held_=false;jump_edges_.clear();reset_held_=false;mount_held_=false;mount_pending_=false;restart_held_=false;restart_pending_=false;
+    boost_engaged_=false;jump_held_=false;jump_edges_.clear();reset_held_=false;mount_held_=false;mount_pending_=false;restart_held_=false;restart_pending_=false;
     if(rider_.control==Control::Charge){rider_.charge=0;rider_.control=rider_.motion==Motion::Rail?Control::OnRail:rider_.grounded?Control::Cruise:Control::Air;}
 }
 void Player::warp(Vec3 position,Vec3 forward,Vec3 velocity,Vec3 up){
@@ -42,7 +42,7 @@ void Player::reset(bool manual){
     warp(position+Vec3{0,1,0},spawn_forward_);if(start_on_foot_)start_on_foot();
 }
 void Player::configure_run(RunMode mode){auto run=CourseRun::load(terrain_.map_root(),mode);if(mode==RunMode::Race&&!run.finish())throw std::runtime_error("This map has no race finish route. Choose Freeride or Showoff.");run_=std::move(run);rails_.reset();logic_.restart(mode);apply_world_actions();course_recovery_=CourseRecovery(run_.paths());last_recovery_.reset();score_.reset();score_started_=false;const auto spawn=run_.paths().start_pose().value_or(terrain_.spawn());spawn_position_=spawn.first;spawn_forward_=spawn.second;reset();}
-void Player::restart_run(){run_.restart();rails_.reset();logic_.restart(run_.status().mode);apply_world_actions();course_recovery_=CourseRecovery(run_.paths());last_recovery_.reset();score_.reset();score_started_=false;reset();}
+void Player::restart_run(){run_.restart();rails_.reset();logic_.restart(run_.status().mode,true);apply_world_actions();course_recovery_=CourseRecovery(run_.paths());last_recovery_.reset();score_.reset();score_started_=false;reset();}
 bool Player::recover_course(bool manual){return request_course_recovery(manual,false);}
 bool Player::request_course_recovery(bool manual,bool authored){
     const auto phase=run_.status().phase;if(recovery_target_||phase==RunPhase::Finished||phase==RunPhase::Expired||(!manual&&!authored&&!run_active()&&!on_foot_))return false;
@@ -70,6 +70,7 @@ std::optional<Player::GroundContact> Player::probe(Vec3 position) const {
     return trace_ground(base+rider_.normal*contract_.value("contact","probeAbove"),base-rider_.normal*contract_.value("contact","probeBelow"));
 }
 void Player::enter_air(){
+    rider_.pads.trick=0;
     if(rider_.motion==Motion::Ground){rider_.air_time=0;flight_heading_=normalized(project(rider_.forward*double(rider_.lead),{0,1,0}),flight_heading_);}
     rider_.grounded=false;rider_.ground_instance.reset();rider_.ground_object.reset();rider_.ground_velocity={};if(!recovering())rider_.motion=Motion::Air;if(rider_.control==Control::Cruise)rider_.control=Control::Air;
 }
@@ -127,6 +128,13 @@ void Player::land(const GroundContact& hit){
 void Player::notify_tick(const Rider& before){
     if(!reset_pending()&&run_.status().phase==RunPhase::Running){if(on_foot_){for(const auto height:{.28,.825,1.37}){const std::array<ProbeSphere,1> from{{{before.position+Vec3{0,height,0},.28}}},to{{{rider_.position+Vec3{0,height,0},.28}}};for(const auto& hit:world_.sweep(from,to))dispatch_world_contact(hit,length(before.velocity));}}}
     apply_world_actions();
+    const auto dt=contract_.tick_seconds();BoostRider driven{0,before.position,rider_.position,rider_.velocity,run_.status().phase==RunPhase::Running&&!reset_pending()&&!recovering(),rider_.tube_stage};
+    logic_.apply_forces(dt,world_,std::span(&driven,1),[&](std::uint64_t)->std::optional<unsigned>{if(run_.status().mode==RunMode::Freeride||run_.status().passes<=1)return {};run_.enter_lap_volume();return run_.status().remaining;});
+    rider_.tube_stage=driven.stage;rider_.position=driven.position;rider_.velocity=driven.velocity;
+    if(driven.snapped){rider_.previous_position=rider_.position;++placement_serial_;++transport_placements_;previous_contacts_.clear();}
+    if(driven.driven){if(rider_.motion==Motion::Rail&&(driven.snapped||dot(rider_.velocity,rider_.normal)>contract_.value("contact","separationSpeed")))leave_rail(.25);if(rider_.grounded&&dot(rider_.velocity-rider_.ground_velocity,rider_.normal)>contract_.value("contact","separationSpeed")){if(on_foot_){rider_.grounded=false;rider_.ground_instance.reset();rider_.ground_object.reset();rider_.ground_velocity={};rider_.pads.trick=0;}else enter_air();}
+        if(!on_foot_&&(rider_.grounded||rider_.motion==Motion::Rail)){rider_.speed_cap=carried_cap(contract_,rider_.speed_cap,rider_.pads.speed>0?1:held_boost_);const auto relative=rider_.velocity-rider_.ground_velocity;const auto speed=length(relative);if(speed>rider_.speed_cap)rider_.velocity=rider_.ground_velocity+relative*(rider_.speed_cap/speed);}}
+    apply_world_actions();
     course_recovery_.tick(contract_.tick_seconds());if((rider_.grounded||rider_.motion==Motion::Rail)&&!recovering()&&rider_.surface!=0&&rider_.surface!=6&&rider_.surface!=10&&rider_.surface!=17)course_recovery_.observe(rider_.position,camera_forward());
     run_.end_tick(rider_.position,placement_serial_);
     if(score_.status().active&&(run_.status().phase==RunPhase::Finished||run_.status().phase==RunPhase::Expired))score_.finish();
@@ -142,6 +150,8 @@ void Player::apply_world_actions(){
     auto actions=logic_.take_actions();world_actions_.insert(world_actions_.end(),actions.begin(),actions.end());for(const auto& action:actions)switch(action.kind){
         case WorldActionKind::Reset:if(action.rider)request_course_recovery(false,true);break;
         case WorldActionKind::Multiplier:if(action.rider)score_.multiplier(unsigned(action.value));break;
+        case WorldActionKind::SpeedBoost:if(action.rider)rider_.pads.request(false,action.value);break;
+        case WorldActionKind::TrickBoost:if(action.rider)rider_.pads.request(true,action.value);break;
         case WorldActionKind::RailToggle:if(action.target<rails_.splines())rails_.enable(action.target,action.value!=0);break;
         case WorldActionKind::CourseSound:case WorldActionKind::MainSound:break;
     }
@@ -152,6 +162,7 @@ bool Player::update_jump(){
     else if(rider_.control==Control::Release){rider_.release_remaining=approach(rider_.release_remaining,0,13.33*dt);rider_.charge=rider_.release_remaining;return rider_.release_remaining<=1e-9;}return false;
 }
 void Player::leave_rail(double cooldown){
+    rider_.pads.trick=0;
     rider_.motion=Motion::Air;rider_.grounded=false;rider_.ground_instance.reset();rider_.ground_object.reset();rider_.ground_velocity={};rider_.rail_spline.reset();rider_.rail_spin=rider_.rail_spin_rate=0;rider_.air_time=0;++rider_.rail_exits;rail_cooldown_=cooldown;
     if(rider_.control==Control::OnRail)rider_.control=Control::Launched;
 }
@@ -161,17 +172,17 @@ void Player::ride_rail(const RailHit& hit,const RideInput& input,const Rider& be
     const auto& s=contract_.surface(rider_.surface);const auto slew=contract_.value("contact","surfaceFieldSlew")*dt;rider_.bog=approach(rider_.bog,s.bog,slew);rider_.budget=approach(rider_.budget,s.budget,slew);rider_.lift=approach(rider_.lift,s.lift,slew);
     const auto speed=length(rider_.velocity),along=dot(rider_.velocity,hit.tangent);if(std::abs(along)>1e-7)rider_.rail_direction=along<0?-1:1;
     const auto direction=double(rider_.rail_direction);const auto target=hit.tangent*(direction*speed);if(speed>1e-9)rider_.velocity=normalized(rider_.velocity+(target-rider_.velocity)*std::min(1.,30*dt),hit.tangent*direction)*speed;
-    const auto quantized=std::abs(input.steer)>.25?(input.steer<0?-1.:1.):0.;const auto gain=input.boost?1.6:1.;
+    const auto quantized=std::abs(input.steer)>.25?(input.steer<0?-1.:1.):0.;const auto gain=(input.boost||rider_.pads.trick>0)?1.6:1.;
     if(input.vr.enabled){const auto turn=input.vr.stick?input.vr.spin*90*gain*dt*pi/180:input.vr.head?gaze_turn(input.vr.gaze,rider_.forward*double(rider_.lead),90*gain*dt*pi/180):0.;rider_.rail_spin+=turn*180/pi;rider_.rail_spin_rate=turn/dt*180/pi;if(input.vr.stick)rider_.view_yaw+=turn;}
     else {rider_.rail_spin_rate=approach(rider_.rail_spin_rate,quantized*80*gain,75*gain*dt);rider_.rail_spin=std::clamp(rider_.rail_spin+rider_.rail_spin_rate*dt,-80.,80.);if(std::abs(rider_.rail_spin)>=80&&rider_.rail_spin*quantized>0)rider_.rail_spin_rate=0;}
     if(std::abs(rider_.rail_spin_rate)<2&&(std::abs(input.steer)>.25||std::abs(input.posture)>.25)){const auto x=std::abs(input.steer)>.25?(input.steer<0?-1.:1.):0.,y=std::abs(input.posture)>.25?(input.posture<0?-1.:1.):0.;rider_.rail_trick=int(std::floor((std::atan2(y,x)+2*pi)/(pi/4)+.5))%8;}
     rider_.forward=normalized(rotate(hit.tangent*(direction*rider_.lead),hit.up,rider_.rail_spin*pi/180));flight_heading_=normalized(project(hit.tangent*direction,{0,1,0}),flight_heading_);rider_.position+=hit.right*std::clamp(-hit.offset.y,-2.9,2.9)+hit.up*std::clamp(-hit.offset.z,-2.9,2.9);
     const bool launch=update_jump();if(launch){rider_.velocity+=contract_.jump_impulse(hit.up,hit.tangent*direction,length(rider_.velocity),std::max(0.,rider_.release_snapshot-rider_.release_remaining),tuning_.jump_stat);leave_rail(.35);rider_.control=Control::Launched;rider_.charge=0;++rider_.launches;jump_cooldown_=.35;air_grace_=contract_.value("pose","orientationGrace");}
-    score_.step(dt,ScoreMotion::Rail);const auto destination=rider_.position+rider_.velocity*dt;rider_.velocity+=hit.tangent*((dot(Vec3{0,-9.8,0},hit.tangent)+(input.boost?24.508*held_boost_*direction:0))*dt);rider_.speed_cap=launch?contract_.value("speed","boostCap"):carried_cap(contract_,rider_.speed_cap,held_boost_);const auto updated=length(rider_.velocity);if(updated>rider_.speed_cap)rider_.velocity*=rider_.speed_cap/updated;
+    score_.step(dt,ScoreMotion::Rail);const auto destination=rider_.position+rider_.velocity*dt;rider_.velocity+=hit.tangent*((dot(Vec3{0,-9.8,0},hit.tangent)+(input.boost?24.508*held_boost_*direction:0))*dt);rider_.speed_cap=launch?contract_.value("speed","boostCap"):carried_cap(contract_,rider_.speed_cap,rider_.pads.speed>0?1:held_boost_);const auto updated=length(rider_.velocity);if(updated>rider_.speed_cap)rider_.velocity*=rider_.speed_cap/updated;
     if(!move_world(before,destination,false))return;const auto crouch=rider_.control==Control::Charge?rider_.charge:.3;rider_.crouch=approach(rider_.crouch,crouch,6*dt);if(!finite(rider_.position)||!finite(rider_.velocity))reset();else if(run_active()&&!recovering()&&rider_.position.y<terrain_.bounds().min.y-30)recover_course(false);
 }
 void Player::tick(const RideInput& input){
-    world_actions_.clear();logic_contacts_.clear();sample_input(input);const auto before_pose=rider_;const auto dt=contract_.tick_seconds();const std::array<Vec3,2> observers{rider_.position,world_view_.value_or(rider_.position+Vec3{0,1.7,0})};const std::array<CrowdActivity,1> crowd_riders{{{rider_.position,1,run_.status().phase==RunPhase::Running&&!reset_pending()}}};logic_.tick(dt,length(rider_.velocity),observers,crowd_riders);apply_world_actions();if(on_foot_&&rider_.grounded&&rider_.ground_object)rider_.position+=world_.carry(*rider_.ground_object,rider_.position);rider_.previous_position=before_pose.position;jump_cooldown_=std::max(0.0,jump_cooldown_-dt);air_grace_=std::max(0.0,air_grace_-dt);rail_cooldown_=std::max(0.,rail_cooldown_-dt);
+    world_actions_.clear();logic_contacts_.clear();sample_input(input);const auto before_pose=rider_;const auto dt=contract_.tick_seconds();rider_.pads.tick(dt);const std::array<Vec3,2> observers{rider_.position,world_view_.value_or(rider_.position+Vec3{0,1.7,0})};const std::array<CrowdActivity,1> crowd_riders{{{rider_.position,1,run_.status().phase==RunPhase::Running&&!reset_pending()}}};logic_.tick(dt,length(rider_.velocity),observers,crowd_riders);apply_world_actions();if(on_foot_&&rider_.grounded&&rider_.ground_object)rider_.position+=world_.carry(*rider_.ground_object,rider_.position);rider_.previous_position=before_pose.position;jump_cooldown_=std::max(0.0,jump_cooldown_-dt);air_grace_=std::max(0.0,air_grace_-dt);rail_cooldown_=std::max(0.,rail_cooldown_-dt);
     reset_fade_in_=std::max(0.,reset_fade_in_-dt);
     if(restart_pending_){restart_run();restart_held_=input.run_restart;notify_tick(before_pose);return;}
     if(input.reset&&!reset_held_){reset(true);reset_held_=true;notify_tick(before_pose);return;}reset_held_=input.reset;
@@ -180,8 +191,8 @@ void Player::tick(const RideInput& input){
     if(recovery_target_){reset_age_+=dt;jump_edges_.clear();if(reset_age_>=.8-1e-9){finish_course_recovery();jump_held_=input.jump;mount_held_=input.mount;reset_held_=input.reset;restart_held_=input.run_restart;}notify_tick(before_pose);return;}
     if(!running){jump_edges_.clear();rider_.velocity={};notify_tick(before_pose);return;}
     if(!score_started_&&run_.status().mode!=RunMode::Freeride&&run_.status().phase==RunPhase::Running){score_.start();score_started_=true;}
-    if(on_foot_){tick_foot(input,before_pose);notify_tick(before_pose);return;}
-    if(!update_recovery()){notify_tick(before_pose);return;}auto active=input;if(recovering())active={};held_boost_=active.boost?score_.boost_amount():0;active.boost=held_boost_>0;score_.spend(dt,active.boost);
+    if(on_foot_){boost_engaged_=false;tick_foot(input,before_pose);notify_tick(before_pose);return;}
+    if(!update_recovery()){notify_tick(before_pose);return;}auto active=input;if(recovering())active={};held_boost_=active.boost?score_.boost_amount():0;active.boost=held_boost_>0;if(active.boost&&!boost_engaged_){rider_.boost_end=tuning_.symmetric_deck&&dot(rider_.forward,project(rider_.velocity,{0,1,0}))<0?-1:1;world_actions_.push_back({WorldActionKind::MainSound,held_boost_>.666?120.:held_boost_>.334?121.:122.,0,rider_.position,true});}boost_engaged_=active.boost;score_.spend(dt,active.boost);
     // Interpret edges against the last validated motion state. A press made
     // on the last ground frame must not be lost to this tick's crest discovery.
     while(!jump_edges_.empty()){
@@ -230,7 +241,7 @@ void Player::tick(const RideInput& input){
         const auto load=s.A/contract_.response("units","centimetresPerMetre"),capped=std::min(normal_response,contract_.response("bank","loadCapMultiplier")*load),theta=s.tilt_degrees*pi/180*rider_.lean;
         const auto forward=normalized(project(rider_.forward,rider_.normal),rider_.forward)*double(rider_.lead),lateral=normalized(cross(rider_.normal,forward));
         acceleration=rider_.normal*(normal_response+capped-capped/std::cos(theta))+lateral*(capped*std::tan(theta))+Vec3{0,-load,0};
-        const auto u=dot(relative_velocity,forward),w=dot(relative_velocity,lateral);const bool boosting=active.boost&&posture>=0;const auto boost=boosting?held_boost_:0.0;
+        const auto u=dot(relative_velocity,forward),w=dot(relative_velocity,lateral);const bool pad_thrust=rider_.pads.speed>0&&length(project(relative_velocity,rider_.normal))>1e-6;const bool boosting=(active.boost||pad_thrust)&&posture>=0;const auto boost=boosting?(pad_thrust?1:held_boost_):0.0;
         acceleration+=forward*contract_.forward_resistance(s,u,rider_.contact_error,rider_.budget,rider_.charge,boost);acceleration+=lateral*contract_.lateral_resistance(s.drag,u,w,rider_.lean,boost);
         if(posture<0){const auto tangent=project(relative_velocity,rider_.normal);const auto speed=length(tangent);if(speed>1e-9)acceleration-=tangent/speed*std::min(tuning_.brake_acceleration*(-posture),speed/dt);}
         else if(!recovering()){
@@ -242,18 +253,16 @@ void Player::tick(const RideInput& input){
         if(rider_.control==Control::RecoverWait){rider_.position-=rider_.normal*std::clamp(rider_.contact_error,-.0833,.0833);rider_.velocity=project(rider_.velocity,rider_.normal);acceleration=project(acceleration,rider_.normal);}
     }else{
         acceleration={-rider_.velocity.x*contract_.value("gravity","airHorizontalDrag"),-contract_.value("gravity",rider_.velocity.y>0?"airRising":"airFalling"),-rider_.velocity.z*contract_.value("gravity","airHorizontalDrag")};
-        const auto rate=contract_.value("steering","airTurnRateDeg")*(active.boost?1.6:1),spin=active.vr.enabled?(active.vr.stick?active.vr.spin*rate*dt:active.vr.head?gaze_turn(active.vr.gaze,rider_.forward*double(rider_.lead),rate*dt*pi/180)*180/pi:0):std::clamp(active.steer,-1.0,1.0)*rate*dt;
+        const auto rate=contract_.value("steering","airTurnRateDeg")*((active.boost||rider_.pads.speed>0)?1.6:1),spin=active.vr.enabled?(active.vr.stick?active.vr.spin*rate*dt:active.vr.head?gaze_turn(active.vr.gaze,rider_.forward*double(rider_.lead),rate*dt*pi/180)*180/pi:0):std::clamp(active.steer,-1.0,1.0)*rate*dt;
         if(active.vr.enabled&&active.vr.stick)rider_.view_yaw+=spin*pi/180;
         rider_.forward=normalized(rotate(rider_.forward,{0,1,0},spin*pi/180));rider_.spin_degrees+=spin;rider_.flip_degrees+=posture*rate*dt;rider_.air_time+=dt;
         if(!recovering())score_.step(dt,ScoreMotion::Air,spin,posture*rate*dt);
         if(!recovering()){rider_.board_up=ease_up(rider_.board_up,{0,1,0},contract_.value("pose","airLevelRateDeg")*pi/180,dt);if(rider_.velocity.y<0){if(const auto upcoming=trace_ground(rider_.position,rider_.position+rider_.velocity*contract_.value("pose","orientationGrace"));upcoming&&dot(render_up(),upcoming->normal)>.9)rider_.board_up=ease_up(rider_.board_up,upcoming->normal,contract_.value("pose","groundRateCapDeg")*pi/180,dt);}}
-        // Desktop air boost is view-heading thrust, outside the retail physics
-        // contract. Mouse/view aiming will supply that heading in a later slice.
-        if(active.boost)acceleration+=flight_heading_*8;
+        // Held air thrust follows the visible deck; pads never supply this force.
     }
     if(launch){const auto relative=rider_.velocity-rider_.ground_velocity;const auto tangent=normalized(project(relative,rider_.normal),rider_.forward*double(rider_.lead));rider_.velocity+=contract_.jump_impulse(rider_.normal,tangent,length(relative),std::max(0.0,rider_.release_snapshot-rider_.release_remaining),tuning_.jump_stat);enter_air();rider_.control=Control::Launched;rider_.charge=0;++rider_.launches;jump_cooldown_=.35;air_grace_=contract_.value("pose","orientationGrace");}
-    rider_.speed_cap=!rider_.grounded?contract_.value("speed","boostCap"):carried_cap(contract_,rider_.speed_cap,held_boost_);
-    const auto destination=rider_.position+rider_.velocity*dt;rider_.velocity+=acceleration*dt;const auto support_velocity=rider_.grounded?rider_.ground_velocity:Vec3{};const auto relative_velocity=rider_.velocity-support_velocity;const auto speed=length(relative_velocity);if(speed>rider_.speed_cap)rider_.velocity=support_velocity+relative_velocity*(rider_.speed_cap/speed);
+    rider_.speed_cap=!rider_.grounded?contract_.value("speed","boostCap"):carried_cap(contract_,rider_.speed_cap,rider_.pads.speed>0?1:held_boost_);
+    const auto destination=rider_.position+rider_.velocity*dt;const auto air_delta=!ground&&active.boost?air_boost_velocity(rider_.velocity,render_forward()*double(rider_.boost_end),contract_.value("speed","boostCap"),dt)-rider_.velocity:Vec3{};rider_.velocity+=acceleration*dt+air_delta;const auto support_velocity=rider_.grounded?rider_.ground_velocity:Vec3{};const auto relative_velocity=rider_.velocity-support_velocity;const auto speed=length(relative_velocity);if(rider_.grounded&&speed>rider_.speed_cap)rider_.velocity=support_velocity+relative_velocity*(rider_.speed_cap/speed);
     if(!move_world(before_pose,destination,!ground&&!launch&&air_grace_<=0)){notify_tick(before_pose);return;}
     if(ground&&!launch&&!recovering()){
         score_.step(dt,ScoreMotion::Ground);

@@ -150,6 +150,17 @@ std::optional<WorldContact> CollisionWorld::ray(Vec3 start,Vec3 end,bool rideabl
         if(const auto hit=data_->ray_hit(object,start,end);hit&&(!result||hit->t<result->t)){WorldContact contact;static_cast<ShapeContact&>(contact)=*hit;contact.instance=object.instance;contact.object=index;contact.surface_velocity=data_->velocity(object,contact.point);contact.surface=fragile&&object.surface<0?1:object.surface;contact.effect=object.effect;contact.mass=object.mass;contact.bounce=object.bounce;contact.response=object.response;if(dot(contact.normal,end-start)>0)contact.normal=-contact.normal;result=contact;}
     }return result;
 }
+std::optional<WorldVolume> CollisionWorld::volume(std::size_t instance,Vec3 start,Vec3 end) const {
+    if(!finite(start)||!finite(end))throw std::invalid_argument("Invalid volume query");if(instance>=data_->instance_objects.size()||(!data_->flags.empty()&&!(data_->flags[instance]&2)))return {};
+    std::optional<WorldVolume> result;
+    for(const auto index:data_->instance_objects[instance]){const auto& object=data_->objects[index];const auto previous=data_->relative(object,{start,0}).centre;bool hit=bool(data_->ray_hit(object,previous,end));
+        const auto contains=[&](Vec3 point){const auto local=transform_point(object.inverse,point);const auto& box=object.box;if(local.x<box.min.x-1e-8||local.x>box.max.x+1e-8||local.y<box.min.y-1e-8||local.y>box.max.y+1e-8||local.z<box.min.z-1e-8||local.z>box.max.z+1e-8)return false;if(object.mode==2)return true;if(object.mode==3)return bool(data_->hit_current(object,{point,0},{point,0}));
+            const auto extent=box.max-box.min;if(std::min({extent.x,extent.y,extent.z})<1e-9)return bool(data_->hit_current(object,{point,0},{point,0}));const auto outside=local+normalized(Vec3{1,.237,.419})*(length(extent)*2+1);std::vector<double> crossings;
+            for(const auto& tri:object.proxy->triangles)if(const auto contact=swept_triangle(tri.a,tri.b,tri.c,{local,0},{outside,0})){if(contact->t<1e-9)return true;crossings.push_back(contact->t);}std::sort(crossings.begin(),crossings.end());unsigned unique=0;double last=-1;for(const auto t:crossings)if(t-last>1e-7){++unique;last=t;}return unique%2!=0;
+        };
+        hit|=contains(previous)||contains(end);if(!hit)continue;const auto box=placed(object.box,object.world);if(!result)result=WorldVolume{box,normalized(transform_point(object.world,{1,0,0})-transform_point(object.world,{}),{1,0,0})};else{result->box.add(box.min);result->box.add(box.max);}
+    }return result;
+}
 std::size_t CollisionWorld::objects() const {return data_->objects.size();}std::size_t CollisionWorld::triangles() const {return data_->triangle_count;}std::size_t CollisionWorld::bodies() const {return data_->body_count;}
 void CollisionWorld::instance_flags(std::span<const std::uint8_t> flags){if(!flags.empty())for(const auto& object:data_->objects)if(object.instance>=flags.size())throw std::invalid_argument("World instance flags do not cover collision objects");data_->flags.assign(flags.begin(),flags.end());}
 void CollisionWorld::motion(std::span<const PropMotion> poses,double seconds){

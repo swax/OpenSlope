@@ -140,3 +140,11 @@ model material cells, four frame patterns, fifth-tick cadence, rest chances and
 cutout presentation. The code-1 single-player fallback, multi-input priority and
 standard PRNG are application choices; original SFX activity classification
 stays outstanding in crowd-playback.md.
+
+Pads and scripted boost properties consume clean 150/230/350/360/390 for
+duration/max timers, ownership, real collision-volume selection, positive-only
+world-axis lag, lifetime, Z altitude placement, lap stage latching and tube
+launch payloads. The lap ascent profile, cross-station suppression and held-air
+deck thrust/rotation are explicit application choices in boost-volumes.md.
+The original lap position/motion-state program remains unresolved; its current
+profile does not establish complete original transport equivalence.

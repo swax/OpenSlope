@@ -32,6 +32,7 @@ public:
     void restart();
     bool begin_tick(double seconds,bool mounted);
     void end_tick(Vec3 position,std::uint64_t placement_serial);
+    bool enter_lap_volume();
     const RunStatus& status() const {return status_;}
     const CoursePaths& paths() const {return paths_;}
     std::optional<CourseProgress> locate(Vec3 position) const;
@@ -41,7 +42,7 @@ private:
     CoursePaths paths_;std::vector<Route> routes_;RunSettings settings_;RunStatus status_;
     std::optional<std::pair<Vec3,Vec3>> finish_;
     bool lap_events_=false;
-    double total_=0;
+    double total_=0,last_lap_time_=-1e30,tube_suppress_until_=-1e30;
     std::optional<double> previous_dtf_;
     std::optional<Vec3> previous_position_;
     std::uint64_t serial_=0;

@@ -24,7 +24,7 @@ enum class CrashCause {None,PropImpact,Landing,Unrideable};
 struct PlayTuning {
     // Desktop application defaults where the clean specification is open.
     double charge_rate=2.5,brake_acceleration=18,flip_recovery_rate=720;
-    unsigned jump_stat=255;
+    unsigned jump_stat=255;bool symmetric_deck=true;
     double body_radius=.85;
     double hard_landing_speed=28,unrideable_speed=5;
     double tumble_ground_drag=8,tumble_air_drag=1.2,settle_angular_speed=.9,settle_normal_speed=1.5,settle_hold=.2;
@@ -33,7 +33,7 @@ struct Rider {
     Vec3 position,previous_position,velocity,forward{0,0,-1},normal{0,1,0},smoothed_up{0,1,0},board_up{0,1,0};
     double lean{},slide{},bog{},budget{},lift{},speed_cap{},contact_error{};
     double charge{},release_remaining{},release_snapshot{},flip_degrees{},spin_degrees{},air_time{},crouch{},landing_scale=1;
-    double view_yaw=0;
+    double view_yaw=0;PadBoost pads{};unsigned tube_stage=0;int boost_end=1;
     int lead=1;unsigned launches{},landings{};Motion motion=Motion::Air;Control control=Control::Air;
     int surface=1;
     bool grounded=false;
@@ -80,6 +80,7 @@ public:
     Vec3 camera_position(Vec3 desired) const;
     void observe_ticks(std::function<void(const Player&,const Rider&)> observer){tick_observer_=std::move(observer);}
     std::uint64_t placement_serial() const {return placement_serial_;}
+    std::uint64_t audio_reset_serial() const {return placement_serial_-transport_placements_;}
     bool recovering() const {return rider_.control==Control::Wipeout||rider_.control==Control::RecoverWait;}
     void run_active(bool active){run_active_=active;}
     bool run_active() const {return run_active_||(run_.status().mode!=RunMode::Freeride&&run_.status().phase==RunPhase::Running);}
@@ -119,7 +120,7 @@ private:
     void finish_course_recovery();
     TrickScore score_;
     bool score_started_=false;
-    double held_boost_=0;
+    double held_boost_=0;bool boost_engaged_=false;
     RideContract contract_;
     FixedClock clock_;
     Rider rider_;
@@ -147,7 +148,7 @@ private:
     std::map<std::size_t,WorldContact> previous_contacts_;
     std::vector<ContactEvent> contact_events_;
     std::function<void(const Player&,const Rider&)> tick_observer_;
-    std::uint64_t placement_serial_=0;
+    std::uint64_t placement_serial_=0,transport_placements_=0;
     std::optional<GroundContact> trace_ground(Vec3 start,Vec3 end) const;
     std::optional<GroundContact> probe(Vec3 position) const;
     std::vector<ProbeSphere> volume(const Rider& pose,bool airborne,bool rail=false) const;

@@ -116,7 +116,7 @@ Build 0.25 adds persistent regions, model-animation ownership, installed-player
 controls and region/node-end continuations. See prop-animations.md for evidence.
 Build 0.27 connects counter/crack deferred triggers and material frame state;
 see deferred-world.md for exact scope. Complete hide/rearm lifetimes, mesh-throw
-and debris, particle effects, speed/trick/directional pads, teleport, remaining
+and debris, particle effects, teleport, remaining
 score/time opcodes and rigid-body movers still need consumers. Detached spline
 path drawing is now connected; see spline-movers.md. Collected
 gems use clean 390's run-long tombstone; Slopesmith's application pickup grow-back
@@ -131,3 +131,9 @@ Build 0.29 installs subtype 17 crowd grids with a shared sixteen-cell controller
 explicit rider/activity inputs, per-stand pause and ordinary node lifecycle.
 See crowd-playback.md for art import, legacy descriptors and the first-party
 activity fallback; exact crowd/SFX classification remains parity work.
+
+Build 0.30 connects main 17/18 pad durations/chimes/tombstones and property
+7/15/18/24 directional, lap, altitude and staged-launch forces to native swept
+collision volumes. The player shares these across walking, snow, air and rails.
+See boost-volumes.md for exact recovered behavior, independently authored lap/
+air profiles, compatibility repair, source comparisons and remaining limits.

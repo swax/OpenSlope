@@ -54,7 +54,7 @@ void Player::tick_foot(const RideInput& input,const Rider& before){
     destination=walk_move(before.position,destination,rider_.velocity);
     if(seated){const auto support=walk_ground(destination+Vec3{0,.1,0},destination-Vec3{0,.1,0});seated=bool(support);if(support){destination.y=support->point.y;rider_.normal=support->normal;rider_.surface=support->surface;rider_.ground_instance=support->instance;rider_.ground_object=support->object;rider_.ground_velocity=support->velocity;rider_.velocity.y=support->velocity.y;}}
     if(!seated){if(const auto hit=walk_ground(rider_.position,destination);hit&&rider_.velocity.y<=hit->velocity.y&&dispatch_fragile_ground(*hit)){destination=hit->point;rider_.normal=hit->normal;rider_.surface=hit->surface;rider_.ground_instance=hit->instance;rider_.ground_object=hit->object;rider_.ground_velocity=hit->velocity;rider_.velocity.y=hit->velocity.y;seated=true;}else{rider_.velocity.y-=9.8*dt;rider_.ground_instance.reset();rider_.ground_object.reset();rider_.ground_velocity={};}}
-    rider_.position=destination;rider_.grounded=seated;rider_.motion=Motion::OnFoot;rider_.control=Control::OnFoot;rider_.board_up=rider_.smoothed_up={0,1,0};
+    rider_.position=destination;rider_.grounded=seated;if(!seated)rider_.pads.trick=0;rider_.motion=Motion::OnFoot;rider_.control=Control::OnFoot;rider_.board_up=rider_.smoothed_up={0,1,0};
     if(length(wish)>.05)rider_.forward=normalized(wish);walk_phase_+=length(project(rider_.velocity,{0,1,0}))*dt*5;
     contact_events_.clear();previous_contacts_.clear();if(!finite(rider_.position)||!finite(rider_.velocity)||rider_.position.y<terrain_.bounds().min.y-40)reset();
 }

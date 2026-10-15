@@ -3,11 +3,13 @@
 #include "spline_motion.hpp"
 #include "world_properties.hpp"
 #include "crowd.hpp"
+#include "boost.hpp"
 #include <memory>
 #include <span>
 
 namespace openslope {
-enum class WorldActionKind {Reset,Multiplier,CourseSound,MainSound,RailToggle};
+enum class WorldActionKind {Reset,Multiplier,CourseSound,MainSound,RailToggle,SpeedBoost,TrickBoost};
+class CollisionWorld;
 struct WorldAction {WorldActionKind kind;double value=0;std::size_t target=0;Vec3 position;bool rider=false;};
 // Runtime flags are separate from immutable authored properties and geometry.
 enum WorldInstanceFlag : std::uint8_t {WorldDraw=1,WorldCollide=2,WorldFragile=4};
@@ -15,8 +17,10 @@ class WorldLogic {
 public:
     WorldLogic();~WorldLogic();WorldLogic(WorldLogic&&) noexcept;WorldLogic& operator=(WorldLogic&&) noexcept;
     static WorldLogic load(const std::filesystem::path& root);
-    void restart(RunMode mode);
+    void restart(RunMode mode,bool preserve_collected_pads=false);
     void tick(double seconds,double speed=0,std::span<const Vec3> observers={},std::span<const CrowdActivity> riders={},bool force_crowd=false);
+    void apply_forces(double seconds,const CollisionWorld& world,std::span<BoostRider> riders,const LapEntry& lap_entry={});
+    std::size_t forces() const;
     void contact(std::size_t instance,double speed,bool human=true,double force=1);
     std::span<const std::uint8_t> flags() const;
     std::vector<WorldAction> take_actions();

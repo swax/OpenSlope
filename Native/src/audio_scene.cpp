@@ -81,7 +81,7 @@ AudioStats AudioScene::stats() const {std::lock_guard lock(data_->mutex);return 
 void AudioScene::play_course(unsigned number,Vec3 position,double gain){std::lock_guard lock(data_->mutex);data_->one_shot(data_->slot(2,number),position,gain,true);}
 void AudioScene::tick(const Player& player,const Rider& before){
     std::lock_guard lock(data_->mutex);auto& d=*data_;const auto& rider=player.rider();const auto dt=player.contract().tick_seconds();
-    if(d.serial&&d.serial!=player.placement_serial())d.reset();d.serial=player.placement_serial();
+    if(d.serial&&d.serial!=player.audio_reset_serial())d.reset();d.serial=player.audio_reset_serial();
     for(const auto& action:player.world_actions())if(action.kind==WorldActionKind::CourseSound||action.kind==WorldActionKind::MainSound){if(action.value<0||action.value>65535)continue;const auto main=action.kind==WorldActionKind::MainSound;d.one_shot(d.slot(main?0:2,unsigned(action.value)),action.position,1,!main);++d.stats.transients;}
     for(auto& s:d.sounds)s.debounce=std::max(0.,s.debounce-dt);
     for(const auto& e:player.contacts())if(e.phase!=ContactPhase::End&&e.contact.instance<d.sounds.size()){auto& s=d.sounds[e.contact.instance];s.enabled=true;const auto speed=std::max(0.,-dot(before.velocity,e.contact.normal));const auto event=d.events.find(s.event);if(s.debounce<=0&&speed>.05&&event!=d.events.end()&&length(s.position-d.listener.position)<100){d.one_shot(d.clip(event->second),s.position,std::min(1.,speed/20),true);s.debounce=.8;++d.stats.contacts;}}
