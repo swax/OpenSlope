@@ -25,8 +25,8 @@ board ahead, probes for a supporting floor, and snaps its interpolation history.
 It does not move the rider, restart the event, spend boost or reset the camera.
 A held X does not drag the equipment along with a moving walker.
 
-Y replaces the old gate-restart binding. It toggles existing controls/clock/score
-presentation once per press. This is not yet the complete interactive wrist menu.
+Y replaces the old gate-restart binding. Build 0.35 now toggles an interactive wrist
+menu; its controls are a separate page. See equipment-camera-ui.md.
 Right-stick camera toggles between first person and a two-metre-back/one-metre-up
 view. The rendered controllers and status follow the displaced eyes; the body,
 wrist IK, collision and actual room movement stay in the underlying player frame.
@@ -73,8 +73,8 @@ and scoring (1,311 frames) replays pass. The signed ARM64 APK is version
 notice/license assets match their sources, with no packaged course media.
 
 Worn-headset alignment remains unverified until the user has time to test this
-APK. Current mounting still uses physical room proximity rather than a four-metre
-aimed ray. The full wrist menu/restart UI, grip pickup/carry/transfer/throw,
-Superman flight/B air boost, crouch, exact controller shape/finger curls and all
-remaining parity requirements are active work. This milestone makes their input
-layout consistent; it does not claim those behaviors have been implemented.
+APK. Build 0.35 supersedes proximity-only triggers with per-hand aim and squeeze,
+and adds an interactive wrist menu/restart, pickup, carry, transfer, summon and throw.
+See equipment-camera-ui.md for the current implementation and validation. Superman
+flight, crouch, exact controller geometry/finger curls and the remaining parity
+matrix stay active work. Worn checks remain necessary for the new build too.

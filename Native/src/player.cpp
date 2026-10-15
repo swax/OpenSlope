@@ -56,6 +56,10 @@ Player::Player(Terrain terrain, PlayTuning tuning)
 }
 
 void Player::release_inputs() {
+    if (carry_.held())
+        drop_board(false);
+    grip_held_ = grip_press_ = grip_release_ = trigger_held_ = trigger_press_ = {};
+    board_highlight_ = false;
     held_boost_ = 0;
     boost_engaged_ = false;
     jump_held_ = false;
@@ -82,6 +86,8 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     recovery_target_.reset();
     reset_age_ = reset_fade_in_ = 0;
     score_.lose(ScoreLoss::Reset);
+    carry_.clear();
+    holding_hand_ = {};
     on_foot_ = false;
     ++placement_serial_;
     effects_.reset();
@@ -211,6 +217,21 @@ void Player::finish_course_recovery() {
 }
 
 void Player::sample_input(const RideInput& input) {
+    if (carry_.held()) {
+        const auto e = equipment_frame(input.equipment);
+        const auto side = *carry_.hand();
+        if (e.hands[side].valid) {
+            holding_hand_ = e.hands[side];
+            holding_relative_ = input.equipment.relative;
+        }
+    }
+    for (unsigned i = 0; i < 2; ++i) {
+        grip_press_[i] = grip_press_[i] || (input.equipment.grip[i] && !grip_held_[i]);
+        grip_release_[i] = grip_release_[i] || (!input.equipment.grip[i] && grip_held_[i]);
+        trigger_press_[i] = trigger_press_[i] || (input.equipment.trigger[i] && !trigger_held_[i]);
+        grip_held_[i] = input.equipment.grip[i];
+        trigger_held_[i] = input.equipment.trigger[i];
+    }
     if (!std::isfinite(input.steer) || !std::isfinite(input.posture) || !finite(input.walk_forward) ||
         !finite(input.room_offset) || length(input.room_offset) > 10 || !finite(input.vr.gaze) ||
         !std::isfinite(input.vr.spin) || std::abs(input.vr.spin) > 1)
@@ -475,7 +496,10 @@ void Player::notify_tick(const Rider& before) {
     const auto lateral = normalized(cross(rider_.normal, rider_.forward * double(rider_.lead)));
     const auto deck = rider_.position + rider_.smoothed_up * rider_.lift + lateral * rider_.slide +
                       rider_.normal * rider_.recovery_height;
-    boost_trail_.step(game_frame_, {deck, render_forward(), render_up()}, board_active ? held_boost_ : 0,
+    boost_trail_.step(game_frame_, {carry_.held() ? carry_.pose().position : deck, render_forward(), render_up()},
+                      carry_.held() && carry_thrust_ ? 1
+                      : board_active                 ? held_boost_
+                                                     : 0,
                       score_.boost_amount(), board_active && rider_.pads.speed > 0);
     effects_.tick(placed ? rider_ : before, rider_, contract_.tick_seconds(),
                   [&](Vec3 position) -> std::optional<WakeContact> {
@@ -733,10 +757,18 @@ void Player::tick(const RideInput& input) {
         spawn_pending_ = false;
         recall_board(input.walk_forward);
     }
+    if (tick_equipment(input.equipment)) {
+        jump_held_ = input.jump;
+        jump_edges_.clear();
+        notify_tick(before_pose);
+        return;
+    }
     if (mount_pending_) {
         mount_pending_ = false;
         const auto changed = interact_board(input.room_offset);
         mount_held_ = input.mount;
+        grip_held_ = input.equipment.grip;
+        trigger_held_ = input.equipment.trigger;
         if (changed) {
             jump_held_ = input.jump;
             jump_edges_.clear();
@@ -770,6 +802,7 @@ void Player::tick(const RideInput& input) {
     }
     if (on_foot_) {
         boost_engaged_ = false;
+        carry_thrust_ = carry_.held() && input.boost;
         tick_foot(input, before_pose);
         notify_tick(before_pose);
         return;
@@ -1227,16 +1260,36 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
 Vec3 Player::camera_position(Vec3 desired) const {
     if (!finite(desired))
         throw std::runtime_error("Invalid camera position");
-    const auto anchor = render_position() + Vec3{0, 1.4, 0}, delta = desired - anchor;
-    const auto distance = length(delta);
-    if (distance < 1e-8)
-        return desired;
-    double t = 1;
-    if (const auto hit = terrain_.intersect(anchor, desired))
-        t = std::min(t, hit->t);
-    if (const auto hit = world_.ray(anchor, desired))
-        t = std::min(t, hit->t);
-    return anchor + delta * std::max(0.0, t - (t < 1 ? .15 / distance : 0));
+    auto anchor = render_position() + Vec3{0, 1, 0};
+    if (const auto lift = terrain_.intersect(anchor, anchor + Vec3{0, 1.5, 0}); lift && lift->normal.y > .5)
+        anchor = lift->point + lift->normal * .2;
+    const auto correct = [&](Vec3 eye) {
+        std::optional<ShapeContact> obstruction;
+        if (const auto hit = terrain_.intersect(anchor, eye))
+            obstruction = ShapeContact{hit->point, hit->normal, hit->t, 0};
+        if (const auto hit = world_.ray(anchor, eye); hit && hit->response && (!obstruction || hit->t < obstruction->t))
+            obstruction = *hit;
+        if (obstruction) {
+            auto normal = obstruction->normal;
+            if (dot(normal, anchor - obstruction->point) < 0)
+                normal = -normal;
+            eye = obstruction->point + normal * .4;
+        }
+        for (unsigned pass = 0; pass < 4; ++pass) {
+            eye = terrain_.clear_eye(eye, anchor);
+            const std::array<ProbeSphere, 1> sphere{{{eye, .45}}};
+            bool moved = false;
+            for (const auto& hit : world_.sweep(sphere, sphere))
+                if (hit.response && hit.depth > 1e-5) {
+                    eye += hit.normal * (hit.depth + .001);
+                    moved = true;
+                }
+            if (!moved)
+                break;
+        }
+        return eye;
+    };
+    return correct(desired);
 }
 
 Vec3 Player::render_position() const {
@@ -1248,12 +1301,16 @@ Vec3 Player::render_position() const {
 }
 
 Vec3 Player::render_board_position() const {
+    if (carry_.held())
+        return carry_.preview(holding_hand()).position;
     if (on_foot_)
         return loose_board_.previous * (1 - clock_.alpha()) + loose_board_.position * clock_.alpha();
     return render_position() + rider_.normal * rider_.recovery_height;
 }
 
 Vec3 Player::render_forward() const {
+    if (carry_.held())
+        return carry_.preview(holding_hand()).forward;
     if (on_foot_)
         return loose_board_.forward;
     const auto forward = normalized(project(rider_.forward, rider_.board_up), rider_.forward),
@@ -1262,6 +1319,8 @@ Vec3 Player::render_forward() const {
 }
 
 Vec3 Player::render_up() const {
+    if (carry_.held())
+        return carry_.preview(holding_hand()).up;
     if (on_foot_)
         return loose_board_.up;
     const auto forward = normalized(project(rider_.forward, rider_.board_up), rider_.forward),

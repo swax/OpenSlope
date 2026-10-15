@@ -163,3 +163,11 @@ Native binding tables, equipment-only recall and presentation state are authored
 independently. Controller/hand frames use Khronos OpenXR grip definitions and
 ordinary orthonormal bind transforms; no runtime control or avatar implementation
 from another project supplies the code. See quest-controls.md for primary links.
+
+Equipment interaction, throw filtering and UI are independently authored from the
+public Slopesmith ride manual/behavior inventory and standard rigid frames, OBB
+slabs, axis-angle rotations and platform input protocols. The chase camera uses
+clean 400 bodies, independently authored cached sphere/triangle guards and
+time-based exponential responses. Its near framing is an application choice,
+not a claim about the original default. The font is factored from Native's
+existing first-party controller-label geometry. See equipment-camera-ui.md.

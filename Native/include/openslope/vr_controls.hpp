@@ -9,7 +9,7 @@ struct VrInput {
     Vec3 gaze{};
     double spin = 0;
 };
-enum class VrBindingAction { Steer, Look, Boost, Jump, Board, Reset, Menu, Camera, RailExit, Grip };
+enum class VrBindingAction { Steer, Look, Boost, Jump, Board, Reset, Menu, Camera, RailExit, Grip, Squeeze, Aim };
 
 struct VrBinding {
     VrBindingAction action;

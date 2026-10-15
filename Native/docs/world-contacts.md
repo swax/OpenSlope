@@ -61,9 +61,9 @@ run gating. Nearby path/fade recovery and authored reset entry are implemented;
 see course-recovery.md. Exact tumble fidelity and remaining reset triggers are
 still outstanding. R still exits explicitly.
 
-The desktop chase camera shortens its arm against terrain and solid prop rays,
-with 15 cm clearance. This is a point-ray obstruction check; camera-radius
-occlusion, orbit controls and smoothing remain work. Tracked VR head positions
+The desktop chase camera now follows clean-400 travel/pitch/eye response, with
+normal-padded terrain/solid sight lines and a bounded 0.45 m volume guard before
+and after smoothing. Orbit/zoom and remaining comparison limits are in equipment-camera-ui.md. Tracked VR head positions
 are not clamped by this desktop camera policy. Headset comfort and contact input
 still need device validation.
 

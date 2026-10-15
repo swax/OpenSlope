@@ -1,4 +1,5 @@
 #include "openslope/terrain.hpp"
+#include "openslope/collision.hpp"
 #include "openslope/paths.hpp"
 #include <fstream>
 #include <map>
@@ -278,6 +279,55 @@ std::optional<TerrainHit> Terrain::intersect(Vec3 start, Vec3 end) const {
     std::optional<TerrainHit> hit;
     intersect_node(0, start, end - start, hit);
     return hit;
+}
+
+Vec3 Terrain::clear_eye(Vec3 eye, Vec3 safe, double radius) const {
+    if (!finite(eye) || !finite(safe) || !std::isfinite(radius) || radius <= 0)
+        throw std::invalid_argument("Invalid camera sphere");
+    for (unsigned pass = 0; pass < 4; ++pass) {
+        std::optional<ShapeContact> deepest;
+        const auto visit = [&](auto&& self, int index) -> void {
+            const auto& node = nodes_[index];
+            double distance = 0;
+            const std::array<double, 3> p{eye.x, eye.y, eye.z},
+                lo{node.bounds.min.x, node.bounds.min.y, node.bounds.min.z},
+                hi{node.bounds.max.x, node.bounds.max.y, node.bounds.max.z};
+            for (unsigned k = 0; k < 3; ++k) {
+                const auto d = p[k] - std::clamp(p[k], lo[k], hi[k]);
+                distance += d * d;
+            }
+            if (distance > radius * radius)
+                return;
+            if (node.left >= 0) {
+                self(self, node.left);
+                self(self, node.right);
+                return;
+            }
+            for (auto i = node.begin; i < node.end; ++i) {
+                const auto patch = order_[i];
+                if (patches_[patch].surface == 17)
+                    continue;
+                const auto& v = samples_[patch].points;
+                for (unsigned u = 0; u < 8; ++u)
+                    for (unsigned w = 0; w < 8; ++w) {
+                        const auto a = v[u * 9 + w], b = v[(u + 1) * 9 + w], c = v[(u + 1) * 9 + w + 1],
+                                   d = v[u * 9 + w + 1];
+                        for (const auto& hit : {swept_triangle(a, b, c, {eye, radius}, {eye, radius}),
+                                                swept_triangle(a, c, d, {eye, radius}, {eye, radius})})
+                            if (hit && (!deepest || hit->depth > deepest->depth))
+                                deepest = hit;
+                    }
+            }
+        };
+        visit(visit, 0);
+        if (!deepest || deepest->depth < 1e-5)
+            break;
+        auto normal = deepest->normal;
+        if (dot(normal, safe - deepest->point) < 0)
+            normal = -normal;
+        eye = deepest->point + normal * (radius + .001);
+    }
+    return eye;
 }
 
 Mesh Terrain::mesh(unsigned subdivisions) const {

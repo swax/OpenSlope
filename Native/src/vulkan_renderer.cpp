@@ -147,6 +147,15 @@ void VulkanRenderer::destroy_buffer(Buffer& b) {
 void VulkanRenderer::upload(const Mesh& source, std::span<const std::size_t> flag_models) {
     auto scene = std::make_shared<VulkanScene>(context_);
     scene->upload(source, flag_models);
+    if (scene_) {
+        finish();
+        reserve_poses(scene->pose_capacity_);
+        // Every scene uses the same two-sampler layout, so existing pipelines
+        // accept its descriptor sets. Publish only after upload and allocation.
+        scene_ = std::move(scene);
+        stats_ = {};
+        return;
+    }
     use_scene(std::move(scene));
 }
 
@@ -824,7 +833,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkUnmapMemory(context_.device, wake_vertices_.memory);
         stats_.wake_segments = unsigned(wake.size() / 6);
     }
-    if (avatar.size() > 60000 || avatar.size() % 3)
+    if (avatar.size() > 120000 || avatar.size() % 3)
         throw std::runtime_error("Avatar submission exceeds bounds");
     for (const auto& v : avatar)
         if (!finite({v.x, v.y, v.z}) || !std::isfinite(v.r) || !std::isfinite(v.g) || !std::isfinite(v.b))
@@ -832,7 +841,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     if (!avatar.empty()) {
         if (avatar.size() > avatar_capacity_) {
             destroy_buffer(avatar_vertices_);
-            avatar_capacity_ = std::min(std::size_t(60000), std::max(avatar.size(), avatar_capacity_ * 2));
+            avatar_capacity_ = std::min(std::size_t(120000), std::max(avatar.size(), avatar_capacity_ * 2));
             avatar_vertices_ =
                 create_buffer(avatar_capacity_ * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, nullptr);
         }

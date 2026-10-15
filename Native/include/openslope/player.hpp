@@ -1,5 +1,6 @@
 #pragma once
 #include "animation.hpp"
+#include "board_carry.hpp"
 #include "boost_trail.hpp"
 #include "collision.hpp"
 #include "course_recovery.hpp"
@@ -27,6 +28,7 @@ struct RideInput {
     bool run_restart = false;
     VrInput vr{};
     bool spawn_board = false;
+    EquipmentInput equipment{};
 }; // Left steer; positive posture is tuck/forward flip.
 enum class Motion { Air = 1, Ground = 2, Rail = 3, Wipeout = 5, RecoverContact = 6, OnFoot = 100 };
 enum class Control {
@@ -186,6 +188,27 @@ public:
 
     double walk_phase() const { return walk_phase_; }
 
+    bool carrying_board() const { return carry_.held(); }
+
+    std::optional<unsigned> carrying_hand() const { return carry_.hand(); }
+
+    EquipmentHand holding_hand() const {
+        auto hand = holding_hand_;
+        if (holding_relative_)
+            hand.position += render_position() - rider_.position;
+        return hand;
+    }
+
+    bool board_highlight() const { return board_highlight_; }
+
+    bool aim_board(const EquipmentRay& ray, bool desktop = false) const;
+
+    Vec3 board_velocity() const { return loose_board_.velocity; }
+
+    Vec3 board_spin() const { return loose_board_.spin; }
+
+    bool board_thrown() const { return loose_board_.thrown; }
+
     bool board_coasting() const { return on_foot_ && length(loose_board_.velocity) > .02; }
 
     Rails& rails() { return rails_; }
@@ -259,7 +282,19 @@ private:
         double age = 0;
         std::optional<std::size_t> ground_object{};
         Vec3 ground_velocity{};
+        Vec3 spin{};
+        bool thrown = false;
     } loose_board_;
+
+    BoardCarry carry_;
+    EquipmentHand holding_hand_{};
+    bool holding_relative_ = false;
+    bool board_highlight_ = false, carry_thrust_ = false;
+    std::array<bool, 2> grip_held_{}, grip_press_{}, grip_release_{}, trigger_held_{}, trigger_press_{};
+    bool tick_equipment(const EquipmentInput& input);
+    EquipmentInput equipment_frame(EquipmentInput input) const;
+    void drop_board(bool motion);
+    bool equip_held_board();
 
     bool on_foot_ = false, start_on_foot_ = false, mount_held_ = false, mount_pending_ = false;
     double walk_phase_ = 0;

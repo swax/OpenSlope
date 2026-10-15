@@ -61,9 +61,9 @@ inline Matrix board_transform(Vec3 position, Vec3 forward, Vec3 normal) {
         m.values[c * 4 + 1] = float(axes[c].y);
         m.values[c * 4 + 2] = float(axes[c].z);
     }
-    m.values[12] = float(position.x);
-    m.values[13] = float(position.y + .02);
-    m.values[14] = float(position.z);
+    m.values[12] = float(position.x + normal.x * .02);
+    m.values[13] = float(position.y + normal.y * .02);
+    m.values[14] = float(position.z + normal.z * .02);
     return m;
 }
 } // namespace openslope

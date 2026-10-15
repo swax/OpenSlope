@@ -1,0 +1,263 @@
+#include "openslope/ride_ui.hpp"
+#include "openslope/ui_font.hpp"
+#include <cctype>
+
+namespace openslope {
+namespace {
+using Colour = std::array<float, 3>;
+constexpr Colour ink{.88f, .94f, 1}, muted{.47f, .60f, .70f}, accent{.22f, .94f, .75f}, panel{.025f, .045f, .07f};
+
+void quad(std::vector<Vertex>& out, Vec3 a, Vec3 b, Vec3 c, Vec3 d, Colour col) {
+    for (const auto p : {a, b, c, a, c, d})
+        out.push_back({float(p.x), float(p.y), float(p.z), col[0], col[1], col[2]});
+}
+
+struct Canvas {
+    std::vector<Vertex>& out;
+    UiFrame f;
+
+    Vec3 point(double x, double y, double z = 0) const {
+        return f.origin + f.right * x + f.down * y - normalized(cross(f.right, f.down)) * z;
+    }
+
+    void rect(double x, double y, double w, double h, Colour c, double layer = 0) const {
+        quad(out, point(x, y, layer), point(x + w, y, layer), point(x + w, y + h, layer), point(x, y + h, layer), c);
+    }
+
+    void text(std::string value, double x, double y, double size, Colour c = ink) const {
+        if (value.size() > 42)
+            value = value.substr(0, 39) + "...";
+        for (std::size_t n = 0; n < value.size(); ++n) {
+            const auto bits = ui_glyph(char(std::toupper(static_cast<unsigned char>(value[n]))));
+            for (unsigned v = 0; v < 7; ++v)
+                for (unsigned u = 0; u < 5; ++u)
+                    if (bits[v] & (1u << (4 - u)))
+                        rect(x + (double(n) * 6 + u) * size, y + v * size * length(f.right) / length(f.down),
+                             size * .86, size * .86 * length(f.right) / length(f.down), c, .0008);
+        }
+    }
+};
+} // namespace
+
+std::vector<UiButton> RideUi::buttons() const {
+    if (library) {
+        std::vector<UiButton> list;
+        for (std::size_t i = page * 5; i < std::min(map_paths.size(), page * 5 + 5); ++i)
+            list.push_back({.06, .30 + double(i - page * 5) * .10, .88, .085, map_paths[i].filename().string(),
+                            UiAction::LoadMap, map_paths[i]});
+        list.push_back({.06, .85, .26, .085, "PREV", UiAction::Previous});
+        list.push_back({.37, .85, .26, .085, "BACK", UiAction::Maps});
+        list.push_back({.68, .85, .26, .085, "NEXT", UiAction::Next});
+        return list;
+    }
+    if (controls)
+        return {{.06, .85, .88, .085, "BACK TO MENU", UiAction::Controls}};
+    return {{.06, .30, .42, .095, "RESUME", UiAction::Resume},
+            {.52, .30, .42, .095, "RESTART", UiAction::Restart},
+            {.06, .42, .42, .095, third_person ? "VIEW: 3RD PERSON" : "VIEW: 1ST PERSON", UiAction::View},
+            {.52, .42, .42, .095, "CONTROLS", UiAction::Controls},
+            {.06, .54, .42, .095, sound_muted ? "SOUND: OFF" : "SOUND: ON", UiAction::Sound},
+            {.52, .54, .42, .095, stats ? "STATS: ON" : "STATS: OFF", UiAction::Stats},
+            {.06, .66, .42, .095, immersive ? "RECALL BOARD" : "MODE / NEW RUN",
+             immersive ? UiAction::Recall : UiAction::Mode},
+            {.52, .66, .42, .095, immersive ? "RECENTER VIEW" : "MAP LIBRARY",
+             immersive ? UiAction::Calibrate : UiAction::Maps},
+            {.06, .78, .42, .095, immersive ? (head_steer ? "HEAD STEER: ON" : "HEAD STEER: OFF") : "RECALL BOARD",
+             immersive ? UiAction::HeadSteer : UiAction::Recall},
+            {.52, .78, .42, .095, "EXIT", UiAction::Exit}};
+}
+
+UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
+    hover_ = -1;
+    bool inside = false;
+    if (visible && frame_.valid && ray.valid) {
+        const auto normal = normalized(cross(frame_.right, frame_.down));
+        const auto d = dot(ray.direction, normal);
+        if (std::abs(d) > 1e-8) {
+            const auto t = dot(frame_.origin - ray.origin, normal) / d;
+            if (t >= 0 && t <= 4) {
+                const auto delta = ray.origin + ray.direction * t - frame_.origin;
+                const auto x = dot(delta, frame_.right) / dot(frame_.right, frame_.right),
+                           y = dot(delta, frame_.down) / dot(frame_.down, frame_.down);
+                inside = x >= 0 && x <= 1 && y >= 0 && y <= 1;
+                const auto list = buttons();
+                for (unsigned i = 0; i < list.size(); ++i) {
+                    const auto& b = list[i];
+                    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h)
+                        hover_ = int(i);
+                }
+            }
+        }
+    }
+    UiResult result;
+    if (down && !pressed_ && inside) {
+        captured_ = true;
+        if (hover_ >= 0) {
+            const auto list = buttons();
+            const auto& b = list[std::size_t(hover_)];
+            result.action = b.action;
+            result.map = b.map;
+        }
+    }
+    result.consumed = captured_ || inside;
+    if (!down)
+        captured_ = false;
+    pressed_ = down;
+    return result;
+}
+
+UiFrame RideUi::desktop(const CameraPose& c, double aspect) {
+    const auto right = normalized(cross(c.forward, c.up)), up = normalized(cross(right, c.forward));
+    const auto height = .50 * std::tan(c.fov / 2) * 1.75, width = std::min(height * aspect, .95);
+    return {c.eye + c.forward * .50 - right * (width * .5) + up * (height * .5), right * width, -up * height, true};
+}
+
+UiFrame RideUi::wrist(const ControllerPose& c, Vec3 eye, Vec3 offset) {
+    if (!c.valid)
+        return {};
+    const auto centre = c.position + offset + Vec3{0, .18, 0};
+    const auto normal = normalized(eye - centre), right = normalized(project(c.right, normal), {1, 0, 0}),
+               up = normalized(cross(normal, right));
+    return {centre - right * .23 + up * .17, right * .46, -up * .34, true};
+}
+
+void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, double fps) const {
+    if (!frame_.valid)
+        return;
+    const Canvas c{out, frame_};
+    const auto speed = std::to_string(int(length(p.rider().velocity) * 3.6));
+    const auto& run = p.course_run().status();
+    if (wrist && !visible) {
+        c.rect(0, 0, 1, .17, panel);
+        c.rect(0, 0, .012, .17, accent);
+        c.text(speed + " KM/H  " +
+                   (p.carrying_board() ? "IN HAND"
+                    : p.on_foot()      ? "ON FOOT"
+                                       : "RIDING"),
+               .04, .035, .006, accent);
+        c.text("Y MENU  /  A JUMP  /  B BOOST", .04, .11, .0036, muted);
+        if (stats)
+            c.text("FPS " + std::to_string(int(fps)), .04, .20, .004, muted);
+        return;
+    }
+    if (visible) {
+        c.rect(0, 0, 1, 1, panel);
+        c.rect(0, 0, 1, .012, accent);
+        c.text("OPEN SLOPE", .06, .045, .007, accent);
+        c.text(library ? "MAP LIBRARY" : controls ? "CONTROLS" : "ON THE MOUNTAIN", .06, .13, .008);
+        c.text(speed + " KM/H  /  " +
+                   (p.carrying_board() ? "CARRYING"
+                    : p.on_foot()      ? "ON FOOT"
+                                       : "RIDING"),
+               .06, .235, .004, muted);
+        c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
+        if (controls && !library) {
+            const std::array<std::string, 10> rows =
+                wrist ? std::array<std::string, 10>{"A   HOLD / RELEASE JUMP",   "B   BOOST / HELD BOARD THRUST",
+                                                    "LEFT STICK   WALK / STEER", "RIGHT STICK   TURN / CLICK VIEW",
+                                                    "TRIGGER   POINT TO RIDE",   "GRIP   PICK UP / PASS / THROW",
+                                                    "GRIP BEHIND HEAD   SUMMON", "AIR GRIP   TAKE BOARD OFF",
+                                                    "HELD TRIGGER   RE-EQUIP",   "Y   SHOW / HIDE WRIST"}
+                      : std::array<std::string, 10>{"W A S D   WALK / CARVE / POSTURE",  "SPACE   HOLD / RELEASE JUMP",
+                                                    "SHIFT   BOOST / HELD BOARD THRUST", "LMB   POINT TO RIDE",
+                                                    "RMB ON BOARD   CARRY / THROW",      "RMB DRAG   ORBIT CHARACTER",
+                                                    "WHEEL   CAMERA DISTANCE",           "E   MOUNT / DISMOUNT",
+                                                    "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
+            for (unsigned i = 0; i < rows.size(); ++i)
+                c.text(rows[i], .06, .31 + i * .048, .0037, i == 4 || i == 5 ? accent : ink);
+        }
+        if (library && map_paths.empty())
+            c.text("PLACE MAP FOLDERS IN MAPS", .06, .44, .005, muted);
+        const auto list = buttons();
+        for (unsigned i = 0; i < list.size(); ++i) {
+            const auto& b = list[i];
+            const bool selected = int(i) == hover_;
+            c.rect(b.x, b.y, b.w, b.h, selected ? Colour{.06f, .25f, .25f} : Colour{.06f, .10f, .145f}, .0002);
+            c.rect(b.x, b.y, .006, b.h, selected ? accent : Colour{.12f, .23f, .29f}, .0003);
+            c.text(b.text, b.x + .018, b.y + .035, .0036, selected ? accent : ink);
+        }
+        c.text(!notice.empty() ? notice
+               : wrist         ? "POINT RIGHT HAND + TRIGGER"
+                               : "ESC TO RETURN TO THE SLOPE",
+               .06, .94, .0033, muted);
+    } else {
+        c.rect(0, 0, .24, .20, panel);
+        c.rect(0, 0, .006, .20, accent);
+        c.text(speed, .025, .025, .012);
+        c.text("KM/H", .025, .13, .004, muted);
+        if (run.mode == RunMode::Freeride) {
+            c.rect(.36, 0, .27, .13, panel);
+            c.text("FREERIDE", .385, .045, .005, muted);
+        }
+        if (run.mode != RunMode::Freeride) {
+            c.rect(.36, 0, .27, .16, panel);
+            c.text(run_clock(run.clock), .385, .03, .009);
+        }
+        c.rect(.66, 0, .34, .25, panel);
+        c.text(p.carrying_board() ? "IN HAND" : p.on_foot() ? "ON FOOT" : "RIDING", .685, .025, .005, accent);
+        c.text("SCORE " + std::to_string(p.scoring().status().total()), .685, .10, .0027, muted);
+        c.text("BOOST", .685, .16, .0035, muted);
+        c.rect(.685, .21, .29, .016, {.12f, .20f, .25f});
+        c.rect(.685, .21, .29 * double(p.scoring().meter_segments()) / 15, .016, accent, .0002);
+        c.rect(.05, .91, .90, .09, panel);
+        c.text(p.carrying_board()    ? (wrist ? "RELEASE GRIP THROW / TRIGGER RIDE" : "RELEASE RMB THROW / LMB RIDE")
+               : p.board_highlight() ? (wrist ? "TRIGGER RIDE / GRIP CARRY" : "LMB RIDE / HOLD RMB CARRY")
+               : wrist               ? "Y MENU   A JUMP   B BOOST"
+                                     : "RMB LOOK   E BOARD   SPACE JUMP   ESC MENU",
+               .075, .94, .0034, p.board_highlight() ? accent : ink);
+        if (p.rider().charge > 0) {
+            c.rect(.30, .83, .40, .018, {.12f, .20f, .25f});
+            c.rect(.30, .83, .40 * p.rider().charge, .018, accent, .0003);
+        }
+    }
+    if (stats)
+        c.text("FPS " + std::to_string(int(fps)), .06, .89, .0035, muted);
+}
+
+void RideUi::append_pointer(std::vector<Vertex>& out, const EquipmentRay& ray) const {
+    if (!visible || !frame_.valid || !ray.valid)
+        return;
+    const auto n = normalized(cross(frame_.right, frame_.down));
+    const auto denom = dot(ray.direction, n);
+    auto distance = std::abs(denom) > 1e-6 ? dot(frame_.origin - ray.origin, n) / denom : 2.;
+    distance = std::clamp(distance, 0., 2.);
+    const auto end = ray.origin + normalized(ray.direction) * distance;
+    const auto side = normalized(cross(ray.direction, {0, 1, 0}), {1, 0, 0}) * .001;
+    quad(out, ray.origin - side, ray.origin + side, end + side, end - side, accent);
+    const auto r = normalized(frame_.right) * .003, u = normalized(frame_.down) * .003;
+    quad(out, end - r - u - n * .002, end + r - u - n * .002, end + r + u - n * .002, end - r + u - n * .002, ink);
+}
+
+void equipment_outline(std::vector<Vertex>& out, const Player& p) {
+    if (!p.board_highlight() || p.carrying_board())
+        return;
+    const EquipmentPose pose{p.render_board_position(), p.render_forward(), p.render_up()};
+    const auto at = [&](double x, double z) { return equipment_point(pose, {x, .03, z}); };
+    constexpr Colour col{.22f, 1, .78f};
+    for (const auto x : {-.195, .185})
+        quad(out, at(x, -.815), at(x + .01, -.815), at(x + .01, .815), at(x, .815), col);
+    for (const auto z : {-.815, .805})
+        quad(out, at(-.195, z), at(.195, z), at(.195, z + .01), at(-.195, z + .01), col);
+}
+
+EquipmentInput desktop_equipment(const Player& p, const EquipmentRay& ray, bool grip, bool trigger) {
+    EquipmentInput e;
+    e.relative = true;
+    e.head = {0, 1.65, 0};
+    e.facing = normalized(ray.direction, {0, 0, -1});
+    e.rays[1] = ray;
+    e.rays[1].origin -= p.rider().position;
+    e.grip[1] = grip;
+    e.trigger[1] = trigger;
+    const auto facing = normalized(project(e.facing, {0, 1, 0}), p.camera_forward()),
+               right = normalized(cross(facing, {0, 1, 0}));
+    const auto shoulder = p.rider().position + Vec3{0, 1.35, 0} + right * .165;
+    const auto direction = normalized(ray.direction, {0, 0, -1});
+    const auto target = ray.origin + direction * std::max(.5, dot(shoulder - ray.origin, direction) + .8);
+    const auto wrist = shoulder + normalized(target - shoulder, facing) * .55;
+    const auto hand_right = normalized(cross(right, direction), {0, 1, 0});
+    auto& h = e.hands[1];
+    h = {wrist - p.rider().position, hand_right, direction, right, true};
+    return e;
+}
+} // namespace openslope

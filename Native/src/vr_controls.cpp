@@ -3,7 +3,7 @@
 
 namespace openslope {
 std::span<const VrBinding> touch_bindings() {
-    static constexpr std::array<VrBinding, 12> bindings{
+    static constexpr std::array<VrBinding, 16> bindings{
         {{VrBindingAction::Steer, "/user/hand/left/input/thumbstick"},
          {VrBindingAction::Look, "/user/hand/right/input/thumbstick"},
          {VrBindingAction::Boost, "/user/hand/right/input/b/click"},
@@ -15,7 +15,11 @@ std::span<const VrBinding> touch_bindings() {
          {VrBindingAction::Camera, "/user/hand/right/input/thumbstick/click"},
          {VrBindingAction::RailExit, "/user/hand/left/input/thumbstick/click"},
          {VrBindingAction::Grip, "/user/hand/left/input/grip/pose"},
-         {VrBindingAction::Grip, "/user/hand/right/input/grip/pose"}}};
+         {VrBindingAction::Grip, "/user/hand/right/input/grip/pose"},
+         {VrBindingAction::Aim, "/user/hand/left/input/aim/pose"},
+         {VrBindingAction::Aim, "/user/hand/right/input/aim/pose"},
+         {VrBindingAction::Squeeze, "/user/hand/left/input/squeeze/value"},
+         {VrBindingAction::Squeeze, "/user/hand/right/input/squeeze/value"}}};
     return bindings;
 }
 

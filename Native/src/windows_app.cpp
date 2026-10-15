@@ -2,6 +2,7 @@
 #include "openslope/audio_scene.hpp"
 #include "openslope/avatar.hpp"
 #include "openslope/replay.hpp"
+#include "openslope/ride_ui.hpp"
 #include "openxr_app.hpp"
 #include "vulkan_renderer.hpp"
 #include <windows.h>
@@ -13,13 +14,23 @@
 namespace {
 using namespace openslope;
 
-Vec3 camera_eye(const Player& player, bool first_person = false) {
+Vec3 camera_eye(const Player& player, bool first_person = false, const FollowCamera* camera = nullptr) {
+    if (camera)
+        return camera->pose().eye;
     const auto p = player.render_position();
     return first_person ? avatar_pose(player).joint(AvatarJoint::Head) + avatar_pose(player).up * .105
                         : player.camera_position(p - player.camera_forward() * 7 + Vec3{0, 3.5, 0});
 }
 
-Matrix camera_for(const Player& player, double aspect, bool first_person = false, bool look_down = false) {
+Matrix camera_for(const Player& player, double aspect, bool first_person = false, bool look_down = false,
+                  const FollowCamera* camera = nullptr) {
+    if (camera) {
+        const auto& c = camera->pose();
+        const auto tangent = std::tan(c.fov / 2);
+        const auto direction = look_down && first_person ? normalized(c.forward * .22 + Vec3{0, -1, 0}) : c.forward;
+        return projection(-tangent * aspect, tangent * aspect, -tangent, tangent, c.near_clip) *
+               view(c.eye, direction, c.up);
+    }
     const auto position = player.render_position(), forward = player.camera_forward();
     const auto eye = camera_eye(player, first_person);
     const auto direction = first_person
@@ -74,7 +85,7 @@ struct Image {
 
 int capture(Player& player, const std::filesystem::path& output, double seconds, const std::filesystem::path& replay,
             const std::filesystem::path& audio_output, unsigned msaa, bool terrain_culling, bool first_person,
-            bool look_down) {
+            bool look_down, bool menu = false, bool controls = false) {
     VulkanContext context;
     context.create(false);
     Image image(context);
@@ -100,18 +111,28 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         });
     }
     Avatar avatar;
+    FollowCamera chase;
+    chase.first_person = first_person;
+    RideUi ui;
+    ui.visible = menu;
+    ui.controls = controls;
     unsigned frames = 0, packed_frames = 0;
     double wall = 0, gpu = 0, cull = 0;
     std::uint64_t submitted = 0;
     const auto draw = [&] {
-        player.world_view(camera_eye(player, first_person));
+        chase.step(player, player.contract().tick_seconds());
+        ui.frame(RideUi::desktop(chase.pose(), 1280. / 720));
+        const auto body = avatar.mesh(avatar_pose(player), first_person, false, chase.pose().eye);
+        std::vector<Vertex> presented(body.begin(), body.end());
+        equipment_outline(presented, player);
+        ui.append(presented, player);
+        player.world_view(chase.pose().eye);
         const auto started = std::chrono::steady_clock::now();
-        renderer.render(0, camera_for(player, 1280.0 / 720, first_person, look_down),
+        renderer.render(0, camera_for(player, 1280.0 / 720, first_person, look_down, &chase),
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
-                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, camera_eye(player, first_person),
-                        player.effects().sprites(), player.effects().wake(), player.effects().sheet(),
-                        avatar.mesh(avatar_pose(player), first_person, false, camera_eye(player, first_person)),
-                        player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, chase.pose().eye, player.effects().sprites(),
+                        player.effects().wake(), player.effects().sheet(), presented, player.reset_fade(),
+                        player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices());
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
@@ -174,6 +195,10 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                   << sound.music_node << '\n';
         player.observe_ticks({});
     }
+    std::cout << "Equipment: held " << player.carrying_board() << "; hand "
+              << (player.carrying_hand() ? int(*player.carrying_hand()) : -1) << "; thrown " << player.board_thrown()
+              << "; velocity [" << player.board_velocity().x << ',' << player.board_velocity().y << ','
+              << player.board_velocity().z << "]; spin " << length(player.board_spin()) << '\n';
     std::cout << "Boarding: on foot " << player.on_foot() << "; distance " << player.board_distance() << " m; coasting "
               << player.board_coasting() << "; board [" << player.render_board_position().x << ','
               << player.render_board_position().y << ',' << player.render_board_position().z << "]\n";
@@ -220,10 +245,37 @@ struct Window {
     VkSemaphore available{}, finished{};
     bool resized = true, quit = false;
     unsigned width{}, height{}, msaa = 4;
+    FollowCamera camera;
+    RideUi ui;
+    double mouse_dx = 0, mouse_dy = 0, wheel = 0, fps = 0;
+    bool mouse_captured = false;
+    POINT restore_cursor{};
+
+    void capture_mouse(bool capture) {
+        if (capture == mouse_captured)
+            return;
+        mouse_captured = capture;
+        if (capture) {
+            GetCursorPos(&restore_cursor);
+            SetCapture(handle);
+            RECT r;
+            GetClientRect(handle, &r);
+            MapWindowPoints(handle, nullptr, reinterpret_cast<POINT*>(&r), 2);
+            ClipCursor(&r);
+            ShowCursor(FALSE);
+        } else {
+            ClipCursor(nullptr);
+            ReleaseCapture();
+            ShowCursor(TRUE);
+            SetCursorPos(restore_cursor.x, restore_cursor.y);
+        }
+        mouse_dx = mouse_dy = 0;
+    }
 
     explicit Window(VulkanContext& ctx) : context(ctx), renderer(ctx) {}
 
     ~Window() {
+        capture_mouse(false);
         vkDeviceWaitIdle(context.device);
         renderer.clear_targets();
         if (available)
@@ -245,6 +297,23 @@ struct Window {
             SetWindowLongPtrW(handle, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(window));
         }
         if (window) {
+            if (message == WM_MOUSEWHEEL) {
+                window->wheel += double(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA;
+                return 0;
+            }
+            if (message == WM_KILLFOCUS)
+                window->capture_mouse(false);
+            if (message == WM_INPUT && window->mouse_captured) {
+                RAWINPUT data{};
+                UINT size = sizeof(data);
+                if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lparam), RID_INPUT, &data, &size,
+                                    sizeof(RAWINPUTHEADER)) != UINT(-1) &&
+                    data.header.dwType == RIM_TYPEMOUSE && !(data.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+                    window->mouse_dx += data.data.mouse.lLastX;
+                    window->mouse_dy += data.data.mouse.lLastY;
+                }
+                return 0;
+            }
             if (message == WM_SIZE)
                 window->resized = true;
             if (message == WM_CLOSE) {
@@ -369,12 +438,17 @@ struct Window {
         }
         if (acquired != VK_SUBOPTIMAL_KHR)
             vk_check(acquired, "Acquire preview image");
-        player.world_view(camera_eye(player, first_person));
-        renderer.render(image, camera_for(player, double(width) / height, first_person, look_down),
+        ui.frame(RideUi::desktop(camera.pose(), double(width) / height));
+        ui.third_person = !first_person;
+        const auto body_mesh = avatar.mesh(avatar_pose(player), first_person, false, camera.pose().eye);
+        std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
+        equipment_outline(presented, player);
+        ui.append(presented, player, false, fps);
+        player.world_view(camera.pose().eye);
+        renderer.render(image, camera_for(player, double(width) / height, first_person, look_down, &camera),
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
-                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, available, finished, camera_eye(player, first_person),
-                        player.effects().sprites(), player.effects().wake(), player.effects().sheet(),
-                        avatar.mesh(avatar_pose(player), first_person, false, camera_eye(player, first_person)),
+                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, available, finished, camera.pose().eye,
+                        player.effects().sprites(), player.effects().wake(), player.effects().sheet(), presented,
                         player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices());
@@ -402,7 +476,7 @@ int main(int argc, char** argv) {
         double seconds = 0;
         unsigned msaa = 4;
         RunMode run_option = RunMode::Freeride;
-        bool head_steering = false;
+        bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_smoke = false;
         for (int i = 1; i < argc; ++i) {
             const std::string option = argv[i];
             if (option == "--xr")
@@ -411,7 +485,15 @@ int main(int argc, char** argv) {
                 head_steering = true;
             else if (option == "--mode" && i + 1 < argc)
                 run_option = run_mode(argv[++i]);
-            else if (option == "--on-foot")
+            else if (option == "--ui-smoke") {
+                ui_smoke = true;
+                smoke_window = true;
+            } else if (option == "--ui-menu")
+                ui_menu_option = true;
+            else if (option == "--ui-controls") {
+                ui_menu_option = true;
+                ui_controls_option = true;
+            } else if (option == "--on-foot")
                 on_foot_option = true;
             else if (option == "--first-person")
                 first_person_option = true;
@@ -453,7 +535,8 @@ int main(int argc, char** argv) {
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
                        "[--msaa 1|2|4|8] [--no-terrain-culling]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E/G "
-                       "mount/dismount, T restart run, Escape quit.\n";
+                       "mount/dismount, T restart run, RMB carry/throw or drag to orbit, wheel zoom, LMB aimed ride, "
+                       "Escape release cursor/menu.\n";
                 return 0;
             } else
                 throw std::runtime_error("Unknown or incomplete argument: " + option);
@@ -482,21 +565,21 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Choose either OpenXR or offline capture");
         if (!replay.empty() && (output.empty() || seconds != 0))
             throw std::runtime_error("Replay requires --capture and cannot combine with --seconds");
-        Player player(map.empty() ? Terrain::demo() : Terrain::load(map));
+        auto player = std::make_unique<Player>(map.empty() ? Terrain::demo() : Terrain::load(map));
         if (run_option != RunMode::Freeride)
-            player.configure_run(run_option);
+            player->configure_run(run_option);
         if (xr) {
             XrPlatform platform;
             platform.head_steering = head_steering;
-            return run_openxr(player, platform, seconds);
+            return run_openxr(*player, platform, seconds);
         }
         if (!audio_output.empty() && output.empty())
             throw std::runtime_error("Audio capture requires --capture");
         if (on_foot_option)
-            player.start_on_foot();
+            player->start_on_foot();
         if (!output.empty())
-            return capture(player, output, seconds, replay, audio_output, msaa, terrain_culling, first_person_option,
-                           look_down_option);
+            return capture(*player, output, seconds, replay, audio_output, msaa, terrain_culling, first_person_option,
+                           look_down_option, ui_menu_option, ui_controls_option);
         if (smoke_window && seconds == 0)
             seconds = 3;
         VulkanContext context;
@@ -504,23 +587,51 @@ int main(int argc, char** argv) {
         Window window(context);
         window.renderer.cull_terrain(terrain_culling);
         window.msaa = msaa;
-        window.create(player.terrain().mesh(), !smoke_window, player.logic().flag_models());
+        window.create(player->terrain().mesh(), !smoke_window, player->logic().flag_models());
         std::unique_ptr<AudioScene> audio;
         std::unique_ptr<AudioDevice> device;
         std::unique_ptr<AudioService> audio_service;
         if (!no_audio && !smoke_window) {
-            audio = std::make_unique<AudioScene>(player.terrain().map_root());
+            audio = std::make_unique<AudioScene>(player->terrain().map_root());
             audio->mixer().paused(true);
             device = std::make_unique<AudioDevice>(audio->mixer());
             audio_service = std::make_unique<AudioService>(*audio);
-            player.observe_ticks([&](const Player& p, const Rider& before) { audio->tick(p, before); });
+            player->observe_ticks([&](const Player& p, const Rider& before) { audio->tick(p, before); });
             if (!device->active())
                 std::cerr << "Audio output unavailable; use --no-audio for silent playback\n";
         }
+        RAWINPUTDEVICE mouse{1, 2, 0, window.handle};
+        if (!RegisterRawInputDevices(&mouse, 1, sizeof(mouse)))
+            throw std::runtime_error("Cannot register relative mouse input");
+        {
+            std::set<std::filesystem::path> available;
+            for (const auto& root : std::array<std::filesystem::path, 2>{
+                     std::filesystem::path("Maps"), map.empty() ? std::filesystem::path("Maps") : map.parent_path()}) {
+                std::error_code error;
+                for (std::filesystem::directory_iterator i(root, error), end; !error && i != end; i.increment(error))
+                    if (i->is_directory() && std::filesystem::exists(i->path() / "Patches.json"))
+                        available.insert(std::filesystem::weakly_canonical(i->path()));
+            }
+            window.ui.map_paths.assign(available.begin(), available.end());
+        }
+        window.camera.first_person = first_person_option;
+        window.camera.step(*player, 0);
         const auto started = std::chrono::steady_clock::now();
         auto previous = started;
         bool first_person = first_person_option, last_camera = false, paused = false, last_pause = false,
              last_focus = false, muted = false, last_mute = false;
+        bool last_escape = false, last_right = false, mouse_carry = false, first_released = false;
+        const std::array<UiAction, 8> ui_script{UiAction::Controls, UiAction::Controls, UiAction::View,
+                                                UiAction::Sound,    UiAction::Stats,    UiAction::Mode,
+                                                UiAction::Maps,     UiAction::LoadMap};
+        std::size_t ui_step = 0;
+        RunMode ui_expected_mode = RunMode::Freeride;
+        unsigned ui_frame = 0;
+        const auto original_map = player->terrain().map_root();
+        if (ui_smoke) {
+            window.ui.visible = true;
+            paused = true;
+        }
         while (window.events()) {
             const auto now = std::chrono::steady_clock::now();
             const auto dt = std::chrono::duration<double>(now - previous).count();
@@ -529,17 +640,30 @@ int main(int argc, char** argv) {
                 break;
             const bool focused = GetForegroundWindow() == window.handle;
             const auto key = [&](int value) { return focused && (GetAsyncKeyState(value) & 0x8000) != 0; };
-            if (key(VK_ESCAPE))
-                break;
+            const bool escape = key(VK_ESCAPE);
+            if (escape && !last_escape) {
+                if (window.mouse_captured) {
+                    window.capture_mouse(false);
+                    first_released = true;
+                } else {
+                    window.ui.visible = !window.ui.visible;
+                    paused = window.ui.visible;
+                    player->release_inputs();
+                }
+            }
+            last_escape = escape;
             const auto camera = key('F') || key('V');
-            if (camera && !last_camera)
+            if (camera && !last_camera) {
                 first_person = !first_person;
+                first_released = false;
+            }
             last_camera = camera;
             const auto pause = key('P');
             if (pause && !last_pause) {
                 paused = !paused;
+                window.ui.visible = paused;
                 if (paused)
-                    player.release_inputs();
+                    player->release_inputs();
             }
             last_pause = pause;
             const auto mute = key('M');
@@ -547,34 +671,184 @@ int main(int argc, char** argv) {
                 muted = !muted;
             last_mute = mute;
             if (audio) {
-                audio->listener({camera_eye(player, first_person), player.camera_forward(), {0, 1, 0}});
+                audio->listener({window.camera.pose().eye, window.camera.pose().forward, {0, 1, 0}});
                 audio->mixer().paused(paused || !focused);
                 audio->mixer().volume(muted ? 0 : 1);
             }
             if (!focused && last_focus)
-                player.release_inputs();
+                player->release_inputs();
             last_focus = focused;
-            if (focused && !paused)
-                player.advance(dt, {double(key('A') || key(VK_LEFT)) - double(key('D') || key(VK_RIGHT)),
-                                    key(VK_SHIFT),
-                                    key('R'),
-                                    key(VK_SPACE),
-                                    double(key('W') || key(VK_UP)) - double(key('S') || key(VK_DOWN)),
-                                    key('Q'),
-                                    key('E') || key('G'),
-                                    {},
-                                    {},
-                                    key('T')});
+            const double aspect = double(std::max(1u, window.width)) / std::max(1u, window.height);
+            window.camera.first_person = first_person;
+            window.ui.third_person = !first_person;
+            window.ui.sound_muted = muted;
+            window.ui.frame(RideUi::desktop(window.camera.pose(), aspect));
+            POINT cursor{};
+            GetCursorPos(&cursor);
+            ScreenToClient(window.handle, &cursor);
+            auto ray = window.camera.ray(
+                window.mouse_captured ? 0 : double(cursor.x) * 2 / std::max(1u, window.width) - 1,
+                window.mouse_captured ? 0 : 1 - double(cursor.y) * 2 / std::max(1u, window.height), aspect);
+            bool pointer_down = key(VK_LBUTTON);
+            if (ui_smoke && ui_step < ui_script.size()) {
+                const auto choices = window.ui.buttons();
+                auto choice = std::find_if(choices.begin(), choices.end(), [&](const UiButton& b) {
+                    return b.action == ui_script[ui_step] &&
+                           (b.action != UiAction::LoadMap || b.map != std::filesystem::weakly_canonical(original_map));
+                });
+                if (choice == choices.end())
+                    throw std::runtime_error("UI smoke action unavailable");
+                const auto& f = window.ui.frame();
+                const auto point =
+                    f.origin + f.right * (choice->x + choice->w * .5) + f.down * (choice->y + choice->h * .5);
+                ray = {window.camera.pose().eye, normalized(point - window.camera.pose().eye), true};
+                pointer_down = (ui_frame++ % 2) == 0;
+            }
+            const auto click = window.ui.pointer(ray, pointer_down);
+            if (ui_smoke && click.action != UiAction::None) {
+                if (click.action != ui_script.at(ui_step))
+                    throw std::runtime_error("UI smoke selected wrong action");
+                ++ui_step;
+            }
+            switch (click.action) {
+            case UiAction::Resume:
+                window.ui.visible = false;
+                paused = false;
+                break;
+            case UiAction::Restart:
+                player->restart_run();
+                if (!player->on_foot())
+                    player->start_on_foot();
+                window.ui.visible = false;
+                paused = false;
+                break;
+            case UiAction::View:
+                first_person = !first_person;
+                first_released = false;
+                break;
+            case UiAction::Controls: window.ui.controls = !window.ui.controls; break;
+            case UiAction::Sound: muted = !muted; break;
+            case UiAction::Stats: window.ui.stats = !window.ui.stats; break;
+            case UiAction::Calibrate: window.camera.reset(); break;
+            case UiAction::Recall: player->recall_board(window.camera.walk_forward()); break;
+            case UiAction::Maps:
+                window.ui.library = !window.ui.library;
+                window.ui.controls = false;
+                break;
+            case UiAction::Previous:
+                if (window.ui.page > 0)
+                    --window.ui.page;
+                break;
+            case UiAction::Next:
+                if ((window.ui.page + 1) * 5 < window.ui.map_paths.size())
+                    ++window.ui.page;
+                break;
+            case UiAction::Mode: {
+                auto mode = player->course_run().status().mode;
+                bool unavailable = false;
+                for (unsigned attempt = 0; attempt < 3; ++attempt) {
+                    mode = mode == RunMode::Freeride ? RunMode::Race
+                           : mode == RunMode::Race   ? RunMode::Showoff
+                                                     : RunMode::Freeride;
+                    try {
+                        player->configure_run(mode);
+                        player->restart_run();
+                        if (!player->on_foot())
+                            player->start_on_foot();
+                        window.ui.notice = unavailable ? "SKIPPED UNSUPPORTED EVENT" : "";
+                        break;
+                    } catch (const std::runtime_error&) {
+                        unavailable = true;
+                        window.ui.notice = "EVENT UNAVAILABLE FOR MAP";
+                    }
+                }
+                ui_expected_mode = player->course_run().status().mode;
+                break;
+            }
+            case UiAction::LoadMap: {
+                try {
+                    auto next = std::make_unique<Player>(Terrain::load(click.map));
+                    try {
+                        next->configure_run(player->course_run().status().mode);
+                    } catch (const std::runtime_error&) {
+                        next->configure_run(RunMode::Freeride);
+                    }
+                    next->start_on_foot();
+                    window.renderer.upload(next->terrain().mesh(), next->logic().flag_models());
+                    audio_service.reset();
+                    device.reset();
+                    audio.reset();
+                    player = std::move(next);
+                    if (!no_audio && !smoke_window) {
+                        audio = std::make_unique<AudioScene>(player->terrain().map_root());
+                        device = std::make_unique<AudioDevice>(audio->mixer());
+                        audio_service = std::make_unique<AudioService>(*audio);
+                        player->observe_ticks([&](const Player& p, const Rider& before) { audio->tick(p, before); });
+                    }
+                    window.ui.visible = false;
+                    window.ui.library = false;
+                    window.ui.notice.clear();
+                    paused = false;
+                    window.camera.reset();
+                } catch (const std::exception& e) {
+                    window.ui.notice = "COULD NOT OPEN MAP";
+                    std::cerr << e.what() << '\n';
+                }
+                break;
+            }
+            case UiAction::Exit: window.quit = true; break;
+            default: break;
+            }
+            if (ui_smoke && ui_step == ui_script.size()) {
+                if (player->terrain().map_root() == original_map || !player->on_foot() || window.ui.visible ||
+                    player->course_run().status().mode != ui_expected_mode)
+                    throw std::runtime_error("UI map load did not replace and stage the selected map");
+                window.quit = true;
+            }
+            const bool right = key(VK_RBUTTON);
+            if (right && !last_right)
+                mouse_carry = player->carrying_board() || (!window.ui.visible && player->aim_board(ray, true));
+            const bool looking = right && !mouse_carry && !window.ui.visible;
+            const bool recapture = first_person && first_released && key(VK_LBUTTON) && !click.consumed &&
+                                   !player->aim_board(ray, true) && !player->carrying_board();
+            if (recapture)
+                first_released = false;
+            window.capture_mouse(focused && !paused && !window.ui.visible &&
+                                 (looking || (first_person && !first_released)));
+            if (window.mouse_captured)
+                window.camera.orbit(window.mouse_dx, window.mouse_dy);
+            window.mouse_dx = window.mouse_dy = 0;
+            window.camera.zoom(window.wheel);
+            window.wheel = 0;
+            if (focused && !paused) {
+                RideInput input{double(key('A') || key(VK_LEFT)) - double(key('D') || key(VK_RIGHT)),
+                                key(VK_SHIFT),
+                                key('R'),
+                                key(VK_SPACE),
+                                double(key('W') || key(VK_UP)) - double(key('S') || key(VK_DOWN)),
+                                key('Q'),
+                                key('E') || key('G'),
+                                window.camera.walk_forward(),
+                                {},
+                                key('T')};
+                input.equipment = desktop_equipment(*player, ray, right && mouse_carry,
+                                                    !recapture && !click.consumed && key(VK_LBUTTON));
+                player->advance(dt, input);
+            }
+            last_right = right;
+            window.camera.first_person = first_person;
+            window.camera.step(*player, dt, key(VK_SHIFT), looking);
+            window.fps = dt > 0 ? 1 / dt : 0;
             const auto& stats = window.renderer.stats();
-            const auto& rider = player.rider();
+            const auto& rider = player->rider();
             std::wostringstream title;
             title << L"OpenSlope Native | " << int(length(rider.velocity) * 3.6) << L" km/h | ";
-            if (player.course_run().status().mode != RunMode::Freeride) {
-                const auto readout = score_readout(player.scoring());
+            if (player->course_run().status().mode != RunMode::Freeride) {
+                const auto readout = score_readout(player->scoring());
                 title << std::wstring(readout.begin(), readout.end()) << L" | BOOST "
-                      << player.scoring().meter_segments() << L"/15 | ";
+                      << player->scoring().meter_segments() << L"/15 | ";
             }
-            const auto& run = player.course_run().status();
+            const auto& run = player->course_run().status();
             if (run.mode != RunMode::Freeride) {
                 const auto clock = run_clock(run.clock), phase = std::string(run_name(run.phase));
                 title << std::wstring(clock.begin(), clock.end()) << L" | " << std::wstring(phase.begin(), phase.end())
@@ -583,8 +857,8 @@ int main(int argc, char** argv) {
                 if (run.phase == RunPhase::Countdown)
                     title << int(std::ceil(run.countdown)) << L" | ";
             }
-            if (player.on_foot())
-                title << L"On foot | E mount (" << int(player.board_distance() * 100) << L" cm) | ";
+            if (player->on_foot())
+                title << L"On foot | E mount (" << int(player->board_distance() * 100) << L" cm) | ";
             if (paused)
                 title << L"PAUSED";
             else if (rider.control == Control::ResetWarp)
@@ -597,7 +871,7 @@ int main(int argc, char** argv) {
                 title << L"Charge " << int(rider.charge * 100) << L"%";
             else if (rider.motion == Motion::Rail)
                 title << L"Grinding | Spin " << int(rider.rail_spin) << L" deg | Q exit";
-            else if (player.on_foot())
+            else if (player->on_foot())
                 title << L"Walking";
             else
                 title << (rider.grounded ? (rider.lead < 0 ? L"Switch" : L"Riding") : L"Air");
@@ -606,13 +880,18 @@ int main(int argc, char** argv) {
                      L"down | M "
                   << (muted ? L"unmute" : L"mute");
             SetWindowTextW(window.handle, title.str().c_str());
-            window.draw(player, first_person, key('C') || look_down_option);
+            window.draw(*player, first_person, key('C') || look_down_option);
             if (IsIconic(window.handle))
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
+        if (ui_smoke) {
+            if (ui_step != ui_script.size())
+                throw std::runtime_error("UI smoke did not complete");
+            std::cout << "Desktop UI/map load smoke: PASS\n";
+        }
         if (smoke_window)
             std::cout << "Vulkan window/swapchain smoke: PASS\n";
-        player.observe_ticks({});
+        player->observe_ticks({});
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "OpenSlope native: " << e.what() << '\n';

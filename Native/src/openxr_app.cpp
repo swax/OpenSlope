@@ -2,6 +2,7 @@
 #include "audio_device.hpp"
 #include "body_tracking_compat.hpp"
 #include "openslope/avatar.hpp"
+#include "openslope/ride_ui.hpp"
 #include "vulkan_renderer.hpp"
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -62,10 +63,14 @@ struct State {
     XrSpace space{};
     XrActionSet actions{};
     XrAction steer{}, look{}, boost{}, reset{}, jump{}, rail_exit{}, mount{}, restart{}, grip{}, menu{},
-        camera_toggle{};
+        camera_toggle{}, squeeze{}, aim{};
     VrPresentation presentation;
+    RideUi ui;
+    EquipmentInput equipment;
+    XrQuaternionf input_rotation{0, 0, 0, 1};
+    double fps = 0;
     std::array<XrPath, 2> hands{};
-    std::array<XrSpace, 2> grips{};
+    std::array<XrSpace, 2> grips{}, aims{};
     Vec3 walk_forward{}, room_offset{};
     bool walking = true, head_steering = false;
     XrPath touch_profile{};
@@ -97,6 +102,9 @@ struct State {
         for (auto grip_space : grips)
             if (grip_space)
                 xrDestroySpace(grip_space);
+        for (auto aim_space : aims)
+            if (aim_space)
+                xrDestroySpace(aim_space);
         if (space)
             xrDestroySpace(space);
         if (session)
@@ -325,9 +333,14 @@ struct State {
         std::strcpy(set.actionSetName, "ride");
         std::strcpy(set.localizedActionSetName, "Riding");
         xr_check(xrCreateActionSet(instance, &set, &actions), "Create riding action set");
-        const auto action = [&](const char* name, XrActionType type, XrAction& result) {
+        hands = {path("/user/hand/left"), path("/user/hand/right")};
+        const auto action = [&](const char* name, XrActionType type, XrAction& result, bool split = false) {
             XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};
             info.actionType = type;
+            if (split) {
+                info.countSubactionPaths = 2;
+                info.subactionPaths = hands.data();
+            }
             std::strcpy(info.actionName, name);
             std::strcpy(info.localizedActionName, name);
             xr_check(xrCreateAction(actions, &info, &result), "Create riding action");
@@ -338,7 +351,8 @@ struct State {
         action("reset", XR_ACTION_TYPE_BOOLEAN_INPUT, reset);
         action("jump", XR_ACTION_TYPE_BOOLEAN_INPUT, jump);
         action("rail_exit", XR_ACTION_TYPE_BOOLEAN_INPUT, rail_exit);
-        action("mount", XR_ACTION_TYPE_BOOLEAN_INPUT, mount);
+        action("mount", XR_ACTION_TYPE_BOOLEAN_INPUT, mount, true);
+        action("carry", XR_ACTION_TYPE_BOOLEAN_INPUT, squeeze, true);
         action("restart_run", XR_ACTION_TYPE_BOOLEAN_INPUT, restart);
         action("controls_menu", XR_ACTION_TYPE_BOOLEAN_INPUT, menu);
         action("camera_toggle", XR_ACTION_TYPE_BOOLEAN_INPUT, camera_toggle);
@@ -351,6 +365,9 @@ struct State {
         pose.countSubactionPaths = 2;
         pose.subactionPaths = hands.data();
         xr_check(xrCreateAction(actions, &pose, &grip), "Create controller poses");
+        std::strcpy(pose.actionName, "aim_pose");
+        std::strcpy(pose.localizedActionName, "Controller aim");
+        xr_check(xrCreateAction(actions, &pose, &aim), "Create controller aim");
         const auto bound_action = [&](VrBindingAction value) {
             switch (value) {
             case VrBindingAction::Steer: return steer;
@@ -363,6 +380,8 @@ struct State {
             case VrBindingAction::Camera: return camera_toggle;
             case VrBindingAction::RailExit: return rail_exit;
             case VrBindingAction::Grip: return grip;
+            case VrBindingAction::Aim: return aim;
+            case VrBindingAction::Squeeze: return squeeze;
             }
             throw std::runtime_error("Unknown controller binding");
         };
@@ -394,6 +413,8 @@ struct State {
             info.subactionPath = hands[i];
             info.poseInActionSpace.orientation.w = 1;
             xr_check(xrCreateActionSpace(session, &info, &grips[i]), "Create controller grip space");
+            info.action = aim;
+            xr_check(xrCreateActionSpace(session, &info, &aims[i]), "Create controller aim space");
         }
     }
 
@@ -544,7 +565,58 @@ struct State {
         return result;
     }
 
-    RideInput input(double seconds) {
+    void equipment_poses(XrTime time) {
+        equipment = {};
+        equipment.tracked = true;
+        equipment.relative = true;
+        if (!anchored)
+            return;
+        const auto point = [&](XrVector3f p) {
+            return quaternion_rotate(input_rotation, Vec3{p.x, p.y, p.z} - origin);
+        };
+        const auto direction = [&](XrQuaternionf q, Vec3 v) {
+            return quaternion_rotate(input_rotation, quaternion_rotate(q, v));
+        };
+        std::array<XrView, 2> views{{{XR_TYPE_VIEW}, {XR_TYPE_VIEW}}};
+        XrViewState state{XR_TYPE_VIEW_STATE};
+        std::uint32_t count = 0;
+        XrViewLocateInfo locate{XR_TYPE_VIEW_LOCATE_INFO};
+        locate.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        locate.displayTime = time;
+        locate.space = space;
+        const auto valid = XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+        if (XR_SUCCEEDED(xrLocateViews(session, &locate, &state, 2, &count, views.data())) && count == 2 &&
+            (state.viewStateFlags & (XR_VIEW_STATE_POSITION_VALID_BIT | XR_VIEW_STATE_ORIENTATION_VALID_BIT)) ==
+                (XR_VIEW_STATE_POSITION_VALID_BIT | XR_VIEW_STATE_ORIENTATION_VALID_BIT)) {
+            equipment.head = (point(views[0].pose.position) + point(views[1].pose.position)) * .5;
+            equipment.facing = direction(views[0].pose.orientation, {0, 0, -1});
+        }
+        for (unsigned i = 0; i < 2; ++i) {
+            XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
+            get.subactionPath = hands[i];
+            const auto located = [&](XrAction action, XrSpace target, XrPosef& pose) {
+                get.action = action;
+                XrActionStatePose state_pose{XR_TYPE_ACTION_STATE_POSE};
+                if (XR_FAILED(xrGetActionStatePose(session, &get, &state_pose)) || !state_pose.isActive)
+                    return false;
+                XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+                if (XR_FAILED(xrLocateSpace(target, space, time, &location)) ||
+                    (location.locationFlags & valid) != valid)
+                    return false;
+                pose = location.pose;
+                return true;
+            };
+            XrPosef pose{};
+            if (located(grip, grips[i], pose))
+                equipment.hands[i] =
+                    carry_hand({point(pose.position), direction(pose.orientation, {1, 0, 0}),
+                                direction(pose.orientation, {0, 1, 0}), direction(pose.orientation, {0, 0, -1}), true});
+            if (located(aim, aims[i], pose))
+                equipment.rays[i] = {point(pose.position), direction(pose.orientation, {0, 0, -1}), true};
+        }
+    }
+
+    RideInput input(double seconds, XrTime time, Player& player) {
         if (!focused)
             return {};
         const XrActiveActionSet active{actions, XR_NULL_PATH};
@@ -601,7 +673,57 @@ struct State {
                          intent.board,   walk_forward,
                          room_offset,    restarting.isActive && restarting.currentState};
         result.spawn_board = intent.recall;
-        result.vr = {!walking, head_steering, intent.stick, walk_forward, intent.spin};
+        if (anchored) {
+            const auto yaw = seat_heading + player.rider().view_yaw - seat_origin - reference_yaw + presentation.yaw;
+            input_rotation = {0, float(std::sin(yaw * .5)), 0, float(std::cos(yaw * .5))};
+        }
+        equipment_poses(time);
+        for (unsigned i = 0; i < 2; ++i) {
+            info.subactionPath = hands[i];
+            const auto button = [&](XrAction action) {
+                info.action = action;
+                XrActionStateBoolean value{XR_TYPE_ACTION_STATE_BOOLEAN};
+                xr_check(xrGetActionStateBoolean(session, &info, &value), "Read equipment button");
+                return value.isActive && value.currentState;
+            };
+            equipment.grip[i] = button(squeeze);
+            equipment.trigger[i] = button(mount);
+        }
+        ui.immersive = true;
+        ui.visible = presentation.controls;
+        ui.third_person = presentation.third_person;
+        ui.head_steer = head_steering;
+        const auto offset = presentation.camera_offset(player.camera_forward());
+        const auto left = grip_hand(equipment.hands[0]);
+        ui.frame(RideUi::wrist(
+            {left.position + player.rider().position, left.right, left.up, left.forward, left.valid, true},
+            equipment.head + player.rider().position + offset, offset));
+        auto pointer = equipment.rays[1];
+        pointer.origin += player.rider().position + offset;
+        const auto selected = ui.pointer(pointer, equipment.trigger[1]);
+        if (selected.consumed)
+            equipment.trigger[1] = false;
+        switch (selected.action) {
+        case UiAction::Resume: presentation.controls = false; break;
+        case UiAction::Restart:
+            player.restart_run();
+            anchored = false;
+            break;
+        case UiAction::View: presentation.third_person = !presentation.third_person; break;
+        case UiAction::Controls: ui.controls = !ui.controls; break;
+        case UiAction::Sound: ui.sound_muted = !ui.sound_muted; break;
+        case UiAction::Stats: ui.stats = !ui.stats; break;
+        case UiAction::Calibrate: anchored = false; break;
+        case UiAction::Recall: player.recall_board(walk_forward); break;
+        case UiAction::HeadSteer: head_steering = !head_steering; break;
+        case UiAction::Exit: quit = true; break;
+        default: break;
+        }
+        result.mount = false;
+        result.equipment = equipment;
+        result.walk_forward = normalized(project(equipment.facing, {0, 1, 0}), walk_forward);
+        result.room_offset = project(equipment.head, {0, 1, 0});
+        result.vr = {!walking, head_steering, intent.stick, result.walk_forward, intent.spin};
         return result;
     }
 
@@ -640,6 +762,7 @@ struct State {
 int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
     player.start_on_foot();
     State state;
+    state.ui.immersive = true;
     state.create(platform, player.terrain().mesh(), player.logic().flag_models());
     AudioScene audio(player.terrain().map_root());
     audio.mixer().paused(true);
@@ -690,10 +813,11 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
         previous_time = frame.predictedDisplayTime;
         state.walking = player.on_foot();
         if (state.focused)
-            player.advance(std::max(0.0, dt), state.input(std::max(0.0, dt)));
+            player.advance(std::max(0.0, dt), state.input(std::max(0.0, dt), frame.predictedDisplayTime, player));
         else {
             player.release_inputs();
             state.presentation.release();
+            state.ui.release();
         }
         const auto boarding = player.on_foot() ? 1 : 0;
         if (boarding != state.boarding_mode) {
@@ -762,9 +886,17 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                                              : "Avatar rendered pose: procedural head/controller fallback");
                 }
                 const auto camera_offset = state.presentation.camera_offset(player.camera_forward());
-                const auto avatar_mesh =
-                    state.avatar.mesh(pose, !state.presentation.third_person, state.presentation.controls,
-                                      tracked.head + camera_offset, camera_offset);
+                const auto body_mesh = state.avatar.mesh(pose, !state.presentation.third_person, false,
+                                                         tracked.head + camera_offset, camera_offset);
+                std::vector<Vertex> avatar_mesh(body_mesh.begin(), body_mesh.end());
+                equipment_outline(avatar_mesh, player);
+                state.ui.visible = state.presentation.controls;
+                state.ui.frame(RideUi::wrist(tracked.controllers[0], tracked.head + camera_offset, camera_offset));
+                state.ui.append(avatar_mesh, player, true, dt > 0 ? 1 / dt : 0);
+                auto pointer = state.equipment.rays[1];
+                pointer.origin += body + camera_offset;
+                state.ui.append_pointer(avatar_mesh, pointer);
+                audio.mixer().volume(state.ui.sound_muted ? 0 : 1);
                 for (unsigned i = 0; i < 2; ++i) {
                     if (i == 0)
                         pose_time += ms(simulated, Clock::now());

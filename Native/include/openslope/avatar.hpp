@@ -49,7 +49,7 @@ struct AvatarPose {
     std::array<Vec3, avatar_joint_count> joints{};
     std::array<ControllerPose, 2> controllers{};
     Vec3 forward{0, 0, -1}, up{0, 1, 0};
-    bool tracked_body = false, tracked_legs = false, on_foot = false;
+    bool tracked_body = false, tracked_legs = false, on_foot = false, controller_models = true;
     std::array<std::string, 3> run_text{};
     std::array<std::string, 3> score_text{};
     int score_result = 0;

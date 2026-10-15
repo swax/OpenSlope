@@ -49,7 +49,7 @@ heading, orientation, stance and velocity back into riding. Recovering riders
 cannot toggle. Invalid or far-below-course positions use the existing safety
 reset; normal play does not automatically recall a distant board.
 
-Remaining parity work includes crouching, flight, board recall/grab/carry, footstep
+Remaining parity work includes crouching, general flight, footstep
 audio and world-event dispatch while walking, wider terrain wall/ceiling handling,
 full loose-board response, and headset checks of control feel and comfort.
 
@@ -94,4 +94,5 @@ while feet pass below; actual split glass proxies also charge from supported
 contact. See deferred-world.md for evidence, material state and remaining work.
 
 Build 0.34 updates the controls and adds equipment-only recall; see quest-controls.md.
-Physical pickup/carry/transfer/throw and pointed-trigger mounting remain active work.
+Build 0.35 implements pickup/carry/transfer/throw, summon and pointed-trigger mounting;
+see equipment-camera-ui.md for behavior, explicit tuning, tests and hardware limits.

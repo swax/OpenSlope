@@ -1,4 +1,5 @@
 #include "openslope/avatar.hpp"
+#include "openslope/ride_ui.hpp"
 #include "vulkan_renderer.hpp"
 #include <fstream>
 #include <iostream>
@@ -271,6 +272,65 @@ int main(int argc, char** argv) {
         const auto displaced =
             render("vr-third-person-unshifted-controls", upright, false, tracking.head + offset, {0, -.7, -1}, true);
         check(third != displaced, "Third-person controls remain beside the presented headset");
+
+        // The real renderer must show text above panel backgrounds in both target colour spaces.
+        RideUi ui;
+        const auto render_ui = [&](std::string name, bool wrist, bool controls, bool visible) {
+            const auto eye = tracking.head,
+                       direction = wrist
+                                       ? normalized(tracking.controllers[0].position + Vec3{0, .18, 0} - tracking.head)
+                                       : normalized(Vec3{0, -.2, -1});
+            CameraPose c{eye, direction, {0, 1, 0}};
+            ui.visible = visible;
+            ui.controls = controls;
+            ui.immersive = wrist;
+            ui.third_person = false;
+            ui.frame(wrist ? RideUi::wrist(tracking.controllers[0], eye) : RideUi::desktop(c, 1));
+            const auto body = avatar.mesh(avatar_pose(player, &tracking), true, false, eye);
+            std::vector<Vertex> mesh(body.begin(), body.end());
+            const auto button = ui.frame().origin + ui.frame().right * .25 + ui.frame().down * .35;
+            EquipmentRay pointer{tracking.controllers[1].position,
+                                 normalized(button - tracking.controllers[1].position), true};
+            ui.release();
+            ui.pointer(pointer, true);
+            ui.append(mesh, player, wrist, 90);
+            if (wrist)
+                ui.append_pointer(mesh, pointer);
+            const auto tangent = std::tan(c.fov / 2);
+            const auto matrix = projection(-tangent, tangent, -tangent, tangent, c.near_clip) * view(eye, direction);
+            for (auto* renderer : {&a, &b}) {
+                renderer->render(
+                    0, matrix,
+                    board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, mesh);
+                const auto path = root / (name + (renderer == &a ? "-unorm.ppm" : "-srgb.ppm"));
+                renderer->capture(0, path);
+                const auto image = pixels(path);
+                unsigned mint = 0, white = 0;
+                for (std::size_t k = 0; k < image.size(); k += 3) {
+                    mint += image[k + 1] > image[k] * 1.5 && image[k + 2] > image[k] * 1.3 && image[k + 1] > 100;
+                    white += image[k] > 180 && image[k + 1] > 180 && image[k + 2] > 180;
+                }
+                check(mint > 80, "Menu accents really reach the GPU target");
+                check(white > 100, "UI text draws in front of panel background");
+                check(renderer->stats().avatar_triangles == mesh.size() / 3, "UI and avatar share a bounded real draw");
+            }
+        };
+        render_ui("desktop-menu", false, false, true);
+        render_ui("desktop-controls", false, true, true);
+        render_ui("desktop-hud", false, false, false);
+        render_ui("wrist-menu", true, false, true);
+        render_ui("wrist-controls", true, true, true);
+        player.warp({0, 0, 0}, {0, 0, -1});
+        player.start_on_foot();
+        RideInput holding;
+        holding.equipment.tracked = true;
+        holding.equipment.head = {0, 1.65, 0};
+        holding.equipment.hands[1] = {{.3, 1.1, -.25}, {0, 1, 0}, {0, 0, -1}, {1, 0, 0}, true};
+        holding.equipment.grip[1] = true;
+        player.tick(holding);
+        check(player.carrying_board(), "GPU fixture genuinely carries the board");
+        render("desktop-board-held", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
         std::cout << "PASS: " << checks
                   << " actual Vulkan avatar, look-down, labels, tracking fallback and stereo checks\n";
         return 0;

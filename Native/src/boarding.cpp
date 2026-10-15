@@ -127,6 +127,8 @@ bool Player::recall_board(Vec3 facing) {
         position = floor->point;
         up = floor->normal;
     }
+    carry_.clear();
+    holding_hand_ = {};
     loose_board_ = {position, position, {}, normalized(project(forward, up), forward), up, bool(floor), 1, 0};
     if (floor) {
         loose_board_.ground_object = floor->object;
@@ -145,6 +147,8 @@ bool Player::interact_board(Vec3 room_offset) {
     if (recovering() || reset_pending())
         return false;
     if (on_foot_) {
+        if (carry_.held())
+            return equip_held_board();
         if (board_distance(room_offset) > 1.6)
             return false;
         const auto board = loose_board_;
@@ -185,7 +189,8 @@ bool Player::interact_board(Vec3 room_offset) {
 
 void Player::tick_foot(const RideInput& input, const Rider& before) {
     const auto dt = contract_.tick_seconds();
-    tick_loose_board();
+    if (!carry_.held())
+        tick_loose_board();
     bool jump = false;
     while (!jump_edges_.empty()) {
         jump |= jump_edges_.front();
@@ -197,6 +202,11 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
     if (length(wish) > 1)
         wish = normalized(wish);
     const auto target = wish * (input.boost ? 4.5 : 2.5);
+    const bool thrust = carry_.held() && input.boost;
+    if (thrust) {
+        rider_.grounded = false;
+        rider_.velocity += carry_.pose().forward * (24.508 * dt);
+    }
     const auto carried = rider_.grounded ? rider_.position - before.position : Vec3{};
     if (rider_.grounded) {
         const auto support = carried / dt;
@@ -204,7 +214,7 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
         rider_.velocity = {approach(relative.x, target.x, 18 * dt) + support.x, support.y,
                            approach(relative.z, target.z, 18 * dt) + support.z};
         rider_.ground_velocity = support;
-    } else {
+    } else if (!thrust && length(wish) > .001) {
         rider_.velocity.x += (target.x - rider_.velocity.x) * std::min(1., dt * 1.2);
         rider_.velocity.z += (target.z - rider_.velocity.z) * std::min(1., dt * 1.2);
     }
@@ -279,10 +289,47 @@ void Player::tick_loose_board() {
     auto& b = loose_board_;
     b.previous = b.position;
     b.age += dt;
+    const auto old_forward = b.forward, old_up = b.up;
+    if (b.thrown && length(b.spin) > 1e-8) {
+        const auto axis = normalized(b.spin);
+        const auto angle = length(b.spin) * dt;
+        b.forward = normalized(rotate(b.forward, axis, angle));
+        b.up = normalized(project(rotate(b.up, axis, angle), b.forward));
+    }
     if (b.grounded && b.ground_object)
         b.position += world_.carry(*b.ground_object, b.position);
     const auto was_grounded = b.grounded;
     auto destination = b.position + b.velocity * dt;
+    if (b.thrown) {
+        std::optional<ShapeContact> impact;
+        for (auto local : std::array<Vec3, 5>{{{},
+                                               {equipment_half_width, 0, equipment_half_length},
+                                               {-equipment_half_width, 0, equipment_half_length},
+                                               {equipment_half_width, 0, -equipment_half_length},
+                                               {-equipment_half_width, 0, -equipment_half_length}}}) {
+            const auto a = equipment_point({b.previous, old_forward, old_up}, local);
+            const auto z = equipment_point({destination, b.forward, b.up}, local);
+            if (const auto hit = terrain_.intersect(a, z); hit && (!impact || hit->t < impact->t))
+                impact = ShapeContact{hit->point, hit->normal, hit->t, 0};
+            const std::array<ProbeSphere, 1> start{{{a, .02}}}, end{{{z, .02}}};
+            for (const auto& hit : world_.sweep(start, end))
+                if (hit.response && (!impact || hit.t < impact->t))
+                    impact = ShapeContact{hit.point, hit.normal, hit.t, hit.depth};
+        }
+        if (impact) {
+            destination =
+                b.previous + (destination - b.previous) * std::max(0., impact->t - .001) + impact->normal * .025;
+            b.velocity = project(b.velocity, impact->normal);
+            b.spin = {};
+            b.thrown = false;
+            if (impact->normal.y > .55) {
+                destination.y = impact->point.y;
+                b.up = impact->normal;
+                b.forward = normalized(project(b.forward, b.up), {0, 0, -1});
+                b.grounded = true;
+            }
+        }
+    }
     const auto floor =
         walk_ground(destination + Vec3{0, b.grounded ? .25 : 0, 0}, destination - Vec3{0, b.grounded ? .5 : .03, 0});
     if (floor && b.velocity.y <= 0 && (b.grounded || floor->point.y >= destination.y)) {
@@ -297,6 +344,8 @@ void Player::tick_loose_board() {
         const auto speed = length(b.velocity);
         b.velocity = speed > .001 ? b.velocity * (std::max(0., speed - 3.5 * dt) / speed) : Vec3{};
         b.grounded = true;
+        b.thrown = false;
+        b.spin = {};
     } else if (const auto hit = walk_ground(b.position, destination); hit && b.velocity.y <= 0) {
         destination = hit->point;
         if (!was_grounded)
@@ -307,6 +356,8 @@ void Player::tick_loose_board() {
         b.forward = normalized(project(b.forward, b.up), b.forward);
         b.velocity = project(b.velocity, b.up);
         b.grounded = true;
+        b.thrown = false;
+        b.spin = {};
     } else {
         if (was_grounded)
             b.velocity += b.ground_velocity;
@@ -314,8 +365,10 @@ void Player::tick_loose_board() {
         b.ground_velocity = {};
         b.grounded = false;
         b.velocity.y -= 18 * dt;
-        b.velocity.x *= 1 - .25 * dt;
-        b.velocity.z *= 1 - .25 * dt;
+        if (!b.thrown) {
+            b.velocity.x *= 1 - .25 * dt;
+            b.velocity.z *= 1 - .25 * dt;
+        }
     }
     b.position = walk_move(b.previous, destination, b.velocity, .10, .25);
     if (b.grounded && length(b.velocity) < .02) {
@@ -329,6 +382,8 @@ void Player::tick_loose_board() {
         } else
             b.position = b.previous = rider_.position;
         b.velocity = {};
+        b.spin = {};
+        b.thrown = false;
         b.age = 0;
     }
 }

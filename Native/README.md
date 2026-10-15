@@ -52,7 +52,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 ```
 
 A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
-F/V switches first/chase camera, C looks down, E (or G) mounts/dismounts, P pauses and Escape exits.
+F/V switches first/chase camera, C looks down, E (or G) mounts/dismounts, and P/Escape opens the pause menu.
+LMB rides a highlighted board; RMB carries/throws it, or drags the camera when no board is targeted.
+The wheel changes camera distance. The pause menu includes a map library and ride settings.
 Use `--on-foot` to start beside the board; A/D/W/S walk, Shift runs and Space jumps in that mode.
 See [walking and boarding](docs/boarding.md). Input pauses when the preview loses
 focus; an uncommitted jump charge is cancelled.
@@ -67,9 +69,10 @@ both fixed ends, lifecycle and conservative culling. See [flag-cloth.md](docs/fl
 for supported geometry, validation and remaining fidelity work.
 
 Quest controls now match the supported Slopesmith actions, including right-stick
-view turn/click camera and Y controls. Controller models use the OpenXR grip frame,
+view turn/click camera, squeeze carry/throw and the interactive Y wrist menu. Controller models use the OpenXR grip frame,
 and hand skin follows full wrist orientation. See [quest-controls.md](docs/quest-controls.md)
-for the mapping, validation and pending physical/fidelity checks.
+for the earlier mapping and [equipment, camera and UI](docs/equipment-camera-ui.md)
+for current controls, independent implementation, validation and remaining physical checks.
 
 Quest's **Riding steering** selector offers Stick only or Head + stick override.
 Head mode uses look-to-carve with a neutral zone; the stick takes priority when

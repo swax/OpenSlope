@@ -59,6 +59,38 @@ Replay Replay::load(const std::filesystem::path& path) {
             throw std::runtime_error("Invalid replay control range");
         step.input.run_restart = row.value("RunRestart", false);
         step.input.spawn_board = row.value("SpawnBoard", false);
+        if (row.contains("Equipment")) {
+            const auto& value = row.at("Equipment");
+            auto& e = step.input.equipment;
+            e.tracked = value.value("Tracked", true);
+            e.relative = value.value("Relative", false);
+            e.head = value.contains("Head") ? vector(value.at("Head")) : Vec3{0, 1.65, 0};
+            e.facing = value.contains("Facing") ? vector(value.at("Facing")) : Vec3{0, 0, -1};
+            for (unsigned i = 0; i < 2; ++i) {
+                if (value.contains("Grip"))
+                    e.grip[i] = value.at("Grip").at(i).get<bool>();
+                if (value.contains("Trigger"))
+                    e.trigger[i] = value.at("Trigger").at(i).get<bool>();
+                if (value.contains("Hands")) {
+                    const auto& h = value.at("Hands").at(i);
+                    auto& hand = e.hands[i];
+                    hand.valid = h.value("Valid", true);
+                    hand.position = vector(h.at("Position"));
+                    if (h.contains("Right"))
+                        hand.right = vector(h.at("Right"));
+                    if (h.contains("Up"))
+                        hand.up = vector(h.at("Up"));
+                    if (h.contains("Forward"))
+                        hand.forward = vector(h.at("Forward"));
+                    if (hand.valid)
+                        static_cast<void>(equipment_distance({}, hand));
+                }
+                if (value.contains("Rays")) {
+                    const auto& r = value.at("Rays").at(i);
+                    e.rays[i] = {vector(r.at("Origin")), vector(r.at("Direction")), r.value("Valid", true)};
+                }
+            }
+        }
         result.steps.push_back(step);
         if (row.contains("VR")) {
             const auto& vr = row.at("VR");
