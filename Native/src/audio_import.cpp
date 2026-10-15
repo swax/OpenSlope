@@ -1,6 +1,7 @@
 #include "external_sounds.hpp"
 #include "import_internal.hpp"
 #include "openslope/audio_data.hpp"
+#include "openslope/audio_resolver.hpp"
 #include "openslope/music.hpp"
 #include <algorithm>
 #include <cctype>
@@ -367,6 +368,24 @@ bool write_course_audio(const DiscInput& disc, const std::string& course,
         if (!file.empty())
             index["Banks"][std::to_string(group)] = w.bank(effects, file, w.root / "SFX");
     }
+    w.notify("Recovering collision sound routes");
+    if (const auto resolver = disc_collision_routes(disc, cancelled)) {
+        index.erase("ResolverState");
+        index["SourceExecutable"] = resolver->executable;
+        for (const auto& [event, route] : resolver->events) {
+            const auto group = std::to_string(route.group);
+            if (!index["Banks"].contains(group))
+                continue;
+            const auto bank = index["Banks"][group].get<std::string>();
+            auto slot = std::to_string(route.slot);
+            while (slot.size() < 3)
+                slot.insert(slot.begin(), '0');
+            index["CollisionEvents"][std::to_string(event)] = {{"Group", route.group},
+                                                               {"Slot", route.slot},
+                                                               {"Bank", bank},
+                                                               {"Clip", "Audio/SFX/" + bank + "/" + slot + ".wav"}};
+        }
+    }
     const auto routes = Json::parse(external_sound_contract).at("fixedBanks");
     Json environment = {
         {"Schema", "openslope-external-sounds/v1"}, {"Events", Json::object()}, {"Unresolved", Json::array()}};
@@ -479,16 +498,16 @@ bool write_course_audio(const DiscInput& disc, const std::string& course,
             }
         }
     }
-    // Resolver rows must come from the user's executable. No retail rows or
-    // guessed course-slot fallbacks are distributed in this importer.
+    Json deferred = {"executable-board-surface-index", "dynamic-character-chants", "speech-codec",
+                     "intro-and-async-runtime"};
+    if (!index.contains("SourceExecutable"))
+        deferred.push_back("executable-event-resolver");
     json_file(w.root / "Import.json", {{"Schema", "openslope-native-audio-import/v1"},
                                        {"BanksConfigSection", section},
                                        {"AccountedBytes", w.bytes},
                                        {"Warnings", w.warnings},
                                        {"UnresolvedExternalEvents", environment["Unresolved"]},
-                                       {"Deferred",
-                                        {"executable-event-resolver", "executable-board-surface-index",
-                                         "dynamic-character-chants", "speech-codec", "intro-and-async-runtime"}}});
+                                       {"Deferred", deferred}});
     w.notify("Validating extracted Audio budget");
     std::uint64_t actual = 0;
     std::size_t entries = 0;

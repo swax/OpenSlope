@@ -1,4 +1,5 @@
 #include "openslope/world_import.hpp"
+#include "executable_internal.hpp"
 #include "import_internal.hpp"
 #include "world_layout.hpp"
 #include <algorithm>
@@ -11,6 +12,8 @@
 namespace openslope {
 namespace {
 using Json = nlohmann::json;
+using executable_detail::Executable;
+using executable_detail::Range;
 using import_detail::Bytes;
 
 struct Reject {};
@@ -58,100 +61,6 @@ std::uint64_t word(std::uint64_t n) {
 }
 
 std::int64_t signed_value(std::uint64_t n) { return std::bit_cast<std::int64_t>(n); }
-
-struct Segment {
-    std::uint32_t offset{}, address{}, size{}, memory{}, flags{};
-};
-
-struct Range {
-    std::size_t begin{}, end{};
-};
-
-struct Executable {
-    Bytes bytes;
-    std::vector<Segment> segments;
-    std::vector<Range> text;
-    std::optional<std::uint32_t> gp;
-
-    explicit Executable(std::span<const std::uint8_t> data) : bytes{data} {
-        if (data.size() < 52 || data.size() > 64 * 1024 * 1024 || bytes.le(0, 1) != 127 || bytes.text(1, 3) != "ELF" ||
-            bytes.le(4, 1) != 1 || bytes.le(5, 1) != 1 || bytes.le(6, 1) != 1 || bytes.le(16, 2) != 2 ||
-            bytes.le(18, 2) != 8 || bytes.le(20) != 1 || bytes.le(40, 2) != 52)
-            throw std::runtime_error("Unsupported world-settings executable container");
-        const auto ph = bytes.le(28), stride = bytes.le(42, 2), count = bytes.le(44, 2);
-        if (stride < 32 || count == 0 || count > 64)
-            throw std::runtime_error("Invalid executable load table");
-        bytes.range(ph, std::size_t(stride) * count);
-        for (unsigned i = 0; i < count; ++i) {
-            const auto p = std::size_t(ph) + i * stride;
-            if (bytes.le(p) != 1)
-                continue;
-            Segment s{bytes.le(p + 4), bytes.le(p + 8), bytes.le(p + 16), bytes.le(p + 20), bytes.le(p + 24)};
-            if (s.size > s.memory || s.memory > 128 * 1024 * 1024 ||
-                std::uint64_t(s.address) + s.memory > 0x100000000ULL)
-                throw std::runtime_error("Invalid executable load extent");
-            bytes.range(s.offset, s.size);
-            for (const auto& previous : segments)
-                if (std::uint64_t(s.address) < std::uint64_t(previous.address) + previous.memory &&
-                    std::uint64_t(previous.address) < std::uint64_t(s.address) + s.memory)
-                    throw std::runtime_error("Overlapping executable load extents");
-            for (const auto base : {record_base, stack_base})
-                if (std::uint64_t(s.address) < std::uint64_t(base) + record_limit &&
-                    std::uint64_t(s.address) + s.memory > base)
-                    throw std::runtime_error("Executable overlaps isolated initializer storage");
-            segments.push_back(s);
-        }
-        if (segments.empty())
-            throw std::runtime_error("Executable has no loadable data");
-        const auto sh = bytes.le(32), ss = bytes.le(46, 2), sc = bytes.le(48, 2);
-        if (sh) {
-            if (ss < 40 || sc > 1024)
-                throw std::runtime_error("Invalid executable section table");
-            bytes.range(sh, std::size_t(ss) * sc);
-            for (unsigned i = 0; i < sc; ++i) {
-                const auto p = std::size_t(sh) + i * ss, offset = std::size_t(bytes.le(p + 16)),
-                           length = std::size_t(bytes.le(p + 20));
-                if (bytes.le(p + 4) == 0x70000006 && length >= 24) {
-                    bytes.range(offset, 24);
-                    gp = bytes.le(offset + 20);
-                }
-                if (bytes.le(p + 4) == 1 && (bytes.le(p + 8) & 4) && length) {
-                    bytes.range(offset, length);
-                    if (offset % 4 || length % 4)
-                        throw std::runtime_error("Unaligned executable code section");
-                    const auto address = bytes.le(p + 12);
-                    if (std::none_of(segments.begin(), segments.end(), [&](const auto& segment) {
-                            return (segment.flags & 1) && offset >= segment.offset && address >= segment.address &&
-                                   offset - segment.offset == address - segment.address &&
-                                   offset + length <= std::size_t(segment.offset) + segment.size;
-                        }))
-                        throw std::runtime_error("Executable code section is outside its load extent");
-                    text.push_back({offset, offset + length});
-                }
-            }
-        }
-        if (text.empty())
-            for (const auto s : segments)
-                if (s.flags & 1) {
-                    if (s.offset % 4 || s.size % 4)
-                        throw std::runtime_error("Unaligned executable code extent");
-                    text.push_back({s.offset, std::size_t(s.offset) + s.size});
-                }
-        std::sort(text.begin(), text.end(), [](auto a, auto b) { return a.begin < b.begin; });
-        for (std::size_t i = 1; i < text.size(); ++i)
-            if (text[i].begin < text[i - 1].end)
-                throw std::runtime_error("Overlapping executable code ranges");
-    }
-
-    std::optional<std::uint8_t> read(std::uint32_t address) const {
-        for (const auto s : segments)
-            if (address >= s.address && std::uint64_t(address) - s.address < s.memory) {
-                const auto at = address - s.address;
-                return at < s.size ? bytes.data[std::size_t(s.offset) + at] : 0;
-            }
-        return {};
-    }
-};
 
 struct Initializer {
     const Executable& executable;
@@ -511,67 +420,7 @@ std::string executable_world_profile(std::span<const std::uint8_t> executable, c
 }
 
 std::string disc_world_profile(const DiscInput& disc, const std::string& course, const ImportCancel& cancelled) {
-    import_detail::check_cancel(cancelled);
-    const auto entries = disc_directory(disc, "");
-    const auto cnf = std::find_if(entries.begin(), entries.end(),
-                                  [](const auto& e) { return !e.directory && upper(e.name) == "SYSTEM.CNF"; });
-    if (cnf == entries.end())
-        return {};
-    if (cnf->bytes > 65536)
-        throw std::runtime_error("Boot settings exceed limit");
-    const auto config = disc_file(disc, cnf->name);
-    std::string text(config.begin(), config.end()), path;
-    std::size_t at = 0;
-    while (at < text.size()) {
-        auto end = text.find_first_of("\r\n", at);
-        if (end == std::string::npos)
-            end = text.size();
-        auto line = text.substr(at, end - at);
-        at = end + 1;
-        const auto equal = line.find('=');
-        if (equal == std::string::npos)
-            continue;
-        auto key = upper(line.substr(0, equal));
-        key.erase(std::remove_if(key.begin(), key.end(), [](unsigned char c) { return std::isspace(c); }), key.end());
-        if (key != "BOOT2")
-            continue;
-        auto value = line.substr(equal + 1);
-        const auto prefix = upper(value).find("CDROM");
-        if (prefix == std::string::npos)
-            throw std::runtime_error("Invalid boot executable reference");
-        const auto colon = value.find(':', prefix);
-        if (colon == std::string::npos)
-            throw std::runtime_error("Invalid boot executable reference");
-        value = value.substr(colon + 1);
-        const auto semi = value.find(';');
-        if (semi != std::string::npos)
-            value.resize(semi);
-        const auto last = value.find_last_not_of(" \t");
-        if (last != std::string::npos)
-            value.resize(last + 1);
-        std::replace(value.begin(), value.end(), '\\', '/');
-        const auto first = value.find_first_not_of('/');
-        if (first == std::string::npos)
-            throw std::runtime_error("Empty boot executable reference");
-        path = value.substr(first);
-        break;
-    }
-    if (path.empty())
-        return {};
-    const auto parts = std::filesystem::path(path);
-    for (const auto& part : parts)
-        if (!valid_map_name(part.string()) || part == "." || part == "..")
-            throw std::runtime_error("Unsafe boot executable reference");
-    import_detail::check_cancel(cancelled);
-    const auto slash = path.find_last_of('/');
-    const auto directory = slash == std::string::npos ? std::string{} : path.substr(0, slash);
-    const auto leaf = upper(slash == std::string::npos ? path : path.substr(slash + 1));
-    const auto files = disc_directory(disc, directory);
-    const auto boot = std::find_if(files.begin(), files.end(),
-                                   [&](const auto& file) { return !file.directory && upper(file.name) == leaf; });
-    if (boot == files.end() || boot->bytes > 64 * 1024 * 1024)
-        throw std::runtime_error("Missing or oversized boot executable");
-    const auto executable = disc_file(disc, path);
-    return executable_world_profile(executable, course, cancelled);
+    const auto boot = executable_detail::boot_executable(disc, cancelled);
+    return boot ? executable_world_profile(boot->bytes, course, cancelled) : std::string{};
 }
 } // namespace openslope

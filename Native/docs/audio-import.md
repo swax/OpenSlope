@@ -30,9 +30,10 @@ written to `Instances.json`. The existing runtime performs the coordinate change
 Placed fixed environmental events and crowd slots receive explicit paths in
 `Audio/ExternalIndex.json`. Missing referenced environmental banks are reported
 and stay unresolved. Event 102 needs the gameplay-dependent character/generic
-chant selector. Ordinary course events need executable normalization. The new
-`SoundIndex.json` supplies actual configured groups and an empty collision-event
-map with `ResolverState: Deferred`; it does not invent course-slot mappings.
+chant selector. Build 0.44 independently recovers ordinary collision-event routes from the
+user executable; see collision-audio-import.md. Supported sources write the
+portable SourceExecutable/Banks/CollisionEvents contract. Unrecognized sources
+retain the empty `ResolverState: Deferred` index; no slot mappings are guessed.
 The board uses the existing PACK fallback until the executable's per-surface
 index is independently extracted. `SNOW.INF` is copied from the user's disc.
 
@@ -59,5 +60,6 @@ events, music triplets, intro stems, missing members, invalid offsets/graphs,
 ambiguous names and whole-course rollback. All eleven owned local course imports
 matched 25,128 instance hash/sound joins and 10,343 existing WAV PCM payloads.
 All Audio trees fit the cache budget. A production Vulkan/PCM capture plays a
-fresh GARI import directly; the headset cache/JNI fixtures build but require a
-headset to execute. Full desktop/VR parity remains tracked in desktop-parity.md.
+fresh GARI import directly. Build 0.44 passes 98 Quest cache/JNI checks and a
+bounded ALASKA activity startup; worn listening remains unverified.
+Full desktop/VR parity remains tracked in desktop-parity.md.

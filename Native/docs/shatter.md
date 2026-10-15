@@ -56,16 +56,16 @@ The private GARI check verifies all 23 render pieces plus their root object.
 
 ## Remaining work
 
-Normal ISO imports still mark executable collision-event resolution as Deferred.
-GARI's screen carries event 63, but its SoundIndex currently has no event routes,
-so its configured break sound stays silent. Native already consumes explicit
-map-local routes; it must independently extract the user's executable resolver
-to complete automatic sound setup. No event-to-slot retail table is compiled,
-and no guessed substitute or copied implementation is used here.
+Build 0.44 independently recovers executable collision routes during normal ISO
+import; see collision-audio-import.md. Actual GARI's event 63 now reaches its
+configured course-bank clip. Walking and riding captures each produce one
+contact sound, with PCM differences against a deliberately unresolved comparison
+and identical rider physics. No event-to-slot retail table is compiled.
 
-Rigid-body knock-off props, fence flex, complete breakable respawn/latch behavior,
-exact fragment trajectories, authored particles/fireworks and broader interaction
-parity remain open. Worn Quest behavior is not established by the APK build.
+Rigid-body knock-off props and authored fireworks have subsequent implementation
+evidence in rigid-props.md and world-particles.md. Fence flex, complete breakable
+respawn/latch behavior, exact fragment trajectories and broader interaction parity
+remain open. Worn Quest listening is not established by the APK build.
 
 ## Validation
 

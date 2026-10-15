@@ -33,8 +33,9 @@ Useful independent tools:
 Large archives are indexed with bounded table reads; individual members are read
 without loading the entire music archive. Normal ISO import now invokes bank,
 ADL attachment, config-driven song/intro and async-bank extraction; see
-audio-import.md. Boot-executable collision/board resolver normalization, dynamic
-chants and speech extraction remain required follow-up work. Existing populated
+audio-import.md. Build 0.44 independently normalizes boot-executable collision-event routes;
+see collision-audio-import.md. Board resolver normalization, dynamic chants and
+speech extraction remain required follow-up work. Existing populated
 Maps folders continue to supply their audio data.
 
 `Audio/SoundIndex.json` (`openslope-sound-index/v1`) supplies bank groups and
@@ -44,8 +45,8 @@ gate and 0.8-second debounce. Contact enables interactive emitter events 16/28/5
 before and independently of resolving the collision cue. Point, ellipsoid, cone
 and alternate-mode emitter records consume their declared gain curves. Optional
 `Audio/ExternalIndex.json`, schema `openslope-external-sounds/v1`, provides explicit
-`Events: {eventId: {Clip}}` routes for environmental banks. Automatic fixed/dynamic
-environment and character-chant resolver generation is still pending.
+`Events: {eventId: {Clip}}` routes for environmental banks. Fixed environment and
+crowd routes are imported. Dynamic traffic/character-chant selection remains pending.
 
 The board selects a family from `Audio/BoardSoundIndex.json`, or the established
 `Maps/Shared/Audio/BoardSoundIndex.json`. Without routing data it uses PACK, matching
@@ -75,14 +76,15 @@ faithful routing. Native reports that the graph needs re-import rather than gues
 those pairs. The new graph utility writes `VariableMaps` alongside established
 node/link fields. Optional/corrupt audio failure is reported without substituting
 an unrelated clip. AAudio disconnection recovery and Linux device output remain
-platform work; headset behavior is not device-validated.
+platform work; worn headset listening remains unverified.
 
 Quest's SAF cache copies the declared Audio library's WAV/JSON/INF assets, bounded
 to 512 MiB, 20,000 entries, six directory levels and 64 MiB per file. It also
 materializes the shared board-routing sidecar in the course cache. The Audio
 library contains complete banks/chunk sets; it is broader than the renderer's
 image reference list. Source containers and other file types are not copied.
-Instrumented cache cases compile but require hardware to execute.
+Build 0.44 passes 98 device-side JNI/custom-library/SAF cases, including automatic
+collision-route import. This establishes extraction/cache behavior, not worn listening.
 
 Desktop M toggles mute; P and loss of focus pause playback. Offline capture
 supports `--audio-capture <wave>` alongside `--capture`, producing 48 kHz stereo

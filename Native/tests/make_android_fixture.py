@@ -9,6 +9,7 @@ from prop_import_test import members as prop_members
 from rail_import_test import members as rail_members
 from import_test import big
 from world_import_fixture import boot_files
+from audio_resolver_fixture import boot_program
 
 destination = Path(sys.argv[1])
 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -30,8 +31,8 @@ files['fixture.map'] += rails['fixture.map'][rails['fixture.map'].index(b'### SP
 files['fixture.aip'] = files['fixture.sop'] = path_file()
 data=fixture(files)
 data['DATA/MODELS/GARI.BIG']=big({k.replace('fixture','gari'):v for k,v in files.items()})
-data.update(boot_files())
-data['DATA/CONFIG/BANKS.INF']+=b'[GARI]\nMAIN="tone.bnk"\nBOARD="tone.bnk"\n'
+data.update(boot_files(boot_program(world=True)))
+data['DATA/CONFIG/BANKS.INF']+=b'[GARI]\nMAIN="tone.bnk"\nBOARD="tone.bnk"\nBANK="tone.bnk"\nCROWD="tone.bnk"\n'
 data['DATA/CONFIG/MUSICMAP.INF']+=b'[GARI]\n'
 data['DATA/CONFIG/SNOW.INF']=b'[PACK]\n[GLIDE]\nLOAD BOARD\nASSIGNVOL\n'
 destination.write_bytes(disc(data))

@@ -66,7 +66,8 @@ def main():
             wav.setparams((1,2,48000,0,'NONE','not compressed'))
             wav.writeframes(struct.pack('<4800h',*([9000,-9000]*2400)))
         for foot in (False,True):
-            for name,ticks in [('intact',1),('hit',12),('spent',145)]:
+            # Capture the impact before the first-person head passes the debris.
+            for name,ticks in [('intact',1),('hit',8),('spent',145)]:
                 label=f'{"walk" if foot else "ride"}-{name}'
                 replay=root/f'{label}.json'
                 steps=[dict(Ticks=ticks,Posture=1 if foot else 0,

@@ -348,6 +348,8 @@ camera-centred panorama and fog are described in [world appearance](docs/world-a
 Build 0.43 automatically recovers the selected course's sun and sky settings
 during native ISO import. See [world settings import](docs/world-settings-import.md)
 for the independent reader, existing-map handling and validation limits.
+Build 0.44 also recovers collision-event sound routes from the user's executable;
+see [collision audio import](docs/collision-audio-import.md).
 Hard landings, prop crashes and animated relative get-up are described in
 [crash recovery](docs/crash-recovery.md), including provisional pose/physics tuning.
 Keep platform file access behind the application host,

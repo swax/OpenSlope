@@ -1,16 +1,18 @@
 #include "import_internal.hpp"
+#include "openslope/audio_resolver.hpp"
 #include "openslope/import.hpp"
 #include "openslope/world_import.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 int main(int argc, char** argv) {
     try {
         if (argc < 3) {
             std::cerr << "Usage: openslope_import list <iso> | extract <iso> <course> <Maps-folder> | convert-effects "
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
-                         "<map-folder> | world <iso> <course>\n";
+                         "<map-folder> | world <iso> <course> | collision-routes <iso>\n";
             return 1;
         }
         const std::string operation = argv[1];
@@ -87,6 +89,16 @@ int main(int argc, char** argv) {
             if (profile.empty())
                 throw std::runtime_error("World settings are unavailable for this course and executable");
             std::cout << profile << '\n';
+            return 0;
+        }
+        if (operation == "collision-routes" && argc == 3) {
+            const auto resolver = openslope::disc_collision_routes(disc);
+            if (!resolver)
+                throw std::runtime_error("Collision resolver is unavailable in this executable");
+            nlohmann::json output = {{"SourceExecutable", resolver->executable}, {"Events", nlohmann::json::object()}};
+            for (const auto& [event, route] : resolver->events)
+                output["Events"][std::to_string(event)] = {{"Group", route.group}, {"Slot", route.slot}};
+            std::cout << output.dump(2) << '\n';
             return 0;
         }
         if (operation != "extract" || argc != 5)

@@ -38,6 +38,9 @@ public final class NativeImportInstrumentation extends Instrumentation {
                 JSONObject world = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(worldCourse, "World.json").toPath()), java.nio.charset.StandardCharsets.UTF_8));
                 require(world.getString("Course").equals("GARI") && world.getJSONArray("SkyColor").getInt(0) == 20, "JNI automatically recovers authored course and sky settings from the ISO executable");
                 require(world.getJSONObject("Glare").getBoolean("Enabled") && world.getJSONObject("Glare").getDouble("DistanceUnits") == 20000, "JNI automatically imports the independent sun profile");
+                JSONObject sounds = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(worldCourse, "Audio/SoundIndex.json").toPath()), java.nio.charset.StandardCharsets.UTF_8));
+                require(sounds.getString("SourceExecutable").equals("BOOT.ELF") && sounds.getJSONObject("CollisionEvents").getJSONObject("17").getInt("Slot") == 0, "JNI automatically recovers collision routes from the authored executable");
+                require(!sounds.getJSONObject("CollisionEvents").has("0") && sounds.getJSONObject("CollisionEvents").getJSONObject("7").getInt("Group") == 3, "JNI retains silent events and crowd-group overrides");
             }
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, extracted.getAbsolutePath());
             require(new File(extracted, "Audio/SFX/tone/000.wav").isFile(), "JNI imports audio from the selected ISO");

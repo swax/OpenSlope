@@ -10,11 +10,12 @@ not replace its broader audio, world, performance and multiplayer requirements.
   head look and fixed switch bindings. Style selection, stature calibration and
   worn Quest confirmation remain; see rider-motion.md.
 - [x] Desktop 0.36 test launchers start in third person.
-- [ ] Glass barriers render transparently and smash, disappear and play their
+- [x] Glass barriers render transparently and smash, disappear and play their
   configured break sound when crossed with an admitted impact.
   Build 0.37 fixes GARI's opaque scanline sheet and implements its fragmented
-  break/reveal path for walking and riding. Automatic collision-sound resolver
-  extraction remains required; see shatter.md.
+  break/reveal path for walking and riding. Build 0.44 independently recovers
+  collision sound routes; actual GARI walking/riding captures play the smash
+  cue. See shatter.md and collision-audio-import.md for scope and remaining limits.
 - [x] Desktop E spawns/recalls a board ahead without mounting it automatically.
 - [ ] Quest behind-head draw reaches the hand correctly through real input.
   The implementation and production gesture replays are present; worn reach
