@@ -87,6 +87,7 @@ struct State {
     int tracking_mode = -1, actual_fidelity = -1, boarding_mode = -1, pose_mode = -1, run_phase = -1;
     unsigned run_checkpoints = 0;
     Avatar avatar;
+    GlareVisibility glare_visibility;
     VulkanContext vulkan;
     std::vector<Eye> eyes;
     bool floor_space = false, running = false, focused = false, quit = false;
@@ -894,10 +895,16 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                 equipment_outline(avatar_mesh, player);
                 state.ui.visible = state.presentation.controls;
                 state.ui.frame(RideUi::wrist(tracked.controllers[0], tracked.head + camera_offset, camera_offset));
-                state.ui.append(avatar_mesh, player, true, dt > 0 ? 1 / dt : 0);
+                std::vector<Vertex> hud;
+                state.ui.append(hud, player, true, dt > 0 ? 1 / dt : 0);
                 auto pointer = state.equipment.rays[1];
                 pointer.origin += body + camera_offset;
-                state.ui.append_pointer(avatar_mesh, pointer);
+                state.ui.append_pointer(hud, pointer);
+                CelestialView glare_view;
+                glare_view.stereo = true;
+                glare_view.anchor = tracked.head + camera_offset;
+                glare_view.visibility = state.glare_visibility.step(player.terrain(), state.eyes[0].renderer->glare(),
+                                                                    glare_view.anchor, std::clamp(dt, 0., 1.));
                 audio.mixer().volume(state.ui.sound_muted ? 0 : 1);
                 for (unsigned i = 0; i < 2; ++i) {
                     if (i == 0)
@@ -937,7 +944,7 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), eye_position));
+                        player.logic().particles(player.frame_alpha(), eye_position), glare_view, hud);
                     this_render += ms(render_start, Clock::now());
                     const auto& stats = eye.renderer->stats();
                     this_resource_wait += stats.wait_ms;

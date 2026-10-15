@@ -4,6 +4,13 @@ The implementation inputs are the clean Trailmap specification bodies, the Apach
 OpenSlope contracts and standard mathematical/protocol identities. Evidence annotations and
 other components' implementation sources are outside this implementation boundary.
 
+Build 0.42's celestial layer uses clean 400, public Slopesmith documentation/tests,
+the first-party shared spoke pattern and standard homogeneous projection,
+half-plane clipping and ray-query identities. Runtime geometry, fading, Vulkan
+buffers and fallback art are independently authored. Existing private World.json
+records are input/comparison data; independent ISO sun-setting recovery remains
+pending. No other runtime implementation was read or ported; see celestial.md.
+
 Build 0.41 uses clean 350/410 and public Slopesmith ride documentation/tests for
 rail presentation rates and sampled texture-coordinate behavior. Its independent
 control and Vulkan changes retain the shared ride contract. Owned Aloha mesh data

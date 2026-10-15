@@ -5,6 +5,7 @@ These Apache-2.0 data files are tracked inputs to the public implementations and
 - `ride-v1.json`: shared rider constants and response parameters for Slopesmith and Unity.
 - `external-sound-banks-v1.json`: fixed bank/file identifiers for Slopesmith, Snowknife and Native.
 - `particle-sprites-v1.json`: short sprite registration identifiers, retaining registration order and duplicates.
+- `celestial-spokes-v1.json`: Slopesmith's original 32-spoke sun-beam pattern, shared as first-party presentation data.
 - `carving-response-cases-v1.json`: independent reference cases checked by TypeScript and C# tests.
 
 From the repository root, validate the generated views with:

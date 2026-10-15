@@ -41,8 +41,11 @@ An optional `World.json` supports explicit application settings:
 
 Colours are display-domain channels in 0..255; fog distances are metres,
 0 <= Start < End <= 10000. `Fog: {"Enabled": false}` disables haze. Unknown
-fields, including existing `Glare` metadata, remain available for later consumers.
+fields remain available for later consumers.
 Profiles are limited to 64 KiB and must stay within the course directory.
+Build 0.42 consumes the portable Glare block for the course sun and beams;
+see celestial.md for desktop/VR behavior, data boundaries and the remaining
+independent ISO settings recovery.
 
 Without `SkyColor`, the uppermost sky parts' top image rows provide an
 alpha-weighted seam colour. Parts crossing camera-relative height zero provide
@@ -92,6 +95,6 @@ they do not establish a general performance improvement or a Quest frame budget.
 Existing actual-host jump, four collision cases, audio routes, six wake cases
 and eight sheet cases also pass. The ARM64 main/test APKs compile and lint passes.
 
-Full parity still needs recovered authored sky colours, broader world settings,
-sun/glare, snow, animated materials/live objects, render quality and performance
+Full parity still needs independent sky/sun settings recovery, broader world settings,
+snow, remaining material/live-object consumers, render quality and performance
 work in the desktop-parity.md matrix.

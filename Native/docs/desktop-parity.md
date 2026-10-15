@@ -51,6 +51,12 @@ Slopesmith behavior, and corrects V-driven water/caustic/scanline direction afte
 OBJ vertex conversion. See rail-water.md for desktop, owned-course and Quest
 startup evidence; worn turn feel and appearance remain unconfirmed.
 
+Build 0.42 renders portable world Glare records as a desktop fan and stereo sky
+disc/corona, with terrain visibility and late desktop/wrist UI. Existing/custom
+world records work; independent ISO sun/sky-setting extraction remains a required
+gap. See celestial.md. Weather, point-light flares and wider graphics parity stay
+active alongside the remaining gameplay/audio/performance requirements.
+
 Milestones use a descriptive commit subject and bullet-point body. Each milestone
 records its supported behavior, tests, comparison evidence and remaining limits.
 Playable test EXEs are versioned in ignored build folders so a later change does

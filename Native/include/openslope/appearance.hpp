@@ -12,6 +12,7 @@ struct RgbaImage {
 // Shared map PNGs are already display-ready. Preserve their byte-domain colour
 // and the full lightmap RGBA payload, without applying another brighten or gamma.
 RgbaImage read_png(const std::filesystem::path& path);
+RgbaImage celestial_corona(const RgbaImage* atlas = nullptr);
 // Byte-domain area averages; alpha weights colour for straight-alpha textures.
 std::vector<RgbaImage> diffuse_mips(const RgbaImage& base);
 std::vector<std::string> referenced_images(const Terrain& terrain);

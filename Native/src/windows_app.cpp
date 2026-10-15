@@ -119,6 +119,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         });
     }
     Avatar avatar;
+    GlareVisibility glare_visibility;
     FollowCamera chase;
     chase.first_person = first_person;
     RideUi ui;
@@ -134,7 +135,11 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                                       chase.pose().eye);
         std::vector<Vertex> presented(body.begin(), body.end());
         equipment_outline(presented, player);
-        ui.append(presented, player);
+        std::vector<Vertex> hud;
+        ui.append(hud, player);
+        CelestialView glare_view;
+        glare_view.visibility = glare_visibility.step(player.terrain(), renderer.glare(), chase.pose().eye,
+                                                      player.contract().tick_seconds());
         player.world_view(chase.pose().eye);
         const auto started = std::chrono::steady_clock::now();
         renderer.render(0, camera_for(player, 1280.0 / 720, first_person, look_down, &chase),
@@ -144,7 +149,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), chase.pose().eye));
+                        player.logic().particles(player.frame_alpha(), chase.pose().eye), glare_view, hud);
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         gpu += renderer.stats().gpu_ms;
         cull += renderer.stats().cull_ms;
@@ -173,6 +178,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                   << " ms; render wall " << wall / frames << " ms; GPU " << gpu / frames << " ms\n";
     }
     const auto stats = renderer.stats();
+    std::cout << "Celestial: " << stats.celestial_triangles << " triangles; " << stats.celestial_draws << " draws\n";
     std::cout << "Visible props: " << stats.visible_props << "; prop draws: " << stats.prop_draws
               << "; route copies: " << stats.route_copies << "; route lines: " << stats.route_lines
               << "; CPU frame: " << stats.cpu_ms << " ms; GPU frame: " << stats.gpu_ms << " ms\n";
@@ -450,8 +456,9 @@ struct Window {
     }
 
     Avatar avatar;
+    GlareVisibility glare_visibility;
 
-    void draw(Player& player, bool first_person, bool look_down) {
+    void draw(Player& player, bool first_person, bool look_down, double seconds) {
         if (resized && !resize())
             return;
         std::uint32_t image = 0;
@@ -468,7 +475,11 @@ struct Window {
                                            false, camera.pose().eye);
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
         equipment_outline(presented, player);
-        ui.append(presented, player, false, fps);
+        std::vector<Vertex> hud;
+        ui.append(hud, player, false, fps);
+        CelestialView glare_view;
+        glare_view.visibility =
+            glare_visibility.step(player.terrain(), renderer.glare(), camera.pose().eye, std::clamp(seconds, 0., 1.));
         player.world_view(camera.pose().eye);
         renderer.render(image, camera_for(player, double(width) / height, first_person, look_down, &camera),
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
@@ -477,7 +488,7 @@ struct Window {
                         player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), camera.pose().eye));
+                        player.logic().particles(player.frame_alpha(), camera.pose().eye), glare_view, hud);
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &finished;
@@ -802,6 +813,7 @@ int main(int argc, char** argv) {
                     }
                     next->start_on_foot();
                     window.renderer.upload(next->terrain().mesh(), next->logic().flag_models());
+                    window.glare_visibility.reset();
                     audio_service.reset();
                     device.reset();
                     audio.reset();
@@ -910,7 +922,7 @@ int main(int argc, char** argv) {
                      L"down | M "
                   << (muted ? L"unmute" : L"mute");
             SetWindowTextW(window.handle, title.str().c_str());
-            window.draw(*player, first_person, key('C') || look_down_option);
+            window.draw(*player, first_person, key('C') || look_down_option, dt);
             if (IsIconic(window.handle))
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }

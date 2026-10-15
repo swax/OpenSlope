@@ -45,7 +45,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(extracted, "Splines.json").isFile(), "JNI imports spline geometry and behavior candidacy");
             require(new File(extracted, "Effects.json").isFile(), "JNI imports portable effect graphs and instance bindings");
             require(new File(extracted, "Skybox/Meshes/0.obj").isFile() && new File(extracted, "Skybox/Textures/0000.png").isFile(), "JNI imports separate sky geometry and texture bank");
-            try (OutputStream file = new FileOutputStream(new File(extracted, "World.json"))) { file.write("{\"Schema\":\"openslope-world/v1\",\"SkyColor\":[90,110,130],\"Fog\":{\"Enabled\":false}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            try (OutputStream file = new FileOutputStream(new File(extracted, "World.json"))) { file.write("{\"Schema\":\"openslope-world/v1\",\"SkyColor\":[90,110,130],\"Fog\":{\"Enabled\":false},\"Glare\":{\"Enabled\":true,\"AzimuthDegrees\":90,\"ElevationDegrees\":0}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
             try (OutputStream file = new FileOutputStream(new File(extracted, "RiderAnimations.json"))) { file.write("{\"Schema\":\"openslope-rider-animation/v1\",\"GetUp\":[{\"Time\":0,\"Standing\":0,\"Crouch\":1,\"Height\":0.3},{\"Time\":1,\"Standing\":1,\"Crouch\":0,\"Height\":0,\"Event\":\"get-up-finished\"}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
             try(OutputStream file=new FileOutputStream(new File(extracted,"Slopesmith.json"))){file.write("{\"schema\":1,\"kind\":\"slopesmith-export\",\"laps\":3,\"showoffSeconds\":180}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
             File local = new File(temporary, "Maps"); local.mkdir();
@@ -89,6 +89,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(prepared, "Meshes/0.obj").isFile(), "SAF cache includes imported prop geometry");
             for (String metadata : new String[]{"Models.json", "Materials.json"}) require(new File(prepared, "Skybox/" + metadata).isFile(), "SAF cache includes model-only sky metadata");
             require(new File(prepared, "World.json").isFile() && new File(prepared, "Skybox/Meshes/0.obj").isFile() && new File(prepared, "Skybox/Textures/0000.png").isFile(), "SAF cache retains authored world settings and nested sky assets");
+            require(new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(prepared, "World.json").toPath()), java.nio.charset.StandardCharsets.UTF_8)).getJSONObject("Glare").getDouble("AzimuthDegrees") == 90, "SAF cache retains enabled celestial parameters with fog disabled");
             require(new File(prepared, "RiderAnimations.json").isFile(), "SAF cache retains authored pose tracks and completion events");
             require(new File(prepared, "Splines.json").isFile(), "SAF cache preserves analytic rail metadata");
             require(new File(prepared,"Origin.json").isFile(),"SAF cache preserves course identity for slot run settings");
@@ -119,11 +120,15 @@ public final class NativeImportInstrumentation extends Instrumentation {
             File particleFolder = new File(authoredParticles, "Textures/Particles");
             require(particleFolder.mkdirs(), "Create nested authored particle art");
             java.nio.file.Files.copy(new File(extracted, "Textures/particle-part.png").toPath(), new File(particleFolder, "part.png").toPath());
+            java.nio.file.Files.copy(new File(extracted, "Textures/particle-part.png").toPath(), new File(particleFolder, "lens.png").toPath());
+            java.nio.file.Files.copy(new File(extracted, "World.json").toPath(), new File(authoredParticles, "World.json").toPath());
             String particleName = "Particles " + UUID.randomUUID(); documents.publish(particleName, authoredParticles, () -> {});
             MapLibrary.Entry particleMap = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(particleName)) particleMap = row;
             require(particleMap != null, "Discover authored particles through the opaque SAF provider");
             File particleCache = documents.prepare(particleMap, temporary, () -> {});
             require(new File(particleCache, "Textures/Particles/part.png").isFile(), "SAF plan copies optional named art before it exists in the play cache");
+            require(new File(particleCache, "Textures/Particles/lens.png").isFile(), "SAF plan retains authored corona art without an imported profile");
+            require(new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(particleCache, "World.json").toPath()), java.nio.charset.StandardCharsets.UTF_8)).getJSONObject("Glare").getBoolean("Enabled"), "Authored celestial settings reach the native play cache");
             require(!new File(particleCache, "RidingEffects.json").exists() && !new File(particleCache, "Origin.json").exists(), "Authored particle art requires no imported profile or origin");
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, particleCache.getAbsolutePath());
             DocumentsContract.deleteDocument(getContext().getContentResolver(), particleMap.uri);

@@ -7,7 +7,8 @@ implemented against OpenSlope's portable map contracts and Trailmap's behavioral
 specification. Its dependency list is recorded in ThirdPartyNotices/README.md.
 
 The embedded shared contracts, ../Contracts/ride-v1.json,
-../Contracts/external-sound-banks-v1.json and ../Contracts/particle-sprites-v1.json,
+../Contracts/external-sound-banks-v1.json, ../Contracts/particle-sprites-v1.json
+and the first-party ../Contracts/celestial-spokes-v1.json,
 carry the bounded tuning facts and
 functional identifiers described in ../Contracts/NOTICE. They supply
 interoperability data, not original executable code, characters, media, or retail

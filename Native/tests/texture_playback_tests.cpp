@@ -1,3 +1,4 @@
+#include "openslope/material_animation.hpp"
 #include "openslope/texture_playback.hpp"
 #include "openslope/world_logic.hpp"
 #include <chrono>
@@ -195,6 +196,13 @@ int main() {
         } cleanup{root};
 
         runtime(root);
+        std::ofstream(root / "Materials.json") << Json{
+            {"Materials", Json::array({Json{{"TextureFlipbook", nullptr}}, Json{{"TextureFlipbook", Json::array()}},
+                                       Json{{"TextureFlipbook", Json::array({"authored"})}}})}};
+        const auto books = material_flipbooks(root);
+        check(books.size() == 3 && books[0].empty() && books[1].empty() &&
+                  books[2] == std::vector<std::string>{"authored.png"},
+              "Legacy null flipbook fields explicitly mean an unanimated material");
         std::cout << "PASS: " << checks << " fixed-clock, per-material, pulse/dwell, receiver and lifecycle checks\n";
         return 0;
     } catch (const std::exception& e) {

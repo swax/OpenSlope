@@ -93,6 +93,7 @@ private:
     VkSampler repeat_{}, clamp_{}, sky_sampler_{};
     VkDeviceSize image_bytes_{};
     VkDescriptorSet effect_set_{}, wake_set_{}, sheet_set_{};
+    VkDescriptorSet corona_set_{};
     std::vector<VkDescriptorSet> particle_sets_;
     Image image(const struct RgbaImage& pixels, VkCommandPool pool, bool mipmapped = true);
     Buffer buffer(VkDeviceSize size, VkBufferUsageFlags usage, const void* data);
@@ -104,7 +105,7 @@ public:
         unsigned flag_sections{}, flag_draws{}, route_copies{}, route_lines{}, line_draws{}, avatar_triangles{},
             visible_props{}, prop_draws{}, terrain_patches{}, visible_terrain{}, terrain_draws{}, sprites{},
             wake_segments{}, wake_draws{}, sheet_segments{}, sheet_draws{}, boost_segments{}, boost_draws{},
-            world_sprites{}, particle_draws{};
+            world_sprites{}, particle_draws{}, celestial_triangles{}, celestial_draws{};
         std::uint64_t terrain_indices{}, terrain_total_indices{};
         std::size_t visibility_tests{};
         bool terrain_compacted = false;
@@ -127,13 +128,20 @@ public:
     void deferred(bool enabled) { deferred_ = enabled; }
 
     void finish();
+
+    const Glare& glare() const {
+        static const Glare empty;
+        return scene_ ? scene_->world_.glare : empty;
+    }
+
     void render(unsigned image, const Matrix& camera, const Matrix& board, VkImageLayout final_layout,
                 VkSemaphore wait = {}, VkSemaphore signal = {}, Vec3 eye = {}, std::span<const Sprite> sprites = {},
                 std::span<const WakeVertex> wake = {}, std::span<const SprayVertex> sheet = {},
                 std::span<const Vertex> avatar = {}, float fade = 0, std::span<const std::uint8_t> instance_flags = {},
                 std::span<const PropMotion> motions = {}, double alpha = 1,
                 std::span<const PropRouteMotion> routes = {}, std::span<const PropTextureFrame> texture_frames = {},
-                std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {});
+                std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {},
+                CelestialView glare_view = {}, std::span<const Vertex> hud = {});
 
     const Stats& stats() const { return stats_; }
 
@@ -158,6 +166,7 @@ private:
     VkRenderPass pass_{};
     VkPipelineLayout layout_{};
     VkPipeline pipeline_{}, blend_pipeline_{}, sprite_pipeline_{}, wake_pipeline_{}, sky_pipeline_{}, line_pipeline_{};
+    VkPipeline celestial_pipeline_{};
     Stats stats_;
     VkQueryPool timing_{};
     double timestamp_period_{};
@@ -186,6 +195,8 @@ private:
     Buffer particle_vertices_;
     std::size_t particle_capacity_{};
     std::vector<Vertex> particle_mesh_;
+    Buffer celestial_vertices_, hud_vertices_;
+    std::size_t celestial_capacity_{}, hud_capacity_{};
 
     struct ParticleDraw {
         std::uint32_t first{}, count{};

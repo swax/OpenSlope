@@ -85,6 +85,8 @@ std::vector<std::vector<std::string>> material_flipbooks(const std::filesystem::
             continue;
         }
         const auto& frames = materials[i].at("TextureFlipbook");
+        if (frames.is_null())
+            continue;
         if (!frames.is_array() || frames.size() > 4096 || (total += frames.size()) > 1000000)
             throw std::runtime_error("Invalid material frame list");
         for (const auto& frame : frames)

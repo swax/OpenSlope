@@ -12,8 +12,8 @@ layout(location=0) out vec4 colour;
 void main() {
     vec3 displayColour=vertexColour;
     float alpha=1.0;
-    if(transform.options.x==8||transform.options.x==9)alpha=effectAlpha;
-    if(transform.options.x>0&&transform.options.x!=8&&transform.options.x!=9) {
+    if(transform.options.x==8||transform.options.x==9||transform.options.x==10)alpha=effectAlpha;
+    if(transform.options.x>0&&transform.options.x!=8&&transform.options.x!=9&&transform.options.x!=10) {
         vec4 base=texture(diffuseImage,textureUV);
         if(transform.options.x==3) {
             if(transform.options.z==1&&base.a<0.5)discard;
@@ -23,6 +23,7 @@ void main() {
         if(transform.options.x==4){displayColour=base.rgb*vertexColour;alpha=base.a*lightmapTile.x;}
         if(transform.options.x==5)alpha=base.a*effectAlpha;
         if(transform.options.x==6){displayColour=base.rgb*vertexColour;alpha=base.a*effectAlpha;}
+        if(transform.options.x==11){displayColour=base.rgb*vertexColour;alpha=base.a;}
         if(transform.options.x==3)displayColour=clamp(base.rgb*vertexColour,0.0,1.0);
         if(transform.options.x==2) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]
@@ -33,7 +34,7 @@ void main() {
             displayColour=clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
         }
     }
-    if(transform.options.x!=7&&transform.eyeEnd.w>transform.fogColourStart.w){
+    if(transform.options.x!=7&&transform.options.x<10&&transform.eyeEnd.w>transform.fogColourStart.w){
         float fog=clamp((length(worldPosition-transform.eyeEnd.xyz)-transform.fogColourStart.w)/(transform.eyeEnd.w-transform.fogColourStart.w),0.0,1.0);
         if(transform.options.x==4&&transform.options.w!=0)alpha*=1.0-fog;
         else if(transform.options.x==4||transform.options.x==6||transform.options.x==9)displayColour*=1.0-fog;

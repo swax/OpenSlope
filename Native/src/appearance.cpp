@@ -14,6 +14,27 @@
 #include <stdexcept>
 
 namespace openslope {
+RgbaImage celestial_corona(const RgbaImage* atlas) {
+    if (atlas && atlas->width >= 2 && atlas->height >= 2 && atlas->width % 2 == 0 && atlas->height % 2 == 0 &&
+        atlas->pixels.size() == std::size_t(atlas->width) * atlas->height * 4) {
+        RgbaImage result{atlas->width / 2, atlas->height / 2, {}};
+        for (unsigned y = 0; y < result.height; ++y) {
+            const auto first = atlas->pixels.begin() + (std::size_t(y) * atlas->width + result.width) * 4;
+            result.pixels.insert(result.pixels.end(), first, first + result.width * 4);
+        }
+        return result;
+    }
+    RgbaImage result{64, 64, {}};
+    for (unsigned y = 0; y < result.height; ++y)
+        for (unsigned x = 0; x < result.width; ++x) {
+            const auto dx = (x + .5) / result.width * 2 - 1, dy = (y + .5) / result.height * 2 - 1;
+            const auto radius = std::min(1., std::hypot(dx, dy));
+            const auto alpha = std::lround((1 - radius * radius * (3 - 2 * radius)) * 255);
+            result.pixels.insert(result.pixels.end(), {255, 255, 255, std::uint8_t(alpha)});
+        }
+    return result;
+}
+
 namespace {
 constexpr std::size_t image_limit = 64 * 1024 * 1024, scene_limit = 256 * 1024 * 1024;
 

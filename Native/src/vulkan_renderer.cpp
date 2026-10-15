@@ -266,6 +266,8 @@ VulkanRenderer::~VulkanRenderer() {
     destroy_buffer(visible_indices_);
     destroy_buffer(sprite_vertices_);
     destroy_buffer(particle_vertices_);
+    destroy_buffer(celestial_vertices_);
+    destroy_buffer(hud_vertices_);
     destroy_buffer(wake_vertices_);
     destroy_buffer(avatar_vertices_);
     destroy_buffer(sheet_vertices_);
@@ -312,6 +314,9 @@ void VulkanRenderer::clear_targets() {
     sky_pipeline_ = {};
     if (line_pipeline_)
         vkDestroyPipeline(context_.device, line_pipeline_, nullptr);
+    if (celestial_pipeline_)
+        vkDestroyPipeline(context_.device, celestial_pipeline_, nullptr);
+    celestial_pipeline_ = {};
     line_pipeline_ = {};
     if (pass_)
         vkDestroyRenderPass(context_.device, pass_, nullptr);
@@ -514,6 +519,13 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         line_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &line_pipeline_);
     }
     vk_check(line_result, "Create spline line pipeline");
+    assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    depth_state.depthTestEnable = VK_FALSE;
+    depth_state.depthWriteEnable = VK_FALSE;
+    blend.blendEnable = VK_TRUE;
+    blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &celestial_pipeline_),
+             "Create celestial additive pipeline");
     vkDestroyShaderModule(context_.device, vertex, nullptr);
     vkDestroyShaderModule(context_.device, fragment, nullptr);
     vk_check(pipeline_result, "Create terrain pipeline");
@@ -592,7 +604,8 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                             std::span<const Vertex> avatar, float fade, std::span<const std::uint8_t> instance_flags,
                             std::span<const PropMotion> motions, double alpha, std::span<const PropRouteMotion> routes,
                             std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost,
-                            std::span<const ParticleSprite> particles) {
+                            std::span<const ParticleSprite> particles, CelestialView glare_view,
+                            std::span<const Vertex> hud) {
     if (boost.size() > 84 || boost.size() % 12)
         throw std::invalid_argument("Boost trail submission exceeds its history bound");
     for (const auto& point : boost) {
@@ -703,6 +716,17 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     }
     if (!std::isfinite(fade) || fade < 0 || fade > 1)
         throw std::invalid_argument("Invalid scene fade");
+    if (hud.size() > 120000 || hud.size() % 3)
+        throw std::invalid_argument("HUD submission exceeds bounds");
+    for (const auto& v : hud)
+        if (!finite({v.x, v.y, v.z}) || !std::isfinite(v.r) || !std::isfinite(v.g) || !std::isfinite(v.b))
+            throw std::invalid_argument("Invalid HUD vertex");
+    glare_view.clip = camera.values;
+    if (!glare_view.stereo)
+        glare_view.anchor = eye;
+    auto celestial = celestial_mesh(glare(), glare_view);
+    const auto fan_count = celestial.fan.size();
+    celestial.fan.insert(celestial.fan.end(), celestial.corona.begin(), celestial.corona.end());
     const auto visibility = 1 - fade;
     const auto started = std::chrono::steady_clock::now();
     finish();
@@ -915,6 +939,22 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkUnmapMemory(context_.device, avatar_vertices_.memory);
     }
     stats_.avatar_triangles = unsigned(avatar.size() / 3);
+    const auto upload_dynamic = [&](std::span<const Vertex> vertices, Buffer& buffer, std::size_t& capacity) {
+        if (vertices.empty())
+            return;
+        if (vertices.size() > capacity) {
+            destroy_buffer(buffer);
+            capacity = vertices.size();
+            buffer = create_buffer(capacity * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, nullptr);
+        }
+        void* mapped;
+        vk_check(vkMapMemory(context_.device, buffer.memory, 0, vertices.size() * sizeof(Vertex), 0, &mapped),
+                 "Map celestial/HUD vertices");
+        std::memcpy(mapped, vertices.data(), vertices.size() * sizeof(Vertex));
+        vkUnmapMemory(context_.device, buffer.memory);
+    };
+    upload_dynamic(celestial.fan, celestial_vertices_, celestial_capacity_);
+    upload_dynamic(hud, hud_vertices_, hud_capacity_);
     boost_mesh_.clear();
     boost_mesh_.reserve(boost.size());
     for (const auto& point : boost) {
@@ -1289,6 +1329,36 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         vkCmdDraw(command_, std::uint32_t(boost_mesh_.size()), 1, 0, 0);
         ++stats_.boost_draws;
+    }
+    if (!celestial.fan.empty()) {
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, celestial_pipeline_);
+        vkCmdBindVertexBuffers(command_, 0, 1, &celestial_vertices_.buffer, &offset);
+        push.mvp = Matrix::identity();
+        push.options[2] = push.options[3] = 0;
+        if (fan_count) {
+            push.options[0] = 10;
+            vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
+            vkCmdDraw(command_, std::uint32_t(fan_count), 1, 0, 0);
+            ++stats_.celestial_draws;
+        }
+        if (!celestial.corona.empty()) {
+            push.options[0] = 11;
+            vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->corona_set_, 0,
+                                    nullptr);
+            vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
+            vkCmdDraw(command_, std::uint32_t(celestial.corona.size()), 1, std::uint32_t(fan_count), 0);
+            ++stats_.celestial_draws;
+        }
+        stats_.celestial_triangles = unsigned(celestial.fan.size() / 3);
+    }
+    if (!hud.empty()) {
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+        vkCmdBindVertexBuffers(command_, 0, 1, &hud_vertices_.buffer, &offset);
+        push.mvp = camera;
+        push.options[0] = push.options[2] = push.options[3] = 0;
+        push.eye_end[3] = 0;
+        vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
+        vkCmdDraw(command_, std::uint32_t(hud.size()), 1, 0, 0);
     }
     vkCmdEndRenderPass(command_);
     if (final_layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {

@@ -273,6 +273,15 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         if (!name.empty())
             batches.push_back({0, 0, name, -1});
     auto appearance = Appearance::load(source.map_root, batches);
+    if (world_.glare.enabled) {
+        const RgbaImage* atlas = nullptr;
+        if (particles.size() > 28) {
+            const auto found = appearance.images.find("Textures/" + particles[28]);
+            if (found != appearance.images.end())
+                atlas = &found->second;
+        }
+        appearance.images["@celestial-corona"] = celestial_corona(atlas);
+    }
     world_.fit_colours(appearance);
     if (!appearance.missing.empty())
         std::cerr << "OpenSlope: " << appearance.missing.size()
@@ -329,7 +338,7 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     layout.pBindings = bindings.data();
     vk_check(vkCreateDescriptorSetLayout(context_.device, &layout, nullptr, &descriptors_),
              "Create map descriptor layout");
-    const auto count = std::uint32_t(batches.size() + world_.sky.parts.size() + 2);
+    const auto count = std::uint32_t(batches.size() + world_.sky.parts.size() + 3);
     const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count * 2};
     VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     descriptor_pool.maxSets = count;
@@ -424,6 +433,8 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         mesh.indices.push_back(offset + index);
     board_count_ = std::uint32_t(gear.indices.size());
     board_set_ = descriptor(0, 1);
+    if (world_.glare.enabled)
+        corona_set_ = descriptor(names.at("@celestial-corona"), 1, true);
     vertices_ = buffer(mesh.vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, mesh.vertices.data());
     indices_ =
         buffer(mesh.indices.size() * sizeof(std::uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, mesh.indices.data());

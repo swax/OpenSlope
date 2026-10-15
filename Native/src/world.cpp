@@ -65,6 +65,27 @@ World World::load(const std::filesystem::path& root) {
         result.sky_colour = colour(profile.at("SkyColor"));
         result.explicit_sky = true;
     }
+    if (profile.contains("Glare")) {
+        const auto& fields = profile.at("Glare");
+        auto& glare = result.glare;
+        glare.enabled = fields.value("Enabled", false);
+        if (fields.contains("CoreColour"))
+            glare.core = colour(fields.at("CoreColour"));
+        if (fields.contains("RimColour"))
+            glare.rim = colour(fields.at("RimColour"));
+        const auto scalar = [&](const char* name, double fallback, double low, double high) {
+            const auto value = fields.value(name, fallback);
+            if (!std::isfinite(value) || value < low || value > high)
+                throw std::runtime_error("Invalid celestial parameter");
+            return value;
+        };
+        glare.fan_intensity = scalar("FanIntensity", glare.fan_intensity, 0, 10);
+        glare.sprite_intensity = scalar("SpriteIntensity", glare.sprite_intensity, 0, 10);
+        glare.azimuth = std::remainder(scalar("AzimuthDegrees", glare.azimuth, -360000, 360000), 360.);
+        glare.elevation = scalar("ElevationDegrees", glare.elevation, -90, 90);
+        glare.distance = scalar("DistanceUnits", glare.distance, 1, 1e8);
+        glare.radius = scalar("SizeUnits", glare.radius, 0, 1e8);
+    }
     if (profile.contains("Fog")) {
         const auto& fog = profile.at("Fog");
         if (!fog.value("Enabled", true)) {
