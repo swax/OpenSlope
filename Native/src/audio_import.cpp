@@ -386,6 +386,12 @@ bool write_course_audio(const DiscInput& disc, const std::string& course,
                                                                {"Clip", "Audio/SFX/" + bank + "/" + slot + ".wav"}};
         }
     }
+    w.notify("Recovering board surface audio groups");
+    const auto board_groups = disc_board_groups(disc, cancelled);
+    if (board_groups)
+        json_file(w.root / "BoardSoundIndex.json", {{"Schema", "openslope-board-sound-index/v1"},
+                                                    {"SourceExecutable", board_groups->executable},
+                                                    {"SurfaceGroups", board_groups->surfaces}});
     const auto routes = Json::parse(external_sound_contract).at("fixedBanks");
     Json environment = {
         {"Schema", "openslope-external-sounds/v1"}, {"Events", Json::object()}, {"Unresolved", Json::array()}};
@@ -498,8 +504,9 @@ bool write_course_audio(const DiscInput& disc, const std::string& course,
             }
         }
     }
-    Json deferred = {"executable-board-surface-index", "dynamic-character-chants", "speech-codec",
-                     "intro-and-async-runtime"};
+    Json deferred = {"dynamic-character-chants", "speech-codec", "intro-and-async-runtime"};
+    if (!board_groups)
+        deferred.push_back("executable-board-surface-index");
     if (!index.contains("SourceExecutable"))
         deferred.push_back("executable-event-resolver");
     json_file(w.root / "Import.json", {{"Schema", "openslope-native-audio-import/v1"},

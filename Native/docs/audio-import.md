@@ -34,8 +34,9 @@ chant selector. Build 0.44 independently recovers ordinary collision-event route
 user executable; see collision-audio-import.md. Supported sources write the
 portable SourceExecutable/Banks/CollisionEvents contract. Unrecognized sources
 retain the empty `ResolverState: Deferred` index; no slot mappings are guessed.
-The board uses the existing PACK fallback until the executable's per-surface
-index is independently extracted. `SNOW.INF` is copied from the user's disc.
+Build 0.45 independently extracts the per-surface board index into the course's
+Audio folder; see board-audio-import.md. Missing/unrecognized routing retains
+the PACK fallback. `SNOW.INF` is copied from the user's disc.
 
 `MUSICMAP.INF` selects the ordered course playlist. Names resolve to exact or
 unique prefix sections in `MUSIC.INF`; ambiguous names reject import. Every song

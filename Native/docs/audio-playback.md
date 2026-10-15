@@ -34,8 +34,9 @@ Large archives are indexed with bounded table reads; individual members are read
 without loading the entire music archive. Normal ISO import now invokes bank,
 ADL attachment, config-driven song/intro and async-bank extraction; see
 audio-import.md. Build 0.44 independently normalizes boot-executable collision-event routes;
-see collision-audio-import.md. Board resolver normalization, dynamic chants and
-speech extraction remain required follow-up work. Existing populated
+see collision-audio-import.md. Build 0.45 independently recovers board surface
+routing (board-audio-import.md). Dynamic chants and speech extraction remain
+required follow-up work. Existing populated
 Maps folders continue to supply their audio data.
 
 `Audio/SoundIndex.json` (`openslope-sound-index/v1`) supplies bank groups and

@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
         if (argc < 3) {
             std::cerr << "Usage: openslope_import list <iso> | extract <iso> <course> <Maps-folder> | convert-effects "
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
-                         "<map-folder> | world <iso> <course> | collision-routes <iso>\n";
+                         "<map-folder> | world <iso> <course> | collision-routes <iso> | board-groups <iso>\n";
             return 1;
         }
         const std::string operation = argv[1];
@@ -89,6 +89,17 @@ int main(int argc, char** argv) {
             if (profile.empty())
                 throw std::runtime_error("World settings are unavailable for this course and executable");
             std::cout << profile << '\n';
+            return 0;
+        }
+        if (operation == "board-groups" && argc == 3) {
+            const auto groups = openslope::disc_board_groups(disc);
+            if (!groups)
+                throw std::runtime_error("Board surface selector is unavailable in this executable");
+            std::cout << nlohmann::json({{"Schema", "openslope-board-sound-index/v1"},
+                                         {"SourceExecutable", groups->executable},
+                                         {"SurfaceGroups", groups->surfaces}})
+                             .dump(2)
+                      << '\n';
             return 0;
         }
         if (operation == "collision-routes" && argc == 3) {

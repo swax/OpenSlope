@@ -4,6 +4,14 @@ The implementation inputs are the clean Trailmap specification bodies, the Apach
 OpenSlope contracts and standard mathematical/protocol identities. Evidence annotations and
 other components' implementation sources are outside this implementation boundary.
 
+Build 0.45 independently recovers board-family routes from the scalar selector
+described by clean 190/420. Provider/normalizer dataflow, checked dispatch,
+constant returns and bounded interpretation use standard ELF/MIPS semantics;
+the terrain domain comes from the shared ride contract. No mapping rows or
+retail addresses/instructions are compiled. Existing Shared output validates
+the result only; no other decoder/runtime implementation supplies the reader.
+See board-audio-import.md for admission rules, tests and remaining playback parity.
+
 Build 0.44's collision-event recovery uses clean 190/420, standard ELF/MIPS scalar
 semantics and independently inspected user-supplied data for interface validation.
 The bounded control-flow evaluator and unrelated authored programs are new Native
@@ -55,7 +63,7 @@ desktop evidence and remaining solver/device limits are explicit in rigid-props.
 | Riding clouds / particle art | Clean 180/380/400 bodies establish distinct gates, lifetimes and compositing. Independent fixed-tick bounded state and camera-facing additive quads; application signal/opacity tuning remains explicit. Particle RGB-range/association policy is validated by authored palettes and all 38 owned generated sprite RGBA images, without decoder implementation input. |
 | Desktop MSAA | Standard Vulkan colour/depth sample-count queries, multisample rasterization and render-pass resolve. Independently authored resource ownership and synthetic diagonal-edge pixel checks; an application quality policy rather than recovered original-hardware filtering. |
 | Terrain visibility/submission | Standard homogeneous Vulkan clip planes, AABB support intervals and median-split BVH identities; first-party ordered index packing and dense-view reuse. Clean 400 establishes rendering/collision independence; original grid/LOD behavior remains separate work. Authored clip/GPU oracles and generated course captures establish comparison evidence without decoder implementation input. |
-| Automatic Audio import | Clean 190/200/260/270/420 bodies and the shared fixed-environment identifier contract; independently authored config matching, variable-stride ADL reads, serialized manifest-hash joins and bounded asset staging. All eleven generated courses/WAVs are comparison data only. Executable collision routes are now independently recovered (collision-audio-import.md); board rows remain unresolved. Neither table is compiled into the importer. |
+| Automatic Audio import | Clean 190/200/260/270/420 bodies and the shared fixed-environment identifier contract; independently authored config matching, variable-stride ADL reads, serialized manifest-hash joins and bounded asset staging. All eleven generated courses/WAVs are comparison data only. Executable collision routes are now independently recovered (collision-audio-import.md); board-family routes are recovered in build 0.45 (board-audio-import.md). Neither table is compiled into the importer. |
 | Archive table and compression | [Trailmap: 200-c0fb, 200-bigf, 200-refpack-header, 200-refpack-commands]. Format identifiers and byte-command equations are interoperability facts. |
 | Terrain records and names | [Trailmap: 200-map-manifest, 220-header, 220-patch, 220-power-basis]; the public OpenSlope patch contract. |
 | Runtime coordinate conversion | Proper -90 degree X rotation and centimetre scale, preserving the observed course turns. The disputed extra reflection in chapter 002 is documented in spec-alignment.md; output maps remain in their canonical raw frame. |

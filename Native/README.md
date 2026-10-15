@@ -350,6 +350,8 @@ during native ISO import. See [world settings import](docs/world-settings-import
 for the independent reader, existing-map handling and validation limits.
 Build 0.44 also recovers collision-event sound routes from the user's executable;
 see [collision audio import](docs/collision-audio-import.md).
+Build 0.45 recovers the board surface-family map into each imported course's
+Audio folder; see [board audio import](docs/board-audio-import.md).
 Hard landings, prop crashes and animated relative get-up are described in
 [crash recovery](docs/crash-recovery.md), including provisional pose/physics tuning.
 Keep platform file access behind the application host,

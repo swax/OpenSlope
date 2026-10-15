@@ -84,7 +84,8 @@ ISO, executable or map:
 openslope_import collision-routes <user-supplied.iso>
 ```
 
-Board-family extraction, wider audio/music/announcer behavior, exact impact gain,
+Build 0.45 adds independent board-family extraction (board-audio-import.md).
+Wider audio/music/announcer behavior, exact impact gain,
 complete breakable lifecycle and worn headset listening/performance remain
 active parity work. Successful device import/startup checks do not prove worn
 audio perception or sustained frame rate.

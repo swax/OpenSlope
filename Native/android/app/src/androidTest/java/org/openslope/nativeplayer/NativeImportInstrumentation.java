@@ -41,6 +41,9 @@ public final class NativeImportInstrumentation extends Instrumentation {
                 JSONObject sounds = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(worldCourse, "Audio/SoundIndex.json").toPath()), java.nio.charset.StandardCharsets.UTF_8));
                 require(sounds.getString("SourceExecutable").equals("BOOT.ELF") && sounds.getJSONObject("CollisionEvents").getJSONObject("17").getInt("Slot") == 0, "JNI automatically recovers collision routes from the authored executable");
                 require(!sounds.getJSONObject("CollisionEvents").has("0") && sounds.getJSONObject("CollisionEvents").getJSONObject("7").getInt("Group") == 3, "JNI retains silent events and crowd-group overrides");
+                JSONObject board = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(worldCourse, "Audio/BoardSoundIndex.json").toPath()), java.nio.charset.StandardCharsets.UTF_8));
+                require(board.getString("SourceExecutable").equals("BOOT.ELF") && board.getJSONArray("SurfaceGroups").length() == 20, "JNI automatically recovers the contract-sized board surface map");
+                require(board.getJSONArray("SurfaceGroups").getInt(1) == 4, "JNI retains the decoded selector normalization and family values");
             }
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, extracted.getAbsolutePath());
             require(new File(extracted, "Audio/SFX/tone/000.wav").isFile(), "JNI imports audio from the selected ISO");

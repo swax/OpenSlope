@@ -1,7 +1,9 @@
 #include "openslope/audio_resolver.hpp"
+#include "contract.hpp"
 #include "executable_internal.hpp"
 #include <array>
 #include <bit>
+#include <nlohmann/json.hpp>
 #include <set>
 
 namespace openslope {
@@ -49,6 +51,7 @@ std::uint32_t code_address(const Executable& image, std::size_t offset) {
 struct Result {
     bool table_used = false;
     std::optional<SoundRoute> route;
+    Number returned;
 };
 
 struct Probe {
@@ -58,12 +61,16 @@ struct Probe {
     std::array<std::optional<std::uint8_t>, 8192> stack{};
     std::array<std::optional<std::uint8_t>, 8> output{};
     unsigned touched = 0;
+    bool scalar = false;
 
-    Probe(const Executable& source, unsigned event) : image(source) {
+    Probe(const Executable& source, unsigned event, bool scalar_result = false, unsigned input_register = 5)
+        : image(source), scalar(scalar_result) {
         regs[0] = 0;
-        regs[5] = event;
-        regs[6] = output_base;
-        regs[7] = output_base + 4;
+        regs[input_register] = event;
+        if (!scalar) {
+            regs[6] = output_base;
+            regs[7] = output_base + 4;
+        }
         regs[29] = stack_base + 4096;
         regs[31] = return_marker;
         if (image.gp)
@@ -94,7 +101,7 @@ struct Probe {
         const auto end = std::uint64_t(address) + width;
         const bool out = address >= output_base && end <= std::uint64_t(output_base) + output.size();
         const bool local = address >= stack_base && end <= std::uint64_t(stack_base) + stack.size();
-        if (!out && !local)
+        if ((!out && !local) || (out && scalar))
             throw Reject{};
         for (unsigned i = 0; i < width; ++i) {
             const auto byte =
@@ -116,10 +123,13 @@ struct Probe {
             Result result;
             for (unsigned step = 0; step < 4096; ++step) {
                 if (++work > 15000000)
-                    throw std::runtime_error("Collision resolver analysis exceeds its work limit");
+                    throw std::runtime_error("Audio resolver analysis exceeds its work limit");
                 if ((step & 63) == 0)
                     import_detail::check_cancel(cancelled);
                 if (pc == return_marker) {
+                    result.returned = regs[2];
+                    if (scalar)
+                        return result;
                     if (!(touched & 240))
                         return result;
                     const auto group = read(output_base, 4), slot = read(output_base + 4, 4);
@@ -303,11 +313,11 @@ struct Probe {
     }
 };
 
-std::vector<Range> pointer_tables(const Executable& image, const ImportCancel& cancelled) {
+std::vector<Range> pointer_tables(const Executable& image, const ImportCancel& cancelled, unsigned minimum = 24) {
     std::vector<Range> tables;
     std::optional<std::size_t> begin;
     const auto finish = [&](std::size_t end) {
-        if (begin && end - *begin >= 24 * 4 && end - *begin <= 1024 * 4)
+        if (begin && end - *begin >= minimum * 4 && end - *begin <= 1024 * 4)
             tables.push_back({*begin, end});
         begin.reset();
     };
@@ -324,6 +334,83 @@ std::vector<Range> pointer_tables(const Executable& image, const ImportCancel& c
     if (tables.size() > 512)
         throw std::runtime_error("Too many collision-dispatch candidates");
     return tables;
+}
+
+std::optional<unsigned> destination(std::uint32_t w) {
+    const auto op = w >> 26;
+    if (op == 0)
+        return (w & 63) == 8 ? std::nullopt : std::optional<unsigned>((w >> 11) & 31);
+    if (op == 3)
+        return 31;
+    if (op == 9 || op == 10 || op == 11 || op == 12 || op == 13 || op == 14 || op == 15 || op == 25 || op == 30 ||
+        (op >= 32 && op <= 39) || op == 55)
+        return (w >> 16) & 31;
+    return {};
+}
+
+struct SelectorInput {
+    std::size_t start{};
+    unsigned reg{};
+};
+
+bool raw_surface_provider(const Executable& image, std::size_t begin, SelectorInput entry) {
+    const auto first = std::max(begin, entry.start > 32 ? entry.start - 32 : std::size_t(0));
+    for (auto q = entry.start; q > first;) {
+        q -= 4;
+        const auto w = image.bytes.le(q), op = w >> 26;
+        if (op == 2 || op == 3 || (op == 0 && ((w & 63) == 8 || (w & 63) == 9)))
+            break;
+        if (destination(w) != entry.reg)
+            continue;
+        if (op == 32 || op == 33 || op == 35 || op == 36 || op == 37 || op == 39 || op == 55)
+            return true;
+        const auto rs = (w >> 21) & 31, rt = (w >> 16) & 31;
+        if (op == 0 && ((w & 63) == 33 || (w & 63) == 37 || (w & 63) == 45) && ((rs == 0) != (rt == 0))) {
+            entry.reg = rs == 0 ? rt : rs;
+            continue;
+        }
+        return false;
+    }
+    return entry.reg >= 4 && entry.reg <= 7;
+}
+
+std::vector<SelectorInput> selector_inputs(const Executable& image, Range table, std::size_t low, std::size_t domain) {
+    std::vector<SelectorInput> entries;
+    for (const auto range : image.text)
+        if (low >= range.begin && low < range.end) {
+            const auto begin = std::max(range.begin, low > 4096 ? low - 4096 : std::size_t(0));
+            for (auto p = begin; p < low; p += 4) {
+                const auto w = image.bytes.le(p), op = w >> 26, source = (w >> 21) & 31, bound = w & 65535;
+                if (op != 11 || source == 0 || bound < domain || bound > 256 || bound != (table.end - table.begin) / 4)
+                    continue;
+                SelectorInput entry{p, source};
+                bool valid = true;
+                const auto first = std::max(begin, p > 32 ? p - 32 : std::size_t(0));
+                for (auto q = p; q > first;) {
+                    q -= 4;
+                    const auto previous = image.bytes.le(q), kind = previous >> 26, rs = (previous >> 21) & 31;
+                    if (kind == 2 || kind == 3 || (kind == 0 && ((previous & 63) == 8 || (previous & 63) == 9)))
+                        break;
+                    if (destination(previous) != source)
+                        continue;
+                    if (kind == 9 || kind == 25) {
+                        const auto bias = std::bit_cast<std::int16_t>(std::uint16_t(previous));
+                        if (rs == 0 || bias < 0 || bias > 64)
+                            valid = false;
+                        else
+                            entry = {q, rs};
+                    } else if (kind == 15 || (kind == 13 && rs == 0))
+                        valid = false;
+                    break;
+                }
+                if (valid && entry.reg != 0 && entry.reg != 28 && entry.reg != 29 && entry.reg != 31 &&
+                    raw_surface_provider(image, begin, entry))
+                    entries.push_back(entry);
+            }
+        }
+    if (entries.size() > 64)
+        throw std::runtime_error("Too many board-selector entry points");
+    return entries;
 }
 } // namespace
 
@@ -405,5 +492,64 @@ std::optional<CollisionRoutes> disc_collision_routes(const DiscInput& disc, cons
     if (!routes)
         return {};
     return CollisionRoutes{boot->name, *routes};
+}
+
+std::optional<std::vector<unsigned>> executable_board_groups(std::span<const std::uint8_t> source,
+                                                             std::size_t surface_count, const ImportCancel& cancelled) {
+    import_detail::check_cancel(cancelled);
+    if (!surface_count || surface_count > 256)
+        throw std::runtime_error("Invalid board surface domain");
+    Executable image(source);
+    std::optional<std::vector<unsigned>> result;
+    unsigned work = 0;
+    for (const auto table : pointer_tables(image, cancelled, 6)) {
+        std::set<std::size_t> targets;
+        for (auto p = table.begin; p < table.end; p += 4)
+            targets.insert(*code_offset(image, image.bytes.le(p)));
+        if (targets.size() < 6 || *targets.rbegin() - *targets.begin() > 16384)
+            continue;
+        std::set<unsigned> families;
+        bool constant = true;
+        for (const auto target : targets) {
+            Probe probe(image, 0, true, 0);
+            const auto row = probe.run(target, table, work, cancelled);
+            if (!row || !row->returned || *row->returned >= 10) {
+                constant = false;
+                break;
+            }
+            families.insert(unsigned(*row->returned));
+        }
+        if (!constant || families.size() < 6)
+            continue;
+        for (const auto entry : selector_inputs(image, table, *targets.begin(), surface_count)) {
+            std::vector<unsigned> groups;
+            bool witnessed = false;
+            for (unsigned surface = 0; surface < surface_count; ++surface) {
+                Probe probe(image, surface, true, entry.reg);
+                const auto row = probe.run(entry.start, table, work, cancelled);
+                if (!row || !row->returned || *row->returned >= 10)
+                    break;
+                witnessed |= row->table_used;
+                groups.push_back(unsigned(*row->returned));
+            }
+            if (groups.size() != surface_count || !witnessed)
+                continue;
+            if (result && *result != groups)
+                throw std::runtime_error("Ambiguous board surface selector in supplied executable");
+            result = std::move(groups);
+        }
+    }
+    return result;
+}
+
+std::optional<BoardGroups> disc_board_groups(const DiscInput& disc, const ImportCancel& cancelled) {
+    const auto boot = executable_detail::boot_executable(disc, cancelled);
+    if (!boot)
+        return {};
+    const auto domain = nlohmann::json::parse(embedded_ride_contract).at("surfaces").size();
+    const auto groups = executable_board_groups(boot->bytes, domain, cancelled);
+    if (!groups)
+        return {};
+    return BoardGroups{boot->name, *groups};
 }
 } // namespace openslope
