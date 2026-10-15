@@ -13,7 +13,8 @@ orbits the character. The mouse wheel changes follow distance; V/F changes view.
 The pointer remains visible in third person when neither carrying nor looking.
 First person captures the cursor; Escape releases it, and clicking empty space captures
 it again. Escape with an already visible cursor opens/closes the pause menu. P also
-opens/closes that menu. E/G retains the existing nearby mount/dismount shortcut.
+opens/closes that menu. Build 0.36 changes E to spawn/recall ahead; G retains nearby
+mount/dismount. See foot-flight.md for current movement and stock snowboard art.
 
 Quest uses either trigger to ride/dismount and either squeeze to carry. A loose deck
 answers an unobstructed aim ray out to 4 m with 10 cm padding. Pickup is measured
@@ -37,8 +38,9 @@ the latest hand pose without advancing physics. Focus/tracking loss drops gently
 A thrown deck keeps horizontal momentum and tumbles until contact. Five swept deck
 points test terrain and solid props; the existing loose-board slide/settle path
 then takes over. Holding Boost with a carried board applies unlimited nose-directed
-thrust and the existing board afterimage. The current diagnostic deck is 0.36 by
-1.6 m. Its 18 m/s² loose-board gravity, 3.5 m/s² ground slowdown, contact radius,
+thrust and the existing board afterimage. Build 0.36 uses the first-party 1.86 m
+stock snowboard and its conservative grab box instead of the 0.35 diagnostic quad.
+Its 18 m/s² loose-board gravity, 3.5 m/s² ground slowdown, contact radius,
 50 ms filtering and approach duration remain explicit application tuning. This is
 not a general rigid-body/inertia solver, and custom gear dimensions remain work.
 

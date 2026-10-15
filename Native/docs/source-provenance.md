@@ -171,3 +171,10 @@ clean 400 bodies, independently authored cached sphere/triangle guards and
 time-based exponential responses. Its near framing is an application choice,
 not a claim about the original default. The font is factored from Native's
 existing first-party controller-label geometry. See equipment-camera-ui.md.
+
+On-foot flight and movement are independently authored from the public first-party
+ride manual, exported profile values and measured public-API behavior traces.
+Terrain sweeps use the existing cached patches and standard sphere/triangle
+queries. Stock snowboard geometry is intentionally reused first-party art, baked
+through its public API into an attributed GLB. Native consumes only that saved
+asset; no authoring runtime implementation is copied or linked. See foot-flight.md.

@@ -1,3 +1,4 @@
+from gear_pixels import board_pixel
 """Run a complete authored jump/spin/landing through the actual desktop Vulkan host."""
 import json
 from pathlib import Path
@@ -23,7 +24,7 @@ def main():
         header = output.read_bytes().split(b'\n', 3)
         assert header[:3] == [b'P6', b'1280 720', b'255']
         pixels = header[3]; assert len(pixels) == 1280 * 720 * 3
-        board = sum(all(abs(channel - expected) <= 1 for channel, expected in zip(pixels[i:i+3], (13, 166, 153))) for i in range(0, len(pixels), 3))
+        board = sum(board_pixel(pixels[i:i+3]) for i in range(0, len(pixels), 3))
         assert board > 25, f'Only {board} board pixels in the final actual-renderer frame'
     print('PASS: 269 desktop Vulkan frames cover charged launch, half-spin, switch touchdown, continued riding and visible board geometry')
 

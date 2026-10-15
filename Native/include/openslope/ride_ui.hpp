@@ -61,7 +61,7 @@ public:
 
     void append_pointer(std::vector<Vertex>& vertices, const EquipmentRay& ray) const;
     void append(std::vector<Vertex>& vertices, const Player& player, bool wrist = false, double fps = 0) const;
-    static UiFrame desktop(const CameraPose& camera, double aspect);
+    static UiFrame desktop(const CameraPose& camera, double aspect, bool menu = false);
     static UiFrame wrist(const ControllerPose& left, Vec3 eye, Vec3 offset = {});
 
 private:

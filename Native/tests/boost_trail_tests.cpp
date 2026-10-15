@@ -101,7 +101,7 @@ void pose_and_validation() {
     trail.step(6, pose(1), 1, 1, false);
     const BoostTrailPose banked{{5, 40, 7}, {-1, 0, 0}, {0, 0, 1}};
     const auto mesh = trail.draw(banked);
-    equal(mesh.points[0].position, {5.8, 39.78, 7.015},
+    equal(mesh.points[0].position, {5.93, 39.78, 7.015},
           "live deck roll and yaw transform attachment points in full 3D");
     const auto previous = trail.draw(pose(1));
     check(mesh.points[0].position.y != previous.points[0].position.y,

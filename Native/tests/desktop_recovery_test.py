@@ -1,3 +1,4 @@
+from gear_pixels import board_pixel
 """Crash, animated get-up and resumed riding through the production Vulkan host."""
 import json
 from pathlib import Path
@@ -42,7 +43,7 @@ def main():
             else: assert position[0] > 90 and position[2] < -2, result.stdout
             pixels = image.read_bytes().split(b'\n',3)
             assert pixels[:3] == [b'P6',b'1280 720',b'255']
-            board = sum(all(abs(c-e)<=1 for c,e in zip(pixels[3][i:i+3],(13,166,153))) for i in range(0,len(pixels[3]),3))
+            board = sum(board_pixel(pixels[3][i:i+3]) for i in range(0,len(pixels[3]),3))
             assert board > 25, f'{name}: get-up board is not visible ({board} pixels)'
             print(f'PASS: desktop {name} recovery (300 rendered frames, {board} board pixels)')
 

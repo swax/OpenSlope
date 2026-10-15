@@ -1,0 +1,4 @@
+#pragma once
+namespace openslope::bundled {
+inline constexpr unsigned char snowboard[] = { @SNOWBOARD_BYTES@ };
+}

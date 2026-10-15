@@ -5,6 +5,7 @@
 #include "collision.hpp"
 #include "course_recovery.hpp"
 #include "course_run.hpp"
+#include "foot_motion.hpp"
 #include "rails.hpp"
 #include "ride.hpp"
 #include "riding_effects.hpp"
@@ -29,6 +30,8 @@ struct RideInput {
     VrInput vr{};
     bool spawn_board = false;
     EquipmentInput equipment{};
+    bool crouch = false;
+    Vec3 flight_direction{};
 }; // Left steer; positive posture is tuck/forward flip.
 enum class Motion { Air = 1, Ground = 2, Rail = 3, Wipeout = 5, RecoverContact = 6, OnFoot = 100 };
 enum class Control {
@@ -158,6 +161,8 @@ public:
     const BoostTrail& boost_trail() const { return boost_trail_; }
 
     BoostTrailMesh boost_trail_mesh() const {
+        if (foot_trail_)
+            return boost_trail_.draw({render_position(), rider_.forward, {0, 1, 0}, true});
         return boost_trail_.draw({render_board_position(), render_forward(), render_up()});
     }
 
@@ -181,6 +186,10 @@ public:
     void start_on_foot();
 
     bool on_foot() const { return on_foot_; }
+
+    bool flying() const { return on_foot_ && foot_motion_.flying(); }
+
+    bool flight_boosting() const { return on_foot_ && foot_motion_.boosting(); }
 
     bool interact_board(Vec3 room_offset = {});
     bool recall_board(Vec3 facing = {});
@@ -290,6 +299,9 @@ private:
     EquipmentHand holding_hand_{};
     bool holding_relative_ = false;
     bool board_highlight_ = false, carry_thrust_ = false;
+    FootMotion foot_motion_;
+    bool foot_trail_ = false;
+    unsigned trail_attachment_ = 0;
     std::array<bool, 2> grip_held_{}, grip_press_{}, grip_release_{}, trigger_held_{}, trigger_press_{};
     bool tick_equipment(const EquipmentInput& input);
     EquipmentInput equipment_frame(EquipmentInput input) const;

@@ -10,7 +10,9 @@ speed bands, braking, tuck pose state and pause/focus handling. The broader
 Desktop input follows Slopesmith's control vocabulary: A/D or horizontal arrows
 carve on the ground and spin in the air; W/S or vertical arrows tuck/brake on the
 ground and flip in the air; Space holds a jump charge; Shift boosts; R resets;
-F/V changes camera; C looks down; E (or G) mounts/dismounts; P pauses; Escape exits.
+F/V changes camera; C looks down; E spawns a board ahead; LMB/G mounts/dismounts;
+P/Escape opens the pause menu. Build 0.36 adds double-jump flight and Ctrl crouch;
+see foot-flight.md for the current on-foot profile and equipment.
 The title reports speed, charge, ground/air/switch or on-foot state and visible
 prop/draw counts. The stick figure depicts stance and crouch. Mouse look,
 gamepad and the complete HUD remain outstanding. See boarding.md for walking,
@@ -31,7 +33,7 @@ unfinished-flip recovery are desktop application choices. They match the current
 Slopesmith play profile's intended controls, rather than claiming recovered retail
 constants where Trailmap is open. `PlayTuning` carries these choices separately
 from the unchanged shared ride contract. Tuck drives both the pose field and
-the visible stick figure's crouch; equipment remains a diagnostic board.
+the visible stick figure's crouch; build 0.36 replaces the diagnostic board with stock first-party art.
 
 ## Motion and presentation
 

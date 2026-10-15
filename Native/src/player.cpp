@@ -56,6 +56,7 @@ Player::Player(Terrain terrain, PlayTuning tuning)
 }
 
 void Player::release_inputs() {
+    foot_motion_.release();
     if (carry_.held())
         drop_board(false);
     grip_held_ = grip_press_ = grip_release_ = trigger_held_ = trigger_press_ = {};
@@ -89,6 +90,9 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     carry_.clear();
     holding_hand_ = {};
     on_foot_ = false;
+    foot_motion_.reset();
+    foot_trail_ = false;
+    trail_attachment_ = 0;
     ++placement_serial_;
     effects_.reset();
     boost_trail_.reset();
@@ -234,7 +238,7 @@ void Player::sample_input(const RideInput& input) {
     }
     if (!std::isfinite(input.steer) || !std::isfinite(input.posture) || !finite(input.walk_forward) ||
         !finite(input.room_offset) || length(input.room_offset) > 10 || !finite(input.vr.gaze) ||
-        !std::isfinite(input.vr.spin) || std::abs(input.vr.spin) > 1)
+        !std::isfinite(input.vr.spin) || std::abs(input.vr.spin) > 1 || !finite(input.flight_direction))
         throw std::invalid_argument("Rider input must be finite");
     if (input.spawn_board && !spawn_held_)
         spawn_pending_ = true;
@@ -496,10 +500,19 @@ void Player::notify_tick(const Rider& before) {
     const auto lateral = normalized(cross(rider_.normal, rider_.forward * double(rider_.lead)));
     const auto deck = rider_.position + rider_.smoothed_up * rider_.lift + lateral * rider_.slide +
                       rider_.normal * rider_.recovery_height;
-    boost_trail_.step(game_frame_, {carry_.held() ? carry_.pose().position : deck, render_forward(), render_up()},
-                      carry_.held() && carry_thrust_ ? 1
-                      : board_active                 ? held_boost_
-                                                     : 0,
+    const auto attachment = carry_.held() ? 1u : on_foot_ ? 2u : 0u;
+    if (attachment != trail_attachment_)
+        boost_trail_.reset();
+    trail_attachment_ = attachment;
+    foot_trail_ = attachment == 2;
+    const BoostTrailPose trail_pose =
+        foot_trail_ ? BoostTrailPose{rider_.position, rider_.forward, {0, 1, 0}, true}
+                    : BoostTrailPose{carry_.held() ? carry_.pose().position : deck, render_forward(), render_up()};
+    boost_trail_.step(game_frame_, trail_pose,
+                      carry_.held() && carry_thrust_     ? 1
+                      : foot_trail_ && flight_boosting() ? 1
+                      : board_active                     ? held_boost_
+                                                         : 0,
                       score_.boost_amount(), board_active && rider_.pads.speed > 0);
     effects_.tick(placed ? rider_ : before, rider_, contract_.tick_seconds(),
                   [&](Vec3 position) -> std::optional<WakeContact> {
@@ -755,7 +768,10 @@ void Player::tick(const RideInput& input) {
     reset_held_ = input.reset;
     if (spawn_pending_) {
         spawn_pending_ = false;
+        if (!on_foot_)
+            interact_board(input.room_offset);
         recall_board(input.walk_forward);
+        spawn_held_ = input.spawn_board;
     }
     if (tick_equipment(input.equipment)) {
         jump_held_ = input.jump;
@@ -802,7 +818,6 @@ void Player::tick(const RideInput& input) {
     }
     if (on_foot_) {
         boost_engaged_ = false;
-        carry_thrust_ = carry_.held() && input.boost;
         tick_foot(input, before_pose);
         notify_tick(before_pose);
         return;
@@ -1315,7 +1330,7 @@ Vec3 Player::render_forward() const {
         return loose_board_.forward;
     const auto forward = normalized(project(rider_.forward, rider_.board_up), rider_.forward),
                right = normalized(cross(forward, rider_.board_up));
-    return rotate(forward, right, -rider_.flip_degrees * pi / 180);
+    return rotate(forward, right, -rider_.flip_degrees * rider_.lead * pi / 180);
 }
 
 Vec3 Player::render_up() const {
@@ -1325,7 +1340,7 @@ Vec3 Player::render_up() const {
         return loose_board_.up;
     const auto forward = normalized(project(rider_.forward, rider_.board_up), rider_.forward),
                right = normalized(cross(forward, rider_.board_up));
-    auto up = rotate(rider_.board_up, right, -rider_.flip_degrees * pi / 180);
+    auto up = rotate(rider_.board_up, right, -rider_.flip_degrees * rider_.lead * pi / 180);
     if (rider_.motion == Motion::Ground)
         up = rotate(up, render_forward(),
                     -contract_.value("steering", "bankMaxDeg") * pi / 180 * rider_.lean * rider_.lead);

@@ -4,7 +4,7 @@
 namespace openslope {
 std::optional<Player::GroundContact> Player::walk_ground(Vec3 start, Vec3 end) const {
     std::optional<GroundContact> result;
-    if (const auto hit = terrain_.intersect(start, end); hit && hit->normal.y > .55)
+    if (const auto hit = terrain_.intersect(start, end); hit && hit->normal.y > .1)
         result = GroundContact{hit->point, hit->normal, hit->t, hit->surface, {}};
     if (const auto hit = world_.ray(start, end); hit && hit->normal.y > .55 && (!result || hit->t < result->t))
         result = GroundContact{hit->point,  hit->normal,          hit->t, hit->surface, hit->instance,
@@ -15,20 +15,25 @@ std::optional<Player::GroundContact> Player::walk_ground(Vec3 start, Vec3 end) c
 Vec3 Player::walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radius, double height) const {
     // Application walker: separate sphere casts also test head/feet against boxes.
     // Positive-mass props block; triggers do not. There is no board bounce here.
-    const auto offsets = std::array<double, 4>{radius, .65 * height, .85 * height, height - .16};
+    const auto offsets =
+        std::array<double, 4>{radius, .65 * height, height < 1 ? .85 * height : height - .30, height - .16};
     for (unsigned pass = 0; pass < 6; ++pass) {
-        std::optional<WorldContact> closest;
+        std::optional<ShapeContact> closest;
         for (unsigned i = 0; i < offsets.size(); ++i) {
             const auto r = i == 3 ? .16 : radius;
             const std::array<ProbeSphere, 1> a{{{start + Vec3{0, offsets[i], 0}, r}}},
                 b{{{destination + Vec3{0, offsets[i], 0}, r}}};
             for (const auto& hit : world_.sweep(a, b)) {
-                if (!hit.response || hit.normal.y > .55 ||
+                if (!hit.response || hit.normal.y > .1 ||
                     (hit.depth <= 1e-7 && dot(destination - start, hit.normal) >= -1e-9))
                     continue;
                 if (!closest || hit.t < closest->t)
                     closest = hit;
             }
+            if (const auto hit = terrain_.sweep(a[0].centre, b[0].centre, r);
+                hit && hit->normal.y <= .1 && !(hit->depth <= 1e-7 && dot(destination - start, hit->normal) >= -1e-9) &&
+                (!closest || hit->t < closest->t))
+                closest = ShapeContact{hit->point, hit->normal, hit->t, hit->depth};
         }
         if (!closest)
             break;
@@ -46,6 +51,7 @@ void Player::place_foot(Vec3 position, Vec3 forward, Vec3 velocity) {
     score_.lose(ScoreLoss::BoardReleased);
     rider_.view_yaw = 0;
     on_foot_ = true;
+    foot_motion_.reset(length(project(velocity, {0, 1, 0})) > FootMotion::run_speed);
     ++placement_serial_;
     effects_.reset();
     get_up_.stop();
@@ -201,29 +207,43 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
     auto wish = heading * std::clamp(input.posture, -1., 1.) - right * std::clamp(input.steer, -1., 1.);
     if (length(wish) > 1)
         wish = normalized(wish);
-    const auto target = wish * (input.boost ? 4.5 : 2.5);
-    const bool thrust = carry_.held() && input.boost;
-    if (thrust) {
-        rider_.grounded = false;
-        rider_.velocity += carry_.pose().forward * (24.508 * dt);
-    }
     const auto carried = rider_.grounded ? rider_.position - before.position : Vec3{};
-    if (rider_.grounded) {
-        const auto support = carried / dt;
-        const auto relative = rider_.velocity - rider_.ground_velocity;
-        rider_.velocity = {approach(relative.x, target.x, 18 * dt) + support.x, support.y,
-                           approach(relative.z, target.z, 18 * dt) + support.z};
-        rider_.ground_velocity = support;
-    } else if (!thrust && length(wish) > .001) {
-        rider_.velocity.x += (target.x - rider_.velocity.x) * std::min(1., dt * 1.2);
-        rider_.velocity.z += (target.z - rider_.velocity.z) * std::min(1., dt * 1.2);
+    const auto support = rider_.grounded ? carried / dt : Vec3{};
+    const bool was_grounded = rider_.grounded;
+    const auto direction = carry_.held() ? carry_.pose().forward : input.flight_direction;
+    const auto crouch_target = foot_motion_.flying() ? 0. : input.crouch ? 1. : 0.;
+    auto crouch = approach(rider_.crouch, crouch_target, dt * 6);
+    if (crouch < rider_.crouch) {
+        Vec3 test_velocity{};
+        if (length(walk_move(rider_.position, rider_.position, test_velocity, .28, 1.65 - .35 * crouch) -
+                   rider_.position) > .001)
+            crouch = rider_.crouch;
     }
-    if (jump && rider_.grounded) {
-        rider_.velocity.y += 4.5;
-        rider_.grounded = false;
+    rider_.crouch = crouch;
+    rider_.velocity = foot_motion_.step(rider_.velocity - support, rider_.grounded,
+                                        {heading, direction, -input.steer, input.posture, jump, input.jump, input.boost,
+                                         input.crouch, carry_.held()},
+                                        dt) +
+                      support;
+    carry_thrust_ = carry_.held() && foot_motion_.boosting();
+    if (jump && was_grounded)
         ++rider_.launches;
+    if ((jump && was_grounded) || foot_motion_.boosting())
+        rider_.grounded = false;
+    if (rider_.grounded) {
+        rider_.velocity.y = support.y;
+        rider_.ground_velocity = support;
     }
     auto destination = rider_.position + rider_.velocity * dt - carried;
+    // Test the actual diagonal chord before the short destination floor probe.
+    // Fast flight must land at the crossed slope, not beneath its far endpoint.
+    if (!rider_.grounded)
+        if (const auto hit = walk_ground(rider_.position, destination);
+            hit && dot(rider_.velocity - hit->velocity, hit->normal) < 0 && dispatch_fragile_ground(*hit)) {
+            destination = hit->point;
+            rider_.velocity.y = hit->velocity.y;
+            rider_.grounded = true;
+        }
     auto floor = walk_ground(destination + Vec3{0, rider_.grounded ? .35 : 0, 0},
                              destination - Vec3{0, rider_.grounded ? .5 : .05, 0});
     bool seated =
@@ -236,18 +256,18 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
     }
     if (seated)
         destination.y = floor->point.y;
-    destination = walk_move(before.position, destination, rider_.velocity);
+    destination = walk_move(before.position, destination, rider_.velocity, .28, 1.65 - .35 * rider_.crouch);
     if (seated) {
-        const auto support = walk_ground(destination + Vec3{0, .1, 0}, destination - Vec3{0, .1, 0});
-        seated = bool(support);
-        if (support) {
-            destination.y = support->point.y;
-            rider_.normal = support->normal;
-            rider_.surface = support->surface;
-            rider_.ground_instance = support->instance;
-            rider_.ground_object = support->object;
-            rider_.ground_velocity = support->velocity;
-            rider_.velocity.y = support->velocity.y;
+        const auto resting = walk_ground(destination + Vec3{0, .1, 0}, destination - Vec3{0, .1, 0});
+        seated = bool(resting);
+        if (resting) {
+            destination.y = resting->point.y;
+            rider_.normal = resting->normal;
+            rider_.surface = resting->surface;
+            rider_.ground_instance = resting->instance;
+            rider_.ground_object = resting->object;
+            rider_.ground_velocity = resting->velocity;
+            rider_.velocity.y = resting->velocity.y;
         }
     }
     if (!seated) {
@@ -262,7 +282,8 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
             rider_.velocity.y = hit->velocity.y;
             seated = true;
         } else {
-            rider_.velocity.y -= 9.8 * dt;
+            if (was_grounded && !jump && !foot_motion_.boosting())
+                rider_.velocity.y -= FootMotion::gravity * dt;
             rider_.ground_instance.reset();
             rider_.ground_object.reset();
             rider_.ground_velocity = {};
@@ -270,6 +291,8 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
     }
     rider_.position = destination;
     rider_.grounded = seated;
+    if (seated)
+        foot_motion_.landed();
     if (!seated)
         rider_.pads.trick = 0;
     rider_.motion = Motion::OnFoot;
@@ -299,7 +322,7 @@ void Player::tick_loose_board() {
     if (b.grounded && b.ground_object)
         b.position += world_.carry(*b.ground_object, b.position);
     const auto was_grounded = b.grounded;
-    auto destination = b.position + b.velocity * dt;
+    auto destination = b.position + (b.velocity + Vec3{0, b.grounded ? 0 : -18 * dt, 0}) * dt;
     if (b.thrown) {
         std::optional<ShapeContact> impact;
         for (auto local : std::array<Vec3, 5>{{{},

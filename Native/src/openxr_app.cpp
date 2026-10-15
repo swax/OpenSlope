@@ -721,6 +721,8 @@ struct State {
         }
         result.mount = false;
         result.equipment = equipment;
+        if (equipment.rays[1].valid)
+            result.flight_direction = equipment.rays[1].direction;
         result.walk_forward = normalized(project(equipment.facing, {0, 1, 0}), walk_forward);
         result.room_offset = project(equipment.head, {0, 1, 0});
         result.vr = {!walking, head_steering, intent.stick, result.walk_forward, intent.spin};

@@ -1,4 +1,5 @@
 #include "openslope/boost_trail.hpp"
+#include "openslope/board_carry.hpp"
 #include <stdexcept>
 
 namespace openslope {
@@ -8,9 +9,13 @@ BoostTrail::Pose BoostTrail::capture(BoostTrailPose pose) {
         throw std::invalid_argument("Invalid boost trail pose");
     const auto forward = normalized(pose.forward), up = normalized(project(pose.up, forward)),
                right = normalized(cross(forward, up));
+    if (pose.feet) {
+        const auto soles = pose.position + up * .025;
+        return {soles - right * .145, soles - right * .065, soles + right * .065, soles + right * .145};
+    }
     // First-party edge bands around the diagnostic deck; source attachment
     // points and the exact age ramp remain unresolved in clean boost-trail.
-    const auto tail = pose.position - forward * .8 + up * .015;
+    const auto tail = pose.position - forward * equipment_half_length + up * .015;
     return {tail - right * .22, tail - right * .14, tail + right * .14, tail + right * .22};
 }
 

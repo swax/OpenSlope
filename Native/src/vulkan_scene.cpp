@@ -1,5 +1,6 @@
 #include "openslope/appearance.hpp"
 #include "openslope/crowd.hpp"
+#include "openslope/gear.hpp"
 #include "vulkan_renderer.hpp"
 #include <cstring>
 #include <iomanip>
@@ -407,11 +408,11 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     world_.sky = {};
     board_first_ = std::uint32_t(mesh.indices.size());
     const auto offset = std::uint32_t(mesh.vertices.size());
-    mesh.vertices.insert(mesh.vertices.end(), {{-.18f, 0, -.8f, .05f, .65f, .6f},
-                                               {.18f, 0, -.8f, .05f, .65f, .6f},
-                                               {.18f, 0, .8f, .05f, .65f, .6f},
-                                               {-.18f, 0, .8f, .05f, .65f, .6f}});
-    mesh.indices.insert(mesh.indices.end(), {offset, offset + 1, offset + 2, offset, offset + 2, offset + 3});
+    const auto& gear = snowboard_mesh();
+    mesh.vertices.insert(mesh.vertices.end(), gear.vertices.begin(), gear.vertices.end());
+    for (const auto index : gear.indices)
+        mesh.indices.push_back(offset + index);
+    board_count_ = std::uint32_t(gear.indices.size());
     board_set_ = descriptor(0, 1);
     vertices_ = buffer(mesh.vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, mesh.vertices.data());
     indices_ =

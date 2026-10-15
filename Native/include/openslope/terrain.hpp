@@ -54,6 +54,7 @@ struct TerrainHit {
     std::size_t patch;
     int surface;
     bool refined;
+    double depth = 0;
 };
 
 class Terrain {
@@ -70,6 +71,7 @@ public:
 
     Mesh mesh(unsigned subdivisions = 8) const;
     std::optional<TerrainHit> intersect(Vec3 start, Vec3 end) const;
+    std::optional<TerrainHit> sweep(Vec3 start, Vec3 end, double radius) const;
     std::pair<Vec3, Vec3> spawn() const;
     Vec3 clear_eye(Vec3 eye, Vec3 safe, double radius = .45) const;
 

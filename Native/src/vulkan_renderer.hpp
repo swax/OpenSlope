@@ -85,6 +85,7 @@ private:
     World world_;
     std::vector<Draw> sky_draws_;
     std::uint32_t board_first_{};
+    std::uint32_t board_count_{};
     VkDescriptorSet board_set_{};
     VkDescriptorSetLayout descriptors_{};
     VkDescriptorPool descriptor_pool_{};

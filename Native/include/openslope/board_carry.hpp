@@ -31,7 +31,8 @@ struct EquipmentThrow {
     Vec3 velocity{}, spin{};
 };
 
-inline constexpr double equipment_half_width = .18, equipment_half_length = .8, equipment_height = .02;
+inline constexpr double equipment_half_width = .2086, equipment_half_length = .93;
+inline constexpr double equipment_height = .092, equipment_half_height = .072;
 EquipmentHand carry_hand(EquipmentHand raw_grip);
 EquipmentHand grip_hand(EquipmentHand carry);
 Vec3 equipment_point(const EquipmentPose& pose, Vec3 local);

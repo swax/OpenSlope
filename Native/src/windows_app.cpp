@@ -121,7 +121,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     std::uint64_t submitted = 0;
     const auto draw = [&] {
         chase.step(player, player.contract().tick_seconds());
-        ui.frame(RideUi::desktop(chase.pose(), 1280. / 720));
+        ui.frame(RideUi::desktop(chase.pose(), 1280. / 720, ui.visible));
         const auto body = avatar.mesh(avatar_pose(player), first_person, false, chase.pose().eye);
         std::vector<Vertex> presented(body.begin(), body.end());
         equipment_outline(presented, player);
@@ -202,6 +202,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     std::cout << "Boarding: on foot " << player.on_foot() << "; distance " << player.board_distance() << " m; coasting "
               << player.board_coasting() << "; board [" << player.render_board_position().x << ','
               << player.render_board_position().y << ',' << player.render_board_position().z << "]\n";
+    std::cout << "Foot flight: active " << player.flying() << "; boosting " << player.flight_boosting() << "; crouch "
+              << player.rider().crouch << '\n';
     const auto& run = player.course_run().status();
     std::cout << "Run: " << run_name(run.mode) << "; " << run_name(run.phase) << "; clock " << run_clock(run.clock)
               << "; elapsed " << run.elapsed << "; checkpoints " << run.checkpoints << "; lap " << run.lap << '/'
@@ -438,7 +440,7 @@ struct Window {
         }
         if (acquired != VK_SUBOPTIMAL_KHR)
             vk_check(acquired, "Acquire preview image");
-        ui.frame(RideUi::desktop(camera.pose(), double(width) / height));
+        ui.frame(RideUi::desktop(camera.pose(), double(width) / height, ui.visible));
         ui.third_person = !first_person;
         const auto body_mesh = avatar.mesh(avatar_pose(player), first_person, false, camera.pose().eye);
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
@@ -534,7 +536,8 @@ int main(int argc, char** argv) {
                        "[--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture "
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
                        "[--msaa 1|2|4|8] [--no-terrain-culling]\nDesktop: A/D steer/spin, W/S tuck/brake/flip, Space "
-                       "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E/G "
+                       "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
+                       "spawn board, G "
                        "mount/dismount, T restart run, RMB carry/throw or drag to orbit, wheel zoom, LMB aimed ride, "
                        "Escape release cursor/menu.\n";
                 return 0;
@@ -682,7 +685,7 @@ int main(int argc, char** argv) {
             window.camera.first_person = first_person;
             window.ui.third_person = !first_person;
             window.ui.sound_muted = muted;
-            window.ui.frame(RideUi::desktop(window.camera.pose(), aspect));
+            window.ui.frame(RideUi::desktop(window.camera.pose(), aspect, window.ui.visible));
             POINT cursor{};
             GetCursorPos(&cursor);
             ScreenToClient(window.handle, &cursor);
@@ -827,12 +830,15 @@ int main(int argc, char** argv) {
                                 key(VK_SPACE),
                                 double(key('W') || key(VK_UP)) - double(key('S') || key(VK_DOWN)),
                                 key('Q'),
-                                key('E') || key('G'),
+                                key('G'),
                                 window.camera.walk_forward(),
                                 {},
                                 key('T')};
                 input.equipment = desktop_equipment(*player, ray, right && mouse_carry,
                                                     !recapture && !click.consumed && key(VK_LBUTTON));
+                input.crouch = key(VK_CONTROL);
+                input.flight_direction = window.camera.pose().forward;
+                input.spawn_board = key('E');
                 player->advance(dt, input);
             }
             last_right = right;
@@ -858,7 +864,7 @@ int main(int argc, char** argv) {
                     title << int(std::ceil(run.countdown)) << L" | ";
             }
             if (player->on_foot())
-                title << L"On foot | E mount (" << int(player->board_distance() * 100) << L" cm) | ";
+                title << L"On foot | E spawn / LMB ride (" << int(player->board_distance() * 100) << L" cm) | ";
             if (paused)
                 title << L"PAUSED";
             else if (rider.control == Control::ResetWarp)

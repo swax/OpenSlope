@@ -4,12 +4,12 @@ The Quest/OpenXR player starts on foot beside a parked snowboard. Either trigger
 it within 1.6 metres; a trigger while riding steps off. Mounted X resets to the on-foot start;
 on-foot X recalls the equipment ahead without moving the player.
 The physical headset's horizontal room offset contributes to mounting distance.
-Left stick walks relative to the current head direction, B runs and
-right A jumps. Riding retains the existing carve, boost and charged-jump controls.
-The labelled controller models change their help with the current mode.
+Left stick moves relative to the current head direction; right A jumps and B
+boosts airborne/held-board thrust. The interactive wrist controls page describes
+the current mode. Riding retains carve, boost and charged-jump controls.
 
-Desktop keeps its riding start. E (or G) mounts/dismounts; `--on-foot` starts beside the
-board. A/D and W/S walk, Shift runs and Space jumps while on foot. F/V selects
+Desktop keeps its riding start. E spawns a board ahead; LMB or G mounts/dismounts; `--on-foot` starts beside the
+board. A/D and W/S move, Shift boosts flight and Space jumps while on foot. F/V selects
 first person and C looks down. The stick figure stands upright, with procedural
 walking legs when runtime body joints are unavailable. The board remains visible
 at its own location when the player walks away. Optional tracked legs continue
@@ -25,11 +25,11 @@ Slopesmith's public walking/coasting tests establish comparison behavior; the
 native movement, separation and collision routines are independently authored
 using standard vector projection, interpolation and sphere casts.
 
-Movement runs at the shared fixed 60 Hz: 2.5 m/s walking, 4.5 m/s running,
-18 m/s² ground acceleration, 4.5 m/s jump impulse and 9.8 m/s² foot gravity.
-These values, the 1.6 metre mount range and a walkable normal-Y threshold of 0.55
-are application tuning, not recovered retail constants. Diagonal input is
-normalized. Jump and mount are press edges retained through presentation frames
+Movement runs at the shared fixed 60 Hz. Build 0.36 adopts the public first-party
+on-foot profile (8.13 m/s forward, 4.065 m/s sideways/back, 4.77 m/s jump,
+9.81 m/s² gravity), crouch and directional flight; see foot-flight.md.
+These remain application behavior, not recovered retail constants. Diagonal input
+is normalized. Jump and mount are press edges retained through presentation frames
 without a simulation tick. Holding either cannot repeatedly jump or toggle.
 
 Ground queries accept solid prop roofs even when their board surface is -1;

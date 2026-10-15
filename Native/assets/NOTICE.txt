@@ -5,3 +5,12 @@ Licensed under the Apache License, Version 2.0.
 Native/assets/stick-figure-rigged.glb is an unchanged copy of the original
 Slopesmith/public/characters/stick-figure-rigged.glb asset. The Apache license
 at the repository root applies. Native's loader, pose and renderer are new.
+
+Stock snowboard art
+Copyright 2026 OpenSlope contributors
+Licensed under the Apache License, Version 2.0.
+
+Native/assets/snowboard.glb is baked first-party Slopesmith stock snowboard
+geometry, exported through its public gear API by Native/tools/export-snowboard.ts.
+The model has a half turn about Y to use Native's model-space nose convention.
+Native builds embed this saved asset and do not link the authoring runtime.

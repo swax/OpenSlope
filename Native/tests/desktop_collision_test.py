@@ -1,3 +1,4 @@
+from gear_pixels import board_pixel
 """Authored prop contacts through the production desktop Vulkan host."""
 import json
 from pathlib import Path
@@ -66,7 +67,7 @@ def main():
             assert header[:3] == [b'P6', b'1280 720', b'255']
             assert len(header[3]) == 1280 * 720 * 3
             pixels = header[3]
-            board = sum(all(abs(channel - expected) <= 1 for channel, expected in zip(pixels[i:i+3], (13, 166, 153))) for i in range(0, len(pixels), 3))
+            board = sum(board_pixel(pixels[i:i+3]) for i in range(0, len(pixels), 3))
             assert board > 25, f'{name}: only {board} rendered board pixels'
             print(f'PASS: desktop Vulkan {name} replay ({ticks} rendered frames)')
 

@@ -8,6 +8,7 @@
 namespace openslope {
 struct BoostTrailPose {
     Vec3 position, forward{0, 0, -1}, up{0, 1, 0};
+    bool feet = false;
 };
 
 struct BoostTrailVertex {

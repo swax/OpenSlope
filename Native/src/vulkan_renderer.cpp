@@ -1120,7 +1120,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     push.options[0] = 0;
     vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->board_set_, 0, nullptr);
     vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
-    vkCmdDrawIndexed(command_, 6, 1, scene_->board_first_, 0, 0);
+    vkCmdDrawIndexed(command_, scene_->board_count_, 1, scene_->board_first_, 0, 0);
     push.eye_end = world_eye;
     push.mvp = camera;
     push.options[0] = 0;

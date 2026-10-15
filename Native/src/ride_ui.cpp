@@ -106,9 +106,12 @@ UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
     return result;
 }
 
-UiFrame RideUi::desktop(const CameraPose& c, double aspect) {
+UiFrame RideUi::desktop(const CameraPose& c, double aspect, bool menu) {
     const auto right = normalized(cross(c.forward, c.up)), up = normalized(cross(right, c.forward));
-    const auto height = .50 * std::tan(c.fov / 2) * 1.75, width = std::min(height * aspect, .95);
+    const auto height = .50 * std::tan(c.fov / 2) * (menu ? 1.20 : 1.75);
+    // The menu's row spacing is shared with the wrist panel. Keep its physical
+    // aspect while shrinking so square font pixels cannot overlap adjacent rows.
+    const auto width = std::min(height * (menu ? std::min(aspect, 1.34) : aspect), .95);
     return {c.eye + c.forward * .50 - right * (width * .5) + up * (height * .5), right * width, -up * height, true};
 }
 
@@ -153,16 +156,17 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
         if (controls && !library) {
             const std::array<std::string, 10> rows =
-                wrist ? std::array<std::string, 10>{"A   HOLD / RELEASE JUMP",   "B   BOOST / HELD BOARD THRUST",
-                                                    "LEFT STICK   WALK / STEER", "RIGHT STICK   TURN / CLICK VIEW",
-                                                    "TRIGGER   POINT TO RIDE",   "GRIP   PICK UP / PASS / THROW",
-                                                    "GRIP BEHIND HEAD   SUMMON", "AIR GRIP   TAKE BOARD OFF",
-                                                    "HELD TRIGGER   RE-EQUIP",   "Y   SHOW / HIDE WRIST"}
-                      : std::array<std::string, 10>{"W A S D   WALK / CARVE / POSTURE",  "SPACE   HOLD / RELEASE JUMP",
-                                                    "SHIFT   BOOST / HELD BOARD THRUST", "LMB   POINT TO RIDE",
-                                                    "RMB ON BOARD   CARRY / THROW",      "RMB DRAG   ORBIT CHARACTER",
-                                                    "WHEEL   CAMERA DISTANCE",           "E   MOUNT / DISMOUNT",
-                                                    "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
+                wrist
+                    ? std::array<std::string, 10>{"A   JUMP / DOUBLE JUMP FLY",      "B   AIM BOOST / BOARD THRUST",
+                                                  "LEFT STICK   WALK / FLY / STEER", "RIGHT STICK   TURN / CLICK VIEW",
+                                                  "TRIGGER   POINT TO RIDE",         "GRIP   PICK UP / PASS / THROW",
+                                                  "GRIP BEHIND HEAD   SUMMON",       "AIR GRIP   TAKE BOARD OFF",
+                                                  "HELD TRIGGER   RE-EQUIP",         "Y   SHOW / HIDE WRIST"}
+                    : std::array<std::string, 10>{"W A S D   WALK / FLY / CARVE",      "SPACE   JUMP / DOUBLE JUMP FLY",
+                                                  "SHIFT   BOOST / HELD BOARD THRUST", "LMB   POINT TO RIDE",
+                                                  "RMB ON BOARD   CARRY / THROW",      "RMB DRAG   ORBIT CHARACTER",
+                                                  "CTRL   CROUCH / FLY DOWN",          "E   SPAWN BOARD   WHEEL   ZOOM",
+                                                  "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
             for (unsigned i = 0; i < rows.size(); ++i)
                 c.text(rows[i], .06, .31 + i * .048, .0037, i == 4 || i == 5 ? accent : ink);
         }
@@ -181,30 +185,40 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                                : "ESC TO RETURN TO THE SLOPE",
                .06, .94, .0033, muted);
     } else {
-        c.rect(0, 0, .24, .20, panel);
-        c.rect(0, 0, .006, .20, accent);
-        c.text(speed, .025, .025, .012);
-        c.text("KM/H", .025, .13, .004, muted);
+        c.rect(0, 0, .18, .15, panel);
+        c.rect(0, 0, .005, .15, accent);
+        c.text(speed, .02, .02, std::min(.009, .14 / (6 * double(speed.size()))));
+        c.text("KM/H", .02, .115, .003, muted);
         if (run.mode == RunMode::Freeride) {
-            c.rect(.36, 0, .27, .13, panel);
-            c.text("FREERIDE", .385, .045, .005, muted);
+            c.rect(.36, 0, .27, .10, panel);
+            c.text("FREERIDE", .385, .035, .004, muted);
         }
         if (run.mode != RunMode::Freeride) {
-            c.rect(.36, 0, .27, .16, panel);
-            c.text(run_clock(run.clock), .385, .03, .009);
+            c.rect(.36, 0, .27, .13, panel);
+            c.text(run_clock(run.clock), .385, .025, .0055);
         }
-        c.rect(.66, 0, .34, .25, panel);
-        c.text(p.carrying_board() ? "IN HAND" : p.on_foot() ? "ON FOOT" : "RIDING", .685, .025, .005, accent);
-        c.text("SCORE " + std::to_string(p.scoring().status().total()), .685, .10, .0027, muted);
-        c.text("BOOST", .685, .16, .0035, muted);
-        c.rect(.685, .21, .29, .016, {.12f, .20f, .25f});
-        c.rect(.685, .21, .29 * double(p.scoring().meter_segments()) / 15, .016, accent, .0002);
-        c.rect(.05, .91, .90, .09, panel);
-        c.text(p.carrying_board()    ? (wrist ? "RELEASE GRIP THROW / TRIGGER RIDE" : "RELEASE RMB THROW / LMB RIDE")
+        c.rect(.76, 0, .24, .19, panel);
+        c.text(p.carrying_board() ? "IN HAND"
+               : p.flying()       ? "FLYING"
+               : p.on_foot()      ? "ON FOOT"
+                                  : "RIDING",
+               .78, .02, .0038, accent);
+        c.text("SCORE " + std::to_string(p.scoring().status().total()), .78, .08, .0023, muted);
+        if (p.on_foot()) {
+            c.text(p.flight_boosting() ? "BOOST ACTIVE" : "BOOST UNLIMITED", .78, .13, .0023, accent);
+        } else {
+            c.text("BOOST", .78, .12, .0027, muted);
+            c.rect(.78, .16, .20, .012, {.12f, .20f, .25f});
+            c.rect(.78, .16, .20 * double(p.scoring().meter_segments()) / 15, .012, accent, .0002);
+        }
+        c.rect(.08, .935, .84, .065, panel);
+        c.text(p.carrying_board() ? (wrist ? "RELEASE GRIP THROW / TRIGGER RIDE" : "RELEASE RMB THROW / LMB RIDE")
+               : p.flying()       ? (wrist ? "A UP / STICK THRUST / B AIM BOOST" : "WASD THRUST / SPACE UP / CTRL DOWN")
                : p.board_highlight() ? (wrist ? "TRIGGER RIDE / GRIP CARRY" : "LMB RIDE / HOLD RMB CARRY")
                : wrist               ? "Y MENU   A JUMP   B BOOST"
-                                     : "RMB LOOK   E BOARD   SPACE JUMP   ESC MENU",
-               .075, .94, .0034, p.board_highlight() ? accent : ink);
+               : p.on_foot()         ? "SPACE TWICE FLY / E BOARD / ESC MENU"
+                                     : "LMB OFF BOARD / E SPAWN / SPACE JUMP",
+               .10, .955, .0028, p.board_highlight() ? accent : ink);
         if (p.rider().charge > 0) {
             c.rect(.30, .83, .40, .018, {.12f, .20f, .25f});
             c.rect(.30, .83, .40 * p.rider().charge, .018, accent, .0003);
@@ -232,12 +246,15 @@ void equipment_outline(std::vector<Vertex>& out, const Player& p) {
     if (!p.board_highlight() || p.carrying_board())
         return;
     const EquipmentPose pose{p.render_board_position(), p.render_forward(), p.render_up()};
-    const auto at = [&](double x, double z) { return equipment_point(pose, {x, .03, z}); };
+    const auto at = [&](double x, double z) {
+        return equipment_point(pose, {x, equipment_height + equipment_half_height + .012, z});
+    };
     constexpr Colour col{.22f, 1, .78f};
-    for (const auto x : {-.195, .185})
-        quad(out, at(x, -.815), at(x + .01, -.815), at(x + .01, .815), at(x, .815), col);
-    for (const auto z : {-.815, .805})
-        quad(out, at(-.195, z), at(.195, z), at(.195, z + .01), at(-.195, z + .01), col);
+    const auto width = equipment_half_width + .015, length = equipment_half_length + .015;
+    for (const auto x : {-width, width - .01})
+        quad(out, at(x, -length), at(x + .01, -length), at(x + .01, length), at(x, length), col);
+    for (const auto z : {-length, length - .01})
+        quad(out, at(-width, z), at(width, z), at(width, z + .01), at(-width, z + .01), col);
 }
 
 EquipmentInput desktop_equipment(const Player& p, const EquipmentRay& ray, bool grip, bool trigger) {

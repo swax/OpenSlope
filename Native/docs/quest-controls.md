@@ -4,13 +4,16 @@ Build 0.34 aligns the supported controls with Slopesmith's public ride manual an
 XR behavior tests. It also corrects the controller/hand orientation reported by
 the user. This is shared native input and independently authored posing code;
 no separately licensed runtime supplies the controls or geometry transforms.
+The table includes the 0.35 equipment and 0.36 flight updates; see foot-flight.md
+for current movement and unlimited off-board thrust.
 
 | Quest input | On foot | Mounted |
 |---|---|---|
 | Left stick | Head-relative walk/strafe | Steer; vertically dominant Y sets posture/flip |
-| Right A | Jump | Hold/release charged jump |
-| Right B | Existing run modifier | Held boost |
-| Either index trigger | Mount nearby board | Dismount |
+| Right A | Jump; second airborne press enters flight | Hold/release charged jump |
+| Right B | Aimed full-speed airborne/held-board thrust | Held boost |
+| Either index trigger | Point to ride; re-equip held board | Dismount |
+| Either grip | Pick up/pass/throw; behind-head draw | Airborne board take-off |
 | Left X | Recall equipment ahead; keep player in place | Nearby-course reset |
 | Left Y | Show/hide controls and status panels | Same |
 | Right stick X | Smooth view turn, 120 degrees/s at full throw | Same |

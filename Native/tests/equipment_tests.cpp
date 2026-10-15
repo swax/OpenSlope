@@ -34,17 +34,22 @@ RideInput hand_input(const Player& p) {
 
 void math() {
     EquipmentPose pose;
-    close(equipment_nearest(pose, {2, 1, 2}), {.18, .027, .8}, "Closest point uses deck outline, not centre");
+    close(equipment_nearest(pose, {2, 1, 2}),
+          {equipment_half_width, equipment_height + equipment_half_height, equipment_half_length},
+          "Closest point uses stock deck outline, not centre");
     const EquipmentRay above{{0, 2, 0}, {0, -1, 0}, true};
     const auto hit = equipment_ray(pose, above);
-    check(hit && std::abs(*hit - 1.873) < 1e-7, "Aim padding is ten centimetres");
+    check(hit && std::abs(*hit - (2 - equipment_height - equipment_half_height - .1)) < 1e-7,
+          "Aim padding is ten centimetres");
     check(!equipment_ray(pose, {{0, 4.3, 0}, {0, -1, 0}, true}), "Mount ray has four metre reach");
     check(!equipment_ray(pose, {{2, 2, 0}, {0, -1, 0}, true}), "Aim misses outside outline");
     const auto axis = normalized(Vec3{1, 2, 3});
     pose = {{4, 2, -8}, rotate({0, 0, -1}, axis, 1.1), rotate({0, 1, 0}, axis, 1.1)};
     const auto point = equipment_point(pose, {2, 1, 2});
-    close(equipment_nearest(pose, point), equipment_point(pose, {.18, .027, .8}),
-          "Outline queries are rigid-frame invariant");
+    close(
+        equipment_nearest(pose, point),
+        equipment_point(pose, {equipment_half_width, equipment_height + equipment_half_height, equipment_half_length}),
+        "Outline queries are rigid-frame invariant");
     check(equipment_summon({0, 1.65, 0}, {0, -1, -.01}, {0, 1.7, .3}), "Summon is yaw-only while looking down");
     check(!equipment_summon({0, 1.65, 0}, {0, 0, -1}, {0, .2, .1}), "Low hand cannot summon");
     check(!equipment_summon({0, 1.65, 0}, {0, 0, -1}, {0, 1.7, -.3}), "Forward hand cannot summon");

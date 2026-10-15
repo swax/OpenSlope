@@ -106,6 +106,7 @@ struct AudioScene::Data {
     int family = -1;
     double fade = 0;
     std::uint64_t wind{};
+    std::uint64_t flight_boost{};
     double predicted_flight = 0;
     std::vector<std::string> playlist;
     std::size_t song = 0;
@@ -367,6 +368,7 @@ struct AudioScene::Data {
         mixer.clear();
         board = {};
         wind = 0;
+        flight_boost = 0;
         family = -1;
         fade = 0;
         for (auto& s : sounds) {
@@ -513,6 +515,17 @@ void AudioScene::tick(const Player& player, const Rider& before) {
             e.voice = 0;
             e.inside = false;
         }
+    }
+    if (player.flight_boosting()) {
+        VoiceParams params;
+        params.gain = .4;
+        params.loop = true;
+        if (!d.mixer.update(d.flight_boost, params))
+            if (auto value = d.slot(0, 120, true))
+                d.flight_boost = d.mixer.play(value, params);
+    } else if (d.flight_boost) {
+        d.mixer.stop(d.flight_boost);
+        d.flight_boost = 0;
     }
     const auto group = rider.surface >= 0 && std::size_t(rider.surface) < d.surface_groups.size()
                            ? d.surface_groups[std::size_t(rider.surface)]

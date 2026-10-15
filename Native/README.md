@@ -52,10 +52,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 ```
 
 A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
-F/V switches first/chase camera, C looks down, E (or G) mounts/dismounts, and P/Escape opens the pause menu.
-LMB rides a highlighted board; RMB carries/throws it, or drags the camera when no board is targeted.
+F/V switches first/chase camera, C looks down, E spawns a board ahead, and P/Escape opens the pause menu.
+LMB rides a highlighted board or dismounts; RMB carries/throws it, or drags the camera when no board is targeted.
 The wheel changes camera distance. The pause menu includes a map library and ride settings.
-Use `--on-foot` to start beside the board; A/D/W/S walk, Shift runs and Space jumps in that mode.
+Use `--on-foot` to start beside the board; A/D/W/S move and Space jumps in that mode.
+Jump again in the air (or Jump + Boost) to fly; Shift/B boosts along the look/controller aim.
+Ctrl crouches or flies down. G retains the nearby boarding shortcut. See [on-foot flight](docs/foot-flight.md).
 See [walking and boarding](docs/boarding.md). Input pauses when the preview loses
 focus; an uncommitted jump charge is cancelled.
 

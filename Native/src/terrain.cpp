@@ -330,6 +330,47 @@ Vec3 Terrain::clear_eye(Vec3 eye, Vec3 safe, double radius) const {
     return eye;
 }
 
+std::optional<TerrainHit> Terrain::sweep(Vec3 start, Vec3 end, double radius) const {
+    if (!finite(start) || !finite(end) || !std::isfinite(radius) || radius <= 0)
+        throw std::invalid_argument("Invalid terrain sphere sweep");
+    std::optional<TerrainHit> closest;
+    Bounds swept;
+    for (const auto p : {start, end}) {
+        swept.add(p - Vec3{radius, radius, radius});
+        swept.add(p + Vec3{radius, radius, radius});
+    }
+    const auto visit = [&](auto&& self, int index) -> void {
+        const auto& node = nodes_[index];
+        if (node.bounds.max.x < swept.min.x || node.bounds.min.x > swept.max.x || node.bounds.max.y < swept.min.y ||
+            node.bounds.min.y > swept.max.y || node.bounds.max.z < swept.min.z || node.bounds.min.z > swept.max.z)
+            return;
+        if (node.left >= 0) {
+            self(self, node.left);
+            self(self, node.right);
+            return;
+        }
+        for (auto i = node.begin; i < node.end; ++i) {
+            const auto patch = order_[i];
+            if (patches_[patch].surface == 17)
+                continue;
+            const auto& v = samples_[patch].points;
+            for (unsigned u = 0; u < 8; ++u)
+                for (unsigned w = 0; w < 8; ++w) {
+                    const auto a = v[u * 9 + w], b = v[(u + 1) * 9 + w], c = v[(u + 1) * 9 + w + 1],
+                               d = v[u * 9 + w + 1];
+                    for (const auto& hit : {swept_triangle(a, b, c, {start, radius}, {end, radius}),
+                                            swept_triangle(a, c, d, {start, radius}, {end, radius})})
+                        if (hit &&
+                            (!closest || hit->t < closest->t || (hit->t == closest->t && hit->depth > closest->depth)))
+                            closest = TerrainHit{hit->point, hit->normal, hit->t, 0, 0, patch, patches_[patch].surface,
+                                                 false,      hit->depth};
+                }
+        }
+    };
+    visit(visit, 0);
+    return closest;
+}
+
 Mesh Terrain::mesh(unsigned subdivisions) const {
     if (subdivisions < 1 || subdivisions > 32)
         throw std::runtime_error("Terrain subdivisions must be 1..32");

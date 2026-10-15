@@ -285,7 +285,7 @@ int main(int argc, char** argv) {
             ui.controls = controls;
             ui.immersive = wrist;
             ui.third_person = false;
-            ui.frame(wrist ? RideUi::wrist(tracking.controllers[0], eye) : RideUi::desktop(c, 1));
+            ui.frame(wrist ? RideUi::wrist(tracking.controllers[0], eye) : RideUi::desktop(c, 1, ui.visible));
             const auto body = avatar.mesh(avatar_pose(player, &tracking), true, false, eye);
             std::vector<Vertex> mesh(body.begin(), body.end());
             const auto button = ui.frame().origin + ui.frame().right * .25 + ui.frame().down * .35;

@@ -85,7 +85,7 @@ Vec3 equipment_nearest(const EquipmentPose& pose, Vec3 p) {
         throw std::invalid_argument("Invalid equipment query");
     auto q = local(pose, p);
     q.x = std::clamp(q.x, -equipment_half_width, equipment_half_width);
-    q.y = std::clamp(q.y, equipment_height - .007, equipment_height + .007);
+    q.y = std::clamp(q.y, equipment_height - equipment_half_height, equipment_height + equipment_half_height);
     q.z = std::clamp(q.z, -equipment_half_length, equipment_half_length);
     return equipment_point(pose, q);
 }
@@ -106,7 +106,7 @@ std::optional<double> equipment_ray(const EquipmentPose& pose, const EquipmentRa
     const auto origin = local(pose, ray.origin) - Vec3{0, equipment_height, 0},
                direction = local(pose, pose.position + normalized(ray.direction));
     const std::array<double, 3> o{origin.x, origin.y, origin.z}, d{direction.x, direction.y, direction.z},
-        half{equipment_half_width + padding, .007 + padding, equipment_half_length + padding};
+        half{equipment_half_width + padding, equipment_half_height + padding, equipment_half_length + padding};
     double enter = 0, leave = range;
     for (unsigned i = 0; i < 3; ++i) {
         if (std::abs(d[i]) < 1e-12) {

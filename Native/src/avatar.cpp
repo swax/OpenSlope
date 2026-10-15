@@ -269,9 +269,10 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking) {
         if (!tracked(hip))
             p.joints[id(hip)] = p.joint(J::Hips) + body_right * (sign * .105) - p.up * .08;
         if (!tracked(ankle)) {
-            const auto stride = p.on_foot ? std::sin(player.walk_phase() + side * pi) *
-                                                std::min(.18, length(project(rider.velocity, {0, 1, 0})) * .05)
-                                          : 0.;
+            const auto stride = p.on_foot && rider.grounded
+                                    ? std::sin(player.walk_phase() + side * pi) *
+                                          std::min(.18, length(project(rider.velocity, {0, 1, 0})) * .05)
+                                    : 0.;
             p.joints[id(ankle)] = at(sign * (p.on_foot ? .105 : .27), .12 + std::max(0., stride) * .2, stride);
             if (tracking) {
                 const auto along = normalized(project(player.render_forward(), {0, 1, 0}), player.camera_forward());

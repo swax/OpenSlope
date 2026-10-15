@@ -147,7 +147,8 @@ void production() {
     check(p.placement_serial() == serial, "Board recall is not a rider placement");
     close(p.render_board_position(), position + Vec3{0, 0, -1}, "X places equipment ahead");
     const auto board = p.render_board_position();
-    b.y = 1;
+    // Stay within mounting reach with the authored 8.13 m/s forward speed.
+    b.y = .25;
     for (unsigned i = 0; i < 20; ++i)
         p.tick(input(b, true));
     close(p.render_board_position(), board, "Held X does not drag equipment with walker");

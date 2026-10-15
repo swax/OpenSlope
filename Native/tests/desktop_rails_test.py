@@ -1,3 +1,4 @@
+from gear_pixels import board_pixel
 """Actual-host analytic grinding with a visible, solid tube authored here."""
 import json
 import math
@@ -72,7 +73,7 @@ def main():
                 position=re.search(r'position \[([^\]]+)\]',result.stdout).group(1)
                 assert float(position.split(',')[0])>4,'Curve travel never changed direction'
             pixels=image.read_bytes().split(b'\n',3);assert pixels[:3]==[b'P6',b'1280 720',b'255']
-            board=sum(all(abs(c-e)<=1 for c,e in zip(pixels[3][i:i+3],(13,166,153))) for i in range(0,len(pixels[3]),3))
+            board=sum(board_pixel(pixels[3][i:i+3]) for i in range(0,len(pixels[3]),3))
             assert board>25,f'{name}: board not visible ({board} pixels)'
             print(f'PASS: desktop {name} rail ({sum(s["Ticks"] for s in steps)} rendered frames, {board} board pixels; solid tube admits grind)')
 
