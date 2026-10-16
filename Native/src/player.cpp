@@ -3,6 +3,17 @@
 #include <stdexcept>
 
 namespace openslope {
+std::vector<ParticleSprite> Player::particles(double alpha, Vec3 eye) const {
+    auto world = logic_.particles(alpha, eye);
+    auto riding = effects_.surface_spray().draw(alpha);
+    // Keep a single bounded renderer submission, reserving room for the nearby
+    // rider's feedback even when a large authored firework fills the world budget.
+    if (world.size() + riding.size() > WorldParticles::maximum_sprites)
+        world.resize(WorldParticles::maximum_sprites - riding.size());
+    world.insert(world.end(), riding.begin(), riding.end());
+    return world;
+}
+
 namespace {
 Vec3 ease_up(Vec3 current, Vec3 target, double rate, double dt) {
     current = normalized(current);

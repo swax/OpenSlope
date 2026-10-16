@@ -65,3 +65,8 @@ jump and audio checks remain applicable. Surface-driven 40-slot streams, the
 exact sheet bindings, sparks, airborne puffs, boost/debris/pickup
 effects and general authored emitter lifecycle are still outstanding. Weather
 snowfall is a separate system and is not satisfied by these riding clouds.
+
+Build 0.62 adds the surface ring, takeoff puffs and contact/rail sparks with all
+twenty independently checked functional rows. See surface-spray-0.62.md for
+emission, sprite selection, alpha/additive rendering, validation and remaining
+presentation-tuning limits. Build 0.61 separately adds ambient weather snowfall.

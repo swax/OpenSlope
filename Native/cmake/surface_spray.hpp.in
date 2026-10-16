@@ -1,0 +1,5 @@
+#pragma once
+namespace openslope::bundled {
+inline constexpr unsigned char surface_spray[] = {@SURFACE_SPRAY_BYTES@};
+inline constexpr unsigned char surface_spray_layout[] = {@SURFACE_SPRAY_LAYOUT_BYTES@};
+}

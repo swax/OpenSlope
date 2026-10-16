@@ -39,6 +39,7 @@ double wake_fade(int surface) {
 }
 
 void RidingEffects::reset() {
+    surface_spray_.reset();
     puffs_.clear();
     sprites_.clear();
     wake_.clear();
@@ -275,6 +276,11 @@ void RidingEffects::tick(const Rider& before, const Rider& after, double dt, con
         throw std::runtime_error("Invalid riding effect tick");
     if (dt == 0)
         return;
+    std::optional<Vec3> contact;
+    if (probe && after.grounded && after.motion == Motion::Ground)
+        if (const auto hit = probe(after.position))
+            contact = hit->position;
+    surface_spray_.step(before, after, dt, contact);
     wake_tick(before, after, dt, probe);
     sheet_tick(before, after, dt, probe);
     for (auto& p : puffs_)

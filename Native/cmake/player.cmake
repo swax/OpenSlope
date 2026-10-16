@@ -20,6 +20,8 @@ if(OPENSLOPE_BUILD_TESTS AND NOT ANDROID)
   target_link_libraries(openslope_celestial_render_tests PRIVATE openslope_graphics)
   add_executable(openslope_weather_render_tests tests/weather_render_tests.cpp)
   target_link_libraries(openslope_weather_render_tests PRIVATE openslope_graphics)
+  add_executable(openslope_surface_spray_render_tests tests/surface_spray_render_tests.cpp)
+  target_link_libraries(openslope_surface_spray_render_tests PRIVATE openslope_graphics)
   target_link_libraries(openslope_render_tests PRIVATE openslope_graphics)
   # Invoked explicitly on a Vulkan-capable host; portable CI need not have a GPU.
 endif()

@@ -33,6 +33,9 @@ Integer texture-period rebasing preserves UV precision during long sessions.
 Vulkan buffers grow geometrically and persist per renderer across target
 recreation. This pass uses literal world vertices, separate from billboard
 construction, with depth tests, disabled depth writes and additive blending.
+Build 0.62 switches only this connected sheet to always-pass depth, matching
+Slopesmith's public board-FX assertion. Billboard chunks, puffs and sparks retain
+their opaque-world depth tests. The depth choice is an application play profile.
 sRGB attachment compositing retains the existing linear-domain fidelity limit.
 
 ISO import adds independent optional `Sheet` to `RidingEffects.json`, naming
@@ -43,9 +46,11 @@ outside source control and application packages.
 
 Portable checks cover gate/spacing, four-rail connectivity, throw direction and
 multipliers, fixed bases, curl/fade/expiry, bounded history, gap rejection, pause
-and reset. Actual GPU checks cover additive colour, interpolated alpha, depth
-occlusion, overlapping sheets without depth writes, empty submissions and target
-recreation at 1x/4x MSAA with UNORM/sRGB targets. Production-host checks compare
+and reset. Actual GPU checks cover additive colour, interpolated alpha,
+overlapping sheets without depth writes, empty submissions and target recreation
+at 1x/4x MSAA with UNORM/sRGB targets. Build 0.62 replaces the original sheet
+occlusion check with paired front/behind equality on both target formats; the
+other particle-depth checks remain. Production-host checks compare
 enabled/disabled captures while confirming unchanged rider state:
 
 ```powershell

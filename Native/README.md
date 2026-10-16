@@ -46,6 +46,11 @@ Build 0.32 adds the [boost geometry afterimage](docs/boost-trail.md), shared
 between desktop and VR: seven sampled board poses, source meter colours and
 speed-pad activation, with a draining release and no particle-art requirement.
 
+Build 0.62 adds [surface chunks, takeoff puffs and rail/contact sparks](docs/surface-spray-0.62.md).
+Packed snow, off-track, powder and ice use their own verified sprite/size/fade
+profiles; rails and hard contacts throw warm comet trails with occasional flares.
+Existing imported sprite banks work without re-extracting a course.
+
 ## Build and try on Windows
 
 Install Visual Studio 2022 C++ Build Tools with its CMake component and Windows SDK. Python 3 is

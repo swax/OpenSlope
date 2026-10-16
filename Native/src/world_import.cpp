@@ -1,6 +1,8 @@
 #include "openslope/world_import.hpp"
 #include "executable_internal.hpp"
 #include "import_internal.hpp"
+#include "openslope/ride.hpp"
+#include "surface_spray.hpp"
 #include "world_layout.hpp"
 #include <algorithm>
 #include <array>
@@ -164,6 +166,11 @@ struct Initializer {
                     case 47: regs[rd] = binary([](auto x, auto y) { return x - y; }); break;
                     case 36: regs[rd] = binary([](auto x, auto y) { return x & y; }); break;
                     case 37: regs[rd] = binary([](auto x, auto y) { return x | y; }); break;
+                    case 42:
+                        regs[rd] =
+                            binary([](auto x, auto y) { return std::uint64_t(signed_value(x) < signed_value(y)); });
+                        break;
+                    case 43: regs[rd] = binary([](auto x, auto y) { return std::uint64_t(x < y); }); break;
                     case 24:
                     case 25:
                         regs[rd] = binary(
@@ -346,9 +353,10 @@ std::optional<Json> profiles(const std::vector<std::uint8_t>& records) {
     return result;
 }
 
-std::optional<Json> recover(std::span<const std::uint8_t> source, const ImportCancel& cancelled) {
+template <class Decode>
+std::optional<Json> recover(std::span<const std::uint8_t> source, const ImportCancel& cancelled, std::size_t size,
+                            const Decode& decode) {
     Executable executable(source);
-    const auto size = layout().at("RecordBytes").get<std::size_t>() * layout().at("Slots").size();
     if (!size || size > record_limit)
         throw std::runtime_error("Invalid world layout contract");
     std::optional<Json> result;
@@ -379,11 +387,11 @@ std::optional<Json> recover(std::span<const std::uint8_t> source, const ImportCa
                 const auto bytes = state.run({start, block.end}, cancelled, total_steps);
                 if (!bytes)
                     continue;
-                const auto candidate = profiles(*bytes);
+                const auto candidate = decode(*bytes);
                 if (!candidate)
                     continue;
                 if (result && *result != *candidate)
-                    throw std::runtime_error("Ambiguous world settings in supplied executable");
+                    throw std::runtime_error("Ambiguous scalar settings in supplied executable");
                 result = candidate;
             }
         };
@@ -415,12 +423,68 @@ std::string executable_world_profile(std::span<const std::uint8_t> executable, c
     if (std::find(slots.begin(), slots.end(), Json(name)) == slots.end())
         return {};
     import_detail::check_cancel(cancelled);
-    const auto result = recover(executable, cancelled);
+    const auto result =
+        recover(executable, cancelled, layout().at("RecordBytes").get<std::size_t>() * slots.size(), profiles);
     return result ? result->at(name).dump(2) : std::string{};
 }
 
 std::string disc_world_profile(const DiscInput& disc, const std::string& course, const ImportCancel& cancelled) {
     const auto boot = executable_detail::boot_executable(disc, cancelled);
     return boot ? executable_world_profile(boot->bytes, course, cancelled) : std::string{};
+}
+
+std::string executable_surface_spray_profile(std::span<const std::uint8_t> source, const ImportCancel& cancelled) {
+    import_detail::check_cancel(cancelled);
+    const auto spec = Json::parse(std::begin(bundled::surface_spray_layout), std::end(bundled::surface_spray_layout));
+    const auto stride = spec.at("recordBytes").get<std::size_t>(), count = spec.at("records").get<std::size_t>();
+    if (spec.at("schema") != "openslope-surface-spray-layout/v1" || count != 20 || stride < 84 ||
+        stride > record_limit / count)
+        throw std::runtime_error("Invalid surface spray layout");
+    RideContract motion;
+    const auto decode = [&](const std::vector<std::uint8_t>& bytes) -> std::optional<Json> {
+        try {
+            Bytes data{bytes};
+            Json rows = Json::array();
+            for (std::size_t i = 0; i < count; ++i) {
+                const auto base = i * stride;
+                const auto scalar = [&](const char* key) {
+                    return double(data.number(base + spec.at("fields").at(key).get<unsigned>()));
+                };
+                // Clean 310's existing response facts identify the table rather
+                // than an executable address or a revision-specific byte match.
+                const auto& r = motion.surface(int(i));
+                const auto value = [&](const char* key) {
+                    return double(data.number(base + spec.at("motion").at(key).get<unsigned>()));
+                };
+                if (std::abs(value("stiffness") - r.A) > .01 || std::abs(value("damping") - r.P) > .01 ||
+                    std::abs(value("bog") * .01 - r.bog) > .001 || std::abs(value("sink") * .01 - r.budget) > .001 ||
+                    std::abs(value("target") / 3.6 - r.target) > .01)
+                    return {};
+                const auto rate = scalar("rate"), size = scalar("sizeUnits"), lo = scalar("fadeMin"),
+                           hi = scalar("fadeMax"), alpha = scalar("alpha");
+                const auto sprite = data.le(base + spec.at("fields").at("sprite").get<unsigned>());
+                if (rate < 0 || rate > 10 || size < 0 || size > 100 || lo <= 0 || lo > hi || hi > 10 || alpha < 0 ||
+                    alpha > 1 || sprite >= 38)
+                    return {};
+                rows.push_back({{"type", i},
+                                {"rate", rate},
+                                {"sizeUnits", size},
+                                {"fadeMin", lo},
+                                {"fadeMax", hi},
+                                {"sprite", sprite},
+                                {"alpha", alpha}});
+            }
+            return Json{{"schema", "openslope-surface-spray/v1"}, {"version", 1}, {"rows", rows}};
+        } catch (const std::runtime_error&) {
+            return {};
+        }
+    };
+    const auto result = recover(source, cancelled, stride * count, decode);
+    return result ? result->dump(2) : std::string{};
+}
+
+std::string disc_surface_spray_profile(const DiscInput& disc, const ImportCancel& cancelled) {
+    const auto boot = executable_detail::boot_executable(disc, cancelled);
+    return boot ? executable_surface_spray_profile(boot->bytes, cancelled) : std::string{};
 }
 } // namespace openslope

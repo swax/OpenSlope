@@ -207,3 +207,11 @@ thinning, fades and upright shared-eye presentation. The upper blizzard profile,
 procedural flake shape, baked instance generator, saved graphics controls,
 desktop supersampling/native UI composition and asynchronous map-load stages
 are explicit application choices. See snowfall-graphics-0.61.md.
+
+Build 0.62 consumes clean 310/380's complete per-surface ring, takeoff activity
+and contact sparks. New shared functional data is independently recovered from
+the supplied image and validated against all twenty existing motion records.
+The emitter, bounded snapshot reconstruction and renderer integration are
+independently authored. Surface-spray-0.62.md identifies provisional throw/puff
+bindings, seed, trail spacing and application bounds separately from the clean
+rules and measured scalar facts.

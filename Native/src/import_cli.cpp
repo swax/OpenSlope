@@ -12,7 +12,8 @@ int main(int argc, char** argv) {
         if (argc < 3) {
             std::cerr << "Usage: openslope_import list <iso> | extract <iso> <course> <Maps-folder> | convert-effects "
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
-                         "<map-folder> | world <iso> <course> | collision-routes <iso> | board-groups <iso>\n";
+                         "<map-folder> | world <iso> <course> | surface-spray <iso> | collision-routes <iso> | "
+                         "board-groups <iso>\n";
             return 1;
         }
         const std::string operation = argv[1];
@@ -43,6 +44,13 @@ int main(int argc, char** argv) {
             return 0;
         }
         const auto disc = openslope::open_disc(argv[2]);
+        if (operation == "surface-spray" && argc == 3) {
+            const auto profile = openslope::disc_surface_spray_profile(disc);
+            if (profile.empty())
+                throw std::runtime_error("Surface spray data is unavailable in this executable");
+            std::cout << profile << '\n';
+            return 0;
+        }
         if (operation == "extract-crowd" && argc == 4) {
             openslope::import_detail::write_crowd(openslope::disc_file(disc, "DATA/TEXTURES/CROWD.SSH"), argv[3]);
             std::cout << "Added shared crowd frames to " << argv[3] << '\n';

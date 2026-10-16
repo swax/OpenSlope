@@ -484,10 +484,14 @@ int main(int argc, char** argv) {
                 if (std::string(name) == "sheet") {
                     const auto plain = capture(first, root / "sheet-plain.ppm", camera);
                     const auto front = spray_sheet(.25), behind = spray_sheet(.75);
-                    ++checks;
-                    if (capture(first, root / "sheet-hidden.ppm", camera, {}, {}, behind) != plain)
-                        throw std::runtime_error("Spray sheet ignores scene depth");
                     const auto drawn = capture(first, root / "sheet-drawn.ppm", camera, {}, {}, front);
+                    ++checks;
+                    if (capture(first, root / "sheet-overlay.ppm", camera, {}, {}, behind) != drawn)
+                        throw std::runtime_error("Spray sheet does not retain the public always-pass depth profile");
+                    ++checks;
+                    if (capture(second, root / "sheet-srgb-overlay.ppm", camera, {}, {}, behind) !=
+                        capture(second, root / "sheet-srgb-front.ppm", camera, {}, {}, front))
+                        throw std::runtime_error("sRGB spray sheet is incorrectly occluded by scene depth");
                     pixel(drawn, .5, .5, {104, 144, 184});
                     ++checks;
                     if (first.stats().sheet_segments != 1 || first.stats().sheet_draws != 1)

@@ -165,9 +165,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                         player.effects().wake(), player.effects().sheet(), presented, player.reset_fade(),
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), chase.pose().eye), glare_view, hud, true,
-                        {chase.pose().eye, player.weather_time(), graphics.snow});
+                        player.boost_trail_mesh().vertices(), player.particles(player.frame_alpha(), chase.pose().eye),
+                        glare_view, hud, true, {chase.pose().eye, player.weather_time(), graphics.snow});
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         gpu += renderer.stats().gpu_ms;
         cull += renderer.stats().cull_ms;
@@ -214,6 +213,9 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
               << stats.wake_draws << " alpha passes\n";
     std::cout << "Spray sheet: " << player.effects().sheet_columns() << " columns; " << stats.sheet_segments
               << " segments; " << stats.sheet_draws << " additive draws\n";
+    const auto ring = player.effects().surface_spray().stats();
+    std::cout << "Surface spray: " << ring.surface_slots << " slots; " << ring.surface_sprites << " chunks; "
+              << ring.puffs << " takeoff puffs; " << ring.sparks << " sparks; " << ring.flares << " flares\n";
     const auto& recovered = player.rider();
     std::cout << "Recovery: " << recovered.crashes << " crashes; " << recovered.recoveries << " get-ups; waiting "
               << (recovered.control == Control::RecoverWait) << "; standing " << recovered.recovery_standing
@@ -523,9 +525,8 @@ struct Window {
                         player.effects().sprites(), player.effects().wake(), player.effects().sheet(), presented,
                         player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), camera.pose().eye), glare_view, hud, true,
-                        {camera.pose().eye, player.weather_time(), graphics.snow});
+                        player.boost_trail_mesh().vertices(), player.particles(player.frame_alpha(), camera.pose().eye),
+                        glare_view, hud, true, {camera.pose().eye, player.weather_time(), graphics.snow});
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &finished;

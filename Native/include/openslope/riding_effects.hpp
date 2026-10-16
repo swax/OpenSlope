@@ -1,5 +1,6 @@
 #pragma once
 #include "math.hpp"
+#include "surface_spray.hpp"
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -55,7 +56,11 @@ public:
 
     unsigned powder_count() const { return powder_count_; }
 
+    const SurfaceSpray& surface_spray() const { return surface_spray_; }
+
 private:
+    SurfaceSpray surface_spray_;
+
     struct Puff {
         Vec3 origin, normal;
         double age{}, alpha{}, rotation{};

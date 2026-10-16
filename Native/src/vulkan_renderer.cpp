@@ -1534,7 +1534,8 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         push.options[3] = 0;
     }
     if (!sheet_mesh_.empty()) {
-        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
+        // Public board-FX profile: the connected carve sheet uses always-pass depth.
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, celestial_pipeline_);
         vkCmdBindVertexBuffers(command_, 0, 1, &sheet_vertices_.buffer, &offset);
         push.mvp = camera;
         push.options[0] = 6;

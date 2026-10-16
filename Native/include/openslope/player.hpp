@@ -135,6 +135,8 @@ public:
 
     const RidingEffects& effects() const { return effects_; }
 
+    std::vector<ParticleSprite> particles(double alpha, Vec3 eye) const;
+
     const CollisionWorld& world() const { return world_; }
 
     const std::vector<ContactEvent>& contacts() const { return contact_events_; }
