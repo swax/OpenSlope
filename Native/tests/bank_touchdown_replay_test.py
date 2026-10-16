@@ -14,9 +14,11 @@ def main():
     executable=Path(sys.argv[1]).resolve();frames=0
     with tempfile.TemporaryDirectory(prefix='openslope-bank-touchdown-') as temporary:
         base=Path(temporary)
-        cases=[(0,75,False,False),(20,75,True,False),(70,0,False,False),(70,0,True,False),
-            (45,75,False,True),(70,0,True,True)]
-        for index,(degrees,roll,downhill,ascending) in enumerate(cases):
+        cases=[(0,75,False,False,False),(20,75,True,False,False),(70,0,False,False,False),
+            (70,0,True,False,False),(45,75,False,True,False),(70,0,True,True,False),
+            (0,0,False,False,True),(45,0,False,False,True)]
+        if '--embedded-only' in sys.argv[2:]:cases=[case for case in cases if case[-1]]
+        for index,(degrees,roll,downhill,ascending,embedded) in enumerate(cases):
             root=base/str(index);root.mkdir()
             slope=math.tan(math.radians(degrees));size=math.sqrt(1+slope*slope)
             normal=[-slope/size,1/size,0]
@@ -42,8 +44,9 @@ def main():
             uphill_length=math.sqrt(sum(x*x for x in uphill))
             if uphill_length:uphill=[x/uphill_length for x in uphill]
             write(root/'replay.json',dict(Schema='openslope-replay/v1',Placement=dict(
-                Position=[n*.5 for n in normal],Forward=forward,Up=up,
-                Velocity=[f*8-n*3+(u*18 if ascending else 0) for f,n,u in zip(forward,normal,uphill)]),
+                Position=[n*(-.12 if embedded else .5) for n in normal],Forward=forward,Up=up,
+                Velocity=[f*6+n*.3 for f,n in zip(forward,normal)] if embedded else
+                    [f*8-n*3+(u*18 if ascending else 0) for f,n,u in zip(forward,normal,uphill)]),
                 Steps=[dict(Ticks=120,Steer=.25)]))
             result=subprocess.run([str(executable),'--map',str(root),'--replay',str(root/'replay.json'),
                 '--capture',str(root/'frame.ppm'),'--audio-capture',str(root/'mix.wav'),
@@ -57,7 +60,7 @@ def main():
                 samples=struct.unpack('<'+str(audio.getnframes()*2)+'h',audio.readframes(audio.getnframes()))
             assert rms(samples[-48000:])>200,('Carve loop did not resume after touchdown',degrees,roll,downhill,result.stdout)
             frames+=120
-    print(f'PASS: {frames} production Vulkan/PCM frames verify flat, downhill and rising bank touchdowns with tilted decks and restored ground sound')
+    print(f'PASS: {frames} production Vulkan/PCM frames verify bank, rising and embedded-air touchdowns with restored ground sound')
 
 
 if __name__=='__main__':main()

@@ -24,6 +24,55 @@ Terrain floor(double slope = 0, int surface = 1) {
     return Terrain({patch});
 }
 
+void embedded_air_contacts() {
+    for (const auto surface : {1, 3, 5, 18})
+        for (const auto yaw : {0., pi * .5, pi})
+            for (const auto slope : {0., .75, 1.5})
+                for (const auto depth : {.005, .05, .12}) {
+                    const auto turn = [&](Vec3 v) { return rotate(v, {0, 1, 0}, yaw); };
+                    auto patch = floor(slope, surface).patches()[0];
+                    for (auto& point : patch.points)
+                        point = turn(point);
+                    Player player(Terrain({patch}));
+                    const auto normal = turn(normalized(Vec3{-slope, 1, 0}));
+                    player.warp(-normal * depth, turn({0, 0, -1}), turn({0, 0, -6}) + normal * .02);
+                    auto& rider = const_cast<Rider&>(player.rider());
+                    rider.grounded = false;
+                    rider.motion = Motion::Air;
+                    rider.control = Control::Air;
+                    rider.air_time = 4.75;
+                    rider.flip_degrees = -333;
+                    const auto serial = player.placement_serial();
+                    unsigned first = 0, grounded = 0;
+                    for (unsigned tick = 0; tick < 90; ++tick) {
+                        player.tick({.steer = .25});
+                        if (!first && rider.landings)
+                            first = tick + 1;
+                        grounded += tick >= 60 && rider.grounded && rider.motion == Motion::Ground;
+                    }
+                    if (!first || grounded < 29)
+                        std::cerr << "embedded air surface " << surface << " yaw " << yaw << " slope " << slope
+                                  << " depth " << depth << " first " << first << " ground " << grounded << '\n';
+                    check(first && first <= 30, "An embedded airborne deck touching the front-side guard lands");
+                    check(grounded >= 29 && player.placement_serial() == serial,
+                          "Embedded air contact restores ground controls without a reset");
+                }
+    for (const auto slope : {0., .75, 1.5}) {
+        Player below(floor(slope));
+        const auto normal = normalized(Vec3{-slope, 1, 0});
+        below.warp(-normal, {0, 0, -1}, Vec3{0, 0, -6} - normal * 2);
+        auto& rider = const_cast<Rider&>(below.rider());
+        rider.grounded = false;
+        rider.motion = Motion::Air;
+        rider.control = Control::Air;
+        for (unsigned tick = 0; tick < 12; ++tick) {
+            below.tick({});
+            check(!rider.grounded && !rider.landings,
+                  "A guard wholly behind a terrain sheet cannot land on its front side");
+        }
+    }
+}
+
 void bank_landings() {
     for (const auto surface : {1, 3, 5, 18})
         for (const auto yaw : {0., pi * .5, pi})
@@ -75,6 +124,7 @@ void bank_landings() {
 }
 
 void regressions() {
+    embedded_air_contacts();
     bank_landings();
     unsigned landing_cases = 0, side_landings = 0;
     for (const auto surface : {1, 3, 18})

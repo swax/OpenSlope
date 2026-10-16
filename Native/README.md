@@ -3,6 +3,9 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.75 fixes an embedded-deck air-state lock reproduced from a paused
+Snowdream playtest. See [captured contact validation](docs/embedded-contact-0.75.md).
+
 Build 0.74 extends the landing correction to upward travel into banks, centres
 flips on the rider's pelvis, and clears lingering live-bag overlaps. See
 [playtest fixes and validation](docs/playtest-contact-0.74.md).

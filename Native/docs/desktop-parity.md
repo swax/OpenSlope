@@ -1,5 +1,10 @@
 # Desktop gameplay parity work
 
+Build 0.75 restores ground controls when the terrain guard is touching the front
+of a surface while the deck is already sunk into it. A paused Snowdream rider
+state reproduces the lock in 0.74 and recovers in two ticks with the correction.
+See [captured contact validation](embedded-contact-0.75.md).
+
 Build 0.74 handles upward travel into banks, shares a pelvis-centred flip
 transform between the deck and collision pose, and clears residual live-prop
 overlap after the normal shove. The wider parity goal remains paused while

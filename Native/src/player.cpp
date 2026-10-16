@@ -1647,13 +1647,15 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             // The raised sphere can touch a bank before the deck's root crosses
             // it. Resolve that incoming contact as a landing, or the guard can
             // hold the rider above the surface indefinitely in the air state.
-            // Refine the contacted sheet and require its front side; a cached
-            // wall behind a departing rider is never a new touchdown.
+            // Refine the contacted sheet and require the guard centre on its
+            // front side. The deck can already be sunk into the contact band;
+            // requiring its root above the sheet leaves that case airborne.
+            // A cached wall behind a departing rider is never a new touchdown.
             const auto contact =
                 terrain_.intersect(guard->point + guard->normal * .01, guard->point - guard->normal * .01, true);
-            const auto root = start_contact + (end_contact - start_contact) * guard->t;
+            const auto centre = guard_start + guard_delta * guard->t;
             if (contact && contact->patch == guard->patch && dot(contact->normal, guard->normal) > .5 &&
-                dot(root - contact->point, contact->normal) >= -1e-6 && dot(rider_.velocity, contact->normal) < -1e-8)
+                dot(centre - contact->point, contact->normal) >= -1e-6 && dot(rider_.velocity, contact->normal) < -1e-8)
                 floor = GroundContact{contact->point, contact->normal, guard->t, contact->surface, {}};
         }
         const auto stop = std::min({solid ? solid->t : 1.0, floor ? floor->t : 1.0, guard ? guard->t : 1.0}),

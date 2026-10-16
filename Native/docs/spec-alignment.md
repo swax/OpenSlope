@@ -1,5 +1,11 @@
 # Native prototype specification alignment
 
+Build 0.75 refines the Native terrain-guard handoff: the sphere centre must be
+on the contacted sheet's front side, allowing its deck root to be embedded.
+The normal incoming-velocity, same-patch and front-normal checks remain.
+This corrects a stability-policy restriction, retaining clean 320/340 ground
+and touchdown responses. See [captured contact validation](embedded-contact-0.75.md).
+
 Build 0.71 follows clean `390-race-score` and `395-standings` for earned
 checkpoint authority and the six-frame reference ladder. Completion is captured
 on the common world clock so late joiners cannot reverse finish order with
