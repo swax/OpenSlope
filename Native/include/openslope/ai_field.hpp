@@ -39,6 +39,8 @@ private:
     void rank(Player& primary);
     void separate(std::span<Player* const> actors);
     void force_step(Player& primary, std::span<Player* const> actors, double world_seconds);
+    std::optional<AiProjection> recovery_anchor(const Player& actor) const;
+    bool recovery_blocked(const Player& actor) const;
     std::optional<RecoveryPose> recovery(const Player& actor) const;
 };
 } // namespace openslope

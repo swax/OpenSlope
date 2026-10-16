@@ -246,6 +246,101 @@ void recovery_clearance(const std::filesystem::path& root) {
           "opponent recovery ranks a clear nearby route ahead of a respawn point inside a prop");
 }
 
+void recovery_paths(const std::filesystem::path& root) {
+    const auto setup = [&](const char* name, int event = 0, bool one_respawn = false) {
+        const auto map = root / name;
+        std::filesystem::create_directory(map);
+        fixture(map);
+        auto routes = Json::parse(std::ifstream(map / "AIP.json"));
+        routes["AIPaths"][0]["PathPos"][0] = 0;
+        routes["AIPaths"][1]["PathPos"][0] = 400;
+        routes["AIPaths"][0]["U3"] = 100;
+        routes["AIPaths"][1]["U3"] = 0;
+        if (event)
+            routes["AIPaths"][0]["PathEvents"] =
+                Json::array({{{"EventType", event}, {"EventValue", 0}, {"EventStart", 1500}, {"EventEnd", 2500}}});
+        if (one_respawn)
+            routes["AIPaths"][0]["Respawnable"] = false;
+        write(map, "AIP.json", routes);
+        return map;
+    };
+    const auto place = [&](Player& player, double x) {
+        seat(player, -20, 20, 0);
+        player.ai_riders(2);
+        seat(player.ai_field()->rider(0), x, 20, 0);
+        seat(player.ai_field()->rider(1), 20, 20, 0);
+        player.tick({.posture = -1});
+        check(player.ai_field()->control(0).progress && player.ai_field()->control(0).progress->path == 0,
+              "The fixture rider tracks its chosen line even beside a closer differently rated route");
+    };
+    const auto recover = [&](Player& player) {
+        auto& actor = player.ai_field()->rider(0);
+        check(actor.recover_course(false), "The ordinary opponent reset request is accepted");
+        for (unsigned i = 0; i < 120 && !actor.last_course_recovery(); ++i)
+            player.tick({.posture = -1});
+        check(actor.last_course_recovery().has_value(), "The opponent completes its reset hold");
+        return *actor.last_course_recovery();
+    };
+
+    Player cached(Terrain::load(setup("cached")));
+    place(cached, 4);
+    const auto current = recover(cached);
+    check(current.source == RecoverySource::AIPath && current.path == 0 && std::abs(current.position.x) < 1e-8,
+          "Opponent recovery anchors its current tracked line instead of reselecting from the displaced body");
+
+    for (const int event : {100, 103, 105}) {
+        Player window(Terrain::load(setup(("window-" + std::to_string(event)).c_str(), event)));
+        place(window, 0);
+        const auto target = recover(window);
+        near(target.station, event == 103 ? 15 : 25,
+             "Opponent recovery applies authored backward, forward and jump reset windows");
+        near(target.position.z, event == 103 ? -15 : -25,
+             "The adjusted station controls the actual opponent reset destination");
+    }
+
+    for (const double x : {0., 4.}) {
+        Player blocked(Terrain::load(setup(("blocked-" + std::to_string(int(x))).c_str(), 104)));
+        place(blocked, x);
+        check(!blocked.ai_field()->rider(0).recover_course(false) && !blocked.ai_field()->rider(0).reset_pending(),
+              "The tracked line's no-reset window refuses an opponent even beside a different closer route");
+    }
+    Player fresh(Terrain::load(setup("fresh-warp", 104)));
+    place(fresh, 0);
+    seat(fresh.ai_field()->rider(0), 4, 20, 0);
+    check(fresh.ai_field()->rider(0).recover_course(false),
+          "A new independent warp does not retain the previous line's no-reset window before its next input tick");
+
+    Player reseeded(Terrain::load(setup("reseeded", 0, true)));
+    place(reseeded, 0);
+    const auto destination = recover(reseeded);
+    check(destination.path == 1, "Reset selects the nearby respawn-enabled route over its non-respawnable line");
+    reseeded.tick({.posture = -1});
+    check(reseeded.ai_field()->control(0).progress && reseeded.ai_field()->control(0).progress->path == 1,
+          "The input tracker resumes the route actually selected for reset despite a different mood preference");
+    seat(reseeded.ai_field()->rider(0), 0, 20, 0);
+    reseeded.tick({.posture = -1});
+    check(reseeded.ai_field()->control(0).progress && reseeded.ai_field()->control(0).progress->path == 0,
+          "A later independent warp chooses afresh instead of reusing historical reset metadata");
+
+    const auto slope_map = setup("slope");
+    auto terrain = Json::parse(std::ifstream(slope_map / "Patches.json"));
+    for (auto& point : terrain["Patches"][0]["Points"])
+        point[2] = -.1 * point[1].get<double>();
+    write(slope_map, "Patches.json", terrain);
+    auto routes = Json::parse(std::ifstream(slope_map / "AIP.json"));
+    for (auto& path : routes["AIPaths"])
+        for (auto& step : path["PathPoints"])
+            step[2] = -.1 * step[1].get<double>();
+    write(slope_map, "AIP.json", routes);
+    Player sloped(Terrain::load(slope_map));
+    place(sloped, 0);
+    recover(sloped);
+    near(sloped.ai_field()->rider(0).rider().velocity.y, 0,
+         "Opponent drop-in seeds horizontal course velocity rather than the path's vertical slope");
+    near(length(sloped.ai_field()->rider(0).rider().velocity), 30. / 3.6,
+         "The shared drop-in retains its exact thirty-kilometre-per-hour speed");
+}
+
 void menu(const std::filesystem::path& root) {
     fixture(root);
     Player player(Terrain::load(root));
@@ -450,6 +545,9 @@ int main(int argc, char** argv) {
         const auto clear_root = root / "recovery-clearance";
         std::filesystem::create_directory(clear_root);
         recovery_clearance(clear_root);
+        const auto reset_root = root / "recovery-paths";
+        std::filesystem::create_directory(reset_root);
+        recovery_paths(reset_root);
         if (argc == 2)
             owned(argv[1]);
         std::cout << "PASS: " << checks << " shared AI field checks\n";

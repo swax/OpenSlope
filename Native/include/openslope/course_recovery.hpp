@@ -2,6 +2,7 @@
 #include "paths.hpp"
 #include <deque>
 #include <functional>
+#include <span>
 
 namespace openslope {
 enum class RecoverySource { AIPath, RaceLine, Trail, Start };
@@ -12,6 +13,9 @@ struct RecoveryPose {
     std::size_t path = 0;
     double station = 0;
 };
+
+double recovery_station(std::span<const PathEvent> events, double station);
+bool reset_forbidden(std::span<const PathEvent> events, double station);
 
 class CourseRecovery {
 public:

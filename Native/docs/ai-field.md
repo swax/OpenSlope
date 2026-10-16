@@ -46,6 +46,12 @@ route instead of repeatedly placing inside a prop. It also preserves the AI's
 forward cache when its current route wins re-selection. Shared analytic terrain,
 support-frame and rail/floor corrections are recorded in `course-contact-0.67.md`.
 
+Build 0.68 anchors recovery to the current input track, applies authored reset
+windows, resumes the route selected for placement and starts with horizontal
+drop-in velocity. Unrelated teleports discard historical reset-route state.
+See `opponent-recovery-0.68.md` for the bounded complete-course checks and the
+remaining discrepancy between clean 390 and 395's forward-bias descriptions.
+
 Figures use the shared avatar pose and mesh, without controllers or labels.
 The renderer submits extra board transforms against one uploaded snowboard.
 Both eyes use the same figures/effect snapshot. Nearby riding feedback is merged

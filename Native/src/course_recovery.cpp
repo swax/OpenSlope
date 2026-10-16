@@ -14,6 +14,27 @@ double box_distance(const Bounds& b, Vec3 p) {
 bool covers(const PathEvent& event, double station) { return station >= event.start && station < event.end; }
 } // namespace
 
+double recovery_station(std::span<const PathEvent> events, double station) {
+    if (!std::isfinite(station) || station < 0)
+        throw std::invalid_argument("Invalid recovery station");
+    // [Trailmap: 250-reset-events] Backward, forward, then jump-window priority.
+    for (const auto type : {103, 105, 100}) {
+        const auto found = std::find_if(events.begin(), events.end(), [&](const auto& event) {
+            return event.type == type && covers(event, station);
+        });
+        if (found != events.end())
+            return type == 103 ? found->start : found->end;
+    }
+    return station;
+}
+
+bool reset_forbidden(std::span<const PathEvent> events, double station) {
+    if (!std::isfinite(station) || station < 0)
+        throw std::invalid_argument("Invalid no-reset station");
+    return std::any_of(events.begin(), events.end(),
+                       [&](const auto& event) { return event.type == 104 && covers(event, station); });
+}
+
 CourseRecovery::CourseRecovery(CoursePaths paths) {
     ai_count_ = paths.ai.size();
     const auto append = [&](CoursePath path) {
@@ -144,10 +165,7 @@ bool CourseRecovery::blocked(Vec3 position) const {
     const auto current = project(*path, position);
     if (horizontal(current.point - position) > 150)
         return false;
-    for (const auto& event : lines_[*path].path.events)
-        if (event.type == 104 && covers(event, current.station))
-            return true;
-    return false;
+    return reset_forbidden(lines_[*path].path.events, current.station);
 }
 
 std::optional<RecoveryPose> CourseRecovery::choose(Vec3 position, RecoveryPose start,
@@ -190,17 +208,7 @@ std::optional<RecoveryPose> CourseRecovery::choose(Vec3 position, RecoveryPose s
     });
     for (const auto& entry : ranked) {
         const auto& candidate = entry.second;
-        auto station = candidate.station;
-        const auto& events = lines_[candidate.path].path.events;
-        for (const auto type : {103, 105, 100}) {
-            const auto found = std::find_if(events.begin(), events.end(), [&](const auto& event) {
-                return event.type == type && covers(event, candidate.station);
-            });
-            if (found != events.end()) {
-                station = type == 103 ? found->start : found->end;
-                break;
-            }
-        }
+        const auto station = recovery_station(lines_[candidate.path].path.events, candidate.station);
         if (auto target = accept(pose(candidate.path, station)))
             return target;
     }

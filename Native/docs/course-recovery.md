@@ -20,9 +20,11 @@ Clean Trailmap 250/390 supplies the placement core:
   along the horizontal course heading. Placement increments the shared serial so
   camera anchoring and checkpoint crossing suppression use the existing path.
 - Cancel pending score, retain banked score and event clock. An accepted manual
-  reset costs 0.12 energy; automatic/refused requests cost nothing. Finished or
-  expired events refuse new requests. Mounted recovery stays mounted; on-foot manual
-  recovery restores the walker and a nearby board.
+  reset costs 0.12 energy; automatic/refused requests cost nothing. Mounted
+  recovery stays mounted; on-foot manual recovery restores the walker and a
+  nearby board. The first-party continued-play profile permits reset after a
+  finished or expired event while preserving its result. This deliberately
+  differs from clean 390's terminal-event refusal.
 
 The support test rejects reset/unrideable/pass-through surfaces and normals below
 0.2 world-up. Nearby race lines, a recent safe-ground trail and finally the run
@@ -52,10 +54,9 @@ application choice; the separate recovered viewport effect which switches on at
 The run clock continues during the hold; riding, boarding, jump and boost input
 cannot move the rider or spend extra energy. Held buttons do not retrigger on
 arrival. A full restart cancels the pending recovery. An already accepted reset
-finishes if the event clock expires during its hold; subsequent requests are
-refused. This terminal transition is an application policy that avoids revealing
-the old unsafe position after a partial fade. Positive score results survive
-zero-point terrain skips, resets and event expiry.
+finishes if the event clock expires during its hold. Continued play can request
+another reset without changing that completed event's time or score. Positive
+score results survive zero-point terrain skips, resets and event expiry.
 
 Authored reset-node dispatch is connected in 0.24; see world-logic.md. Build 0.66
 adds field path selection, rubber-banding and shared-rider forward bias; see
@@ -80,6 +81,14 @@ The shared field additionally checks responsive-prop clearance for both the
 raised spawn and seated avatar before choosing its recovery route. This native
 application safety policy filters the existing six nearest respawn-enabled
 candidates; it does not add a time-based stuck reset. See `course-contact-0.67.md`.
+
+Build 0.68 uses each opponent's actual input tracker for the reset anchor and
+no-reset gate. Its destination uses the same 103/105/100 window adjustment as
+human recovery, including the adjusted point's floor and body-space checks.
+After placement the tracker resumes that selected route, and the drop starts
+with horizontal velocity. Placement serials prevent a later unrelated warp
+from inheriting the old reset route. See `opponent-recovery-0.68.md` for evidence
+and the remaining forward-bias specification discrepancy.
 
 Portable fixtures exercise horizontal station/height, the eight-metre criterion,
 respawn flags/end margins, window nudges/refusal, safe alternates, trail/start and

@@ -308,6 +308,7 @@ private:
     bool request_course_recovery(bool manual, bool authored);
     CourseRecovery course_recovery_;
     std::optional<RecoveryPose> last_recovery_;
+    std::uint64_t recovery_placement_serial_ = 0;
 
     struct RecoveryPlacement {
         RecoveryPose target;

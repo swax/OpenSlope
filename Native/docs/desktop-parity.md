@@ -229,3 +229,7 @@ probes, airborne guard frames, rail/floor crossings, carve contact references
 and AI forward-cache retention. Sustained scored-run prop traps use contact-driven
 recovery, with body clearance checked for opponent reset positions. See
 `course-contact-0.67.md` for provenance, validation and full-course limits.
+
+Build 0.68 corrects opponent recovery anchors, authored window handling,
+post-reset route tracking and horizontal drop-in velocity. See
+`opponent-recovery-0.68.md` for complete-course evidence and outstanding scope.

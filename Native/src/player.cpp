@@ -275,6 +275,8 @@ bool Player::recover_course(bool manual) { return request_course_recovery(manual
 bool Player::request_course_recovery(bool manual, bool authored) {
     if (teleport_pending_ || recovery_target_ || (!manual && !authored && !run_active() && !on_foot_))
         return false;
+    if (input_field_ ? input_field_->recovery_blocked(*this) : course_recovery_.blocked(rider_.position))
+        return false;
     const auto safe = [&](Vec3 point) {
         const auto hit = trace_ground(point + Vec3{0, 2, 0}, point - Vec3{0, 3, 0});
         return hit && hit->normal.y > .2 && hit->surface != 0 && hit->surface != 6 && hit->surface != 10 &&
@@ -312,6 +314,7 @@ void Player::finish_course_recovery() {
     if (placement.foot)
         start_on_foot();
     last_recovery_ = placement.target;
+    recovery_placement_serial_ = placement_serial_;
     reset_fade_in_ = .2;
 }
 

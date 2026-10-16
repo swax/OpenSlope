@@ -83,11 +83,28 @@ void AiField::resize(Player& primary, unsigned count) {
     rank(primary);
 }
 
+std::optional<AiProjection> AiField::recovery_anchor(const Player& actor) const {
+    for (const auto& member : members_)
+        if (member->rider.get() == &actor && member->placement == actor.placement_serial())
+            if (const auto& tracked = member->input.status().progress; tracked)
+                return network_->project(tracked->path, actor.rider().position, tracked->segment);
+    if (actor.last_recovery_ && actor.recovery_placement_serial_ == actor.placement_serial() &&
+        actor.last_recovery_->source == RecoverySource::AIPath)
+        return network_->project(actor.last_recovery_->path, actor.rider().position);
+    if (const auto choice = network_->choose(actor.rider().position))
+        return network_->project(choice->path, actor.rider().position);
+    return {};
+}
+
+bool AiField::recovery_blocked(const Player& actor) const {
+    const auto current = recovery_anchor(actor);
+    return current && reset_forbidden(network_->paths().ai[current->path].events, current->station);
+}
+
 std::optional<RecoveryPose> AiField::recovery(const Player& actor) const {
-    const auto choice = network_->choose(actor.rider().position);
-    if (!choice)
+    const auto current = recovery_anchor(actor);
+    if (!current)
         return {};
-    const auto current = network_->project(choice->path, actor.rider().position);
     const auto progress = [&](const Player& rider) {
         const auto foot = rider.course_run().locate(rider.rider().position);
         return foot ? total_ - foot->distance_to_finish + (rider.course_run().status().lap - 1) * total_ : 0.;
@@ -100,18 +117,20 @@ std::optional<RecoveryPose> AiField::recovery(const Player& actor) const {
             ++count;
         }
     const auto delta = count ? std::max(0., mean / count - progress(actor)) : 0;
-    const auto ahead = network_->point(choice->path, current.station + delta);
+    const auto ahead = network_->point(current->path, current->station + delta);
     // Recovery also needs space for the raised spawn and the seated body.
     // This is an application safety check; it does not alter route following.
     const auto clear = [&](const AiProjection& candidate) {
-        const auto point = network_->point(candidate.path, candidate.station);
+        const auto station = recovery_station(network_->paths().ai[candidate.path].events, candidate.station);
+        const auto point = network_->point(candidate.path, station);
         const auto floor = actor.trace_ground(point + Vec3{0, 2, 0}, point - Vec3{0, 3, 0});
         if (!floor || floor->normal.y <= .2 || floor->surface == 0 || floor->surface == 6 || floor->surface == 10 ||
             floor->surface == 17)
             return false;
         Rider pose;
         pose.normal = pose.board_up = pose.smoothed_up = floor->normal;
-        const auto forward = project(network_->point(candidate.path, candidate.station + 8) - point, pose.normal);
+        const auto heading = project(network_->point(candidate.path, station + 8) - point, {0, 1, 0});
+        const auto forward = project(heading, pose.normal);
         if (length(forward) < 1e-8)
             return false;
         pose.forward = normalized(forward);
@@ -135,9 +154,10 @@ std::optional<RecoveryPose> AiField::recovery(const Player& actor) const {
     const auto placed = network_->choose(ahead, 50, {}, true, clear);
     if (!placed)
         return {};
-    const auto point = network_->point(placed->path, placed->station);
-    return RecoveryPose{point, normalized(network_->point(placed->path, placed->station + 8) - point),
-                        RecoverySource::AIPath, placed->path, placed->station};
+    const auto station = recovery_station(network_->paths().ai[placed->path].events, placed->station);
+    const auto point = network_->point(placed->path, station);
+    return RecoveryPose{point, normalized(project(network_->point(placed->path, station + 8) - point, {0, 1, 0})),
+                        RecoverySource::AIPath, placed->path, station};
 }
 
 void AiField::restart(Player& primary) {
@@ -304,7 +324,12 @@ void AiField::step(Player& primary, const RideInput& input) {
             continue;
         actor.run_.begin_tick(dt, true);
         if (member->placement != actor.placement_serial()) {
-            member->input.placed();
+            const auto reset_path = actor.last_recovery_ &&
+                                            actor.recovery_placement_serial_ == actor.placement_serial() &&
+                                            actor.last_recovery_->source == RecoverySource::AIPath
+                                        ? std::optional(actor.last_recovery_->path)
+                                        : std::nullopt;
+            member->input.placed(reset_path);
             member->placement = actor.placement_serial();
         }
         AiContext context;

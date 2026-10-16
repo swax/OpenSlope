@@ -23,12 +23,12 @@ The native build consumes the tracked Contracts copy, so it works without the op
 | Heading closure | [Trailmap: 330-yaw, 330-alignment-basis] | Mode-dependent lead, slip sign, speed gate and per-tick yaw cap; direct rest/cap checks. Full trajectory parity has not yet been established. |
 | Desktop controls and jump/landing | [Trailmap: 300-decoupled, 330-lean, 340-charge, 340-magnitude, 340-blend, 340-landing-bands, 340-landing-seed, 360-cruise, 360-held] | Separate jump control, delayed additive launch, shaped lean, cruise/boost gates, switch riding and progressive landing bands. Swept terrain contact retains impact velocity. Authored CPU checks and a 269-frame actual Vulkan replay. Application choices and remaining trajectory/air-orientation gaps are in desktop-controls.md. |
 | Crash and recovery | [Trailmap: 300-wipeout-triggers, 300-recovery, 300-wipeout-timeout, 300-reset-separate, 340-landing-gate] | Shared crash causes, provisional angular tumble, near-crash get-up with carried momentum/stance, keyframed pose events, camera separation and active-run reset gating. Tumble/landing and path/fade reset gaps remain explicit in crash-recovery.md; portable and actual-host cases cover supported behavior. |
-| Course path conversion / starts | [Trailmap: 120-stagearea, 250-header, 250-section-a, 250-section-b, 250-accumulation, 250-seed-vertex, 250-events] | Independent AIP/SOP readers, retained event/DTF/rating/respawn fields, N+1 runtime polylines and middle start-slot selection. Source/generated comparisons and authored layout fixtures; race/reset/event consumers remain outstanding. |
+| Course path conversion / starts | [Trailmap: 120-stagearea, 250-header, 250-section-a, 250-section-b, 250-accumulation, 250-seed-vertex, 250-events] | Independent AIP/SOP readers, retained event/DTF/rating/respawn fields, N+1 runtime polylines and middle start-slot selection. Race events, course recovery and tracked opponent reset windows are connected. Exact staging, reset-bias reconciliation and complete route behavior remain outstanding. |
 | Authored collision foundation | [Trailmap: 130-contact-state, 220-model-header, 230-pools, 230-proxy, 230-body, 230-props, 230-joins, 370-sphere-box, 370-depenetrate, 370-bounce] | Independent multi-payload extraction, local box bounds, raw/RLE occupancy masks, affine shape queries, BVHs and contact/response separation. The shared player and asset cache consume these queries; provisional query choices are recorded in collision-foundation.md. |
 | Playable prop contact | [Trailmap: 130-contact-state, 130-mode1-result, 300-wipeout-triggers, 370-probe-volume, 370-probe-mask, 370-probe-modes, 370-slide, 370-bounce, 370-pass-through] | Rider/Quest-cache integration, unified ride surfaces, posed sweeps, contact begin/stay/end and hard-impact wipeout. CPU/Vulkan fixtures and all eleven generated-contract comparisons; exact probe pose/mask and animation-driven recovery gaps remain explicit in world-contacts.md. |
 | Sound and music playback | [Trailmap: 190-bank, 190-groups, 190-collision-event-map, 260-bnk, 260-schl-chunks, 260-eaxa, 260-psadpcm, 270-node, 270-link, 270-tail, 420-oneshot, 420-ambient-curves, 420-interactive-gate, 430-choose] | Independent audio decoding/mixing, explicit map routes, posed contact/ambient/board gates and queued graph audio. Authored CPU/actual-host captures and owned-output comparisons; executable resolver normalization, exact tuning, complete race/trick/speech and device behavior remain in audio-playback.md. |
 | Automatic Audio assets | [Trailmap: 200-map-manifest, 260-adl, 260-banksinf, 270-triplet, 420-ambient-banks, 420-no-flat-bed] | Typed ADL/hash bindings, config-selected banks and song/intro/async assets, explicit fixed/crowd routes, bounded staging and atomic rollback. Authored ISO cases and all eleven owned-course output comparisons; executable collision/board tables and dynamic/speech/runtime consumers remain explicit in audio-import.md. |
-| Complete rider, world, rendering, audio | Chapters 130, 170, 300, 340-430 | Not complete: hard landing/crash recovery, walls/undersides, prop collision/live behavior, rails, triggers, authored course reset, remaining material/blend modes, effects, audio and races remain ports. The full desktop-parity.md matrix tracks the active objective. |
+| Complete rider, world, rendering, audio | Chapters 130, 170, 300, 340-430 | Not complete: full trajectory/contact equivalence, general dynamic-body and live-graph behavior, remaining material/effect/audio fidelity, racing/shared sessions and wider image/device validation remain. Default play retains control after impacts. The full desktop-parity.md matrix tracks the active objective. |
 
 ## Deliberate difference from existing ports
 
@@ -239,8 +239,15 @@ in `lamp-profile-0.65.md`; no other port's runtime is implementation guidance.
 The AI input foundation consumes clean 395's ground-plane ruler, cached
 projection, pursuit/control quantization, network choice, rating, jump windows,
 rivals and catch-up request. It drives the existing Player in physical tests.
-Nominal profile choices and the public Slopesmith unreachable-target guard are
-explicit in `ai-input.md`. Build 0.66 integrates the visible shared field, actor
+Nominal profile choices are explicit in `ai-input.md`. Build 0.67 removes the
+extra unreachable-target re-selection guard and retains the specified board-plane
+controller. Build 0.66 integrates the visible shared field, actor
 command routing, batched forces, private laps, standings and body separation.
 Application policies, evidence and remaining scope are recorded in `ai-field.md`;
 this milestone does not establish complete AI or shared-session parity.
+
+Build 0.68 shares clean 250's reset-window adjustment with the opponent field,
+uses its tracked route for placement/refusal, resumes the selected reset route
+and seeds clean 390's horizontal drop-in velocity. Placement serials distinguish
+that reset from a subsequent independent warp. See `opponent-recovery-0.68.md`;
+the 390/395 forward-bias discrepancy and full parity remain outstanding.

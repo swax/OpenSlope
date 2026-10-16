@@ -3,6 +3,11 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.68 improves opponent recovery on desktop and Quest: tracked routes and
+authored reset windows determine placement, and the input tracker resumes the
+selected route. Existing maps need no re-import. See
+[recovery validation and remaining work](docs/opponent-recovery-0.68.md).
+
 Experimental C++20 player for portable OpenSlope maps, with a Vulkan renderer and OpenXR host.
 Windows desktop rendering and portable conformance tests are the local validation targets.
 The ARM64 Android APK builds, and the user reports successful Quest play after importing ALASKA
