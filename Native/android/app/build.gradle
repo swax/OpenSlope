@@ -7,7 +7,7 @@ android {
         applicationId 'org.openslope.nativeplayer'
         minSdk 29
         targetSdk 35
-        versionCode 61
+        versionCode 62
         versionName rootProject.file('../VERSION.txt').text.trim()
         testInstrumentationRunner 'org.openslope.nativeplayer.NativeImportInstrumentation'
         ndk { abiFilters 'arm64-v8a' }

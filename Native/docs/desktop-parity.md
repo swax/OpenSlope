@@ -8,6 +8,10 @@ APK/ISO transfer and in-app ALASKA import. This establishes initial device play;
 comfort, lifecycle and frame budgets still need targeted headset checks. This
 matrix tracks the full scope; a committed milestone is not completion of the goal.
 
+In-world video screens are excluded from the target at the user's request on
+2026-10-15. Ordinary screen textures, material animation and breakable-screen
+interactions remain part of the existing rendering/world behavior.
+
 Slopesmith's gameplay controls, public contracts and tests establish the feature
 inventory and comparison behavior. Clean Trailmap bodies establish recovered
 behavior; native implementation remains independently authored. Generated maps
@@ -112,7 +116,8 @@ See `audio-settings.md` for controls, persistence and verification scope.
 
 The 2026-10-15 effects audit confirms actual hydrant, trash-can and shatter
 chains while identifying ordinary breakable respawn, ambient voice selection,
-fence flex and in-world screen video as outstanding. See `effects-coverage.md`
+fence flex and in-world screen video as outstanding at that time. In-world
+video is now excluded by user direction. See `effects-coverage.md`
 for the coverage table, current checks and validation limits.
 
 Build 0.52 makes the Quest launch panel course-first, adds clear ISO/custom-map
@@ -168,3 +173,9 @@ light saturation and warm neutral fallback. Matched Merquer gate captures
 substantially close the reported brightness difference without changing exported
 textures or HDR instance records. See `prop-lighting-0.57.md` for the explicit
 Trailmap staging choice, pixel checks and remaining worn-VR limits.
+
+Build 0.59 makes sensor-driven fingers bend into each palm, replacing the
+knuckle-to-wrist hinge that swept sideways. Independent art landmarks verify
+both hands, all five digits, partial/full inputs and wrist rotations; GPU
+close-ups verify visible closure. See `finger-curl-0.59.md` for scope and remaining
+physical grip verification. In-world video screens are excluded by user request.

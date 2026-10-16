@@ -109,3 +109,13 @@ compression, independent head look and fixed switch bindings. The head mesh
 now follows yaw, pitch and roll, and the eye bridge supplies desktop first-person
 and tracked self-view alignment. See rider-motion.md for authority, tuning,
 validation and remaining style/calibration work.
+
+Build 0.59 corrects the sensor-driven finger flexion plane. The previous axis
+used the vector from each knuckle back to the wrist, which lies along the palm
+and made the fingers sweep sideways. Each chain now bends toward its hand's
+anatomical palm normal, with opposite normals on the two mirrored hands.
+The hinge follows the full grip rotation and remains shared down the chain.
+Thumb touch, index touch/trigger and grip still drive separate groups; release
+restores the exact resting mesh. This is independently authored posing of the
+existing first-party art, not recovered retail hand animation. See
+`finger-curl-0.59.md` for regression evidence and worn-device verification limits.

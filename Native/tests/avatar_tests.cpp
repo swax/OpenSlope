@@ -22,6 +22,83 @@ void finite_mesh(std::span<const Vertex> mesh) {
         check(v.r >= 0 && v.r <= 1 && v.g >= 0 && v.g <= 1 && v.b >= 0 && v.b <= 1, "bounded skin colour");
     }
 }
+
+void palm_curls(Avatar& avatar, const AvatarPose& base) {
+    // Distal end-cap triangles in the unchanged first-party figure GLB. Their
+    // open centres are measured in grip right/up/forward coordinates, not from
+    // the posing implementation. Index/middle/ring/pinky should close across
+    // the palm, without sweeping along the spread between those fingers.
+    struct Tip {
+        unsigned corner, group;
+        Vec3 open;
+    };
+
+    const std::array<std::array<Tip, 5>, 2> tips{{{{{3180, 0, {.0225743, -.0814150, .1042562}},
+                                                    {3327, 1, {.0058567, -.1616494, .0525951}},
+                                                    {3459, 2, {.0059786, -.1727405, .0159004}},
+                                                    {3591, 2, {.0058579, -.1617084, -.0203181}},
+                                                    {3723, 2, {.0056032, -.1402418, -.0554161}}}},
+                                                  {{{3882, 0, {.0211566, -.0784369, .1064214}},
+                                                    {3978, 1, {.0036201, -.1611689, .0541501}},
+                                                    {4110, 2, {.0037419, -.1722599, .0174555}},
+                                                    {4242, 2, {.0036213, -.1612278, -.0187631}},
+                                                    {4374, 2, {.0036751, -.1398275, -.0540755}}}}}};
+    const auto centre = [](std::span<const Vertex> mesh, unsigned corner) {
+        Vec3 result;
+        for (unsigned k = 0; k < 3; ++k) {
+            const auto& v = mesh[corner + k];
+            result += Vec3{v.x, v.y, v.z} / 3;
+        }
+        return result;
+    };
+    for (unsigned orientation = 0; orientation < 5; ++orientation)
+        for (unsigned side = 0; side < 2; ++side) {
+            auto pose = base;
+            auto& hand = pose.controllers[side];
+            const Vec3 axis = orientation == 1   ? Vec3{1, 0, 0}
+                              : orientation == 2 ? Vec3{0, 1, 0}
+                              : orientation == 3 ? Vec3{0, 0, 1}
+                                                 : normalized(Vec3{1, 2, -3});
+            const auto angle = orientation ? 1.7 : 0.;
+            hand.right = rotate({1, 0, 0}, axis, angle);
+            hand.up = rotate({0, 1, 0}, axis, angle);
+            hand.forward = rotate({0, 0, -1}, axis, angle);
+            hand.position = {side ? .43 : -.31, 1.17, -.52};
+            pose.joints[unsigned(side ? J::RightWrist : J::LeftWrist)] = hand.position;
+            hand.fingers = {};
+            const auto open = avatar.mesh(pose, false, false);
+            const std::vector<Vertex> resting(open.begin(), open.end());
+            for (const auto& tip : tips[side]) {
+                const auto start = centre(resting, tip.corner);
+                check(length(start - (hand.position + hand.right * tip.open.x + hand.up * tip.open.y +
+                                      hand.forward * tip.open.z)) < 1e-6,
+                      "Authored fingertip landmark follows the uncurled grip frame");
+                for (const auto amount : {.2, .5, 1.}) {
+                    hand.fingers[tip.group] = amount;
+                    const auto closed = avatar.mesh(pose, false, false);
+                    const auto delta = centre(closed, tip.corner) - start;
+                    check(dot(delta, hand.right) * (side ? -1 : 1) > amount * .025,
+                          "Both hands curl each fingertip into its palm through wrist yaw/pitch/roll");
+                    if (tip.group != 0)
+                        check(std::abs(dot(delta, hand.forward)) < .009,
+                              "Finger flexion preserves lateral spread instead of bending sideways");
+                    // Other sensor groups and the opposite hand remain at rest.
+                    for (unsigned other = 0; other < 2; ++other)
+                        for (const auto& unchanged : tips[other])
+                            if (other != side || unchanged.group != tip.group)
+                                check(length(centre(closed, unchanged.corner) - centre(resting, unchanged.corner)) <
+                                          1e-7,
+                                      "Finger curl never animates the other hand or another sensor group");
+                    hand.fingers = {};
+                }
+            }
+            check(avatar.mesh(pose, false, false).size() == resting.size(), "Released hand preserves topology");
+            const auto released = avatar.mesh(pose, false, false);
+            for (std::size_t i = 0; i < resting.size(); ++i)
+                check(released[i].x == resting[i].x && released[i].y == resting[i].y && released[i].z == resting[i].z,
+                      "Releasing capacitive/analog inputs restores the exact resting hand");
+        }
+}
 } // namespace
 
 int main() {
@@ -59,6 +136,7 @@ int main() {
         finite_mesh(avatar.mesh(fallback, true, true, tracking.head));
         close(player.rider().position, before, "presentation cannot move physics");
         const auto open_hand = avatar_pose(player, &tracking);
+        palm_curls(avatar, open_hand);
         const auto open_mesh = avatar.mesh(open_hand, false, false);
         const std::vector<Vertex> open_vertices(open_mesh.begin(), open_mesh.end());
         for (unsigned group = 0; group < 3; ++group) {

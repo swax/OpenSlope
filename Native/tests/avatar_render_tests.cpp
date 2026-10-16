@@ -216,6 +216,53 @@ int main(int argc, char** argv) {
         for (std::size_t i = 0; i < pa.size(); ++i)
             error += std::abs(int(pa[i]) - int(pb[i]));
         check(error / pa.size() < 1.0, "sRGB and display-domain avatar match");
+        for (unsigned side = 0; side < 2; ++side) {
+            auto hand_pose = avatar_pose(player, &tracking);
+            auto& grip = hand_pose.controllers[side];
+            grip.right = {1, 0, 0};
+            grip.up = {0, 1, 0};
+            grip.forward = {0, 0, -1};
+            const auto eye = grip.position - grip.up * .08 - grip.forward * .38;
+            const auto camera = projection(-.4, .4, -.4, .4) * view(eye, grip.forward);
+            std::array<std::vector<unsigned char>, 2> states;
+            for (unsigned closed = 0; closed < 2; ++closed) {
+                grip.fingers.fill(closed);
+                const auto all = avatar.mesh(hand_pose, true, false);
+                std::vector<Vertex> hand;
+                for (std::size_t i = 0; i < all.size(); i += 3) {
+                    bool near = true;
+                    for (unsigned k = 0; k < 3; ++k)
+                        near &= length(Vec3{all[i + k].x, all[i + k].y, all[i + k].z} - grip.position) < .23;
+                    if (near)
+                        hand.insert(hand.end(), all.begin() + i, all.begin() + i + 3);
+                }
+                check(hand.size() > 1000, "Close-up contains the posed hand and unchanged controller model");
+                for (auto* renderer : {&a, &b}) {
+                    const auto name = std::string(side ? "right-hand-" : "left-hand-") + (closed ? "closed" : "open") +
+                                      (renderer == &a ? "-unorm" : "-srgb");
+                    renderer->render(0, camera, board_transform({0, -10000, 0}, {0, 0, -1}, {0, 1, 0}),
+                                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, hand);
+                    const auto path = root / (name + ".ppm");
+                    renderer->capture(0, path);
+                    const auto image = pixels(path);
+                    if (renderer == &a)
+                        states[closed] = image;
+                    else {
+                        double difference = 0;
+                        for (std::size_t i = 0; i < image.size(); ++i)
+                            difference += std::abs(int(image[i]) - int(states[closed][i]));
+                        check(difference / image.size() < 1., "Open and curled hands match across target formats");
+                    }
+                }
+            }
+            unsigned difference = 0;
+            for (std::size_t i = 0; i < states[0].size(); i += 3)
+                difference += std::abs(int(states[0][i]) - int(states[1][i])) +
+                                  std::abs(int(states[0][i + 1]) - int(states[1][i + 1])) +
+                                  std::abs(int(states[0][i + 2]) - int(states[1][i + 2])) >
+                              30;
+            check(difference > 2000, "Sensor-driven finger closure visibly changes each rendered hand");
+        }
         a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
         render("vr-single-sample", full, true, tracking.head, {0, -.7, -1}, true);
         tracking.body_active = false;

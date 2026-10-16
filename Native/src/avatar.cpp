@@ -584,9 +584,12 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             transform.framed = true;
             const bool thumb = b.name.find("Thumb") != std::string::npos;
             const auto curl = c.valid ? c.fingers[thumb ? 0 : b.name.find("Index") != std::string::npos ? 1 : 2] : 0.;
-            if (bones_[b.parent].name == "Hand.L" || bones_[b.parent].name == "Hand.R")
-                transform.curl_axis =
-                    normalized(cross(parent.map(basis(b.axes[1])), c.position - transform.target), c.right);
+            if (bones_[b.parent].name == "Hand.L" || bones_[b.parent].name == "Hand.R") {
+                // The palm normal is opposite on the mirrored hands. A line
+                // back to the wrist lies in the palm plane and bends sideways.
+                const auto palm = parent.map(basis(bones_[b.parent].axes[0])) * (side ? -1. : 1.);
+                transform.curl_axis = normalized(cross(parent.map(basis(b.axes[1])), palm));
+            }
             const auto angle = curl * (thumb ? .75 : b.name.ends_with("2") ? 1.15 : .85);
             for (unsigned i = 0; i < 3; ++i) {
                 const Vec3 axis = i == 0 ? Vec3{1, 0, 0} : i == 1 ? Vec3{0, 1, 0} : Vec3{0, 0, 1};
