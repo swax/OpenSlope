@@ -18,6 +18,7 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "node scripts/build-server.mjs",
+    "build:iso-importer": "node scripts/build-browser-importer.mjs",
     "notices:inventory": "node scripts/update-browser-notice-inventory.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --max-warnings 0 .",

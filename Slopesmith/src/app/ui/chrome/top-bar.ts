@@ -4,6 +4,7 @@ import { MODE_ICON, HIST_ICON, MENU_ICON, MORE_ICON, USERS_ICON, VIEW_ICON } fro
 import { barFold, fitBar } from './bar-fit';
 import type { Mode, ShadeMode, Viewport } from '../../viewport/viewport';
 import type { HistoryEntry } from '../../state/history';
+import { openPublicCoursesDialog } from './public-courses-dialog';
 
 /**
  * The top dock (#dock-top): the three clusters of the editor's chrome — the Slopesmith brand, File and
@@ -27,6 +28,7 @@ export type TopBarDeps = {
   setMode: (m: Mode) => void;
   /** Current open project name; empty while no workspace mountain is open. */
   getMountainName: () => string;
+  getProjectId?: () => string | null;
   /** Loaded comparison level name; empty while no reference is loaded. */
   getReferenceName: () => string;
   /** Users mode (docs/038): its own mode, reached from beside the numbered row rather than inside it, so it
@@ -202,6 +204,8 @@ export function createTopBar(deps: TopBarDeps) {
         ? 'Import an editable .slopesmith.zip as a new mountain.'
         : 'Importing a mountain requires the editor role.', disabled: !mayCreate, onClick: importMountain },
       { label: 'Settings…', desc: 'Account, browser-local, application, and server settings.', onClick: settingsDialog },
+      { label: 'Public courses…', desc: 'Choose which courses visitors can ride from the homepage.',
+        onClick: () => { void openPublicCoursesDialog(deps.getProjectId?.() ?? null, mountainName(), canManageMountain()); } },
 
       { group: currentMountain, label: 'History…', desc: 'Preview, restore or fork one of this mountain’s saved checkpoints.', onClick: historyDialog },
       ...(isPreviewing() ? [{ group: currentMountain, label: 'Close preview', desc: 'Stop previewing the checkpoint and reopen the mountain as it stands on disk.', onClick: closePreview }] : []),

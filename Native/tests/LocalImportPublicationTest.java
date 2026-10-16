@@ -46,6 +46,20 @@ public final class LocalImportPublicationTest {
             require(custom.mkdir(), "Create unrelated source");
             rejects(library, "Unowned", custom, () -> {});
             require(Arrays.equals(Files.readAllBytes(new File(maps, "Course/Patches.json").toPath()), payload), "Failures preserve existing courses");
+            File other = library.importPath(cache); require(other.mkdir(), "Stage a second course");
+            Files.write(new File(other, "Patches.json").toPath(), new byte[]{42});
+            library.publishImport("Other", other, () -> {});
+            library.unloadLocal("Course");
+            require(!new File(maps, "Course").exists() && new File(maps, "Other/Patches.json").isFile(), "Unload removes only the selected course");
+            File reloaded = library.importPath(cache); require(reloaded.mkdir(), "Stage a fresh version of the unloaded course");
+            Files.write(new File(reloaded, "Patches.json").toPath(), new byte[]{7});
+            library.publishImport("Course", reloaded, () -> {});
+            require(Files.readAllBytes(new File(maps, "Course/Patches.json").toPath())[0] == 7, "The unloaded course can be imported again with new data");
+            for (String name : new String[]{"../cache", "", ".", "Custom source"}) {
+                boolean rejected = false; try { library.unloadLocal(name); } catch (IOException e) { rejected = true; }
+                require(rejected, "Unload refuses unsafe names and folders without course terrain");
+            }
+            require(new File(maps, "Other/Patches.json").isFile() && outside.isDirectory(), "Rejected unloads preserve sibling courses and outside folders");
             System.out.println("PASS: " + checks + " local import publication checks");
         } finally {
             MapLibrary.deleteLocal(root);

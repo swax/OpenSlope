@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { textureRefUrl } from '../../net/asset-paths';
+import { textureRefUrl, resolveAssetUrl } from '../../net/asset-paths';
 import { authoredParticleTextures } from '../../../core/effects/particle-textures';
 import { renderLoadingManager } from '../render-assets';
 import { createParticleAtlasTexture } from './particle-atlas';
@@ -583,7 +583,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const ref = authored ? authoredParticleTextures(authoredDocument)[name] : undefined;
     const index = nativeIndex + (authored ? PARTICLE_SPRITE_NAMES.length : 0);
     const level = data?.level ? `&level=${encodeURIComponent(data.level)}` : '';
-    const spriteUrl = new URL(ref ? textureRefUrl(ref) : `/api/particle-texture?name=${encodeURIComponent(name)}.png${level}`, location.href).href;
+    const spriteUrl = new URL(ref ? textureRefUrl(ref) : resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png${level}`), location.href).href;
     if (requestedParticleSprites.get(index) === spriteUrl || !particleAtlasContext) return index;
     requestedParticleSprites.set(index, spriteUrl);
     const image = new Image();

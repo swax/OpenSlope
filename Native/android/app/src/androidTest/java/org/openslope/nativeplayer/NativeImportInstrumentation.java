@@ -78,6 +78,14 @@ public final class NativeImportInstrumentation extends Instrumentation {
             MapLibrary.deleteLocal(interrupted);
             rejected = false; try { direct.publishImport("Outside staging", extracted, () -> {}); } catch (IOException e) { rejected = true; }
             require(rejected && extracted.isDirectory(), "Local import cannot consume a source outside its staging root");
+            MapLibrary.Entry localCourse = null;
+            for (MapLibrary.Entry row : direct.maps()) if (row.name.equals("Moved course")) localCourse = row;
+            require(localCourse != null, "Find local course for unload");
+            direct.unload(localCourse);
+            require(!direct.exists("Moved course") && direct.exists("Custom course"), "Local unload preserves other courses");
+            File replacement = direct.importPath(context.getCacheDir()); replacement.mkdir(); MapLibrary.copyLocal(extracted, replacement, () -> {});
+            direct.publishImport("Moved course", replacement, () -> {});
+            require(direct.exists("Moved course"), "Unloaded local course can be imported again");
             Uri tree = DocumentsContract.buildTreeDocumentUri(FixtureDocumentsProvider.AUTHORITY, "root");
             // Instrumentation executes in the target UID; bootstrap in the test APK's owner process.
             java.util.concurrent.CountDownLatch providerReady = new java.util.concurrent.CountDownLatch(1);
@@ -94,6 +102,9 @@ public final class NativeImportInstrumentation extends Instrumentation {
             String name = "Authored " + UUID.randomUUID(); documents.publish(name, extracted, () -> {});
             MapLibrary.Entry selected = null; for (MapLibrary.Entry row : documents.maps()) if (row.name.equals(name)) selected = row;
             require(selected != null, "Published SAF map discovered under opaque tree URI");
+            rejected = false;
+            try { documents.unload(new MapLibrary.Entry(name, documents.root, true)); } catch (IOException e) { rejected = true; }
+            require(rejected && documents.exists(name), "SAF unload rejects an entry whose URI is not the selected child");
             File prepared = documents.prepare(selected, temporary, () -> {}); invoke(activity, "nativeValidate", new Class<?>[]{String.class}, prepared.getAbsolutePath());
             JSONArray references = new JSONArray(MapLibrary.nativeAssetFiles(extracted.getAbsolutePath()));
             require(references.length() >= 4, "Native manifest includes diffuse, lightmap and shared-mesh references");
@@ -214,7 +225,12 @@ public final class NativeImportInstrumentation extends Instrumentation {
             require(new File(oldFrames, "Source/FIXTURE.PBD").isFile() && new File(oldFrames, "Source/FIXTURE.SSH").isFile() && new File(oldFrames, "Source").list().length == 3, "Old SAF import caches only paired material and behavior sidecars");
             require(new File(oldFrames, "Textures/0001.png").isFile(), "Legacy flipbook frame art is referenced and cached");
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, oldFrames.getAbsolutePath());
-            DocumentsContract.deleteDocument(getContext().getContentResolver(), selected.uri);
+            documents.unload(selected);
+            require(!documents.exists(name), "SAF unload removes the selected source course");
+            documents.publish(name, extracted, () -> {});
+            require(documents.exists(name), "Unloaded SAF course can be imported again");
+            MapLibrary.Entry reloaded = documents.child(documents.root, name);
+            documents.unload(reloaded);
             results.putString("stream", "PASS: " + checks + " device-side JNI, custom-library and SAF checks\n");
         } catch (Throwable e) { results.putString("stream", "FAIL: " + e + "\n"); code=Activity.RESULT_CANCELED; }
         finally { if (temporary != null) MapLibrary.deleteLocal(temporary); if (activity != null) { LauncherActivity launched = activity; runOnMainSync(launched::finish); } finish(code, results); }

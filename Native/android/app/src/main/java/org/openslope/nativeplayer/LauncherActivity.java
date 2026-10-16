@@ -109,8 +109,25 @@ public final class LauncherActivity extends Activity {
         libraryNotice = notice; noticeError = error; state(true, false); setStatus(getString(R.string.reading_maps)); final MapLibrary selected = library;
         worker.execute(() -> {
             try { List<MapLibrary.Entry> maps = selected.maps(); ui(() -> {
-                screen.maps(maps, this::play); state(false); screen.status(notice == null ? "" : notice, error);
+                screen.maps(maps, this::play, this::confirmUnload); state(false); screen.status(notice == null ? "" : notice, error);
             }); } catch (Exception e) { ui(() -> { state(false); screen.libraryError(); failure(e); }); }
+        });
+    }
+    private void confirmUnload(MapLibrary.Entry map) {
+        if (busy) return;
+        new AlertDialog.Builder(this).setTitle("Unload " + map.name + "?")
+            .setMessage("This deletes this course's files from the selected Maps folder, including any local edits. Other courses are kept. You can import it again from your ISO or restore a copy of a custom map.")
+            .setPositiveButton("Unload course", (dialog, which) -> unload(map))
+            .setNegativeButton("Cancel", null).show();
+    }
+    private void unload(MapLibrary.Entry map) {
+        if (busy) return;
+        state(true, false); setStatus("Unloading " + map.name + "…"); final MapLibrary selected = library;
+        worker.execute(() -> {
+            String result;
+            try { selected.unload(map); result = "Unloaded " + map.name + ". Import it again to reload its course data."; }
+            catch (Exception e) { result = e.getMessage() == null ? e.toString() : e.getMessage(); }
+            final String notice = result; ui(() -> { state(false); refreshMaps(notice); });
         });
     }
     private long discLength(ParcelFileDescriptor file) throws IOException {
@@ -169,6 +186,7 @@ public final class LauncherActivity extends Activity {
         });
     }
     private void play(MapLibrary.Entry map) {
+        if (busy) return;
         libraryNotice = null; noticeError = false;
         final String mode=new String[]{"freeride","race","showoff"}[runMode.getSelectedItemPosition()];
         final double scale=1+renderScale.getSelectedItemPosition()*.25;final int samples=1<<antialiasing.getSelectedItemPosition();

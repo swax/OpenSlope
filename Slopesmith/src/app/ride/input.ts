@@ -182,17 +182,22 @@ export function createRideInput(o: RideInputOpts) {
   const keyDown = (e: KeyboardEvent) => handleKey(e, true);
   const keyUp = (e: KeyboardEvent) => handleKey(e, false);
   const blur = () => releaseKeyboard();
+  const focusInput = (event: FocusEvent) => {
+    if ((event.target as HTMLElement | null)?.matches?.('input, textarea, select')) releaseKeyboard();
+  };
 
   function attach() {
     window.addEventListener('keydown', keyDown);
     window.addEventListener('keyup', keyUp);
     window.addEventListener('blur', blur);
+    window.addEventListener('focusin', focusInput);
   }
 
   function detach() {
     window.removeEventListener('keydown', keyDown);
     window.removeEventListener('keyup', keyUp);
     window.removeEventListener('blur', blur);
+    window.removeEventListener('focusin', focusInput);
     releaseKeyboard();
   }
 

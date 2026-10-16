@@ -106,7 +106,7 @@ PROSE_EXTENSIONS = {".md", ".mdx", ".txt"}
 # Tracked binaries. They cannot be line-scanned, so they are held to a different
 # rule: each must be declared in the provenance manifest, so a binary can never
 # reach a release without someone having said in writing where it came from.
-BINARY_EXTENSIONS = {".blend", ".glb", ".ico", ".jpeg", ".jpg", ".png", ".webp"}
+BINARY_EXTENSIONS = {".blend", ".glb", ".ico", ".jpeg", ".jpg", ".png", ".wasm", ".webp"}
 BINARY_PROVENANCE_PATH = ROOT / "tools" / "binary-provenance.json"
 
 # Files with no extension that are still text. Shipping scripts get scanned like

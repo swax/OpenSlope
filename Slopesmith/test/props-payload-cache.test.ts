@@ -68,6 +68,19 @@ try {
   check(recovered.cache === 'miss' && builds === 5
     && JSON.parse(readFileSync(cacheFile, 'utf8')).level === 'SOURCE',
   'a truncated persistent entry is rebuilt atomically');
+  writeFileSync(join(source, 'Physics.json'), '{"PhysicsHeaders":[]}');
+  const physicsChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
+  check(physicsChanged.cache === 'miss' && builds === 6 && physicsChanged.fingerprint !== recovered.fingerprint,
+    'a native physics-sidecar edit invalidates cached collision geometry and mass properties');
+  writeFileSync(join(source, 'Crowd.json'), JSON.stringify({ Schema: 'openslope-crowd/v1', Frames: [] }));
+  const crowdChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
+  check(crowdChanged.cache === 'miss' && builds === 7 && crowdChanged.fingerprint !== physicsChanged.fingerprint,
+    'a crowd profile edit invalidates the ordered crowd frame list');
+  mkdirSync(join(source, 'Textures'));
+  writeFileSync(join(source, 'Textures/crowd-cd00.png'), 'authored frame');
+  const crowdFileChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
+  check(crowdFileChanged.cache === 'miss' && builds === 8 && crowdFileChanged.fingerprint !== crowdChanged.fingerprint,
+    'native crowd filenames invalidate the fallback frame discovery cache');
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

@@ -121,7 +121,7 @@ const EXCLUSIVE_GROUP = new Map([
  * CPU-heavy checks saturate the event loop. Giving it the worker pool briefly is cheaper than retrying a red
  * gate and does not extend the usual wall clock: the full tier's long rebuild check already runs for longer.
  */
-const RUN_ALONE = new Set(['sessions.test.ts']);
+const RUN_ALONE = new Set(['sessions.test.ts', 'sync.test.ts', 'public-home.test.ts']);
 
 /** A check spawned through the TypeScript loader, without paying for an `npx` resolution to find it. */
 const tsx = (file: string, ...args: string[]): { command: string; args: string[] } =>

@@ -22,6 +22,8 @@ import { updateRoutes } from './api/update';
 import { voiceRoutes } from './api/voice';
 import { versionRoutes } from './api/version';
 import { workspaceRoutes } from './api/workspace';
+import { publicCourseRoutes } from './api/public-courses';
+import { publicAssetRequest } from './public-courses';
 import type { ApiRequest } from './api/request';
 import { createLogger } from './log';
 import { NoOpenProjectError, withRequestProjectAssets } from './project-assets';
@@ -33,7 +35,7 @@ const log = createLogger('api');
 const accountsLog = createLogger('accounts');
 
 const routes: Array<[mount: string, handle: ApiHandler]> = [
-  authRoutes, memberRoutes, workspaceRoutes, characterRoutes, musicRoutes, exportRoutes, levelRoutes,
+  authRoutes, memberRoutes, publicCourseRoutes, workspaceRoutes, characterRoutes, musicRoutes, exportRoutes, levelRoutes,
   textureRoutes, propRoutes, skyboxRoutes, retopologyRoutes, blenderRoutes, voiceRoutes, versionRoutes, updateRoutes,
   restartRoutes, schemaRoutes, explorerRoutes,
   // Deliberately last: its `/api` mount is the discovery root AND the catch-all that answers an unclaimed
@@ -158,6 +160,8 @@ const SIGN_IN: ReadonlySet<string> = new Set(['/bootstrap', '/redeem', '/login']
  * table, one path, and no second shape of request to keep in step with this one.
  */
 const ROUTE_ACCESS: Record<string, Access> = {
+  '/api/public': () => 'public',
+  '/api/publication': rw('viewer', 'editor'),
   // The HATEOAS front door (docs/052). Public on purpose: an agent arriving with nothing but this server's
   // address reads WHO it is and HOW to authenticate off the root, and an unknown-path miss under /api is a
   // 404 pointing home. The root itself carries links only — everything it names still asks its own role.
@@ -335,7 +339,8 @@ export async function handleApiRequest(
         jsonResponse(res, crossSite.status, crossSite.body);
         return true;
       }
-      const need = accessFor(mount)(method, path, new URL(mounted, 'http://localhost').searchParams);
+      const need = await publicAssetRequest(mount, mounted, method) ? 'public'
+        : accessFor(mount)(method, path, new URL(mounted, 'http://localhost').searchParams);
       const decision = await authorizeRequest(req, need);
       if (!decision.allowed) {
         jsonResponse(res, decision.status, decision.body);

@@ -57,7 +57,7 @@ directory; no playable partial course is published.
 
 Authored synthetic ISO tests cover shared banks/records, nonzero ADL padding,
 every emitter layout, config prefixes, crowd/fixed routes, silent unresolved
-events, music triplets, intro stems, missing members, invalid offsets/graphs,
+events, relocated executable collision routes and branch delay slots, music triplets, intro stems, missing members, invalid offsets/graphs,
 ambiguous names and whole-course rollback. All eleven owned local course imports
 matched 25,128 instance hash/sound joins and 10,343 existing WAV PCM payloads.
 All Audio trees fit the cache budget. A production Vulkan/PCM capture plays a

@@ -7,6 +7,12 @@ browser is and then loads either `src/app/main.ts` or the login page — docs/03
 `server` runs in its own Node process, so its modules never enter the client graph at all.
 Filenames are kebab-case throughout.
 
+`src/shared/map-data.ts` defines the small map-file reader interface. `map-levels`, `map-props`, and
+`map-effects` decode the portable contract for both server files and browser-local ISO extractions;
+server route wrappers supply filesystem I/O and caching. Shared prop decoding uses Three.js's geometry
+math, while `core` retains its platform-neutral boundary. Public riding lives under `src/app/public/` and
+composes the existing viewport and play controller without booting the editor or project autosave.
+
 ## `src/core` — pure domain logic
 
 No DOM, no Three.js scene, no fs. Everything here runs in the browser, in node (scripts,

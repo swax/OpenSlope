@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { textureRefUrl } from '../../net/asset-paths';
+import { textureRefUrl, resolveAssetUrl } from '../../net/asset-paths';
 import { renderLoadingManager } from '../render-assets';
 import type { ParticleVolume } from '../../../core/particles/volumes';
 import { particleRawFromEditor } from '../../../core/particles/volumes';
@@ -40,7 +40,7 @@ export function createParticleVolumesLayer(stage: Stage) {
 
   const textures = new Map<string, THREE.Texture>();
   function fogTexture(ref?: string) {
-    const url = ref ? textureRefUrl(ref) : '/api/particle-texture?name=fog0.png';
+    const url = ref ? textureRefUrl(ref) : resolveAssetUrl('/api/particle-texture?name=fog0.png');
     let texture = textures.get(url);
     if (!texture) {
       texture = new THREE.TextureLoader(renderLoadingManager).load(url, loaded => {

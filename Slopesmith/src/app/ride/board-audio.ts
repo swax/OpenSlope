@@ -8,6 +8,7 @@ import {
   gameAudioDestination, preloadAudio, resumeSharedAudio, sharedAudioBuffer, sharedAudioContext,
 } from '../audio/runtime';
 import type { RideState } from './physics';
+import { resolveAssetUrl } from '../net/asset-paths';
 
 /**
  * The board bed for the test ride (docs/034): the glide and carve loops, the grind scrape, the ollie/landing
@@ -195,7 +196,7 @@ export class BoardAudio {
     this.boostGain.connect(this.cueGain);
     resumeSharedAudio();
     if (!surfaceGroups) {
-      void fetch('/api/board-audio')
+      void fetch(resolveAssetUrl('/api/board-audio'))
         .then(response => response.ok
           ? response.json() as Promise<{ surfaceGroups?: number[] | null }>
           : Promise.reject(new Error(`HTTP ${response.status}`)))

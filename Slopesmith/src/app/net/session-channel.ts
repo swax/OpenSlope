@@ -6,6 +6,7 @@ import type { RideEvent, SharedRideEvent } from '../../core/session/ride-event';
 import type { ClientProject } from '../state/project-sync';
 import type { SharedScreenFrame, SharedScreenState } from '../../core/session/screen-share';
 import { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
+import { referenceRoom } from '../../core/session/public-courses';
 
 export { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
 
@@ -216,6 +217,8 @@ const RECONNECT_MAX_MS = 15_000;
 const CAPACITY_CLOSE_CODE = 4003;
 
 export function createSessionChannel(deps: {
+  /** Public riding omits editor-only subscriptions from its handshake. */
+  publicPlay?: boolean;
   /** This tab's id — the same one every project request carries, so the server can tell a tab's own writes
    *  from somebody else's. */
   clientId: string;
@@ -412,7 +415,7 @@ export function createSessionChannel(deps: {
         post({ t: 'reference', level: referenceLevel });
         post({ t: 'playing', playing });
         post({ t: 'idle', idle });
-        post({ t: 'screen-share', enabled: screenSharing });
+        if (!deps.publicPlay) post({ t: 'screen-share', enabled: screenSharing });
         if (observedSessionId) post({
           t: 'screen-observe', sessionId: observedSessionId, active: screenObservationActive,
         });
@@ -608,7 +611,9 @@ export function createSessionChannel(deps: {
       case 'ride-event': {
         const event = message as unknown as SharedRideEvent;
         const currentProject = watching === undefined ? welcome?.projectId : watching;
-        if (!currentProject || event.projectId !== currentProject || typeof event.fromSessionId !== 'string'
+        const referenceEvent = playing === 'reference' && referenceLevel && event.projectId === referenceRoom(referenceLevel);
+        if ((!currentProject || event.projectId !== currentProject) && !referenceEvent) return;
+        if (typeof event.fromSessionId !== 'string'
           || !Number.isSafeInteger(event.id)) return;
         const previous = lastRideEventBySession.get(event.fromSessionId) ?? -1;
         if (event.id <= previous) return;

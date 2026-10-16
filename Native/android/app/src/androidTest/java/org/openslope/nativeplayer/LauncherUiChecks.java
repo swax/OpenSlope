@@ -110,7 +110,9 @@ final class LauncherUiChecks {
             main(() -> require(ui.status.getText().toString().contains("Folder access was not granted"), "Picker failure survives an automatic resume refresh"));
             main(() -> {
                 require(ui.courses.getChildCount() == 2 && ui.empty.getVisibility() == View.GONE, "Discovered courses replace empty guidance");
-                require(((Button) ui.courses.getChildAt(0)).getText().toString().equals("Play ALASKA"), "Play action names its course");
+                LinearLayout course = (LinearLayout) ui.courses.getChildAt(0);
+                require(((Button) course.getChildAt(0)).getText().toString().equals("Play ALASKA"), "Play action names its course");
+                require(course.getChildAt(1).getContentDescription().toString().equals("Unload ALASKA"), "Unload action names its course");
                 Rect first = new Rect(); ui.courses.getChildAt(0).getDrawingRect(first); ui.root.offsetDescendantRectToMyCoords(ui.courses.getChildAt(0), first);
                 require(first.top >= 0 && first.bottom <= ui.root.getHeight(), "First Play action fits the initial viewport without scrolling");
                 require(ui.add.getVisibility() == View.GONE, "Existing libraries keep import details folded away");
@@ -124,6 +126,7 @@ final class LauncherUiChecks {
                 launched.onBackPressed(); require(ui.help.getVisibility() == View.GONE, "Back closes help before exiting");
                 try { invoke(launched, "state", new Class<?>[]{boolean.class}, true); } catch (Exception e) { throw new RuntimeException(e); }
                 require(!ui.courses.getChildAt(0).isEnabled() && !ui.importIso.isEnabled(), "Busy state blocks duplicate launch/import");
+                require(!course.getChildAt(0).isEnabled() && !course.getChildAt(1).isEnabled(), "Busy state blocks play and unload together");
                 require(ui.cancel.isEnabled() && ui.close.isEnabled(), "Long operations retain cancel and exit");
                 ui.cancel.performClick();
                 try { require((boolean) get(launched, "cancelled"), "Cancel reaches the import cancellation flag"); invoke(launched, "state", new Class<?>[]{boolean.class}, false); }

@@ -92,6 +92,17 @@ target_sources(openslope_core PRIVATE src/world_import.cpp)
 target_sources(openslope_core PRIVATE src/executable.cpp src/audio_resolver.cpp)
 target_sources(openslope_core PRIVATE src/board_audio.cpp)
 target_link_libraries(openslope_core PRIVATE nlohmann_json::nlohmann_json openslope_png)
+if(EMSCRIPTEN)
+  add_executable(openslope_browser_import src/browser_import.cpp)
+  target_link_libraries(openslope_browser_import PRIVATE openslope_core nlohmann_json::nlohmann_json)
+  target_compile_options(openslope_core PRIVATE -fexceptions)
+  target_compile_options(openslope_browser_import PRIVATE -fexceptions)
+  target_link_options(openslope_browser_import PRIVATE
+    -fexceptions --no-entry -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=worker
+    -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2147483648 -sSTACK_SIZE=8388608 -sINITIAL_MEMORY=33554432 -sFORCE_FILESYSTEM=1
+    "-sEXPORTED_RUNTIME_METHODS=['ccall','FS']")
+  set_target_properties(openslope_browser_import PROPERTIES SUFFIX ".js")
+endif()
 if(MSVC)
   target_compile_options(openslope_core PRIVATE /W4 /WX /permissive- /utf-8)
 else()

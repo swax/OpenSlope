@@ -80,6 +80,8 @@ import { createSyncStatus } from './state/sync-status';
 import { loadSettings, saveSettings } from './state/settings';
 import { confirmUnloadWithUnsavedWork, holdUnsavedWork } from './state/unsaved-work';
 import type { PeerMarks } from './viewport/scene/peers';
+import { referenceRoom } from '../core/session/public-courses';
+import { translatePlayerPose } from '../core/session/pose-space';
 import { emptyJukeboxState, jukeboxPosition, type JukeboxState } from '../core/session/jukebox';
 import type {
   SharedScreenFrame, SharedScreenState, SharedViewOptions,
@@ -191,7 +193,12 @@ const viewportCallbacks = createViewportCallbacks({
   selectScene: kind => selectScene(kind),
   showReferenceLightDetails: (level, light) => reference.setSelectedLightDetails(level, light),
   persistRef: () => persistRef(),
-  sendRideEvent: event => session.rideEvent(event),
+  sendRideEvent: event => {
+    if (event.target.kind === 'reference' && event.contact) {
+      const offset = viewport.referenceOffset(), point = event.contact.point;
+      return session.rideEvent({ ...event, contact: { ...event.contact, point: [point[0] - offset[0], point[1] - offset[1], point[2] + offset[2]] } });
+    } else return session.rideEvent(event);
+  },
 });
 viewportCallbacks.onMoveEffect = pos => effectsEditor?.moveSelectedEmitter(pos);
 viewportCallbacks.onSelectEffectProp = (index, additive) => effectsEditor?.selectAuthoredPropEffect(index, additive) ?? false;
@@ -1775,7 +1782,9 @@ const play = createPlay({
   store, viewport, persistUi, rebuildTools, updateCmdSheet, syncSkyVisibility, ensureReferenceEffects,
   onPlayingChanged: target => {
     session.setPlaying(target);
-    if (target) chat.close(); // the ride gets input; recent lines and active speakers remain as passive HUD
+    chat.setDocked(!!target);
+    document.body.classList.toggle('sp-ride-chat', !!target);
+    window.dispatchEvent(new Event('resize'));
   },
 });
 
@@ -1790,6 +1799,7 @@ const {
   viewport, applyCage, cageActive, persistUi,
   getMode: () => store.currentMode, setMode,
   getMountainName: () => projectSync.current() ? store.mdoc.name : '',
+  getProjectId: () => projectSync.current()?.id ?? null,
   getReferenceName: () => reference.getRefLevel(),
   usersActive: () => usersMode.active(),
   toggleUsers: () => { usersMode.setActive(!usersMode.active()); modeSeg.refresh(); },
@@ -2691,7 +2701,6 @@ let jukeboxChangedAt = -1;
 const chat = createChatBox({
   say: text => session.say(text),
   me: () => session.member(),
-  suspended: () => viewport.riding,
 });
 const syncChatSpeakers = () => chat.setSpeakers(voice.members().filter(member => member.speaking));
 voice.subscribe(syncChatSpeakers);
@@ -2836,6 +2845,12 @@ const session = createSessionChannel({
     refreshObserverControls();
   },
   onRideEvent: event => {
+    if (event.projectId === referenceRoom(reference.getRefLevel()) && store.playTarget === 'reference') {
+      const offset = viewport.referenceOffset(), contact = event.contact;
+      viewport.applyRideEvent(contact ? { ...event, contact: { ...contact,
+        point: [contact.point[0] + offset[0], contact.point[1] + offset[1], contact.point[2] - offset[2]] } } : event);
+      return;
+    }
     const current = projectSync.current();
     if (current && event.projectId === current.id) viewport.applyRideEvent(event);
   },
@@ -2889,6 +2904,15 @@ const session = createSessionChannel({
     }
   },
   onAware: peer => {
+    const referencePlaying = store.playTarget === 'reference' && (viewport.riding || viewport.xrPlaying);
+    const referenceKey = referenceRoom(reference.getRefLevel());
+    if (peer.projectId.startsWith('@reference:') && (!referencePlaying || peer.projectId !== referenceKey)) return;
+    if (referencePlaying && peer.projectId !== referenceKey) return;
+    const offset = viewport.referenceOffset();
+    const entry = presenceByMap[peer.projectId]?.find(entry => entry.sessionId === peer.sessionId);
+    const peerReference = entry?.playing === 'reference' ? entry.referenceLevel : undefined;
+    const sameReference = peerReference?.toUpperCase() === reference.getRefLevel().toUpperCase();
+    const player = peerReference && !sameReference ? null : peer.aware.player;
     peerMarks.set(peer.sessionId, {
       sessionId: peer.sessionId,
       userId: peer.userId,
@@ -2899,7 +2923,7 @@ const session = createSessionChannel({
       ...(peer.equipmentEdgeColor ? { equipmentEdgeColor: peer.equipmentEdgeColor } : {}),
       cursor: peer.aware.cursor, vertices: peer.aware.vertices, quads: peer.aware.quads,
       dragging: peer.aware.dragging,
-      player: peer.aware.player,
+      player: player && (referencePlaying || sameReference) ? translatePlayerPose(player, [offset[0], offset[1], -offset[2]]) : player,
     });
     refreshPeers();
   },
@@ -2959,7 +2983,9 @@ let warnedOtherOwnSessionOn: string | null = null;
 let playPlayerRosterKey = '';
 function refreshPeers(): void {
   const projectId = projectSync.current()?.id ?? '';
-  const entries = presenceByMap[projectId] ?? [];
+  const referencePlaying = store.playTarget === 'reference' && (viewport.riding || viewport.xrPlaying);
+  const entries = referencePlaying ? Object.values(presenceByMap).flat().filter(entry => entry.playing === 'reference'
+    && entry.referenceLevel?.toUpperCase() === reference.getRefLevel().toUpperCase()) : presenceByMap[projectId] ?? [];
   const here = new Set(entries.map(entry => entry.sessionId));
   for (const sessionId of [...peerMarks.keys()]) if (!here.has(sessionId)) peerMarks.delete(sessionId);
   const hiddenObservationTargets = new Set<string>();
@@ -3040,7 +3066,12 @@ const awareness = createAwareness({
   editing: () => registerSync.editing(),
   // Keep the legacy awareness field explicitly empty. Cursors belong to observer-routed screen frames.
   cursor: () => null,
-  player: () => viewport.playerPose(store.playRiderModel, session.serverNow()),
+  player: () => {
+    const pose = viewport.playerPose(store.playRiderModel, session.serverNow());
+    if (store.playTarget !== 'reference' || (!viewport.riding && !viewport.xrPlaying)) return pose;
+    const offset = viewport.referenceOffset();
+    return translatePlayerPose(pose, [-offset[0], -offset[1], offset[2]]);
+  },
   send: aware => session.aware(aware),
 });
 awareness.start();

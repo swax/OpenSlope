@@ -66,6 +66,21 @@ const CSS = `
 /* A live ride owns the keyboard, but incoming conversation and voice activity remain useful HUD. Rows stop
    taking pointer input so the passive feed cannot steal a steering/camera gesture. */
 body.os-riding .sp-chat-line { pointer-events: none; cursor: default; }
+.sp-chat h2 { display: none; }
+.sp-chat.sp-chat-docked { left: auto; right: 0; top: var(--bar-h, 46px); bottom: 0; width: 300px;
+  padding: 18px; box-sizing: border-box; pointer-events: auto; background: #101f2b; border-left: 1px solid #293e4b; gap: 10px; }
+.sp-chat.sp-chat-docked h2 { display: block; margin: 0 0 12px; font-size: 18px; }
+.sp-chat.sp-chat-docked .sp-chat-log { max-height: none; flex: 1; min-height: 0; padding: 0; border: 0; background: none; }
+.sp-chat.sp-chat-docked .sp-chat-entry { display: flex; }
+.sp-chat.sp-chat-docked input { font-size: 16px; }
+.sp-chat.sp-chat-docked .sp-chat-line { pointer-events: auto; }
+body.sp-ride-chat #viewport { right: 300px; }
+body.sp-ride-chat #dock-right { display: none; }
+@media (max-width: 640px) {
+  body.sp-ride-chat #viewport { right: 0; bottom: 190px; }
+  .sp-chat.sp-chat-docked { top: auto; height: 190px; width: 100%; }
+  .sp-chat.sp-chat-docked h2, .sp-chat.sp-chat-docked .sp-chat-note { display: none; }
+}
 `;
 
 export interface ChatSpeaker {
@@ -81,6 +96,7 @@ export interface ChatBox {
   replay(lines: ChatLine[]): void;
   /** Replace the server-voice members currently speaking beside the passive chat feed. */
   setSpeakers(speakers: readonly ChatSpeaker[]): void;
+  setDocked(on: boolean): void;
   /** Take the keyboard. `prefill` is what a `/`-shortcut opens with. */
   open(prefill?: string): void;
   close(): void;
@@ -107,11 +123,16 @@ export function createChatBox(deps: {
   me: () => SessionMember | null;
   /** While a ride is running the ride owns the keyboard, so the passive feed remains but cannot be opened. */
   suspended?: () => boolean;
+  /** A persistent right-hand room for public riding. */
+  docked?: boolean;
 }): ChatBox {
   installStyles('chat-box', CSS);
 
   const el = document.createElement('div');
-  el.className = 'sp-chat';
+  el.className = deps.docked ? 'sp-chat sp-chat-docked open' : 'sp-chat';
+  const heading = document.createElement('h2');
+  heading.textContent = 'The lodge';
+  el.append(heading);
   const speakerList = document.createElement('div');
   speakerList.className = 'sp-chat-speakers';
   speakerList.setAttribute('role', 'status');
@@ -133,12 +154,14 @@ export function createChatBox(deps: {
   // any other, so it is private from other members and not from whoever runs the machine.
   note.textContent = '/msg <user> <text> · /r <text> replies. Private lines are private from other members, '
     + 'not from whoever runs this server — it relays and retains them. Esc closes.';
+  if (deps.docked) note.textContent = 'Enter to chat while riding. Esc returns to the mountain. /msg and /r work here too.';
   el.append(speakerList, log, entry, note);
   document.body.appendChild(el);
 
   const lines: ChatLine[] = [];
   const rows = new Map<number, HTMLElement>();
-  let open = false;
+  let docked = !!deps.docked;
+  let open = docked;
   let holding = false;
   let fade = 0;
 
@@ -146,6 +169,7 @@ export function createChatBox(deps: {
   // currently as tall as rather than over it.
   const lowerLeft = document.getElementById('lowerleft');
   const anchor = (): void => {
+    if (docked) return;
     const above = lowerLeft?.offsetHeight ?? 0;
     el.style.bottom = `${above ? above + 14 : 8}px`;
   };
@@ -249,9 +273,9 @@ export function createChatBox(deps: {
   }
 
   function close(): void {
-    open = false;
+    open = docked;
     holding = false;
-    el.classList.remove('open');
+    el.classList.toggle('open', open);
     input.blur();
     paint();
   }
@@ -283,6 +307,11 @@ export function createChatBox(deps: {
       paint();
     },
     setSpeakers,
+    setDocked(on): void {
+      docked = on; open = on;
+      el.classList.toggle('sp-chat-docked', on); el.classList.toggle('open', on);
+      el.style.bottom = ''; anchor(); paint();
+    },
     open(prefill = ''): void {
       if (deps.suspended?.()) return;
       open = true;
@@ -295,5 +324,10 @@ export function createChatBox(deps: {
     close,
     focused: (): boolean => holding,
   };
+  window.addEventListener('keydown', event => {
+    if (!docked || event.key !== 'Enter'
+      || (event.target as HTMLElement | null)?.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
+    event.preventDefault(); event.stopPropagation(); document.exitPointerLock?.(); api.open();
+  }, true);
   return api;
 }

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import type { PropsPayload } from '../core/reference/props';
+import { isCrowdFrameFile } from '../shared/map-crowd';
 import { ensureWorkspace } from './workspace-config';
 import {
   fileStamp, listEntries, mapLimit, pathExists, readBytesOrNull, writeFileAtomic, READ_CONCURRENCY,
@@ -8,7 +9,7 @@ import {
 import { createLogger } from './log';
 
 /** Bump whenever the generated PropsPayload contract or its server-side derivation changes. */
-const PROP_PAYLOAD_CACHE_SCHEMA = 7;
+const PROP_PAYLOAD_CACHE_SCHEMA = 9;
 const log = createLogger('props-cache');
 
 export interface PersistentPropsPayload {
@@ -26,7 +27,7 @@ export interface PersistentPropsJson {
 /** Only these inputs can affect routes/props.readLevelProps. Texture pixels are served separately; the prop
  * payload depends on CROWD frame names, so those few files are included while ordinary tiles are skipped. */
 const TOP_LEVEL_INPUTS = [
-  'Models.json', 'Instances.json', 'Materials.json', 'TextureAlpha.overrides.json', 'Effects.json', 'Props.obj',
+  'Models.json', 'Instances.json', 'Materials.json', 'TextureAlpha.overrides.json', 'Effects.json', 'Physics.json', 'Crowd.json', 'Props.obj',
 ] as const;
 
 /** A metadata fingerprint is deliberate: validating roughly 3,000 MERQUER source files takes about 200 ms,
@@ -66,7 +67,7 @@ export async function propsPayloadFingerprint(levelDir: string): Promise<string>
   };
   await addDirectory('Meshes', file => file.toLowerCase().endsWith('.obj'));
   await addDirectory('Collision', file => file.toLowerCase().endsWith('.obj'));
-  await addDirectory('Textures', file => /^cd\d+\.png$/i.test(file));
+  await addDirectory('Textures', isCrowdFrameFile);
   return hash.digest('base64url');
 }
 

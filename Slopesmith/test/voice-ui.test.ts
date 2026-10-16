@@ -67,8 +67,8 @@ assert.match(chat, /body\.os-riding \.sp-chat-line \{ pointer-events: none; curs
   'ride chat stays passive and cannot steal a steering or camera gesture');
 assert.match(main, /chat\.setSpeakers\(voice\.members\(\)\.filter\(member => member\.speaking\)\)/,
   'LiveKit active-speaker changes feed the chat HUD');
-assert.match(main, /if \(target\) chat\.close\(\)/,
-  'starting a Test ride closes chat input before retaining its passive HUD');
+assert.match(main, /chat\.setDocked\(!!target\)/,
+  'starting a Test ride keeps chat docked and available beside the mountain');
 assert.match(chat, /speaker\.username} is speaking in voice/,
   'the chat HUD labels each active voice speaker by name');
 

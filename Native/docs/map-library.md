@@ -54,6 +54,13 @@ and the specified RefPack streams. It discovers course archives under `DATA/MODE
 end is excluded. Unsupported titles/platforms and corrupt data report errors before publication.
 The user selects any subset of courses. Existing names, including custom courses, are skipped.
 
+Each course row has an **Unload** action. Its confirmation states that the course's source files and
+local edits will be deleted. After unloading, select the ISO and import that course again to refresh
+its converted assets and metadata. Other courses and the selected library root are preserved.
+Local removal validates the selected course against the Maps root and does not follow symbolic links.
+Document-folder removal validates the current child URI and uses the provider's delete operation;
+read-only providers report failure. The library refreshes after either success or failure.
+
 Each course is extracted into a fresh app cache directory, validated with the same terrain/image/prop loaders
 used by playback, copied into a hidden staging directory under Maps, then renamed to its course
 name. A course becomes visible only after publication. Failed/cancelled imports clean up only
@@ -74,7 +81,7 @@ can leave a hidden staging directory; it remains unlisted and can be removed thr
 | `Splines.json` (when present) | Analytic rail curves, candidacy and style; optional exact source coefficients/arc/link metadata. Existing/custom Points-only curves are supported; see rails.md. |
 | `AIP.json`, `SOP.json` (when present) | Existing start-slot, AI/race-line and event contracts; expanded displacement steps, raw seeds, DTF and path attributes. Runtime retains the seed vertex and uses the middle start slot. |
 | `RidingEffects.json`, `Textures/particle-*.png`, authored `Textures/Particles/` | Optional puff/wake/sheet slots and the complete emitter sprite registration. New imports write EmitterSprites; older named SpriteBank profiles and authored named folders work. Quest plans and copies bounded nested textures before playback; see world-particles.md. Standalone volumes/weather remain separate. |
-| `Audio/` (when configured) | Complete assigned sound banks, loop slices, placed fixed-environment banks, preserved configs, course music graphs/chunks and configured async banks/intro stems. Empty slots stay empty. Executable collision/board indexes, dynamic chants and speech remain deferred; see audio-import.md. |
+| `Audio/` (when configured) | Complete assigned sound banks, loop slices, placed fixed-environment banks, preserved configs, course music graphs/chunks and configured async banks/intro stems. Empty slots stay empty. Executable collision and board indexes come from the disc boot executable; dynamic chants and speech remain deferred; see audio-import.md. |
 | `Origin.json` | Existing `openslope-origin/v1`, `retail`, course name and `retail-extract` reason. |
 | `Source/` | Decompressed level archive sidecars retained locally for later conversion stages. Not a portable runtime contract. |
 | `Import.json` | Explicit stage report: `Complete` is false, with emitted and deferred stage names. |

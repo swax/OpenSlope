@@ -158,9 +158,9 @@ function redeemForm(page: HTMLElement, token: string): void {
 
 /** Signing in, which is the same pair of fields from any machine. */
 function signInForm(page: HTMLElement): void {
-  const { host, body } = card(page, 'Sign in', 'A private server — sign in to carry on');
+  const { host, body } = card(page, 'Sign in', 'Member access — sign in to edit');
   const g = new GUI({ container: body, title: 'Sign in' });
-  banner(body, 'This server is private and invite-only. Sign in with the username and password you chose '
+  banner(body, 'Member accounts are invite-only. Sign in with the username and password you chose '
     + 'when you redeemed your invite.');
   const form = { username: '', password: '' };
   focusField(named(g.add(form, 'username').name('username'), 'username'));

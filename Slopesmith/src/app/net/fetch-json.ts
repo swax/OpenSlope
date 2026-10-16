@@ -1,13 +1,14 @@
 import { beginRequestDiagnostic } from './diagnostics';
 import { clientFetch } from './client';
 import { renderRequest } from '../state/capture-progress';
+import { resolveAssetUrl } from './asset-paths';
 
 /** Fetch and decode JSON, rejecting HTTP failures before callers consume a misleading error payload. */
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const trace = beginRequestDiagnostic(input, init);
   const finishRenderRequest = renderRequest(input, init);
   try {
-    const response = await clientFetch(input, init);
+    const response = await clientFetch(typeof input === 'string' ? resolveAssetUrl(input) : input, init);
     trace.headers(response);
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
     const body = await response.json() as T;

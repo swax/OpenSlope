@@ -103,7 +103,50 @@ remain local to each browser. Putting the movie onto authored course screens ins
 frame Three.js is allowed to sample, which YouTube's iframe does not provide; the
 [Jukebox guide](docs/063-video-bridge.md) describes the optional local media server that covers that case.
 
-### Play an imported course
+### Public homepage and guest riding
+
+**File → Public courses…** publishes the current editable mountain for guest riding. Its owner or a
+moderator can change publication; moderators can also publish reference maps. Everything starts private.
+Visitors who are signed out land on the course homepage, and members can open the same view at `/?play`.
+Enter a rider name, choose a course, load it, then choose **Ride** or **Play in VR**. The right-hand lodge
+chat remains available while riding; Enter focuses it and Escape returns control to the mountain.
+
+Retail courses and authored mountains that borrow game assets require the visitor's own SSX Tricky PS2
+ISO. The existing Native importer runs as WebAssembly in a browser worker, reads the ISO locally, and saves
+the extracted courses in IndexedDB. Choosing the ISO immediately lists its courses as **From your ISO**,
+including courses the server has not imported or published. The scan does not extract assets; **Load
+course** extracts only the selected course and its required donors. A matching published reference has
+one card. The ISO and extracted retail files are never uploaded. Subsequent visits list cached courses
+without choosing the ISO again; **Clear local assets** removes them. Browser storage must be available, and the
+browser may evict cached data when space is scarce.
+
+The ISO section lists cached courses with an **Unload** button for each one. Return to **Courses** if
+you are riding, unload the course to remove its local extracted files, then load it again with your ISO
+selected to extract a fresh copy. Other cached courses and server maps are preserved.
+
+Collision sounds use the event lookup recovered from that ISO's boot executable. For courses cached by
+an older importer, choose the ISO once more when prompted: the scan repairs only the sound metadata and
+keeps the cached course assets. Local sky tiles clamp their texture edges and render outside course fog;
+the open top uses a fill derived from the upper tile edges.
+
+Guest riders share multiplayer poses, world interactions, and server chat with members on the same
+mountain or reference course. Guests cannot edit, browse private maps, or call member APIs. Public
+reference listings expose names and ISO course slots; the server still requires member authentication to
+stream retail terrain or art. Retail disc slots have shared riding rooms available to local ISO users.
+Unpublishing removes the server listing and closes guest sessions for unpublished custom/reference rooms;
+it does not remove a visitor's own local disc courses or their retail riding rooms.
+Reference exports that mix authored and retail files must be published through their editable mountain;
+their flattened model files cannot be safely separated back into authored and ISO content.
+Editable mountains containing imported retail effect graphs also stay private; publish the reference
+course or replace the imported graph with authored effects before publishing the mountain.
+
+The checked-in browser importer runtime keeps ordinary builds independent of native tools. After changing
+the Native import code, install and activate Emscripten **6.0.12**, set `EMSDK`, and run
+`npm run build:iso-importer`. The build script copies JavaScript, WebAssembly, and dependency notices into
+`public/iso-importer/`. `test/public-home.test.ts` exercises publication, guest isolation, riding, chat,
+member multiplayer, and a synthetic ISO extraction/cache reload without retail data.
+
+### Load a reference in the editor
 
 Follow the [import-to-browser guide](../Snowknife/docs/browser-play.md) to build Snowknife and populate
 the repository's `Maps/` folder. Slopesmith reads that output directly; no glTF conversion is needed.

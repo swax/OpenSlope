@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resolveAssetUrl } from '../net/asset-paths';
 import type { RideGear } from './gear';
 import { groundRestDepth, surfaceFor } from './physics-math';
 import type { WalkGroundQuery } from './xr/walk';
@@ -354,7 +355,7 @@ function createBoardParticleAtlas(): BoardParticleAtlas {
         y + (BOARD_SPRITE_CELL - height) * 0.5, width, height);
       texture.needsUpdate = true;
     };
-    image.src = `/api/particle-texture?name=${encodeURIComponent(name)}.png`;
+    image.src = resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png`);
   });
   return { texture };
 }

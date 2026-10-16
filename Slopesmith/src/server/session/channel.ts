@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { guestMember } from '../accounts/guests';
+import { onPublicCoursesChanged, publicRoomAllowed, publicRoomKnown } from '../public-courses';
+import { referenceInRoom, referenceRoom } from '../../core/session/public-courses';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { EditDoc } from '../../core/doc/doc-edit';
@@ -240,12 +243,58 @@ const whoOf = (member: SessionMember): ChatWho => ({
 
 const send = (sessionId: string, message: ServerMessage): void => sessionById(sessionId)?.send(message);
 
+const PUBLIC_MESSAGES = new Set(['welcome', 'joined', 'room-policy', 'awareness-batch', 'pong', 'error',
+  'ride-event', 'gone', 'chat', 'chat-history', 'presence', 'presence-delta']);
+function publicMessage(message: ServerMessage): ServerMessage | null {
+  if (!PUBLIC_MESSAGES.has(message.t)) return null;
+  if ('projectId' in message && typeof message.projectId === 'string' && !publicRoomKnown(message.projectId)) return null;
+  if (message.t === 'awareness-batch' && referenceInRoom(message.projectId) === null) return {
+    ...message, peers: message.peers.filter(peer => sessionById(peer.sessionId)?.playing !== 'reference')
+      .map(peer => ({ ...peer, aware: { ...peer.aware, vertices: [], quads: [], dragging: [], cursor: null } })),
+  };
+  if (message.t === 'chat' && message.line.kind === 'system') return null;
+  if (message.t === 'chat-history') return { ...message, lines: message.lines.filter(line => line.kind !== 'system') };
+  if (message.t === 'presence') return {
+    ...message, maps: publicPresenceTable(message.maps),
+  };
+  if (message.t === 'presence-delta') {
+    const clean = (value: PresenceChange['from']) => {
+      if (!value) return null;
+      const riding = value.entry.playing === 'reference' && value.entry.referenceLevel
+        ? referenceRoom(value.entry.referenceLevel) : null;
+      const projectId = riding && publicRoomKnown(riding) ? riding : value.projectId;
+      return publicRoomKnown(projectId) ? { projectId, entry: publicPresence(value.entry) } : null;
+    };
+    const change = { ...message.change, from: clean(message.change.from), to: clean(message.change.to) };
+    return change.from || change.to ? { ...message, change } : null;
+  }
+  return message;
+}
+function publicPresenceTable(maps: Record<string, PresenceEntry[]>): Record<string, PresenceEntry[]> {
+  const result: Record<string, PresenceEntry[]> = {};
+  for (const [id, entries] of Object.entries(maps)) for (const entry of entries) {
+    const riding = entry.playing === 'reference' && entry.referenceLevel ? referenceRoom(entry.referenceLevel) : null;
+    const room = riding && publicRoomKnown(riding) ? riding : id;
+    if (publicRoomKnown(room)) (result[room] ??= []).push(publicPresence(entry));
+  }
+  return result;
+}
+function publicPresence(entry: PresenceEntry): PresenceEntry {
+  const { referenceLevel, screenSharing: _sharing, screenWatchingSessionId: _watching, ...rest } = entry;
+  return { ...rest, ...(referenceLevel && publicRoomKnown(referenceRoom(referenceLevel)) ? { referenceLevel } : {}) };
+}
+
 /** Encode one fleet message once, including its WebSocket frame, and share those immutable bytes. */
 function sendMany(recipients: Iterable<ReturnType<typeof liveSessions>[number]>, message: ServerMessage,
   options: { except?: string; coalesceKey?: string } = {}): void {
   const prepared = prepareWebSocketText(JSON.stringify(message));
   for (const session of recipients) {
     if (session.sessionId === options.except) continue;
+    if (session.publicPlay) {
+      const filtered = publicMessage(message);
+      if (filtered) session.send(filtered);
+      continue;
+    }
     session.sendPrepared(prepared, options.coalesceKey);
   }
 }
@@ -377,9 +426,14 @@ interface PendingAwareness {
 
 const pendingAwareness = new Map<string, PendingAwareness>();
 const awarenessPolicies = new Map<string, AwarenessPolicy>();
+function awarenessSessionsOn(room: string) {
+  const level = referenceInRoom(room);
+  return level === null ? sessionsOn(room) : liveSessions().filter(session =>
+    session.playing === 'reference' && session.referenceLevel?.toUpperCase() === level);
+}
 
 function projectAwarenessPolicy(projectId: string): AwarenessPolicy {
-  const participants = sessionsOn(projectId).length;
+  const participants = awarenessSessionsOn(projectId).length;
   const policy = awarenessPolicyFor(participants, awarenessPolicies.get(projectId));
   if (participants) awarenessPolicies.set(projectId, policy);
   else awarenessPolicies.delete(projectId);
@@ -395,7 +449,7 @@ const sameAwarenessPolicy = (a: AwarenessPolicy | undefined, b: AwarenessPolicy)
  * message into another quadratic broadcast.
  */
 function sendRoomPolicy(projectId: string, newcomerId?: string): void {
-  const recipients = sessionsOn(projectId);
+  const recipients = awarenessSessionsOn(projectId);
   if (!recipients.length) { awarenessPolicies.delete(projectId); return; }
   const previous = awarenessPolicies.get(projectId);
   const policy = projectAwarenessPolicy(projectId);
@@ -414,9 +468,9 @@ function flushAwareness(projectId: string): void {
   const pending = pendingAwareness.get(projectId);
   if (!pending) return;
   pending.timer = null;
-  const recipients = sessionsOn(projectId);
-  const peers = [...pending.peers.values()].filter(peer =>
-    sessionById(peer.sessionId)?.projectId === projectId);
+  const recipients = awarenessSessionsOn(projectId);
+  const members = new Set(recipients.map(session => session.sessionId));
+  const peers = [...pending.peers.values()].filter(peer => members.has(peer.sessionId));
   pending.peers.clear();
   if (recipients.length > 1 && peers.length) {
     sendMany(recipients, { t: 'awareness-batch', projectId, peers });
@@ -426,7 +480,7 @@ function flushAwareness(projectId: string): void {
 
 function queueAwareness(projectId: string, peer: AwarenessPeer): void {
   // The state still lives on the session for presence and a later update; there is nobody else to relay to.
-  if (sessionsOn(projectId).length < 2) return;
+  if (awarenessSessionsOn(projectId).length < 2) return;
   const pending = pendingAwareness.get(projectId) ?? { peers: new Map(), timer: null };
   pending.peers.set(peer.sessionId, peer);
   pendingAwareness.set(projectId, pending);
@@ -513,6 +567,17 @@ function writeRefusal(member: SessionMember, project: ProjectManifest,
  */
 async function joinMap(sessionId: string, wanted: string | null,
   asked: { at?: number; room?: unknown; doc?: number; core?: string }): Promise<void> {
+  const joining = sessionById(sessionId);
+  if (!joining) return;
+  if (joining.publicPlay && wanted && !await publicRoomAllowed(wanted)) {
+    send(sessionId, { t: 'error', message: 'This course is not public.' }); return;
+  }
+  if (joining.publicPlay || (wanted && referenceInRoom(wanted) !== null)) {
+    watchProject(sessionId, wanted);
+    joining.writable = false;
+    if (wanted) send(sessionId, { t: 'joined', projectId: wanted, at: 0, room: wanted, writable: false });
+    return;
+  }
   watchProject(sessionId, wanted);
   const session = sessionById(sessionId);
   if (!session || !wanted || session.projectId !== wanted) return;
@@ -698,7 +763,7 @@ function onAware(sessionId: string, message: Extract<ClientMessage, { t: 'aware'
     player: sanitizePlayerPose(said.player, Date.now()),
   });
   if (!aware) return;
-  queueAwareness(session.projectId, {
+  const peer: AwarenessPeer = {
     sessionId,
     userId: session.member.id, username: session.member.username, deviceLabel: session.deviceLabel,
     color: colorFor(session.member.id),
@@ -706,7 +771,13 @@ function onAware(sessionId: string, message: Extract<ClientMessage, { t: 'aware'
     ...(session.member.skiTextureUrl ? { skiTextureUrl: session.member.skiTextureUrl } : {}),
     ...(session.member.equipmentEdgeColor ? { equipmentEdgeColor: session.member.equipmentEdgeColor } : {}),
     aware,
-  });
+  };
+  queueAwareness(session.projectId, peer);
+  if (session.playing === 'reference' && session.referenceLevel) {
+    queueAwareness(referenceRoom(session.referenceLevel), {
+      ...peer, aware: { ...aware, vertices: [], quads: [], dragging: [], cursor: null },
+    });
+  }
 }
 
 function onJukebox(sessionId: string,
@@ -735,7 +806,15 @@ function handleMessage(sessionId: string, raw: string, jukebox: ServerJukebox,
   try { parsed = JSON.parse(raw) as ClientMessage; }
   catch { send(sessionId, { t: 'error', message: 'That was not a message this channel speaks.' }); return; }
   touchSession(sessionId);
-  if (!sessionById(sessionId)) return;
+  const currentSession = sessionById(sessionId);
+  if (!currentSession) return;
+  if (currentSession.publicPlay && !['ping', 'idle', 'watch', 'reference', 'playing', 'aware', 'ride-event', 'chat'].includes(parsed?.t)) {
+    send(sessionId, { t: 'error', message: 'Public riders can ride and chat; editing requires a member account.' }); return;
+  }
+  if (currentSession.publicPlay && currentSession.projectId && !publicRoomKnown(currentSession.projectId)) {
+    watchProject(sessionId, null);
+    send(sessionId, { t: 'error', message: 'This course is no longer public.' }); return;
+  }
 
   switch (parsed?.t) {
     case 'ping':
@@ -758,6 +837,7 @@ function handleMessage(sessionId: string, raw: string, jukebox: ServerJukebox,
         // eslint-disable-next-line no-control-regex -- strips control characters from a client-supplied level name
         ? parsed.level.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 128) || null
         : null;
+      if (currentSession.publicPlay && level && !publicRoomKnown(referenceRoom(level))) return;
       watchReference(sessionId, level);
       return;
     }
@@ -862,6 +942,13 @@ function rideEventAllowance(): () => boolean {
  * previous one's listeners attached to this process.
  */
 export function attachSessionChannel(server: Server): () => Promise<void> {
+  const stopWatchingPublicCourses = onPublicCoursesChanged(() => {
+    for (const session of liveSessions()) {
+      if (session.publicPlay && session.projectId && !publicRoomKnown(session.projectId)) {
+        session.close(4004, 'This course is no longer public.'); closeSession(session.sessionId);
+      }
+    }
+  });
   const jukebox = createJukebox();
   // Account authority can change after a socket was upgraded. End the captured identity immediately and let
   // the browser reload through the ordinary auth path; a revoked cookie or old role must not keep editing
@@ -944,7 +1031,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   const stopWatchingPresence = onPresenceChanged(change => {
     // HTTP activity refreshes this stamp while a session is in use; closing presence captures time spent in a
     // WebSocket-only editing session too. The accounts queue makes duplicate close paths harmless.
-    if (change.kind === 'close' && requiresAccounts()) {
+    if (change.kind === 'close' && requiresAccounts() && !change.userId.startsWith('guest:')) {
       void recordUserLastSeen(change.userId).catch(error => {
         log.error('could not persist a member last-seen time', { error });
       });
@@ -997,6 +1084,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   // Tracked so shutting the channel down waits for what it just started.
   const closing = new Set<Promise<unknown>>();
   const stopWatchingIdle = onProjectIdle((projectId, members) => {
+    if (referenceInRoom(projectId) !== null) return;
     const settling = closeRoom(projectId)
       .then(() => members.length ? checkpointOnSessionEnd(projectId, members) : null)
       .catch(error => { log.error(`closing the room on ${projectId} failed`, { error }); })
@@ -1009,7 +1097,8 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
 
   async function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    if (url.pathname.replace(/\/+$/, '') !== SESSION_PATH) return;
+    const publicPlay = url.pathname.replace(/\/+$/, '') === '/api/public/session';
+    if (!publicPlay && url.pathname.replace(/\/+$/, '') !== SESSION_PATH) return;
     if (!isWebSocketUpgrade(req)) { refuseUpgrade(socket, 400, 'This endpoint speaks WebSocket.'); return; }
 
     const authority = authorityRefusal(req);
@@ -1021,12 +1110,12 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     if (crossSite) { refuseUpgrade(socket, crossSite.status, String(crossSite.body.error)); return; }
 
     // The same table, the same guard and the same cookie every `/api/*` route goes through.
-    const decision = await authorizeRequest(req, accessFor(SESSION_PATH)('GET', '/'));
+    const decision = await authorizeRequest(req, publicPlay ? 'public' : accessFor(SESSION_PATH)('GET', '/'));
     if (!decision.allowed) {
       refuseUpgrade(socket, decision.status, String(decision.body.error ?? 'Refused.'));
       return;
     }
-    const member = memberOf(decision.identity);
+    const member = memberOf(decision.identity) ?? (publicPlay ? guestMember(req) : null);
     if (!member) { refuseUpgrade(socket, 401, 'Sign in to use this server.'); return; }
 
     const peer = acceptWebSocket(req, socket, head);
@@ -1059,12 +1148,20 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
         // The id is sender-monotonic. Repeated/reordered delivery is harmless, and a reconnect receives a new
         // authenticated session id so its counter may begin again without colliding with the old connection.
         if (event.id <= lastRideEventId) return;
-        const projectId = sessionById(sessionId)?.projectId;
+        const sender = sessionById(sessionId);
+        const projectId = sender?.projectId;
         if (!projectId) {
           send(sessionId, { t: 'error', message: 'Open a map before sharing a ride interaction.' });
           return;
         }
         lastRideEventId = event.id;
+        if (event.target.kind === 'reference' && sender?.referenceLevel?.toUpperCase() === event.target.level.toUpperCase()) {
+          const referenceId = referenceRoom(sender.referenceLevel);
+          sendMany(awarenessSessionsOn(referenceId), {
+            t: 'ride-event', ...event, projectId: referenceId, fromSessionId: sessionId, serverAt,
+          }, { except: sessionId });
+          return;
+        }
         relay(projectId, sessionId, {
           t: 'ride-event', ...event, projectId, fromSessionId: sessionId, serverAt,
         });
@@ -1089,7 +1186,8 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     });
     // Which map this tab was on, off the record the activate route keeps — so presence is right from the
     // first push rather than only once the editor gets around to saying so.
-    const projectId = await activeProjectFor(clientId).catch(() => null);
+    const projectId = publicPlay ? null : await activeProjectFor(clientId).catch(() => null);
+    if (publicPlay) await publicRoomAllowed(''); // load the current publication policy before any broadcasts
     if (peer.closed) return;
 
     // Capacity is reserved only after the remembered-project read, and no asynchronous work occurs between
@@ -1112,13 +1210,17 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     peer.send(JSON.stringify(welcome));
     // What this member missed, before they are told anything new — so the box they open already reads as a
     // conversation rather than filling in from whatever happens next.
-    const replay: ServerMessage = { t: 'chat-history', lines: scrollbackFor(member.id) };
+    const replay: ServerMessage = { t: 'chat-history', lines: scrollbackFor(member.id)
+      .filter(line => !publicPlay || line.kind !== 'system') };
     peer.send(JSON.stringify(replay));
     const live = openSession({
-      sessionId, clientId, replica, deviceLabel, member, projectId,
+      sessionId, clientId, replica, deviceLabel, member, projectId, publicPlay,
       ...(decision.identity.kind === 'member' ? { accountSessionId: decision.identity.sessionId } : {}),
-      writable: holds(member.role, 'editor'),
-      send: (message: unknown) => peer.send(JSON.stringify(message)),
+      writable: !publicPlay && holds(member.role, 'editor'),
+      send: (message: unknown) => {
+        const allowed = publicPlay ? publicMessage(message as ServerMessage) : message;
+        if (allowed) peer.send(JSON.stringify(allowed));
+      },
       sendPrepared: (frame, coalesceKey) => peer.sendPrepared(frame, { coalesceKey }),
       close: (code, reason) => peer.close(code, reason),
     });
@@ -1173,6 +1275,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     stopWatchingPresence();
     stopWatchingChat();
     stopWatchingIdle();
+    stopWatchingPublicCourses();
     stopWatchingAccess();
     stopWatchingLibraries();
     stopWatchingProfiles();

@@ -100,6 +100,8 @@ export interface PresenceChange {
 
 /** One connected editor. `send` is the socket's, so this table can push without knowing what a socket is. */
 export interface LiveSession {
+  /** Public-play sockets have a restricted protocol and never receive private editor data. */
+  publicPlay?: boolean;
   sessionId: string;
   /** The opaque account session that authorized this socket. Absent on an open owner server. */
   accountSessionId?: string;

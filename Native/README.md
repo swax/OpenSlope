@@ -22,9 +22,10 @@ authored prop contacts for bounce, ride surfaces and pass-through events. Animat
 analytic rails, timed runs, spin/flip/rail scoring and the visible stick figure are implemented. Quest starts on foot
 beside the board, with walking/jumping and nearby mounting. Authored reset volumes, multiplier pickups, mode hides and graph-triggered sound
 now run through the shared world logic. Persistent model-object animations move
-rendered parts and matching collision/support. Full live prop behavior, executable audio
-resolvers, uber tiers, AI races and multiplayer remain later stages. The retail cast and trick
-repertoire are out of scope, as CONTRIBUTING.md sets out. See
+rendered parts and matching collision/support. Fresh imports recover collision-sound event routes from
+the disc's boot executable into `Audio/SoundIndex.json`, plus board-surface groups into
+`Audio/BoardSoundIndex.json`. Full live prop behavior, uber tiers, complete AI races and multiplayer remain
+later stages. The retail cast and trick repertoire are out of scope, as CONTRIBUTING.md sets out. See
 [the map-library contract](docs/map-library.md) and [desktop parity matrix](docs/desktop-parity.md).
 
 Build 0.37 fixes GARI's black barrier overlay and adds per-piece break animations,
@@ -250,6 +251,8 @@ After installation, find **OpenSlope Native** in the headset's sideloaded applic
 3. **Import SSX Tricky ISO** opens the system file picker, discovers supported courses, and lets
    you select which to import into the current Maps folder. Existing map names are kept. Cancel
    stops the current course; courses already imported remain available.
+   To refresh an old import, choose **Unload** beside that course and confirm, then import it again.
+   Unload deletes that course's folder, including local edits; other courses stay available.
 4. **Play** validates the selected terrain, props and PNGs, then loads them into the immersive OpenXR activity.
    You start on foot; either trigger mounts the nearby board. Left stick walks, B runs and A jumps.
    Once mounted, stick steers/postures, B boosts and A charges/releases a jump. Either trigger dismounts;

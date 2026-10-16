@@ -3,6 +3,8 @@
     <string name="app_version">Version %1$s</string>
     <string name="app_name">OpenSlope</string>
     <string name="play_course">Play %1$s</string>
+    <string name="unload_course">Unload</string>
+    <string name="unload_named_course">Unload %1$s</string>
     <string name="launcher_title">OpenSlope</string>
     <string name="launcher_subtitle">Choose a course and head into the mountains.</string>
     <string name="your_courses">Your courses</string>
@@ -51,7 +53,7 @@
     <string name="iso_picker_missing">The system file picker is unavailable on this headset.</string>
     <string name="reading_iso">Finding courses on the ISO…</string>
     <string name="import_title">Choose courses to import</string>
-    <string name="import_scope">Select one or more courses. Terrain, scenery, effects and audio are imported together. Existing maps are kept.</string>
+    <string name="import_scope">Select one or more courses. Terrain, scenery, effects and audio are imported together. Existing maps are kept. Use Unload beside a course first to import a fresh copy.</string>
     <string name="import_action">Import</string>
     <string name="import_selected">Import (%1$d)</string>
     <string name="select_all">Select all</string>

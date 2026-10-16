@@ -9,6 +9,7 @@
   ],
 
   "files": {
+    "Slopesmith/public/iso-importer/openslope_browser_import.wasm": "WebAssembly compiled from the repository's Native/src/browser_import.cpp and Native import library with Emscripten 6.0.12, using Slopesmith/scripts/build-browser-importer.mjs. Contains original decoder code plus pinned nlohmann/json and LodePNG and Emscripten runtime support; accompanying license texts ship beside it. Contains no game assets or extracted data.",
 
     "Native/assets/stick-figure-rigged.glb": "Unchanged byte-for-byte copy of Slopesmith/public/characters/stick-figure-rigged.glb, embedded into the native player as its rider. Built by Slopesmith/tools/character-models/stick-figure.ts. Original, reproducible.",
     "Native/assets/snowboard.glb": "444-triangle first-party stock Slopesmith snowboard, 1.86 m long, with sidecut, raised tips and vertex-colour art. Baked through the public createBoard gear API by Native/tools/export-snowboard.ts, with a half turn about Y for Native's model-space nose. Original, reproducible Apache-2.0 project art; no retail assets. Native embeds only the saved GLB and links no authoring runtime.",

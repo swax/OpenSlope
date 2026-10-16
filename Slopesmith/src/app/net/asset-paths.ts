@@ -4,6 +4,10 @@ import { clientAssetUrl } from './client';
 
 const referenceTextureRevisions = new Map<string, Map<string, string>>();
 const referenceSkyRevisions = new Map<string, { panorama?: string; ground?: string }>();
+let assetResolver: (url: string) => string = url => url;
+/** Public play supplies local Blob URLs for disc art; editor requests retain their ordinary HTTP URLs. */
+export function setAssetUrlResolver(resolve: (url: string) => string): void { assetResolver = resolve; }
+export function resolveAssetUrl(url: string): string { return assetResolver(url); }
 
 const levelKey = (level: string) => level.trim().toLowerCase();
 const withRevision = (url: string, revision?: string): string =>
@@ -35,8 +39,8 @@ export function textureUrl(level: string, name: string): string {
   const target = `/api/texture?level=${encodeURIComponent(level)}&name=${encodeURIComponent(name)}`;
   // Extracted banks are shared, immutable reference art. Do not partition hundreds of tile-cache entries by
   // tab or authored mountain. Only the Custom bank needs the open mountain in its URL.
-  if (level.toLowerCase() === 'custom') return clientAssetUrl(target);
-  return withRevision(target, referenceTextureRevisions.get(levelKey(level))?.get(name));
+  if (level.toLowerCase() === 'custom') return assetResolver(clientAssetUrl(target));
+  return assetResolver(withRevision(target, referenceTextureRevisions.get(levelKey(level))?.get(name)));
 }
 
 export function textureRefUrl(ref: TexRef): string {
@@ -50,7 +54,7 @@ export function customSkyUrl(name: string, part: 'panorama' | 'ground', ring = '
 }
 
 export function particleTextureUrl(name: string, level: string): string {
-  return `/api/particle-texture?name=${encodeURIComponent(name)}&level=${encodeURIComponent(level)}`;
+  return assetResolver(`/api/particle-texture?name=${encodeURIComponent(name)}&level=${encodeURIComponent(level)}`);
 }
 
 export function referenceSkyUrl(level: string, part: 'panorama' | 'ground'): string {
@@ -64,13 +68,13 @@ export function customSoundUrl(name: string): string {
 
 /** One slot of a level's course / crowd bank, or of a named fixed global environment bank. */
 export function effectSoundUrl(level: string, slot: number, bank: string): string {
-  return `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}&bank=${encodeURIComponent(bank)}`;
+  return assetResolver(`/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}&bank=${encodeURIComponent(bank)}`);
 }
 
 /** A shared environment-bank slot for authored mountains, without coupling them to a donor level name. */
 export function environmentSoundUrl(bank: string, slot: number, loop = true): string {
-  return `/api/environment-sound?bank=${encodeURIComponent(bank)}&slot=${Math.trunc(slot)}`
-    + (loop ? '&loop=1' : '');
+  return assetResolver(`/api/environment-sound?bank=${encodeURIComponent(bank)}&slot=${Math.trunc(slot)}`
+    + (loop ? '&loop=1' : ''));
 }
 
 /** One page of a level's shipped sky bank, addressed by its generated ring slot. */

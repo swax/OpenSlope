@@ -136,20 +136,41 @@ final class LauncherUi {
     }
     void busy(boolean working, boolean cancellable) {
         for (View view : controls) view.setEnabled(!working);
-        for (int i = 0; i < courses.getChildCount(); ++i) courses.getChildAt(i).setEnabled(!working);
+        courseControlsEnabled(courses, !working);
         progress.setVisibility(working ? View.VISIBLE : View.GONE);
         cancel.setVisibility(working && cancellable ? View.VISIBLE : View.GONE); cancel.setEnabled(working && cancellable);
         if (working && cancellable) root.smoothScrollTo(0, 0);
+    }
+    private void courseControlsEnabled(View view, boolean enabled) {
+        view.setEnabled(enabled);
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); ++i) courseControlsEnabled(group.getChildAt(i), enabled);
+        }
     }
     void status(String message, boolean error) {
         status.setTextColor(color(error ? R.color.launcher_warning : R.color.launcher_secondary));
         status.setText(message); status.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
     }
     void maps(List<MapLibrary.Entry> maps, java.util.function.Consumer<MapLibrary.Entry> play) {
+        maps(maps, play, null);
+    }
+    void maps(List<MapLibrary.Entry> maps, java.util.function.Consumer<MapLibrary.Entry> play,
+              java.util.function.Consumer<MapLibrary.Entry> unload) {
         courses.removeAllViews();
         for (MapLibrary.Entry map : maps) {
-            Button view = button(courses, View.generateViewId(), context.getString(R.string.play_course, map.name), true);
+            LinearLayout row = new LinearLayout(context); courses.addView(row);
+            Button view = button(row, View.generateViewId(), context.getString(R.string.play_course, map.name), true);
+            LinearLayout.LayoutParams playParams = (LinearLayout.LayoutParams) view.getLayoutParams();
+            playParams.width = 0; playParams.weight = 1; view.setLayoutParams(playParams);
             controls.remove(view); view.setTag(map.name); view.setOnClickListener(v -> play.accept(map));
+            if (unload != null) {
+                Button remove = button(row, View.generateViewId(), R.string.unload_course, false);
+                LinearLayout.LayoutParams unloadParams = (LinearLayout.LayoutParams) remove.getLayoutParams();
+                unloadParams.width = -2; unloadParams.leftMargin = dp(8); remove.setLayoutParams(unloadParams);
+                controls.remove(remove); remove.setContentDescription(context.getString(R.string.unload_named_course, map.name));
+                remove.setOnClickListener(v -> unload.accept(map));
+            }
         }
         boolean none = maps.isEmpty(); empty.setVisibility(none ? View.VISIBLE : View.GONE);
         if (wasEmpty == null || wasEmpty != none) expanded(addToggle, add, R.string.add_courses, R.string.hide_add_courses, none);

@@ -6,6 +6,8 @@ import android.net.Uri;
 import android.provider.DocumentsContract;
 import java.io.*;
 import java.util.*;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import org.json.*;
 
 /** Maps/<name>/Patches.json is the discovery contract for both local and SAF libraries. */
@@ -74,6 +76,36 @@ final class MapLibrary {
         if (tree == null) return new File(localRoot, name).exists();
         for (Entry entry : children(root)) if (entry.name.equalsIgnoreCase(name)) return true;
         return false;
+    }
+    void unload(Entry map) throws IOException {
+        if (!map.directory || !safeName(map.name)) throw new IOException("Invalid course selection.");
+        if (tree != null) {
+            Entry current = child(root, map.name);
+            Entry terrain = current == null || !current.directory ? null : child(current.uri, "Patches.json");
+            if (current == null || !current.directory || !current.uri.equals(map.uri) || terrain == null || terrain.directory)
+                throw new IOException("The selected course has changed. Refresh the library first.");
+            if (!DocumentsContract.deleteDocument(resolver, current.uri)) throw new IOException("The folder provider could not unload this course.");
+            return;
+        }
+        if (!new File(localRoot, map.name).getCanonicalFile().equals(new File(map.uri.getPath()).getCanonicalFile()))
+            throw new IOException("The selected course has changed. Refresh the library first.");
+        unloadLocal(map.name);
+    }
+    void unloadLocal(String name) throws IOException {
+        if (tree != null || !safeName(name)) throw new IOException("Invalid local course selection.");
+        File selected = new File(localRoot, name), directory = selected.getCanonicalFile();
+        if (Files.isSymbolicLink(selected.toPath()) || !directory.getParentFile().equals(localRoot.getCanonicalFile())
+                || !new File(directory, "Patches.json").isFile()) throw new IOException("The selected course is outside this Maps folder or is no longer available.");
+        // walkFileTree does not follow symbolic links; only the selected course's own files are removed.
+        Files.walkFileTree(directory.toPath(), new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                Files.delete(file); return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult postVisitDirectory(Path folder, IOException error) throws IOException {
+                if (error != null) throw error;
+                Files.delete(folder); return FileVisitResult.CONTINUE;
+            }
+        });
     }
     File prepare(Entry map, File cache, Cancel cancel) throws IOException {
         if (tree == null) return new File(map.uri.getPath());
