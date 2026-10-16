@@ -1,5 +1,8 @@
 # OpenSlope Native
 
+For packaged Windows/Quest builds and GitHub prereleases, see
+[release packaging and signing](docs/releases.md).
+
 Experimental C++20 player for portable OpenSlope maps, with a Vulkan renderer and OpenXR host.
 Windows desktop rendering and portable conformance tests are the local validation targets.
 The ARM64 Android APK builds, and the user reports successful Quest play after importing ALASKA
