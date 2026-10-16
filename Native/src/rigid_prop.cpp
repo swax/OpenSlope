@@ -166,7 +166,20 @@ void RigidProp::substep(double seconds, const PropBodyQuery& query, bool& suppor
         const auto next = position_ + velocity_ * remaining;
         const auto rotation = turn(rotation_, angular_, remaining);
         const auto from = probes(position_, rotation_), to = probes(next, rotation);
-        const auto contacts = query(from, to);
+        auto contacts = query(from, to);
+        for (auto& contact : contacts)
+            if (contact.terrain_probe) {
+                const auto probe = *contact.terrain_probe;
+                if (probe >= from.size())
+                    throw std::invalid_argument("Invalid terrain contact probe");
+                if (contact.t <= 1e-8 && dot(position_ - contact.point, contact.normal) < -1e-8) {
+                    // An embedded leaf can lie across a thin sheet from its
+                    // body's centre. Clear it toward the body's side, retaining
+                    // the full signed depth rather than dropping the contact.
+                    contact.normal = -contact.normal;
+                    contact.depth = 2 * std::max(from[probe].radius, to[probe].radius) - contact.depth;
+                }
+            }
         if (contacts.empty()) {
             position_ = next;
             rotation_ = rotation;

@@ -5,6 +5,8 @@
 namespace openslope {
 struct PropBodyContact : ShapeContact {
     Vec3 velocity;
+    // Only thin terrain contacts carry a source probe for signed clearance.
+    std::optional<std::size_t> terrain_probe = {};
 };
 
 using PropBodyQuery =

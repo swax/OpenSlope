@@ -3,6 +3,7 @@
 #include "openslope/paths.hpp"
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <numeric>
 #include <stdexcept>
@@ -80,7 +81,157 @@ std::optional<TerrainHit> refine(const Patch& p, std::size_t index, Vec3 start, 
         return {};
     return TerrainHit{start + direction * t, p.normal(u, v), t, u, v, index, p.surface, true};
 }
+
+// [Trailmap: 110-patch-model, 320-patch-ray] Collision must follow the curved
+// patch, just as the support probe does. Split its control hull only where
+// the swept body overlaps it; a fixed coarse chord can miss or invent snow.
+using ControlNet = std::array<Vec3, 16>;
+
+std::array<ControlNet, 2> split_control_net(const ControlNet& points, bool rows) {
+    std::array<ControlNet, 2> halves;
+    for (unsigned i = 0; i < 4; ++i) {
+        const auto index = [&](unsigned j) { return rows ? j * 4 + i : i * 4 + j; };
+        const auto a = points[index(0)], b = points[index(1)], c = points[index(2)], d = points[index(3)];
+        const auto ab = (a + b) * .5, bc = (b + c) * .5, cd = (c + d) * .5;
+        const auto abc = (ab + bc) * .5, bcd = (bc + cd) * .5, middle = (abc + bcd) * .5;
+        const std::array<Vec3, 4> first{a, ab, abc, middle}, second{middle, bcd, cd, d};
+        for (unsigned j = 0; j < 4; ++j) {
+            halves[0][index(j)] = first[j];
+            halves[1][index(j)] = second[j];
+        }
+    }
+    return halves;
+}
+
+bool overlaps(const Bounds& box, const Bounds& swept) {
+    return box.min.x <= swept.max.x && box.max.x >= swept.min.x && box.min.y <= swept.max.y &&
+           box.max.y >= swept.min.y && box.min.z <= swept.max.z && box.max.z >= swept.min.z;
+}
+
+struct CollisionCell {
+    ControlNet points;
+    Bounds box;
+    std::array<std::uint32_t, 4> children{};
+    unsigned depth;
+    bool leaf;
+
+    CollisionCell(const ControlNet& control, unsigned level) : points(control), depth(level) {
+        for (const auto point : points)
+            box.add(point);
+        const auto a = points[0], b = points[12], c = points[15], d = points[3];
+        // Bezier weights are nonnegative and sum to one. Control-net distance
+        // from the bilinear net bounds their surface difference; the corner
+        // twist bounds the bilinear surface's distance from the two triangles.
+        double deviation = 0;
+        for (unsigned u = 0; u < 4; ++u)
+            for (unsigned v = 0; v < 4; ++v) {
+                const auto x = u / 3., y = v / 3.;
+                const auto bilinear = a * ((1 - x) * (1 - y)) + b * (x * (1 - y)) + c * (x * y) + d * ((1 - x) * y);
+                deviation = std::max(deviation, length(points[u * 4 + v] - bilinear));
+            }
+        deviation += length(a - b + c - d) * .25;
+        // Bound recursion for unusually large custom control nets. Normal
+        // course cells stop within one millimetre of their curved patch.
+        leaf = deviation <= .001 || depth == 10;
+    }
+};
+
+template <class Visitor>
+void visit_collision_cells(const ControlNet& points, const Bounds& swept, unsigned depth, Visitor& visitor) {
+    const CollisionCell cell(points, depth);
+    if (!overlaps(cell.box, swept))
+        return;
+    if (cell.leaf) {
+        visitor(points[0], points[12], points[15], points[3], cell.box);
+        return;
+    }
+    const auto halves = split_control_net(points, true);
+    for (const auto& half : halves) {
+        const auto quarters = split_control_net(half, false);
+        for (const auto& quarter : quarters)
+            visit_collision_cells(quarter, swept, depth + 1, visitor);
+    }
+}
+
 } // namespace
+
+struct Terrain::CollisionCache {
+    struct Tree {
+        std::vector<CollisionCell> cells;
+        std::uint64_t last_use = 0;
+    };
+
+    // Bound live cells and grow capacity geometrically (under 30 MiB of cell
+    // storage on supported targets). Evict inactive patches; accuracy never depends on
+    // whether a cell is cached. Copies of immutable terrain can share it.
+    static constexpr std::size_t limit = 32768;
+    std::vector<Tree> trees;
+    std::size_t count = 0;
+    std::uint64_t serial = 0;
+    std::mutex mutex;
+
+    explicit CollisionCache(std::size_t patches) : trees(patches) {}
+
+    bool make_room(std::size_t active, std::size_t amount) {
+        while (count + amount > limit) {
+            std::optional<std::size_t> oldest;
+            for (std::size_t i = 0; i < trees.size(); ++i)
+                if (i != active && !trees[i].cells.empty() && (!oldest || trees[i].last_use < trees[*oldest].last_use))
+                    oldest = i;
+            if (!oldest)
+                return false;
+            count -= trees[*oldest].cells.size();
+            std::vector<CollisionCell>{}.swap(trees[*oldest].cells);
+        }
+        return true;
+    }
+
+    template <class Visitor, class Relevant>
+    void visit(std::size_t patch, const ControlNet& points, const Bounds& swept, Visitor& visitor,
+               const Relevant& relevant) {
+        auto& tree = trees[patch];
+        tree.last_use = ++serial;
+        if (tree.cells.empty()) {
+            make_room(patch, 1);
+            tree.cells.reserve(1);
+            tree.cells.emplace_back(points, 0);
+            ++count;
+        }
+        const auto walk = [&](auto&& self, std::uint32_t index) -> void {
+            const auto& cell = tree.cells[index];
+            if (!overlaps(cell.box, swept) || !relevant(cell.box))
+                return;
+            if (cell.leaf) {
+                visitor(cell.points[0], cell.points[12], cell.points[15], cell.points[3], cell.box);
+                return;
+            }
+            auto children = cell.children;
+            if (!children[0]) {
+                if (!make_room(patch, 4)) {
+                    visit_collision_cells(cell.points, swept, cell.depth, visitor);
+                    return;
+                }
+                const auto halves = split_control_net(cell.points, true);
+                const auto depth = cell.depth + 1;
+                auto capacity = tree.cells.capacity();
+                while (capacity < tree.cells.size() + 4)
+                    capacity = std::min(limit, capacity * 2);
+                tree.cells.reserve(capacity);
+                unsigned child = 0;
+                for (const auto& half : halves)
+                    for (const auto& quarter : split_control_net(half, false)) {
+                        children[child++] = static_cast<std::uint32_t>(tree.cells.size());
+                        tree.cells.emplace_back(quarter, depth);
+                        ++count;
+                    }
+                tree.cells[index].children = children;
+            }
+            for (const auto child : children)
+                self(self, child);
+        };
+        walk(walk, 0);
+    }
+};
 
 Vec3 Patch::evaluate(double u, double v) const { return evaluate_basis(*this, basis(u), basis(v)); }
 
@@ -147,6 +298,7 @@ Terrain::Terrain(std::vector<Patch> patches) : patches_(std::move(patches)) {
             for (unsigned v = 0; v <= 8; ++v)
                 samples_[p].points[u * 9 + v] = patches_[p].evaluate(u / 8.0, v / 8.0);
     }
+    collision_cache_ = std::make_shared<CollisionCache>(patches_.size());
     build_node(0, patches_.size());
 }
 
@@ -369,6 +521,32 @@ std::vector<TerrainHit> Terrain::body_contacts(std::span<const ProbeSphere> star
         return a.min.x <= b.max.x && a.max.x >= b.min.x && a.min.y <= b.max.y && a.max.y >= b.min.y &&
                a.min.z <= b.max.z && a.max.z >= b.min.z;
     };
+    const auto relevant = [&](const Bounds& box) {
+        if (start.size() != 1 || !contacts[0])
+            return true;
+        const auto& hit = *contacts[0];
+        const auto radius = std::max(start[0].radius, end[0].radius);
+        if (hit.t == 0 && hit.depth > 0) {
+            // An initial overlap already wins on time. Only a nearer feature
+            // can improve its depth; the control box bounds that distance.
+            const auto centre = start[0].centre;
+            const Vec3 nearest{std::clamp(centre.x, box.min.x, box.max.x), std::clamp(centre.y, box.min.y, box.max.y),
+                               std::clamp(centre.z, box.min.z, box.max.z)};
+            const auto delta = centre - nearest;
+            const auto distance = std::max(0., radius - hit.depth);
+            return dot(delta, delta) <= distance * distance + 1e-12;
+        }
+        // A later cell cannot beat the first known impact. Clip only the
+        // broad-phase search, retaining the original sweep for contact math.
+        const auto finish = start[0].centre + (end[0].centre - start[0].centre) * hit.t;
+        const Vec3 r{radius, radius, radius};
+        Bounds clipped;
+        clipped.add(start[0].centre - r);
+        clipped.add(start[0].centre + r);
+        clipped.add(finish - r);
+        clipped.add(finish + r);
+        return overlaps(box, clipped);
+    };
     const auto visit = [&](auto&& self, int index) -> void {
         const auto& node = nodes_[index];
         if (node.bounds.max.x < swept.min.x || node.bounds.min.x > swept.max.x || node.bounds.max.y < swept.min.y ||
@@ -383,36 +561,25 @@ std::vector<TerrainHit> Terrain::body_contacts(std::span<const ProbeSphere> star
             const auto patch = order_[i];
             if (patches_[patch].surface == 17)
                 continue;
-            const auto& v = samples_[patch].points;
-            for (unsigned u = 0; u < 8; ++u)
-                for (unsigned w = 0; w < 8; ++w) {
-                    const auto a = v[u * 9 + w], b = v[(u + 1) * 9 + w], c = v[(u + 1) * 9 + w + 1],
-                               d = v[u * 9 + w + 1];
-                    Bounds quad;
-                    for (const auto p : {a, b, c, d})
-                        quad.add(p);
-                    // Reject the complete compound before visiting hundreds
-                    // of leaf spheres for a distant terrain cell.
-                    if (!overlaps(quad, swept))
+            auto leaf = [&](Vec3 a, Vec3 b, Vec3 c, Vec3 d, const Bounds& quad) {
+                for (std::size_t sphere = 0; sphere < start.size(); ++sphere) {
+                    if (!overlaps(quad, bounds[sphere]))
                         continue;
-                    for (std::size_t sphere = 0; sphere < start.size(); ++sphere) {
-                        if (!overlaps(quad, bounds[sphere]))
-                            continue;
-                        auto& closest = contacts[sphere];
-                        for (const auto& hit : {swept_triangle(a, b, c, start[sphere], end[sphere]),
-                                                swept_triangle(a, c, d, start[sphere], end[sphere])})
-                            if (hit &&
-                                !(skip_separating && hit->depth <= 1e-8 &&
-                                  dot(end[sphere].centre - start[sphere].centre, hit->normal) >= -1e-9) &&
-                                (!closest || hit->t < closest->t ||
-                                 (hit->t == closest->t && hit->depth > closest->depth)))
-                                closest =
-                                    TerrainHit{hit->point, hit->normal, hit->t, 0, 0, patch, patches_[patch].surface,
-                                               false,      hit->depth};
-                    }
+                    auto& closest = contacts[sphere];
+                    for (const auto& hit : {swept_triangle(a, b, c, start[sphere], end[sphere]),
+                                            swept_triangle(a, c, d, start[sphere], end[sphere])})
+                        if (hit &&
+                            !(skip_separating && hit->depth <= 1e-8 &&
+                              dot(end[sphere].centre - start[sphere].centre, hit->normal) >= -1e-9) &&
+                            (!closest || hit->t < closest->t || (hit->t == closest->t && hit->depth > closest->depth)))
+                            closest = TerrainHit{hit->point, hit->normal, hit->t, 0, 0, patch, patches_[patch].surface,
+                                                 false,      hit->depth,  sphere};
                 }
+            };
+            collision_cache_->visit(patch, patches_[patch].points, swept, leaf, relevant);
         }
     };
+    const std::lock_guard cache_lock(collision_cache_->mutex);
     visit(visit, 0);
     std::vector<TerrainHit> result;
     for (const auto& contact : contacts)

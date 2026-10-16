@@ -249,3 +249,11 @@ Build 0.69 addresses landing-frame overlap and opposing terrain corrections
 at narrow corners. The authored ledge matrix covers 72 cases across headings,
 surface depths and a third wall; see `landing-frame-0.69.md` for evidence and
 the continuing full parity scope.
+
+Build 0.72 corrects the coarse terrain sphere collider's mismatch with curved
+patch support and initial overlaps choosing an earlier, more distant triangle
+feature. See `curved-terrain-0.72.md` for authored geometry regressions, actual
+course evidence and approximation limits. Partly embedded compound props use
+consistent signed terrain clearance, retaining their incoming shove rather than
+being pinned by opposing leaf contacts. Full-course AI and contact parity remain
+open; bounded replays include eleven unfinished opponent states.

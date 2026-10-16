@@ -125,7 +125,7 @@ std::optional<ShapeContact> swept_triangle(Vec3 a, Vec3 b, Vec3 c, ProbeSphere s
     const auto accept = [&](double t, Vec3 point, Vec3 n, double depth = 0) {
         if (t < 0 || t > 1)
             return;
-        if (!best || t < best->t)
+        if (!best || t < best->t || (t == best->t && depth > best->depth))
             best = ShapeContact{point, normalized(n, -normalized(delta)), t, depth};
     };
     const auto plane = dot(start.centre - a, normal), speed = dot(delta, normal);

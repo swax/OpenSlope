@@ -273,3 +273,14 @@ course evidence and remaining fidelity limits.
 Ordinary airborne landings require a swept crossing; moving supports and aligned
 rail exits retain explicit handoffs. The opt-in legacy recovery profile retains
 its original tangent-only guard remainder.
+
+Build 0.72 follows clean 110's continuous patch model in terrain sphere sweeps,
+subdividing overlapping control hulls to a bounded geometric tolerance instead
+of using a fixed coarse grid. Initial triangle overlaps select the nearest
+feature at equal impact time. See `curved-terrain-0.72.md` for approximation
+limits and independent regression evidence; the spring and landing contract
+remains unchanged.
+The compound-body adapter preserves each terrain contact's source sphere so
+initial overlap depth can be oriented toward the body's centre. This is a Native
+thin-surface clearance policy; actual swept crossings and closed-prop contacts
+retain their existing response.

@@ -233,6 +233,24 @@ int main(int argc, char** argv) {
             require(grazing.has_value() && grazing->t > 0 && grazing->t < 1,
                     "Entering through a vertex while already inside the slab retains the feature sweep");
         }
+        for (const auto sign : {-1., 1.}) {
+            const std::array<Vec3, 3> triangle{{{0, 0, 0}, {10, 0, 0}, {0, 0, 10}}};
+            for (unsigned first = 0; first < 3; ++first)
+                for (const bool reverse : {false, true}) {
+                    const auto second = (first + (reverse ? 2 : 1)) % 3, third = (first + (reverse ? 1 : 2)) % 3;
+                    const ProbeSphere sphere{{-.1, sign * .1, .12}, .25};
+                    const auto overlap =
+                        swept_triangle(triangle[first], triangle[second], triangle[third], sphere, sphere);
+                    require(overlap && overlap->t == 0,
+                            "An initial edge overlap is independent of triangle vertex order");
+                    near(overlap->depth, .25 - std::sqrt(.02),
+                         "Initial overlap uses the nearest feature rather than the first vertex");
+                    near(length(overlap->point - Vec3{0, 0, .12}), 0,
+                         "The nearest point lies inside the contacted edge");
+                    near(dot(overlap->normal, normalized(Vec3{-1, sign, 0})), 1,
+                         "The overlap normal points from the nearest edge to the sphere");
+                }
+        }
         const std::array<std::uint8_t, 9> raw{129, 0, 0, 0, 0, 0, 0, 0, 0};
         require(occupancy_masks(raw, 0, 2) == std::vector<std::uint8_t>(raw.begin(), raw.end()),
                 "Raw masks retain occupancy holes");

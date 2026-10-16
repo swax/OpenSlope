@@ -30,7 +30,7 @@ PropBodyQuery ground(const Terrain& terrain) {
     return [&](std::span<const ProbeSphere> from, std::span<const ProbeSphere> to) {
         std::vector<PropBodyContact> result;
         for (const auto& hit : terrain.body_contacts(from, to))
-            result.push_back({{hit.point, hit.normal, hit.t, hit.depth}, {}});
+            result.push_back({{hit.point, hit.normal, hit.t, hit.depth}, {}, hit.probe});
         return result;
     };
 }
@@ -98,6 +98,46 @@ void laws(const Terrain& terrain) {
     for (unsigned i = 0; i < 120; ++i)
         broad.step(1. / 60, ground(terrain));
     check(broad.centre().x > .3, "simultaneous native leaf contacts do not freeze a wide compound body at t=0");
+}
+
+void embedded_compounds() {
+    for (const auto pitch : {0., .7, pi * .5})
+        for (const auto side : {-1., 1.})
+            for (const bool mixed_radii : {false, true}) {
+                const auto turn = [&](Vec3 point) { return rotate(point, {1, 0, 0}, pitch); };
+                Patch patch;
+                for (unsigned u = 0; u < 4; ++u)
+                    for (unsigned v = 0; v < 4; ++v)
+                        patch.points[u * 4 + v] = turn({(u / 3. - .5) * 100, 0, (v / 3. - .5) * 100});
+                Terrain terrain({patch});
+                PropBodyShape shape;
+                shape.centre = {0, side * .35, 0};
+                shape.inverse_inertia = {1.4, 0, 0, 0, 1.4, 0, 0, 0, 1.4};
+                for (unsigned column = 0; column < 3; ++column) {
+                    const auto axis = turn(column == 0 ? Vec3{1, 0, 0} : column == 1 ? Vec3{0, 1, 0} : Vec3{0, 0, 1});
+                    shape.placement[column * 4] = axis.x;
+                    shape.placement[column * 4 + 1] = axis.y;
+                    shape.placement[column * 4 + 2] = axis.z;
+                }
+                for (const auto x : {-.25, .25})
+                    for (const auto z : {-.25, .25})
+                        for (const auto y : {-.05, .15, .35, .55, .75})
+                            shape.probes.push_back({{x, side * y, z}, mixed_radii ? (z < 0 ? .12 : .18) : .15});
+                RigidProp body(shape, 10, {1, 0, 0});
+                for (unsigned tick = 0; tick < 120; ++tick)
+                    body.step(1. / 60, ground(terrain));
+                const auto pose = body.pose();
+                const auto normal = turn({0, side, 0});
+                double clearance = 1e9;
+                for (const auto& probe : shape.probes)
+                    clearance = std::min(clearance, dot(transform_point(pose, probe.centre), normal) - probe.radius);
+                check(finite(body.centre()) && finite(body.velocity()),
+                      "An initially embedded compound retains finite motion");
+                check(body.centre().x > 1,
+                      "A compound carries its horizontal launch instead of pinning opposing terrain contacts");
+                check(clearance >= -.004,
+                      "Every compound leaf clears its initial side of the terrain, including mixed radii");
+            }
 }
 
 void integration(const std::filesystem::path& root) {
@@ -368,6 +408,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Supply authored native body fixture");
         const auto terrain = Terrain::load(argv[1]);
         laws(terrain);
+        embedded_compounds();
         integration(argv[1]);
         scripted(argv[1]);
         if (argc > 2) {

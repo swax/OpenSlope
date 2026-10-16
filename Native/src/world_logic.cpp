@@ -1817,7 +1817,7 @@ void WorldLogic::step_bodies(double seconds, const Terrain& terrain, const Colli
         p.body->step(seconds, [&](std::span<const ProbeSphere> from, std::span<const ProbeSphere> to) {
             std::vector<PropBodyContact> contacts;
             for (const auto& hit : terrain.body_contacts(from, to))
-                contacts.push_back({{hit.point, hit.normal, hit.t, hit.depth}, {}});
+                contacts.push_back({{hit.point, hit.normal, hit.t, hit.depth}, {}, hit.probe});
             for (const auto& hit : world.sweep_body(from, to, host))
                 contacts.push_back({{hit.point, hit.normal, hit.t, hit.depth}, hit.surface_velocity});
             return contacts;

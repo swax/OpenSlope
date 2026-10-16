@@ -3,6 +3,11 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.72 makes swept terrain collision follow the curved patches more closely
+and clears partly embedded compound props toward the body's side of the terrain.
+It also fixes initial sphere overlaps choosing the wrong triangle feature. See
+[curved terrain validation and limits](docs/curved-terrain-0.72.md).
+
 Build 0.71 orders unfinished racers by earned checkpoint progress and records
 finishes on a shared clock, including opponents added after a race has begun.
 Existing maps need no re-import. See

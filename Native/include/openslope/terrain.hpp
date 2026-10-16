@@ -2,6 +2,7 @@
 #include "math.hpp"
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -61,6 +62,7 @@ struct TerrainHit {
     int surface;
     bool refined;
     double depth = 0;
+    std::optional<std::size_t> probe = {};
 };
 
 class Terrain {
@@ -86,6 +88,9 @@ public:
     Vec3 clear_eye(Vec3 eye, Vec3 safe, double radius = .45) const;
 
 private:
+    struct CollisionCache;
+    std::shared_ptr<CollisionCache> collision_cache_;
+
     struct Node {
         Bounds bounds;
         std::size_t begin{}, end{};

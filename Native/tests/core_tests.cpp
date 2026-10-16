@@ -37,13 +37,106 @@ Patch plane(double y = 0, int surface = 1) {
     return patch;
 }
 
+void curved_sphere_tests() {
+    for (const auto span : {10., 40., 100.})
+        for (const auto sign : {-1., 1.})
+            for (const auto yaw : {0., .8, 2.1}) {
+                Patch p;
+                const auto turn = [&](Vec3 v) {
+                    return rotate(rotate(v, {1, 0, 0}, .3), {0, 1, 0}, yaw) + Vec3{300, -400, 200};
+                };
+                for (unsigned u = 0; u < 4; ++u)
+                    for (unsigned v = 0; v < 4; ++v)
+                        p.points[u * 4 + v] =
+                            turn({(u / 3. - .5) * span,
+                                  sign * span * ((u == 1 || u == 2 ? .2 : 0) + (v == 1 || v == 2 ? .1 : 0)),
+                                  (v / 3. - .5) * span});
+                Terrain terrain({p});
+                for (const auto uv : std::array<std::array<double, 2>, 7>{
+                         {{.37, .61}, {.4375, .5625}, {.02, .98}, {0, 0}, {0, .37}, {1, 1}, {.5, 1}}}) {
+                    const auto point = p.evaluate(uv[0], uv[1]), normal = p.normal(uv[0], uv[1]);
+                    for (const auto side : {-1., 1.}) {
+                        const auto direction = normal * side;
+                        const auto clear = point + direction * .25;
+                        const auto hit = terrain.sweep(clear, clear, .2);
+                        require(!hit, "A sphere five centimetres clear of the curved surface cannot collide with its "
+                                      "coarse chord");
+                        const auto overlap = terrain.sweep(point + direction * .1, point + direction * .1, .2);
+                        require(overlap.has_value(), "The curved surface detects an overlapping sphere on either side");
+                        require(std::abs(overlap->depth - .1) < .002,
+                                "Sphere overlap depth follows the actual curved surface within two millimetres");
+                        const auto sweep = terrain.sweep(point + direction, point - direction, .2);
+                        require(sweep.has_value(), "A swept sphere cannot tunnel through a curved patch");
+                        require(std::abs(sweep->t - .4) < .001,
+                                "The first swept contact follows the curved surface within two millimetres");
+                    }
+                }
+            }
+}
+
+void curved_cache_tests() {
+    std::vector<Patch> patches;
+    for (unsigned index = 0; index < 48; ++index) {
+        Patch patch;
+        for (unsigned u = 0; u < 4; ++u)
+            for (unsigned v = 0; v < 4; ++v)
+                patch.points[u * 4 + v] = {index * 200. + u * 100. / 3,
+                                           (index % 2 ? -1. : 1.) *
+                                               ((u == 1 || u == 2 ? 20. : 0) + (v == 1 || v == 2 ? 10. : 0)),
+                                           v * 100. / 3};
+        patches.push_back(patch);
+    }
+    Terrain terrain(patches);
+    const auto copy = terrain;
+    for (unsigned pass = 0; pass < 2; ++pass)
+        for (unsigned index = 0; index < patches.size(); ++index) {
+            const auto patch = pass ? patches.size() - index - 1 : index;
+            const auto& subject = pass ? copy : terrain;
+            for (unsigned u = 1; u < 8; ++u)
+                for (unsigned v = 1; v < 8; ++v) {
+                    const auto point = patches[patch].evaluate(u / 8., v / 8.);
+                    const auto normal = patches[patch].normal(u / 8., v / 8.);
+                    const auto centre = point + normal * .1;
+                    const auto hit = subject.sweep(centre, centre, .2);
+                    require(hit && hit->patch == patch,
+                            "Cold, repeated and copied terrain queries select the same patch across a long route");
+                    require(std::abs(hit->depth - .1) < .002,
+                            "Contact depth stays accurate as the route replaces cached terrain cells");
+                    require(dot(hit->normal, normal) > .99,
+                            "Route order and cache reuse cannot change the contacted side");
+                }
+        }
+}
+
 void terrain_tests() {
+    curved_sphere_tests();
+    curved_cache_tests();
+    for (const auto side : {-1., 1.})
+        for (const bool reverse : {false, true}) {
+            const auto inner = plane(), outer = plane(side * .15);
+            Terrain layers(reverse ? std::vector<Patch>{outer, inner} : std::vector<Patch>{inner, outer});
+            const Vec3 centre{5, side * .1, -5};
+            const auto resting = layers.sweep(centre, centre, .2);
+            require(resting && resting->t == 0, "Competing initial overlaps retain the earliest contact");
+            near(resting->point.y, side * .15, 1e-10, "Contact pruning retains the nearer of two overlapping surfaces");
+            near(resting->depth, .15, 1e-10, "Initial-overlap depth is independent of patch traversal order");
+            near(resting->normal.y, -side, 1e-10, "Initial overlap keeps the side facing the sphere");
+            const auto moving = layers.sweep(centre + Vec3{0, side, 0}, centre - Vec3{0, side, 0}, .2);
+            require(moving.has_value(), "Clipped broad-phase search retains the first swept surface");
+            near(moving->t, .375, 1e-10, "An earlier surface can replace a later candidate in either patch order");
+        }
     auto p = plane();
     near(length(p.evaluate(.25, .75) - Vec3{7.5, 0, -2.5}), 0, 1e-12, "Bezier control-point ordering");
     near(length(p.normal(.3, .7) - Vec3{0, 1, 0}), 0, 1e-12, "Skyward analytic normal");
     auto terrain = Terrain({p});
     auto hit = terrain.intersect({7.5, 2, -2.5}, {7.5, -1, -2.5});
     require(hit.has_value() && hit->refined, "Planar intersection");
+    require(!hit->probe, "A ray contact does not claim a compound-sphere source");
+    const std::array<ProbeSphere, 3> compound_from{{{{20, 1, -5}, .1}, {{5, .1, -5}, .2}, {{6, 1, -6}, .1}}},
+        compound_to{{{{20, -1, -5}, .1}, {{5, .1, -5}, .2}, {{6, -1, -6}, .1}}};
+    const auto compound_hits = terrain.body_contacts(compound_from, compound_to);
+    require(compound_hits.size() == 2 && compound_hits[0].probe == 1 && compound_hits[1].probe == 2,
+            "Compound contacts retain their source sphere when earlier probes miss");
     near(hit->u, .25, 1e-12, "Planar u");
     near(hit->v, .75, 1e-12, "Planar v");
     require(!terrain.intersect({20, 2, -2}, {20, -1, -2}), "Miss outside patch");

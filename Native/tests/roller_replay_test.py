@@ -44,6 +44,16 @@ def fixture(root):
         slots=[dict(id='slot:0',circumstances=dict(collision='knock'))]))
 
 
+def red_geometry(picture):
+    header=picture.read_bytes().split(b'\n',3)
+    width,height=map(int,header[1].split());pixels=header[3]
+    mask=[i for i,(r,g,b) in enumerate(zip(pixels[0::3],pixels[1::3],pixels[2::3]))
+        if r>180 and g<60 and 50<b<120]
+    return dict(count=len(mask),height=height,
+        centre_y=sum(i//width for i in mask)/len(mask) if mask else None,
+        clipped=any(i%width in (0,width-1) or i//width in (0,height-1) for i in mask))
+
+
 def main():
     exe=str(Path(sys.argv[1]).resolve()); frames=0
     with tempfile.TemporaryDirectory(prefix='openslope-roller-') as temporary:
@@ -62,10 +72,9 @@ def main():
                 r=subprocess.run(args,capture_output=True,text=True,timeout=180)
                 assert r.returncode==0,r.stdout+r.stderr
                 assert 'unsupported 0;' in r.stdout,r.stdout
-                pixels=picture.read_bytes().split(b'\n',3)[3]
-                red=sum(r>180 and g<60 and 50<b<120 for r,g,b in zip(pixels[0::3],pixels[1::3],pixels[2::3]))
+                geometry=red_geometry(picture);red=geometry['count']
                 position=re.search(r'; position \[([^,]+),([^,]+),([^\]]+)\]',r.stdout)
-                captures[key]=(red,tuple(float(position[i]) for i in (1,2,3)))
+                body_position=None
                 if name=='before':
                     assert 'Dynamic props: 0 bodies;' in r.stdout,r.stdout
                     assert red>100,(red,r.stdout)
@@ -74,11 +83,21 @@ def main():
                     pose=re.search(r'Dynamic pose: instance 0; translation \[([^,]+),([^,]+),([^\]]+)\]',r.stdout)
                     assert pose,r.stdout
                     assert abs(float(pose[1]))>.15,(key,pose.groups(),r.stdout)
+                    body_position=tuple(float(pose[i]) for i in (1,2,3))
                     if name=='settled':assert 'Dynamic props: 1 bodies; 1 sleeping' in r.stdout,(key,r.stdout)
+                captures[key]=(geometry,tuple(float(position[i]) for i in (1,2,3)),body_position)
                 frames+=ticks
-        hit,hit_position=captures['walk-hit']; settled,settled_position=captures['walk-settled']
+        hit,hit_position,hit_body=captures['walk-hit']; settled,settled_position,settled_body=captures['walk-settled']
         assert max(abs(a-b) for a,b in zip(hit_position,settled_position))<1e-5,(hit_position,settled_position)
-        assert hit>200 and settled<hit*.75,('fixed-camera body pixels did not move away',hit,settled)
+        assert hit['count']>200,hit
+        assert settled_body[0]>hit_body[0]+.15,(hit_body,settled_body)
+        if hit['clipped'] and settled['count']:
+            # A close body clipped by the screen can occupy more pixels as it moves fully into view.
+            # With this fixed camera, moving away must move its silhouette up and clear the edges.
+            assert not settled['clipped'] and hit['centre_y']-settled['centre_y']>hit['height']*.1,(
+                'clipped fixed-camera body silhouette did not move away',hit,settled)
+        else:
+            assert settled['count']<hit['count']*.75,('fixed-camera body pixels did not move away',hit,settled)
     print(f'PASS: {frames} actual Vulkan frames verify walking/riding impact, visible native body motion, shared-model isolation and settled state')
 
 
