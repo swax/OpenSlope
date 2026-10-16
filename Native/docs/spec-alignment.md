@@ -200,3 +200,10 @@ leaves and retains every recorded replay matrix. Lamp presentation now uses
 the independently inspected owned lens ring/core/star atlas, while clean 160's
 hue, brightness, size, range and depth remain authoritative. The fallback ring
 profile is an application choice; see snowdream-playtest-0.60.md.
+
+Build 0.61 uses clean 400's world-fixed, recentred weather field, plus public
+Slopesmith snowfall documentation/test assertions for the default play profile,
+thinning, fades and upright shared-eye presentation. The upper blizzard profile,
+procedural flake shape, baked instance generator, saved graphics controls,
+desktop supersampling/native UI composition and asynchronous map-load stages
+are explicit application choices. See snowfall-graphics-0.61.md.

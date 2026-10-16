@@ -1,4 +1,7 @@
 #include "vulkan_renderer.hpp"
+#include "openslope/graphics_preferences.hpp"
+#include "snow_frag.hpp"
+#include "snow_vert.hpp"
 #include "terrain_frag.hpp"
 #include "terrain_vert.hpp"
 #include <algorithm>
@@ -20,6 +23,13 @@ struct DrawPush {
 };
 
 static_assert(sizeof(DrawPush) == 128);
+
+struct SnowPush {
+    Matrix clip;
+    std::array<float, 4> eye_time, box_lift, motion, fades;
+};
+
+static_assert(sizeof(SnowPush) == 128);
 constexpr auto draw_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 } // namespace
 
@@ -161,8 +171,12 @@ void VulkanRenderer::destroy_buffer(Buffer& b) {
 
 void VulkanRenderer::upload(const Mesh& source, std::span<const std::size_t> flag_models,
                             std::span<const std::size_t> faceted_models) {
+    upload(SceneAssets::prepare(source, flag_models, faceted_models));
+}
+
+void VulkanRenderer::upload(SceneAssets assets, UploadProgress progress) {
     auto scene = std::make_shared<VulkanScene>(context_);
-    scene->upload(source, flag_models, faceted_models);
+    scene->upload(std::move(assets), std::move(progress));
     if (scene_) {
         finish();
         reserve_poses(scene->pose_capacity_);
@@ -289,6 +303,8 @@ VulkanRenderer::~VulkanRenderer() {
     destroy_buffer(avatar_vertices_);
     destroy_buffer(sheet_vertices_);
     destroy_buffer(boost_vertices_);
+    destroy_buffer(snow_vertices_);
+    destroy_buffer(presentation_vertices_);
 }
 
 void VulkanRenderer::clear_targets() {
@@ -296,6 +312,8 @@ void VulkanRenderer::clear_targets() {
         return;
     vkDeviceWaitIdle(context_.device);
     for (auto& target : targets_) {
+        if (target.presentation_framebuffer)
+            vkDestroyFramebuffer(context_.device, target.presentation_framebuffer, nullptr);
         if (target.framebuffer)
             vkDestroyFramebuffer(context_.device, target.framebuffer, nullptr);
         if (target.colour_view)
@@ -312,8 +330,28 @@ void VulkanRenderer::clear_targets() {
             vkDestroyImage(context_.device, target.multisample, nullptr);
         if (target.multisample_memory)
             vkFreeMemory(context_.device, target.multisample_memory, nullptr);
+        if (target.resolved_view)
+            vkDestroyImageView(context_.device, target.resolved_view, nullptr);
+        if (target.resolved)
+            vkDestroyImage(context_.device, target.resolved, nullptr);
+        if (target.resolved_memory)
+            vkFreeMemory(context_.device, target.resolved_memory, nullptr);
     }
     targets_.clear();
+    if (presentation_pipeline_)
+        vkDestroyPipeline(context_.device, presentation_pipeline_, nullptr);
+    if (presentation_hud_)
+        vkDestroyPipeline(context_.device, presentation_hud_, nullptr);
+    if (presentation_pass_)
+        vkDestroyRenderPass(context_.device, presentation_pass_, nullptr);
+    if (presentation_pool_)
+        vkDestroyDescriptorPool(context_.device, presentation_pool_, nullptr);
+    if (presentation_sampler_)
+        vkDestroySampler(context_.device, presentation_sampler_, nullptr);
+    presentation_pipeline_ = presentation_hud_ = {};
+    presentation_pass_ = {};
+    presentation_pool_ = {};
+    presentation_sampler_ = {};
     if (pipeline_)
         vkDestroyPipeline(context_.device, pipeline_, nullptr);
     if (blend_pipeline_)
@@ -340,6 +378,9 @@ void VulkanRenderer::clear_targets() {
     if (wrist_pipeline_)
         vkDestroyPipeline(context_.device, wrist_pipeline_, nullptr);
     wrist_pipeline_ = {};
+    if (snow_pipeline_)
+        vkDestroyPipeline(context_.device, snow_pipeline_, nullptr);
+    snow_pipeline_ = {};
     line_pipeline_ = {};
     if (pass_)
         vkDestroyRenderPass(context_.device, pass_, nullptr);
@@ -350,30 +391,46 @@ void VulkanRenderer::clear_targets() {
 }
 
 void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, std::uint32_t width,
-                             std::uint32_t height, unsigned requested_samples) {
+                             std::uint32_t height, unsigned requested_samples, unsigned render_scale) {
     if (!scene_)
         throw std::runtime_error("Upload map assets before creating render targets");
     if (requested_samples != 1 && requested_samples != 2 && requested_samples != 4 && requested_samples != 8)
         throw std::runtime_error("MSAA must be 1, 2, 4 or 8");
+    const auto extent = GraphicsPreferences::scene_size(width, height, render_scale);
     clear_targets();
     width_ = width;
     height_ = height;
+    render_width_ = extent[0];
+    render_height_ = extent[1];
     format_ = format;
+    scene_format_ = render_scale == 100 ? format
+                                        : (format == VK_FORMAT_B8G8R8A8_SRGB   ? VK_FORMAT_B8G8R8A8_UNORM
+                                           : format == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM
+                                                                               : format);
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(context_.physical, &properties);
     VkImageFormatProperties colour_support{}, depth_support{};
-    vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical, format, VK_IMAGE_TYPE_2D,
-                                                      VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, 0,
-                                                      &colour_support),
+    const auto scene_usage =
+        VkImageUsageFlags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (render_scale == 100 ? 0 : VK_IMAGE_USAGE_SAMPLED_BIT));
+    vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical, scene_format_, VK_IMAGE_TYPE_2D,
+                                                      VK_IMAGE_TILING_OPTIMAL, scene_usage, 0, &colour_support),
              "Query colour sample counts");
     vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical, VK_FORMAT_D32_SFLOAT, VK_IMAGE_TYPE_2D,
                                                       VK_IMAGE_TILING_OPTIMAL,
                                                       VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 0, &depth_support),
              "Query depth sample counts");
     if (images.empty() || !width || !height ||
-        width > std::min(colour_support.maxExtent.width, depth_support.maxExtent.width) ||
-        height > std::min(colour_support.maxExtent.height, depth_support.maxExtent.height))
+        render_width_ > std::min({colour_support.maxExtent.width, depth_support.maxExtent.width,
+                                  properties.limits.maxFramebufferWidth}) ||
+        render_height_ > std::min({colour_support.maxExtent.height, depth_support.maxExtent.height,
+                                   properties.limits.maxFramebufferHeight}))
         throw std::runtime_error("Invalid render target dimensions/count");
+    if (render_scale != 100) {
+        VkFormatProperties support;
+        vkGetPhysicalDeviceFormatProperties(context_.physical, scene_format_, &support);
+        if (!(support.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+            throw std::runtime_error("Scene format does not support linear downsampling");
+    }
     const auto supported = properties.limits.framebufferColorSampleCounts &
                            properties.limits.framebufferDepthSampleCounts & colour_support.sampleCounts &
                            depth_support.sampleCounts;
@@ -384,7 +441,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
             break;
         }
     VkAttachmentDescription colour{};
-    colour.format = format;
+    colour.format = scene_format_;
     colour.samples = VK_SAMPLE_COUNT_1_BIT;
     colour.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colour.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -555,6 +612,84 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     depth_state.depthTestEnable = VK_TRUE;
     vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &wrist_pipeline_),
              "Create depth-tested controller panel pipeline");
+    if (render_scale != 100) {
+        auto attachment = resolve;
+        attachment.format = format_;
+        attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        VkSubpassDescription present_subpass{};
+        present_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        present_subpass.colorAttachmentCount = 1;
+        present_subpass.pColorAttachments = &colour_ref;
+        VkRenderPassCreateInfo present_pass{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+        present_pass.attachmentCount = 1;
+        present_pass.pAttachments = &attachment;
+        present_pass.subpassCount = 1;
+        present_pass.pSubpasses = &present_subpass;
+        present_pass.dependencyCount = 1;
+        present_pass.pDependencies = &dependency;
+        vk_check(vkCreateRenderPass(context_.device, &present_pass, nullptr, &presentation_pass_),
+                 "Create native-resolution presentation pass");
+        pipeline.renderPass = presentation_pass_;
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        depth_state.depthTestEnable = VK_FALSE;
+        vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &presentation_pipeline_),
+                 "Create scene downsampling pipeline");
+        vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &presentation_hud_),
+                 "Create native-resolution UI pipeline");
+        pipeline.renderPass = pass_;
+        multisample.rasterizationSamples = samples_;
+        depth_state.depthTestEnable = VK_TRUE;
+        const VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, unsigned(images.size() * 2)};
+        VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool.maxSets = unsigned(images.size());
+        pool.poolSizeCount = 1;
+        pool.pPoolSizes = &pool_size;
+        vk_check(vkCreateDescriptorPool(context_.device, &pool, nullptr, &presentation_pool_),
+                 "Create scene presentation descriptors");
+        VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        sampler.magFilter = sampler.minFilter = VK_FILTER_LINEAR;
+        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        vk_check(vkCreateSampler(context_.device, &sampler, nullptr, &presentation_sampler_),
+                 "Create scene downsampling sampler");
+        if (!presentation_vertices_.buffer) {
+            std::array<Vertex, 6> vertices{};
+            const std::array<std::array<float, 2>, 6> corners{{{-1, -1}, {1, -1}, {1, 1}, {-1, -1}, {1, 1}, {-1, 1}}};
+            for (unsigned i = 0; i < vertices.size(); ++i) {
+                auto& v = vertices[i];
+                v.x = corners[i][0];
+                v.y = corners[i][1];
+                v.s = (v.x + 1) * .5f;
+                v.t = (v.y + 1) * .5f;
+            }
+            presentation_vertices_ =
+                create_buffer(sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertices.data());
+        }
+    }
+    const auto snow_vertex = shader(snow_vert), snow_fragment = shader(snow_frag);
+    auto snow_stages = stages;
+    snow_stages[0].module = snow_vertex;
+    snow_stages[1].module = snow_fragment;
+    const VkVertexInputBindingDescription snow_binding{0, sizeof(SnowFlake), VK_VERTEX_INPUT_RATE_INSTANCE};
+    const std::array<VkVertexInputAttributeDescription, 2> snow_attributes{
+        {{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(SnowFlake, base)},
+         {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SnowFlake, random)}}};
+    VkPipelineVertexInputStateCreateInfo snow_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    snow_input.vertexBindingDescriptionCount = 1;
+    snow_input.pVertexBindingDescriptions = &snow_binding;
+    snow_input.vertexAttributeDescriptionCount = 2;
+    snow_input.pVertexAttributeDescriptions = snow_attributes.data();
+    auto snow_pipeline = pipeline;
+    snow_pipeline.pStages = snow_stages.data();
+    snow_pipeline.pVertexInputState = &snow_input;
+    blend.blendEnable = VK_TRUE;
+    blend.srcColorBlendFactor = blend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    const auto snow_result =
+        vkCreateGraphicsPipelines(context_.device, {}, 1, &snow_pipeline, nullptr, &snow_pipeline_);
+    vkDestroyShaderModule(context_.device, snow_vertex, nullptr);
+    vkDestroyShaderModule(context_.device, snow_fragment, nullptr);
+    vk_check(snow_result, "Create instanced snowfall pipeline");
     vkDestroyShaderModule(context_.device, vertex, nullptr);
     vkDestroyShaderModule(context_.device, fragment, nullptr);
     vk_check(pipeline_result, "Create terrain pipeline");
@@ -572,10 +707,61 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         view_info.format = format;
         view_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         vk_check(vkCreateImageView(context_.device, &view_info, nullptr, &target.colour_view), "Create colour view");
+        if (render_scale != 100) {
+            VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+            info.imageType = VK_IMAGE_TYPE_2D;
+            info.format = scene_format_;
+            info.extent = {render_width_, render_height_, 1};
+            info.mipLevels = info.arrayLayers = 1;
+            info.samples = VK_SAMPLE_COUNT_1_BIT;
+            info.tiling = VK_IMAGE_TILING_OPTIMAL;
+            info.usage = scene_usage;
+            vk_check(vkCreateImage(context_.device, &info, nullptr, &target.resolved), "Create scaled scene image");
+            VkMemoryRequirements requirements;
+            vkGetImageMemoryRequirements(context_.device, target.resolved, &requirements);
+            VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            allocation.allocationSize = requirements.size;
+            allocation.memoryTypeIndex = memory_type(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            vk_check(vkAllocateMemory(context_.device, &allocation, nullptr, &target.resolved_memory),
+                     "Allocate scaled scene");
+            vk_check(vkBindImageMemory(context_.device, target.resolved, target.resolved_memory, 0),
+                     "Bind scaled scene");
+            view_info.image = target.resolved;
+            view_info.format = scene_format_;
+            vk_check(vkCreateImageView(context_.device, &view_info, nullptr, &target.resolved_view),
+                     "Create scaled scene view");
+            VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocate.descriptorPool = presentation_pool_;
+            allocate.descriptorSetCount = 1;
+            allocate.pSetLayouts = &scene_->descriptors_;
+            vk_check(vkAllocateDescriptorSets(context_.device, &allocate, &target.presentation_set),
+                     "Allocate scene descriptor");
+            const VkDescriptorImageInfo texture{presentation_sampler_, target.resolved_view,
+                                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            std::array<VkWriteDescriptorSet, 2> writes{};
+            for (unsigned i = 0; i < writes.size(); ++i) {
+                writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                writes[i].dstSet = target.presentation_set;
+                writes[i].dstBinding = i;
+                writes[i].descriptorCount = 1;
+                writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                writes[i].pImageInfo = &texture;
+            }
+            vkUpdateDescriptorSets(context_.device, unsigned(writes.size()), writes.data(), 0, nullptr);
+            VkFramebufferCreateInfo framebuffer{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+            framebuffer.renderPass = presentation_pass_;
+            framebuffer.attachmentCount = 1;
+            framebuffer.pAttachments = &target.colour_view;
+            framebuffer.width = width_;
+            framebuffer.height = height_;
+            framebuffer.layers = 1;
+            vk_check(vkCreateFramebuffer(context_.device, &framebuffer, nullptr, &target.presentation_framebuffer),
+                     "Create native-resolution presentation framebuffer");
+        }
         VkImageCreateInfo depth_info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         depth_info.imageType = VK_IMAGE_TYPE_2D;
         depth_info.format = VK_FORMAT_D32_SFLOAT;
-        depth_info.extent = {width, height, 1};
+        depth_info.extent = {render_width_, render_height_, 1};
         depth_info.mipLevels = 1;
         depth_info.arrayLayers = 1;
         depth_info.samples = samples_;
@@ -596,7 +782,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         vk_check(vkCreateImageView(context_.device, &view_info, nullptr, &target.depth_view), "Create depth view");
         if (samples_ != VK_SAMPLE_COUNT_1_BIT) {
             auto info = depth_info;
-            info.format = format;
+            info.format = scene_format_;
             info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
             vk_check(vkCreateImage(context_.device, &info, nullptr, &target.multisample), "Create multisample colour");
             vkGetImageMemoryRequirements(context_.device, target.multisample, &memory);
@@ -607,20 +793,21 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
             vk_check(vkBindImageMemory(context_.device, target.multisample, target.multisample_memory, 0),
                      "Bind multisample colour");
             view_info.image = target.multisample;
-            view_info.format = format;
+            view_info.format = scene_format_;
             view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             vk_check(vkCreateImageView(context_.device, &view_info, nullptr, &target.multisample_view),
                      "Create multisample colour view");
         }
-        const std::array<VkImageView, 3> views{samples_ == VK_SAMPLE_COUNT_1_BIT ? target.colour_view
+        const auto resolved_view = target.resolved_view ? target.resolved_view : target.colour_view;
+        const std::array<VkImageView, 3> views{samples_ == VK_SAMPLE_COUNT_1_BIT ? resolved_view
                                                                                  : target.multisample_view,
-                                               target.depth_view, target.colour_view};
+                                               target.depth_view, resolved_view};
         VkFramebufferCreateInfo framebuffer{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
         framebuffer.renderPass = pass_;
         framebuffer.attachmentCount = pass.attachmentCount;
         framebuffer.pAttachments = views.data();
-        framebuffer.width = width;
-        framebuffer.height = height;
+        framebuffer.width = render_width_;
+        framebuffer.height = render_height_;
         framebuffer.layers = 1;
         vk_check(vkCreateFramebuffer(context_.device, &framebuffer, nullptr, &target.framebuffer),
                  "Create framebuffer");
@@ -634,7 +821,10 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                             std::span<const PropMotion> motions, double alpha, std::span<const PropRouteMotion> routes,
                             std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost,
                             std::span<const ParticleSprite> particles, CelestialView glare_view,
-                            std::span<const Vertex> hud, bool screen_hud) {
+                            std::span<const Vertex> hud, bool screen_hud, SnowfallView snow) {
+    if (!finite(snow.eye) || !std::isfinite(snow.time) || snow.time < 0 || snow.time > 1e9)
+        throw std::invalid_argument("Invalid snowfall view");
+    const auto weather = snow_settings(snow.amount);
     if (boost.size() > 84 || boost.size() % 12)
         throw std::invalid_argument("Boost trail submission exceeds its history bound");
     for (const auto& point : boost) {
@@ -761,6 +951,11 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     const auto started = std::chrono::steady_clock::now();
     finish();
     reserve_poses(required_poses);
+    if (weather.flakes && !snow_vertices_.buffer) {
+        const auto flakes = snow_flakes();
+        snow_vertices_ =
+            create_buffer(flakes.size() * sizeof(SnowFlake), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, flakes.data());
+    }
     const auto previous_gpu = stats_.gpu_ms;
     stats_ = {};
     if (deferred_)
@@ -1192,7 +1387,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdResetQueryPool(command_, timing_, 0, 2);
         vkCmdWriteTimestamp(command_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timing_, 0);
     }
-    const bool srgb = format_ == VK_FORMAT_R8G8B8A8_SRGB || format_ == VK_FORMAT_B8G8R8A8_SRGB;
+    const bool srgb = scene_format_ == VK_FORMAT_R8G8B8A8_SRGB || scene_format_ == VK_FORMAT_B8G8R8A8_SRGB;
     std::array<VkClearValue, 2> clear{};
     for (unsigned c = 0; c < 3; ++c) {
         const auto v = scene_->world_.sky_colour[c] * visibility;
@@ -1203,14 +1398,14 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     VkRenderPassBeginInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     pass.renderPass = pass_;
     pass.framebuffer = targets_.at(image).framebuffer;
-    pass.renderArea.extent = {width_, height_};
+    pass.renderArea.extent = {render_width_, render_height_};
     pass.clearValueCount = 2;
     pass.pClearValues = clear.data();
     vkCmdBeginRenderPass(command_, &pass, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
     vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 1, 1, &pose_set_, 0, nullptr);
-    const VkViewport viewport{0, 0, float(width_), float(height_), 0, 1};
-    const VkRect2D scissor{{0, 0}, {width_, height_}};
+    const VkViewport viewport{0, 0, float(render_width_), float(render_height_), 0, 1};
+    const VkRect2D scissor{{0, 0}, {render_width_, render_height_}};
     vkCmdSetViewport(command_, 0, 1, &viewport);
     vkCmdSetScissor(command_, 0, 1, &scissor);
     const VkDeviceSize offset = 0;
@@ -1362,6 +1557,21 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdDraw(command_, std::uint32_t(boost_mesh_.size()), 1, 0, 0);
         ++stats_.boost_draws;
     }
+    if (weather.flakes) {
+        const SnowPush data{
+            camera,
+            {float(snow.eye.x), float(snow.eye.y), float(snow.eye.z), float(snow.time)},
+            {float(weather.box.x), float(weather.box.y), float(weather.box.z), float(weather.lift)},
+            {float(weather.fall_min), float(weather.fall_max), float(weather.drift),
+             float(weather.alpha * weather.brightness * visibility)},
+            {float(weather.near_start), float(weather.near_end), float(weather.edge_fade), srgb ? 1.f : 0.f}};
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, snow_pipeline_);
+        vkCmdBindVertexBuffers(command_, 0, 1, &snow_vertices_.buffer, &offset);
+        vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(data), &data);
+        vkCmdDraw(command_, 6, weather.flakes, 0, 0);
+        stats_.snowflakes = weather.flakes;
+        stats_.snow_draws = 1;
+    }
     if (!glints.empty()) {
         vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, sprite_pipeline_);
         vkCmdBindVertexBuffers(command_, 0, 1, &glint_vertices_.buffer, &offset);
@@ -1395,7 +1605,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         }
         stats_.celestial_triangles = unsigned(celestial.fan.size() / 3);
     }
-    if (!hud.empty()) {
+    if (!hud.empty() && !(screen_hud && presentation_pass_)) {
         vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, screen_hud ? hud_pipeline_ : wrist_pipeline_);
         vkCmdBindVertexBuffers(command_, 0, 1, &hud_vertices_.buffer, &offset);
         push.mvp = screen_hud ? Matrix::identity() : camera;
@@ -1405,6 +1615,45 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdDraw(command_, std::uint32_t(hud.size()), 1, 0, 0);
     }
     vkCmdEndRenderPass(command_);
+    if (presentation_pass_) {
+        auto& target = targets_[image];
+        VkImageMemoryBarrier sampled{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        sampled.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        sampled.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sampled.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        sampled.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        sampled.srcQueueFamilyIndex = sampled.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sampled.image = target.resolved;
+        sampled.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(command_, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &sampled);
+        VkRenderPassBeginInfo present{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+        present.renderPass = presentation_pass_;
+        present.framebuffer = target.presentation_framebuffer;
+        present.renderArea.extent = {width_, height_};
+        vkCmdBeginRenderPass(command_, &present, VK_SUBPASS_CONTENTS_INLINE);
+        const VkViewport native_viewport{0, 0, float(width_), float(height_), 0, 1};
+        const VkRect2D native_scissor{{0, 0}, {width_, height_}};
+        vkCmdSetViewport(command_, 0, 1, &native_viewport);
+        vkCmdSetScissor(command_, 0, 1, &native_scissor);
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, presentation_pipeline_);
+        vkCmdBindVertexBuffers(command_, 0, 1, &presentation_vertices_.buffer, &offset);
+        vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &target.presentation_set, 0,
+                                nullptr);
+        DrawPush output{Matrix::identity(),
+                        {1, (format_ == VK_FORMAT_R8G8B8A8_SRGB || format_ == VK_FORMAT_B8G8R8A8_SRGB) ? 1 : 0, 0, 0}};
+        vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(output), &output);
+        vkCmdDraw(command_, 6, 1, 0, 0);
+        if (screen_hud && !hud.empty()) {
+            vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, presentation_hud_);
+            vkCmdBindVertexBuffers(command_, 0, 1, &hud_vertices_.buffer, &offset);
+            output.options[0] = 0;
+            output.presentation[0] = visibility;
+            vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(output), &output);
+            vkCmdDraw(command_, unsigned(hud.size()), 1, 0, 0);
+        }
+        vkCmdEndRenderPass(command_);
+    }
     if (final_layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;

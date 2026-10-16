@@ -2,12 +2,15 @@
 #include "openslope/audio_preferences.hpp"
 #include "openslope/audio_scene.hpp"
 #include "openslope/avatar.hpp"
+#include "openslope/graphics_preferences.hpp"
 #include "openslope/replay.hpp"
 #include "openslope/ride_ui.hpp"
 #include "openxr_app.hpp"
 #include "vulkan_renderer.hpp"
 #include <windows.h>
+#include <atomic>
 #include <chrono>
+#include <future>
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -93,9 +96,9 @@ struct Image {
 };
 
 int capture(Player& player, const std::filesystem::path& output, double seconds, const std::filesystem::path& replay,
-            const std::filesystem::path& audio_output, unsigned msaa, bool terrain_culling, bool first_person,
-            bool look_down, bool menu = false, bool controls = false, bool audio_menu = false,
-            const AudioPreferences& preferences = {}) {
+            const std::filesystem::path& audio_output, const GraphicsPreferences& graphics, bool terrain_culling,
+            bool first_person, bool look_down, bool menu = false, bool controls = false, bool audio_menu = false,
+            const AudioPreferences& preferences = {}, bool graphics_menu = false) {
     VulkanContext context;
     context.create(false);
     Image image(context);
@@ -103,7 +106,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     VulkanRenderer renderer(context);
     renderer.cull_terrain(terrain_culling);
     renderer.upload(player.terrain().mesh(), player.logic().flag_models(), player.logic().faceted_models());
-    renderer.targets(std::span(&image.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1280, 720, msaa);
+    renderer.targets(std::span(&image.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1280, 720, graphics.msaa,
+                     graphics.render_scale);
     std::cout << "MSAA samples: " << renderer.samples() << '\n';
     std::unique_ptr<AudioScene> audio;
     PcmClip recorded;
@@ -132,6 +136,11 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     ui.visible = menu;
     ui.controls = controls;
     ui.audio_options = audio_menu;
+    ui.graphics_options = graphics_menu;
+    graphics.present(ui);
+    ui.graphics_readout = "SCENE " + std::to_string(renderer.scene_width()) + "X" +
+                          std::to_string(renderer.scene_height()) + " / WINDOW 1280X720";
+    std::cout << ui.graphics_readout << char(10);
     preferences.present(ui, audio.get(), player.terrain().map_root().filename().string());
     unsigned frames = 0, packed_frames = 0;
     double wall = 0, gpu = 0, cull = 0;
@@ -157,7 +166,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), chase.pose().eye), glare_view, hud, true);
+                        player.logic().particles(player.frame_alpha(), chase.pose().eye), glare_view, hud, true,
+                        {chase.pose().eye, player.weather_time(), graphics.snow});
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         gpu += renderer.stats().gpu_ms;
         cull += renderer.stats().cull_ms;
@@ -186,6 +196,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                   << " ms; render wall " << wall / frames << " ms; GPU " << gpu / frames << " ms\n";
     }
     const auto stats = renderer.stats();
+    std::cout << "Snowfall: " << stats.snowflakes << " flakes; " << stats.snow_draws << " instanced draws; level "
+              << graphics.snow << char(10);
     std::cout << "Celestial: " << stats.celestial_triangles << " triangles; " << stats.celestial_draws << " draws\n";
     std::cout << "Visible props: " << stats.visible_props << "; prop draws: " << stats.prop_draws
               << "; route copies: " << stats.route_copies << "; route lines: " << stats.route_lines
@@ -284,7 +296,8 @@ struct Window {
     VkSwapchainKHR swapchain{};
     VkSemaphore available{}, finished{};
     bool resized = true, quit = false;
-    unsigned width{}, height{}, msaa = 4;
+    unsigned width{}, height{};
+    GraphicsPreferences graphics;
     FollowCamera camera;
     RideUi ui;
     double mouse_dx = 0, mouse_dy = 0, wheel = 0, fps = 0;
@@ -450,7 +463,17 @@ struct Window {
         vk_check(vkGetSwapchainImagesKHR(context.device, swapchain, &count, nullptr), "Enumerate preview images");
         std::vector<VkImage> images(count);
         vk_check(vkGetSwapchainImagesKHR(context.device, swapchain, &count, images.data()), "Read preview images");
-        renderer.targets(images, format.format, width, height, msaa);
+        try {
+            renderer.targets(images, format.format, width, height, graphics.msaa, graphics.render_scale);
+        } catch (const std::exception&) {
+            if (graphics.render_scale == 100)
+                throw;
+            renderer.targets(images, format.format, width, height, graphics.msaa, 100);
+            ui.notice = "RENDER SCALE UNAVAILABLE - USING 100%";
+        }
+        ui.graphics_readout = "SCENE " + std::to_string(renderer.scene_width()) + "X" +
+                              std::to_string(renderer.scene_height()) + " / WINDOW " + std::to_string(width) + "X" +
+                              std::to_string(height);
         resized = false;
         return true;
     }
@@ -470,6 +493,8 @@ struct Window {
     GlareVisibility glare_visibility;
 
     void draw(Player& player, bool first_person, bool look_down, double seconds) {
+        if (quit || !IsWindow(handle))
+            return;
         if (resized && !resize())
             return;
         std::uint32_t image = 0;
@@ -499,7 +524,8 @@ struct Window {
                         player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), camera.pose().eye), glare_view, hud, true);
+                        player.logic().particles(player.frame_alpha(), camera.pose().eye), glare_view, hud, true,
+                        {camera.pose().eye, player.weather_time(), graphics.snow});
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &finished;
@@ -518,14 +544,15 @@ struct Window {
 
 int main(int argc, char** argv) {
     try {
-        std::filesystem::path map, output, replay, audio_output, preferences_path;
+        std::filesystem::path map, output, replay, audio_output, preferences_path, graphics_path;
         bool xr = false, smoke_window = false, no_audio = false, audio_smoke = false, msaa_set = false,
              terrain_culling = true, first_person_option = false, look_down_option = false, on_foot_option = false;
         double seconds = 0;
-        unsigned msaa = 4;
+        GraphicsPreferences overrides;
+        bool scale_set = false, snow_set = false, ui_graphics_option = false;
         RunMode run_option = RunMode::Freeride;
         bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_audio_option = false,
-             ui_smoke = false;
+             ui_smoke = false, ui_failure = false;
         for (int i = 1; i < argc; ++i) {
             const std::string option = argv[i];
             if (option == "--xr")
@@ -534,7 +561,8 @@ int main(int argc, char** argv) {
                 head_steering = true;
             else if (option == "--mode" && i + 1 < argc)
                 run_option = run_mode(argv[++i]);
-            else if (option == "--ui-smoke") {
+            else if (option == "--ui-smoke" || option == "--ui-smoke-failure") {
+                ui_failure = option == "--ui-smoke-failure";
                 ui_smoke = true;
                 smoke_window = true;
             } else if (option == "--ui-menu")
@@ -543,7 +571,24 @@ int main(int argc, char** argv) {
                 ui_menu_option = ui_audio_option = true;
             } else if (option == "--audio-preferences" && i + 1 < argc)
                 preferences_path = argv[++i];
-            else if (option == "--ui-controls") {
+            else if (option == "--graphics-preferences" && i + 1 < argc)
+                graphics_path = argv[++i];
+            else if (option == "--ui-graphics") {
+                ui_menu_option = ui_graphics_option = true;
+            } else if (option == "--render-scale" && i + 1 < argc) {
+                const std::string value = argv[++i];
+                if (value != "100" && value != "125" && value != "150" && value != "200")
+                    throw std::runtime_error("Render scale must be 100, 125, 150 or 200");
+                overrides.render_scale = unsigned(std::stoul(value));
+                scale_set = true;
+            } else if (option == "--snow" && i + 1 < argc) {
+                std::size_t used = 0;
+                const std::string value = argv[++i];
+                overrides.snow = std::stod(value, &used);
+                if (used != value.size() || !std::isfinite(overrides.snow) || overrides.snow < 0 || overrides.snow > 10)
+                    throw std::runtime_error("Snow must be between 0 and 10");
+                snow_set = true;
+            } else if (option == "--ui-controls") {
                 ui_menu_option = true;
                 ui_controls_option = true;
             } else if (option == "--on-foot")
@@ -559,7 +604,7 @@ int main(int argc, char** argv) {
                 const std::string value = argv[++i];
                 if (value != "1" && value != "2" && value != "4" && value != "8")
                     throw std::runtime_error("MSAA must be 1, 2, 4 or 8");
-                msaa = unsigned(std::stoul(value));
+                overrides.msaa = unsigned(std::stoul(value));
                 msaa_set = true;
             } else if (option == "--no-terrain-culling")
                 terrain_culling = false;
@@ -586,7 +631,9 @@ int main(int argc, char** argv) {
                     << "openslope_player [--map <map folder>] [--xr [--head-steering]] [--mode freeride|race|showoff] "
                        "[--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture "
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
-                       "[--msaa 1|2|4|8] [--no-terrain-culling] [--audio-preferences <file>] [--ui-audio]\nDesktop: "
+                       "[--msaa 1|2|4|8] [--render-scale 100|125|150|200] [--snow 0..10] [--graphics-preferences "
+                       "<file>] [--ui-graphics] [--no-terrain-culling] [--audio-preferences <file>] "
+                       "[--ui-audio]\nDesktop: "
                        "A/D steer/spin, W/S tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
                        "spawn board, G "
@@ -598,7 +645,7 @@ int main(int argc, char** argv) {
         }
         if (!std::isfinite(seconds) || seconds < 0 || seconds > 3600)
             throw std::runtime_error("Duration must be between 0 and 3600 seconds");
-        if (xr && (msaa_set || !terrain_culling))
+        if (xr && (msaa_set || scale_set || snow_set || !terrain_culling))
             throw std::runtime_error("MSAA/culling options currently apply to desktop window/capture mode");
         if (head_steering && !xr)
             throw std::runtime_error("Head steering requires --xr");
@@ -623,6 +670,15 @@ int main(int argc, char** argv) {
         if (preferences_path.empty() && output.empty() && !smoke_window)
             preferences_path = AudioPreferences::default_path();
         auto preferences = AudioPreferences::load(preferences_path);
+        if (graphics_path.empty() && output.empty() && !smoke_window)
+            graphics_path = GraphicsPreferences::default_path();
+        auto graphics = GraphicsPreferences::load(graphics_path);
+        if (msaa_set)
+            graphics.msaa = overrides.msaa;
+        if (scale_set)
+            graphics.render_scale = overrides.render_scale;
+        if (snow_set)
+            graphics.snow = overrides.snow;
         auto player = std::make_unique<Player>(map.empty() ? Terrain::demo() : Terrain::load(map));
         if (run_option != RunMode::Freeride)
             player->configure_run(run_option);
@@ -630,6 +686,7 @@ int main(int argc, char** argv) {
             XrPlatform platform;
             platform.head_steering = head_steering;
             platform.audio_preferences = preferences_path;
+            platform.graphics_preferences = graphics_path;
             return run_openxr(*player, platform, seconds);
         }
         if (!audio_output.empty() && output.empty())
@@ -637,15 +694,16 @@ int main(int argc, char** argv) {
         if (on_foot_option)
             player->start_on_foot();
         if (!output.empty())
-            return capture(*player, output, seconds, replay, audio_output, msaa, terrain_culling, first_person_option,
-                           look_down_option, ui_menu_option, ui_controls_option, ui_audio_option, preferences);
+            return capture(*player, output, seconds, replay, audio_output, graphics, terrain_culling,
+                           first_person_option, look_down_option, ui_menu_option, ui_controls_option, ui_audio_option,
+                           preferences, ui_graphics_option);
         if (smoke_window && seconds == 0)
             seconds = 3;
         VulkanContext context;
         context.create(true);
         Window window(context);
         window.renderer.cull_terrain(terrain_culling);
-        window.msaa = msaa;
+        window.graphics = graphics;
         window.create(player->terrain().mesh(), !smoke_window, player->logic().flag_models(),
                       player->logic().faceted_models());
         std::unique_ptr<AudioScene> audio;
@@ -684,10 +742,23 @@ int main(int argc, char** argv) {
         bool first_person = first_person_option, last_camera = false, paused = false, last_pause = false,
              last_focus = false, last_mute = false;
         bool last_escape = false, last_right = false, mouse_carry = false, first_released = false;
-        const std::array<UiAction, 15> ui_script{
-            UiAction::Controls, UiAction::Controls,   UiAction::View,       UiAction::Sound, UiAction::VolumeDown,
-            UiAction::Music,    UiAction::MasterMute, UiAction::MasterMute, UiAction::Songs, UiAction::SelectSong,
-            UiAction::Sound,    UiAction::Stats,      UiAction::Mode,       UiAction::Maps,  UiAction::LoadMap};
+
+        struct PreparedCourse {
+            std::unique_ptr<Player> player;
+            SceneAssets assets;
+            std::unique_ptr<AudioScene> audio;
+        };
+
+        std::future<PreparedCourse> loading;
+        auto load_stage = std::make_shared<std::atomic<unsigned>>(0);
+        unsigned loading_frames = 0;
+        const std::array<UiAction, 22> ui_script{
+            UiAction::Controls,      UiAction::Controls,     UiAction::View,       UiAction::Sound,
+            UiAction::VolumeDown,    UiAction::Music,        UiAction::MasterMute, UiAction::MasterMute,
+            UiAction::Songs,         UiAction::SelectSong,   UiAction::Sound,      UiAction::Graphics,
+            UiAction::RenderScale,   UiAction::Antialiasing, UiAction::SnowDown,   UiAction::SnowUp,
+            UiAction::GraphicsReset, UiAction::Stats,        UiAction::Graphics,   UiAction::Mode,
+            UiAction::Maps,          UiAction::LoadMap};
         std::size_t ui_step = 0;
         RunMode ui_expected_mode = RunMode::Freeride;
         unsigned ui_frame = 0;
@@ -698,13 +769,75 @@ int main(int argc, char** argv) {
         }
         while (window.events()) {
             const auto now = std::chrono::steady_clock::now();
-            const auto dt = std::chrono::duration<double>(now - previous).count();
+            auto dt = std::chrono::duration<double>(now - previous).count();
             previous = now;
             if (seconds > 0 && std::chrono::duration<double>(now - started).count() >= seconds)
                 break;
+            if (window.ui.loading) {
+                static constexpr std::array<const char*, 7> labels{
+                    "READING TERRAIN",   "BUILDING COURSE", "TESSELLATING TERRAIN", "READING SCENE MODELS",
+                    "DECODING TEXTURES", "PREPARING AUDIO", "READY TO UPLOAD"};
+                static constexpr std::array<double, 7> fractions{.05, .22, .40, .55, .65, .75, .80};
+                const auto stage = std::min<unsigned>(load_stage->load(), 6);
+                window.ui.load_stage = labels[stage];
+                window.ui.load_progress = fractions[stage];
+                if (loading.valid() && loading.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                    try {
+                        auto next = loading.get();
+                        std::unique_ptr<AudioDevice> next_device;
+                        std::unique_ptr<AudioService> next_service;
+                        if (next.audio) {
+                            preferences.apply(*next.audio, next.player->terrain().map_root().filename().string(), true);
+                            if (!smoke_window) {
+                                next_device = std::make_unique<AudioDevice>(next.audio->mixer());
+                                next_service = std::make_unique<AudioService>(*next.audio);
+                            }
+                            next.player->observe_ticks(
+                                [&](const Player& p, const Rider& before) { audio->tick(p, before); });
+                        }
+                        auto last_draw = std::chrono::steady_clock::now();
+                        double shown = -1;
+                        window.renderer.upload(
+                            std::move(next.assets), [&](double fraction, std::string_view stage_name) {
+                                window.ui.load_progress = .80 + .19 * fraction;
+                                window.ui.load_stage = stage_name;
+                                const auto time = std::chrono::steady_clock::now();
+                                if (fraction - shown >= .05 || time - last_draw >= std::chrono::milliseconds(50) ||
+                                    fraction == 1) {
+                                    if (!window.events())
+                                        throw std::runtime_error("Map loading cancelled");
+                                    window.draw(*player, first_person, false, 0);
+                                    ++loading_frames;
+                                    last_draw = time;
+                                    shown = fraction;
+                                }
+                            });
+                        audio_service.reset();
+                        device.reset();
+                        audio.reset();
+                        player = std::move(next.player);
+                        audio = std::move(next.audio);
+                        device = std::move(next_device);
+                        audio_service = std::move(next_service);
+                        window.glare_visibility.reset();
+                        window.camera.reset();
+                        window.ui.visible = window.ui.library = window.ui.loading = false;
+                        window.ui.notice.clear();
+                        paused = false;
+                        std::cout << "Course loaded with " << loading_frames << " loading frames\n";
+                    } catch (const std::exception& e) {
+                        window.ui.loading = false;
+                        window.ui.library = window.ui.visible = true;
+                        window.ui.notice = "COULD NOT OPEN MAP";
+                        std::cerr << e.what() << '\n';
+                    }
+                    dt = 0;
+                    previous = std::chrono::steady_clock::now();
+                }
+            }
             const bool focused = GetForegroundWindow() == window.handle;
             const auto key = [&](int value) { return focused && (GetAsyncKeyState(value) & 0x8000) != 0; };
-            const bool escape = key(VK_ESCAPE);
+            const bool escape = !window.ui.loading && key(VK_ESCAPE);
             if (escape && !last_escape) {
                 if (window.mouse_captured) {
                     window.capture_mouse(false);
@@ -722,7 +855,7 @@ int main(int argc, char** argv) {
                 first_released = false;
             }
             last_camera = camera;
-            const auto pause = key('P');
+            const auto pause = !window.ui.loading && key('P');
             if (pause && !last_pause) {
                 paused = !paused;
                 window.ui.visible = paused;
@@ -730,7 +863,7 @@ int main(int argc, char** argv) {
                     player->release_inputs();
             }
             last_pause = pause;
-            const auto mute = key('M');
+            const auto mute = !window.ui.loading && key('M');
             if (mute && !last_mute) {
                 preferences.toggle_mute();
                 if (audio)
@@ -750,6 +883,7 @@ int main(int argc, char** argv) {
             window.camera.first_person = first_person;
             window.ui.third_person = !first_person;
             preferences.present(window.ui, audio.get(), player->terrain().map_root().filename().string());
+            graphics.present(window.ui);
             window.ui.frame(RideUi::desktop(window.camera.pose(), aspect, window.ui.visible));
             POINT cursor{};
             GetCursorPos(&cursor);
@@ -779,6 +913,13 @@ int main(int argc, char** argv) {
             if (preferences.handle(click, window.ui, audio.get(), player->terrain().map_root().filename().string()) &&
                 !preferences_path.empty() && !preferences.save(preferences_path))
                 window.ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
+            if (graphics.handle(click, window.ui)) {
+                window.resized |=
+                    window.graphics.render_scale != graphics.render_scale || window.graphics.msaa != graphics.msaa;
+                window.graphics = graphics;
+                if (!graphics_path.empty() && !graphics.save(graphics_path))
+                    window.ui.notice = "GRAPHICS SETTINGS COULD NOT BE SAVED";
+            }
             if (ui_smoke && click.action != UiAction::None) {
                 if (click.action != ui_script.at(ui_step))
                     throw std::runtime_error("UI smoke selected wrong action");
@@ -807,7 +948,7 @@ int main(int argc, char** argv) {
             case UiAction::Maps:
                 window.ui.library = !window.ui.library;
                 window.ui.controls = false;
-                window.ui.audio_options = window.ui.song_picker = false;
+                window.ui.audio_options = window.ui.song_picker = window.ui.graphics_options = false;
                 break;
             case UiAction::Previous:
                 if (window.ui.page > 0)
@@ -840,37 +981,48 @@ int main(int argc, char** argv) {
                 break;
             }
             case UiAction::LoadMap: {
+                window.ui.loading = window.ui.visible = true;
+                window.ui.load_progress = .02;
+                window.ui.load_name = click.map.filename().string();
+                window.ui.load_stage = "READING TERRAIN";
+                window.ui.notice.clear();
+                paused = true;
+                player->release_inputs();
+                window.capture_mouse(false);
+                if (audio)
+                    audio->mixer().paused(true);
+                load_stage->store(0);
+                loading_frames = 1;
+                window.draw(*player, first_person, false, 0);
+                const auto mode = player->course_run().status().mode;
+                const bool with_audio = !no_audio && (!smoke_window || ui_smoke);
                 try {
-                    auto next = std::make_unique<Player>(Terrain::load(click.map));
-                    try {
-                        next->configure_run(player->course_run().status().mode);
-                    } catch (const std::runtime_error&) {
-                        next->configure_run(RunMode::Freeride);
-                    }
-                    next->start_on_foot();
-                    window.renderer.upload(next->terrain().mesh(), next->logic().flag_models(),
-                                           next->logic().faceted_models());
-                    window.glare_visibility.reset();
-                    audio_service.reset();
-                    device.reset();
-                    audio.reset();
-                    player = std::move(next);
-                    if (!no_audio && (!smoke_window || ui_smoke)) {
-                        audio = std::make_unique<AudioScene>(player->terrain().map_root());
-                        audio->mixer().paused(true);
-                        preferences.apply(*audio, player->terrain().map_root().filename().string(), true);
-                        if (!smoke_window) {
-                            device = std::make_unique<AudioDevice>(audio->mixer());
-                            audio_service = std::make_unique<AudioService>(*audio);
+                    loading = std::async(std::launch::async, [path = click.map, mode, with_audio, load_stage] {
+                        PreparedCourse next;
+                        auto terrain = Terrain::load(path);
+                        load_stage->store(1);
+                        next.player = std::make_unique<Player>(std::move(terrain));
+                        try {
+                            next.player->configure_run(mode);
+                        } catch (const std::runtime_error&) {
+                            next.player->configure_run(RunMode::Freeride);
                         }
-                        player->observe_ticks([&](const Player& p, const Rider& before) { audio->tick(p, before); });
-                    }
-                    window.ui.visible = false;
-                    window.ui.library = false;
-                    window.ui.notice.clear();
-                    paused = false;
-                    window.camera.reset();
+                        next.player->start_on_foot();
+                        load_stage->store(2);
+                        auto mesh = next.player->terrain().mesh();
+                        next.assets = SceneAssets::prepare(
+                            std::move(mesh), next.player->logic().flag_models(), next.player->logic().faceted_models(),
+                            [load_stage](double p, std::string_view) { load_stage->store(p < .5 ? 3 : 4); });
+                        load_stage->store(5);
+                        if (with_audio) {
+                            next.audio = std::make_unique<AudioScene>(path);
+                            next.audio->mixer().paused(true);
+                        }
+                        load_stage->store(6);
+                        return next;
+                    });
                 } catch (const std::exception& e) {
+                    window.ui.loading = false;
                     window.ui.notice = "COULD NOT OPEN MAP";
                     std::cerr << e.what() << '\n';
                 }
@@ -879,9 +1031,14 @@ int main(int argc, char** argv) {
             case UiAction::Exit: window.quit = true; break;
             default: break;
             }
-            if (ui_smoke && ui_step == ui_script.size()) {
-                if (player->terrain().map_root() == original_map || !player->on_foot() || window.ui.visible ||
-                    player->course_run().status().mode != ui_expected_mode)
+            if (ui_smoke && ui_step == ui_script.size() && !window.ui.loading) {
+                if (ui_failure) {
+                    if (player->terrain().map_root() != original_map || !window.ui.library ||
+                        window.ui.notice != "COULD NOT OPEN MAP" || !paused || loading_frames < 1)
+                        throw std::runtime_error("Failed map load did not preserve the playable course");
+                    std::cout << "Desktop failed-map rollback smoke: PASS\n";
+                } else if (player->terrain().map_root() == original_map || !player->on_foot() || window.ui.visible ||
+                           player->course_run().status().mode != ui_expected_mode || loading_frames < 2)
                     throw std::runtime_error("UI map load did not replace and stage the selected map");
                 window.quit = true;
             }
@@ -964,6 +1121,8 @@ int main(int argc, char** argv) {
                   << (preferences.volume == 0 ? L"unmute" : L"mute");
             SetWindowTextW(window.handle, title.str().c_str());
             window.draw(*player, first_person, key('C') || look_down_option, dt);
+            if (window.ui.loading)
+                ++loading_frames;
             if (IsIconic(window.handle))
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }

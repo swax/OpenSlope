@@ -19,6 +19,12 @@ enum class UiAction {
     PreviousSongPage,
     NextSongPage,
     Stats,
+    Graphics,
+    RenderScale,
+    Antialiasing,
+    SnowDown,
+    SnowUp,
+    GraphicsReset,
     Calibrate,
     Recall,
     HeadSteer,
@@ -57,6 +63,10 @@ public:
     bool visible = false, controls = false, stats = false, sound_muted = false, third_person = true, head_steer = false,
          immersive = false, library = false, map_picker = false;
     bool audio_options = false, song_picker = false, music_enabled = true, authored_music = false;
+    bool graphics_options = false, loading = false;
+    unsigned render_scale = 150, antialiasing = 4;
+    double snow_amount = 3, load_progress = 0;
+    std::string graphics_readout, load_name, load_stage;
     double master_volume = 1;
     std::string song_selection, current_song;
     std::vector<std::string> song_choices;

@@ -19,6 +19,12 @@ def main():
         assert 'Desktop UI/map load smoke: PASS' in result.stdout, result.stdout
         assert 'Vulkan window/swapchain smoke: PASS' in result.stdout, result.stdout
         print(result.stdout.strip())
+        (root / 'B/Patches.json').write_text('broken JSON', encoding='utf-8')
+        result = subprocess.run([str(exe), '--map', str(root / 'A'), '--ui-smoke-failure', '--seconds', '10', '--no-audio'],
+                                cwd=root, capture_output=True, text=True, timeout=90)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'Desktop failed-map rollback smoke: PASS' in result.stdout, result.stdout
+        print(result.stdout.strip())
         capture = root / 'menu.ppm'
         result = subprocess.run([str(exe), '--map', str(root / 'A'), '--on-foot', '--ui-menu',
                                  '--capture', str(capture), '--seconds', '.1', '--no-audio'],

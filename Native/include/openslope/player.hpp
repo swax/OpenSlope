@@ -141,6 +141,8 @@ public:
 
     double frame_alpha() const { return clock_.alpha(); }
 
+    double weather_time() const { return weather_time_ + clock_.alpha() * contract_.tick_seconds(); }
+
     void world_view(Vec3 position) {
         if (!finite(position))
             throw std::invalid_argument("Invalid world view");
@@ -246,6 +248,7 @@ public:
 
 private:
     std::uint64_t run_serial_ = 0;
+    double weather_time_ = 0;
     Terrain terrain_;
     CollisionWorld world_;
     Rails rails_;

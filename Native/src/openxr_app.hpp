@@ -17,6 +17,7 @@ struct XrPlatform {
     std::function<XrExitDestination()> exit_request{};
     std::function<void(XrExitDestination)> on_exit{};
     std::filesystem::path audio_preferences;
+    std::filesystem::path graphics_preferences;
     std::string course_id;
 };
 

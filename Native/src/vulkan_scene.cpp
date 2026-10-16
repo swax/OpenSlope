@@ -198,8 +198,66 @@ VulkanScene::~VulkanScene() {
     }
 }
 
+SceneAssets SceneAssets::prepare(Mesh mesh, std::span<const std::size_t> flag_models,
+                                 std::span<const std::size_t> faceted_models, UploadProgress progress) {
+    SceneAssets data;
+    data.mesh = std::move(mesh);
+    if (progress)
+        progress(0, "READING SCENE MODELS");
+    data.props = Props::load(data.mesh.map_root, false, flag_models, faceted_models);
+    data.world = World::load(data.mesh.map_root);
+    auto& batches = data.batches;
+    batches = data.mesh.batches;
+    for (const auto& part : data.props.parts) {
+        batches.push_back({0, 0, part.texture, -1});
+        for (const auto& frame : part.frames)
+            batches.push_back({0, 0, frame, -1});
+    }
+    const auto& crowd = data.crowd = crowd_frames(data.mesh.map_root);
+    for (const auto& frame : crowd)
+        batches.push_back({0, 0, frame, -1});
+    const auto& sprite = data.sprite = riding_sprite(data.mesh.map_root);
+    if (!sprite.empty())
+        batches.push_back({0, 0, sprite, -1});
+    const auto& wake = data.wake = riding_sprite(data.mesh.map_root, "Wake");
+    if (!wake.empty())
+        batches.push_back({0, 0, wake, -1});
+    const auto& sheet = data.sheet = riding_sprite(data.mesh.map_root, "Sheet");
+    if (!sheet.empty())
+        batches.push_back({0, 0, sheet, -1});
+    const auto& particles = data.particles = particle_textures(data.mesh.map_root);
+    for (const auto& name : particles)
+        if (!name.empty())
+            batches.push_back({0, 0, name, -1});
+    if (progress)
+        progress(.5, "DECODING TEXTURES");
+    auto& appearance = data.appearance;
+    appearance = Appearance::load(data.mesh.map_root, batches);
+    if (data.world.glare.enabled) {
+        const RgbaImage* atlas = nullptr;
+        if (particles.size() > 28) {
+            const auto found = appearance.images.find("Textures/" + particles[28]);
+            if (found != appearance.images.end())
+                atlas = &found->second;
+        }
+        appearance.images["@celestial-corona"] = celestial_corona(atlas);
+    }
+    data.world.fit_colours(appearance);
+    if (progress)
+        progress(1, "READY TO UPLOAD");
+    if (!appearance.missing.empty())
+        std::cerr << "OpenSlope: " << appearance.missing.size()
+                  << " referenced map images are missing; using available textures or terrain colours\n";
+    return data;
+}
+
 void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_models,
                          std::span<const std::size_t> faceted_models) {
+    upload(SceneAssets::prepare(source, flag_models, faceted_models));
+}
+
+void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
+    const auto& source = assets.mesh;
     if (vertices_.buffer)
         throw std::runtime_error("Scene has already been uploaded");
     terrain_total_indices_ = source.indices.size();
@@ -248,45 +306,15 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         terrain_ranges_ = source.terrain_ranges;
         terrain_indices_ = source.indices;
     }
-    crowd_frames_.clear();
-    props_ = Props::load(source.map_root, false, flag_models, faceted_models);
-    world_ = World::load(source.map_root);
-    auto batches = source.batches;
-    for (const auto& part : props_.parts) {
-        batches.push_back({0, 0, part.texture, -1});
-        for (const auto& frame : part.frames)
-            batches.push_back({0, 0, frame, -1});
-    }
-    const auto crowd = crowd_frames(source.map_root);
-    for (const auto& frame : crowd)
-        batches.push_back({0, 0, frame, -1});
-    const auto sprite = riding_sprite(source.map_root);
-    if (!sprite.empty())
-        batches.push_back({0, 0, sprite, -1});
-    const auto wake = riding_sprite(source.map_root, "Wake");
-    if (!wake.empty())
-        batches.push_back({0, 0, wake, -1});
-    const auto sheet = riding_sprite(source.map_root, "Sheet");
-    if (!sheet.empty())
-        batches.push_back({0, 0, sheet, -1});
-    const auto particles = particle_textures(source.map_root);
-    for (const auto& name : particles)
-        if (!name.empty())
-            batches.push_back({0, 0, name, -1});
-    auto appearance = Appearance::load(source.map_root, batches);
-    if (world_.glare.enabled) {
-        const RgbaImage* atlas = nullptr;
-        if (particles.size() > 28) {
-            const auto found = appearance.images.find("Textures/" + particles[28]);
-            if (found != appearance.images.end())
-                atlas = &found->second;
-        }
-        appearance.images["@celestial-corona"] = celestial_corona(atlas);
-    }
-    world_.fit_colours(appearance);
-    if (!appearance.missing.empty())
-        std::cerr << "OpenSlope: " << appearance.missing.size()
-                  << " referenced map images are missing; using available textures or terrain colours\n";
+    auto& appearance = assets.appearance;
+    auto& batches = assets.batches;
+    const auto& crowd = assets.crowd;
+    const auto& sprite = assets.sprite;
+    const auto& wake = assets.wake;
+    const auto& sheet = assets.sheet;
+    const auto& particles = assets.particles;
+    props_ = std::move(assets.props);
+    world_ = std::move(assets.world);
     VkFormatProperties format;
     vkGetPhysicalDeviceFormatProperties(context_.physical, VK_FORMAT_R8G8B8A8_UNORM, &format);
     if (!(format.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
@@ -303,6 +331,9 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     images_.push_back(image({1, 1, {194, 187, 170, 255}}, upload.pool));
     std::map<std::string, std::size_t> names;
     std::map<std::string, bool> fractional;
+    std::size_t uploaded = 0;
+    if (progress)
+        progress(0, "UPLOADING TEXTURES");
     for (auto& [name, pixels] : appearance.images) {
         bool smooth = false;
         for (std::size_t p = 3; p < pixels.pixels.size(); p += 4)
@@ -315,6 +346,8 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         images_.push_back(image(pixels, upload.pool, !name.starts_with("Lightmaps/")));
         pixels.pixels.clear();
         pixels.pixels.shrink_to_fit();
+        if (progress)
+            progress(.9 * double(++uploaded) / appearance.images.size(), "UPLOADING TEXTURES");
     }
     pose_capacity_ = 1;
     for (const auto& instance : props_.instances)
@@ -407,7 +440,9 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         draws_.push_back({batch.first, batch.count, descriptor(base ? diffuse->second : 0, lit ? lightmap->second : 1),
                           base ? (lit ? 2 : 1) : 0});
     }
-    auto mesh = source;
+    if (progress)
+        progress(.92, "UPLOADING GEOMETRY");
+    auto mesh = std::move(assets.mesh);
     const auto prop_first = std::uint32_t(mesh.indices.size()), prop_vertex = std::uint32_t(mesh.vertices.size());
     mesh.vertices.insert(mesh.vertices.end(), props_.geometry.vertices.begin(), props_.geometry.vertices.end());
     for (const auto i : props_.geometry.indices)
@@ -454,5 +489,7 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     vertices_ = buffer(mesh.vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, mesh.vertices.data());
     indices_ =
         buffer(mesh.indices.size() * sizeof(std::uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, mesh.indices.data());
+    if (progress)
+        progress(1, "FINISHING COURSE");
 }
 } // namespace openslope

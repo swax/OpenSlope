@@ -43,6 +43,28 @@ struct Canvas {
 } // namespace
 
 std::vector<UiButton> RideUi::buttons() const {
+    if (loading)
+        return {};
+    if (graphics_options) {
+        const auto y = immersive ? .36 : .55;
+        std::vector<UiButton> list;
+        if (!immersive) {
+            list.push_back(
+                {.06, .31, .88, .085, "RENDER SCALE: " + std::to_string(render_scale) + "%", UiAction::RenderScale});
+            list.push_back(
+                {.06, .43, .88, .085,
+                 antialiasing == 1 ? "ANTI-ALIASING: OFF" : "ANTI-ALIASING: " + std::to_string(antialiasing) + "X MSAA",
+                 UiAction::Antialiasing});
+        }
+        list.push_back({.06, y, .18, .085, "-", UiAction::SnowDown});
+        list.push_back(
+            {.27, y, .46, .085, "SNOW: " + std::to_string(int(std::round(snow_amount))) + " / 10", UiAction::None});
+        list.push_back({.76, y, .18, .085, "+", UiAction::SnowUp});
+        list.push_back({.06, y + .12, .42, .085, stats ? "STATS: ON" : "STATS: OFF", UiAction::Stats});
+        list.push_back({.52, y + .12, .42, .085, "DEFAULTS", UiAction::GraphicsReset});
+        list.push_back({.06, .85, .88, .085, "BACK TO MENU", UiAction::Graphics});
+        return list;
+    }
     if (audio_options) {
         if (song_picker) {
             std::vector<UiButton> list{
@@ -91,7 +113,7 @@ std::vector<UiButton> RideUi::buttons() const {
         {.06, .42, .42, .095, third_person ? "VIEW: 3RD PERSON" : "VIEW: 1ST PERSON", UiAction::View},
         {.52, .42, .42, .095, "CONTROLS", UiAction::Controls},
         {.06, .54, .42, .095, "AUDIO", UiAction::Sound},
-        {.52, .54, .42, .095, stats ? "STATS: ON" : "STATS: OFF", UiAction::Stats},
+        {.52, .54, .42, .095, "GRAPHICS", UiAction::Graphics},
         {.06, .66, .42, .095, immersive ? "RECALL BOARD" : "MODE / NEW RUN",
          immersive ? UiAction::Recall : UiAction::Mode},
         {.52, .66, .42, .095, immersive ? "RECENTER VIEW" : "MAP LIBRARY",
@@ -191,21 +213,35 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.rect(0, 0, 1, 1, panel);
         c.rect(0, 0, 1, .012, accent);
         c.text("OPEN SLOPE " + std::string(application_version()), .06, .045, .005, accent);
-        c.text(audio_options ? (song_picker ? "CHOOSE SONG" : "AUDIO")
-               : library     ? "MAP LIBRARY"
-               : controls    ? "CONTROLS"
-                             : "ON THE MOUNTAIN",
+        c.text(loading            ? "LOADING COURSE"
+               : graphics_options ? "GRAPHICS"
+               : audio_options    ? (song_picker ? "CHOOSE SONG" : "AUDIO")
+               : library          ? "MAP LIBRARY"
+               : controls         ? "CONTROLS"
+                                  : "ON THE MOUNTAIN",
                .06, .13, .008);
-        c.text(audio_options ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
-                                               : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
-                             : speed + " KM/H  /  " +
-                                   (p.carrying_board() ? "CARRYING"
-                                    : p.on_foot()      ? "ON FOOT"
-                                                       : "RIDING"),
+        c.text(loading            ? load_name
+               : graphics_options ? (immersive ? "SNOWFALL / DISPLAY STATS" : "SCENE QUALITY / WEATHER")
+               : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
+                                                    : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
+                                  : speed + " KM/H  /  " +
+                                        (p.carrying_board() ? "CARRYING"
+                                         : p.on_foot()      ? "ON FOOT"
+                                                            : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
-        if (!audio_options)
+        if (!audio_options && !graphics_options && !loading)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
-        if (controls && !library && !audio_options) {
+        if (loading) {
+            c.text(load_stage, .06, .38, .004, ink);
+            c.rect(.06, .52, .88, .035, {.10f, .16f, .20f});
+            c.rect(.06, .52, .88 * std::clamp(load_progress, 0., 1.), .035, accent);
+            c.text("PREPARING YOUR COURSE", .06, .62, .0038, muted);
+        }
+        if (graphics_options) {
+            c.text(!graphics_readout.empty() && !immersive ? graphics_readout : "0 CLEAR / 3 AMBIENT / 10 BLIZZARD",
+                   .06, .79, .0027, muted);
+        }
+        if (controls && !library && !audio_options && !graphics_options && !loading) {
             const std::array<std::string, 10> rows =
                 wrist
                     ? std::array<std::string, 10>{"A   JUMP / DOUBLE JUMP FLY",      "B   AIM BOOST / BOARD THRUST",
@@ -231,9 +267,10 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             c.rect(b.x, b.y, .006, b.h, selected ? accent : Colour{.12f, .23f, .29f}, .0003);
             c.text(b.text, b.x + .018, b.y + .035, .0036, selected ? accent : ink);
         }
-        c.text(!notice.empty() ? notice
-               : wrist         ? "POINT RIGHT HAND + TRIGGER"
-                               : "ESC TO RETURN TO THE SLOPE",
+        c.text(loading           ? "LOADING..."
+               : !notice.empty() ? notice
+               : wrist           ? "POINT RIGHT HAND + TRIGGER"
+                                 : "ESC TO RETURN TO THE SLOPE",
                .06, immersive ? .973 : .94, immersive ? .0025 : .0033, muted);
     } else {
         c.rect(0, 0, 1, .048, panel);

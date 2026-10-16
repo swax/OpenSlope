@@ -186,6 +186,7 @@ void Player::configure_run(RunMode mode) {
 }
 
 void Player::restart_run() {
+    weather_time_ = 0;
     run_.restart();
     ++run_serial_;
     rails_.reset();
@@ -810,6 +811,7 @@ void Player::ride_rail(const RailHit& hit, const RideInput& input, const Rider& 
 }
 
 void Player::tick(const RideInput& input) {
+    weather_time_ += contract_.tick_seconds();
     interpolate_board_ = false;
     previous_board_forward_ = render_forward();
     previous_board_up_ = render_up();

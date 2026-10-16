@@ -188,7 +188,7 @@ bool AudioPreferences::handle(const UiResult& result, RideUi& ui, AudioScene* au
     case UiAction::Sound:
         ui.audio_options = !ui.audio_options;
         ui.song_picker = false;
-        ui.controls = ui.library = false;
+        ui.controls = ui.library = ui.graphics_options = false;
         return false;
     case UiAction::Songs:
         if (!ui.authored_music) {

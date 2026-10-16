@@ -1,8 +1,10 @@
 #pragma once
+#include "openslope/appearance.hpp"
 #include "openslope/boost_trail.hpp"
 #include "openslope/particles.hpp"
 #include "openslope/props.hpp"
 #include "openslope/riding_effects.hpp"
+#include "openslope/snowfall.hpp"
 #include "openslope/spline_motion.hpp"
 #include "openslope/terrain.hpp"
 #include "openslope/visibility.hpp"
@@ -10,12 +12,27 @@
 #include "openslope/world_properties.hpp"
 #include "render_math.hpp"
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <span>
 #include <volk.h>
 
 namespace openslope {
 void vk_check(VkResult result, const char* operation);
+using UploadProgress = std::function<void(double, std::string_view)>;
+
+// CPU-only preparation can run on a worker while the previous scene stays live.
+struct SceneAssets {
+    Mesh mesh;
+    Props props;
+    World world;
+    Appearance appearance;
+    std::vector<MeshBatch> batches;
+    std::vector<std::string> crowd, particles;
+    std::string sprite, wake, sheet;
+    static SceneAssets prepare(Mesh mesh, std::span<const std::size_t> flag_models = {},
+                               std::span<const std::size_t> faceted_models = {}, UploadProgress progress = {});
+};
 
 struct VulkanContext {
     VkInstance instance{};
@@ -40,6 +57,7 @@ public:
     VulkanScene(const VulkanScene&) = delete;
     void upload(const Mesh& mesh, std::span<const std::size_t> flag_models = {},
                 std::span<const std::size_t> faceted_models = {});
+    void upload(SceneAssets assets, UploadProgress progress = {});
 
 private:
     friend class VulkanRenderer;
@@ -108,7 +126,8 @@ public:
         unsigned flag_sections{}, flag_draws{}, route_copies{}, route_lines{}, line_draws{}, avatar_triangles{},
             visible_props{}, prop_draws{}, terrain_patches{}, visible_terrain{}, terrain_draws{}, sprites{},
             wake_segments{}, wake_draws{}, sheet_segments{}, sheet_draws{}, boost_segments{}, boost_draws{},
-            world_sprites{}, particle_draws{}, celestial_triangles{}, celestial_draws{}, lamp_glints{};
+            world_sprites{}, particle_draws{}, celestial_triangles{}, celestial_draws{}, lamp_glints{}, snowflakes{},
+            snow_draws{};
         std::uint64_t terrain_indices{}, terrain_total_indices{};
         std::size_t visibility_tests{};
         bool terrain_compacted = false;
@@ -121,11 +140,16 @@ public:
     VulkanRenderer(const VulkanRenderer&) = delete;
     void upload(const Mesh& mesh, std::span<const std::size_t> flag_models = {},
                 std::span<const std::size_t> faceted_models = {});
+    void upload(SceneAssets assets, UploadProgress progress = {});
     void use_scene(std::shared_ptr<VulkanScene> scene);
     void targets(std::span<const VkImage> images, VkFormat format, std::uint32_t width, std::uint32_t height,
-                 unsigned requested_samples = 1);
+                 unsigned requested_samples = 1, unsigned render_scale = 100);
 
     unsigned samples() const { return unsigned(samples_); }
+
+    std::uint32_t scene_width() const { return render_width_; }
+
+    std::uint32_t scene_height() const { return render_height_; }
 
     void cull_terrain(bool enabled) { terrain_culling_ = enabled; }
 
@@ -145,7 +169,8 @@ public:
                 std::span<const PropMotion> motions = {}, double alpha = 1,
                 std::span<const PropRouteMotion> routes = {}, std::span<const PropTextureFrame> texture_frames = {},
                 std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {},
-                CelestialView glare_view = {}, std::span<const Vertex> hud = {}, bool screen_hud = false);
+                CelestialView glare_view = {}, std::span<const Vertex> hud = {}, bool screen_hud = false,
+                SnowfallView snow = {});
 
     const Stats& stats() const { return stats_; }
 
@@ -161,8 +186,8 @@ private:
     };
 
     std::shared_ptr<VulkanScene> scene_;
-    std::uint32_t width_{}, height_{};
-    VkFormat format_{};
+    std::uint32_t width_{}, height_{}, render_width_{}, render_height_{};
+    VkFormat format_{}, scene_format_{};
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     VkCommandPool pool_{};
     VkCommandBuffer command_{};
@@ -171,6 +196,13 @@ private:
     VkPipelineLayout layout_{};
     VkPipeline pipeline_{}, blend_pipeline_{}, sprite_pipeline_{}, wake_pipeline_{}, sky_pipeline_{}, line_pipeline_{};
     VkPipeline celestial_pipeline_{}, hud_pipeline_{}, wrist_pipeline_{};
+    VkPipeline snow_pipeline_{};
+    Buffer snow_vertices_;
+    VkRenderPass presentation_pass_{};
+    VkPipeline presentation_pipeline_{}, presentation_hud_{};
+    VkDescriptorPool presentation_pool_{};
+    VkSampler presentation_sampler_{};
+    Buffer presentation_vertices_;
     Stats stats_;
     VkQueryPool timing_{};
     double timestamp_period_{};
@@ -227,10 +259,11 @@ private:
     std::vector<Vertex> sheet_mesh_;
 
     struct Target {
-        VkImage colour{}, depth{}, multisample{};
-        VkDeviceMemory depth_memory{}, multisample_memory{};
-        VkImageView colour_view{}, depth_view{}, multisample_view{};
-        VkFramebuffer framebuffer{};
+        VkImage colour{}, depth{}, multisample{}, resolved{};
+        VkDeviceMemory depth_memory{}, multisample_memory{}, resolved_memory{};
+        VkImageView colour_view{}, depth_view{}, multisample_view{}, resolved_view{};
+        VkFramebuffer framebuffer{}, presentation_framebuffer{};
+        VkDescriptorSet presentation_set{};
     };
 
     std::vector<Target> targets_;

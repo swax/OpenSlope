@@ -3,6 +3,7 @@
 #include "body_tracking_compat.hpp"
 #include "openslope/audio_preferences.hpp"
 #include "openslope/avatar.hpp"
+#include "openslope/graphics_preferences.hpp"
 #include "openslope/ride_ui.hpp"
 #include "vulkan_renderer.hpp"
 #ifdef __ANDROID__
@@ -69,7 +70,9 @@ struct State {
     VrInputGate input_gate;
     RideUi ui;
     AudioPreferences audio_preferences;
+    GraphicsPreferences graphics_preferences;
     std::filesystem::path audio_preferences_path;
+    std::filesystem::path graphics_preferences_path;
     std::string course_id;
     AudioScene* audio_scene{};
     EquipmentInput equipment;
@@ -791,6 +794,7 @@ struct State {
         ui.third_person = presentation.third_person;
         ui.head_steer = head_steering;
         audio_preferences.present(ui, audio_scene, course_id);
+        graphics_preferences.present(ui);
         const auto offset = presentation.camera_offset(player.camera_forward());
         const auto left = grip_hand(equipment.hands[0]);
         ui.frame(RideUi::wrist(
@@ -802,6 +806,9 @@ struct State {
         if (audio_preferences.handle(selected, ui, audio_scene, course_id) && !audio_preferences_path.empty() &&
             !audio_preferences.save(audio_preferences_path))
             ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
+        if (graphics_preferences.handle(selected, ui) && !graphics_preferences_path.empty() &&
+            !graphics_preferences.save(graphics_preferences_path))
+            ui.notice = "GRAPHICS SETTINGS COULD NOT BE SAVED";
         if (selected.consumed)
             equipment.trigger[1] = false;
         switch (selected.action) {
@@ -878,6 +885,10 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
     state.audio_preferences_path =
         platform.audio_preferences.empty() ? AudioPreferences::default_path() : platform.audio_preferences;
     state.audio_preferences = AudioPreferences::load(state.audio_preferences_path);
+    state.graphics_preferences_path = platform.graphics_preferences.empty()
+                                          ? state.audio_preferences_path.parent_path() / "graphics-preferences.json"
+                                          : platform.graphics_preferences;
+    state.graphics_preferences = GraphicsPreferences::load(state.graphics_preferences_path);
     state.audio_preferences.apply(audio, state.course_id, true);
     state.audio_scene = &audio;
     tracking_log("Audio settings: course " + state.course_id + "; music " +
@@ -1076,7 +1087,8 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                         player.logic().flags(), player.logic().motions(), player.frame_alpha(),
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(),
-                        player.logic().particles(player.frame_alpha(), eye_position), glare_view, hud);
+                        player.logic().particles(player.frame_alpha(), eye_position), glare_view, hud, false,
+                        {tracked.head + camera_offset, player.weather_time(), state.graphics_preferences.snow});
                     this_render += ms(render_start, Clock::now());
                     const auto& stats = eye.renderer->stats();
                     this_resource_wait += stats.wait_ms;

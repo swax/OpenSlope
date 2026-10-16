@@ -70,8 +70,12 @@ Ctrl crouches or flies down. G retains the nearby boarding shortcut. See [on-foo
 See [walking and boarding](docs/boarding.md). Input pauses when the preview loses
 focus; an uncommitted jump charge is cancelled.
 
-Desktop rendering defaults to 4x MSAA, falling back to a supported colour/depth
-sample count. Use `--msaa 1`, `2`, `4` or `8` for window or capture mode.
+Desktop rendering defaults to 150% scene resolution and 4x MSAA, falling back
+to supported targets/sample counts. Graphics in the pause menu saves render
+scale (100/125/150/200%), MSAA (Off/2x/4x/8x) and snow (0–10, default 3).
+The UI stays at native window resolution. `--render-scale`, `--msaa` and
+`--snow` override those settings for window/capture mode. Map-library selection
+shows a responsive loading bar. See [snowfall and graphics](docs/snowfall-graphics-0.61.md).
 OpenXR also defaults to 4x MSAA. The Quest launcher offers 100%, 125% and 150% of
 the runtime's recommended eye dimensions, plus Off/2x/4x edge smoothing. Fresh
 settings default to 150%/4x and a 120 fps target. Target frame rate is configurable
