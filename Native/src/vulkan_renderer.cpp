@@ -860,11 +860,18 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                             std::span<const PropMotion> motions, double alpha, std::span<const PropRouteMotion> routes,
                             std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost,
                             std::span<const ParticleSprite> particles, CelestialView glare_view,
-                            std::span<const Vertex> hud, bool screen_hud, SnowfallView snow, const LampView* lamps) {
+                            std::span<const Vertex> hud, bool screen_hud, SnowfallView snow, const LampView* lamps,
+                            std::span<const Matrix> opponents) {
+    if (opponents.size() > 16)
+        throw std::invalid_argument("Too many opponent boards");
+    for (const auto& opponent : opponents)
+        for (const auto value : opponent.values)
+            if (!std::isfinite(value))
+                throw std::invalid_argument("Invalid opponent board transform");
     if (!finite(snow.eye) || !std::isfinite(snow.time) || snow.time < 0 || snow.time > 1e9)
         throw std::invalid_argument("Invalid snowfall view");
     const auto weather = snow_settings(snow.amount);
-    if (boost.size() > 84 || boost.size() % 12)
+    if (boost.size() > 17 * 84 || boost.size() % 12)
         throw std::invalid_argument("Boost trail submission exceeds its history bound");
     for (const auto& point : boost) {
         if (!finite(point.position) ||
@@ -1184,7 +1191,8 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkUnmapMemory(context_.device, wake_vertices_.memory);
         stats_.wake_segments = unsigned(wake.size() / 6);
     }
-    if (avatar.size() > 120000 || avatar.size() % 3)
+    constexpr std::size_t maximum_avatar_vertices = 120000 + 16 * 30000;
+    if (avatar.size() > maximum_avatar_vertices || avatar.size() % 3)
         throw std::runtime_error("Avatar submission exceeds bounds");
     for (const auto& v : avatar)
         if (!finite({v.x, v.y, v.z}) || !std::isfinite(v.r) || !std::isfinite(v.g) || !std::isfinite(v.b))
@@ -1192,7 +1200,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     if (!avatar.empty()) {
         if (avatar.size() > avatar_capacity_) {
             destroy_buffer(avatar_vertices_);
-            avatar_capacity_ = std::min(std::size_t(120000), std::max(avatar.size(), avatar_capacity_ * 2));
+            avatar_capacity_ = std::min(maximum_avatar_vertices, std::max(avatar.size(), avatar_capacity_ * 2));
             avatar_vertices_ =
                 create_buffer(avatar_capacity_ * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, nullptr);
         }
@@ -1232,7 +1240,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     if (!boost_mesh_.empty()) {
         if (boost_mesh_.size() > boost_capacity_) {
             destroy_buffer(boost_vertices_);
-            boost_capacity_ = 84;
+            boost_capacity_ = boost_mesh_.size();
             boost_vertices_ =
                 create_buffer(boost_capacity_ * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, nullptr);
         }
@@ -1492,6 +1500,16 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->board_set_, 0, nullptr);
     vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
     vkCmdDrawIndexed(command_, scene_->board_count_, 1, scene_->board_first_, 0, 0);
+    stats_.opponent_boards = unsigned(opponents.size());
+    for (const auto& opponent : opponents) {
+        const auto relative_eye = eye - Vec3{opponent.values[12], opponent.values[13], opponent.values[14]};
+        for (unsigned c = 0; c < 3; ++c)
+            push.eye_end[c] = float(
+                dot(relative_eye, {opponent.values[c * 4], opponent.values[c * 4 + 1], opponent.values[c * 4 + 2]}));
+        push.mvp = camera * opponent;
+        vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
+        vkCmdDrawIndexed(command_, scene_->board_count_, 1, scene_->board_first_, 0, 0);
+    }
     push.eye_end = world_eye;
     push.mvp = camera;
     push.options[0] = 0;

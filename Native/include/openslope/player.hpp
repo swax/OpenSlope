@@ -17,10 +17,13 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <stdexcept>
 
 namespace openslope {
+class AiField;
+
 struct RideInput {
     double steer{};
     bool boost{}, reset{}, jump{};
@@ -103,6 +106,11 @@ struct ContactEvent {
 class Player {
 public:
     explicit Player(Terrain terrain, PlayTuning tuning = {});
+    ~Player();
+    Player(const Player&) = delete;
+    Player& operator=(const Player&) = delete;
+    Player(Player&&) = delete;
+    Player& operator=(Player&&) = delete;
     void reset(bool manual = false);
 
     void reset_room_contacts() { foot_room_serial_ = ~std::uint64_t(0); }
@@ -119,6 +127,12 @@ public:
 
     void tick(const RideInput& input);
     void advance(double seconds, const RideInput& input);
+    void ai_riders(unsigned count);
+
+    AiField* ai_field() { return field_.get(); }
+
+    const AiField* ai_field() const { return field_.get(); }
+
     Vec3 render_position() const;
     Vec3 render_board_position() const;
     Vec3 render_forward() const;
@@ -248,16 +262,41 @@ public:
     const Rails& rails() const { return rails_; }
 
 private:
+    friend class AiField;
+    struct SharedScene;
+    std::shared_ptr<SharedScene> scene_;
+    std::unique_ptr<AiField> field_;
+    AiField* input_field_ = nullptr;
+    bool human_ = true;
+    std::uint64_t actor_ = 0;
+    Player(std::shared_ptr<SharedScene> scene, PlayTuning tuning, bool human);
     std::uint64_t run_serial_ = 0;
     double weather_time_ = 0;
-    Terrain terrain_;
-    CollisionWorld world_;
-    Rails rails_;
+    Terrain& terrain_;
+    CollisionWorld& world_;
+    Rails& rails_;
     CourseRun run_;
-    WorldLogic logic_;
+    WorldLogic& logic_;
     std::optional<Vec3> world_view_;
     std::vector<WorldAction> world_actions_;
     void apply_world_actions();
+    void apply_world_action(const WorldAction& action);
+
+    struct ForceStep {
+        Rider before;
+        bool placed = false;
+        BoostRider driven;
+        std::vector<ProbeSphere> previous, probes;
+    };
+
+    bool defer_tick_ = false, defer_observer_ = false, field_tick_ = false;
+    double external_run_tick_ = -1;
+    std::optional<Rider> deferred_before_;
+    ForceStep prepare_tick(const Rider& before);
+    void finish_tick(ForceStep& step);
+    void apply_driven(const BoostRider& driven);
+    void finish_feedback(const Rider& before, bool placed, double dt);
+    std::optional<unsigned> enter_lap();
     std::optional<std::pair<Vec3, Vec3>> teleport_pending_;
     void teleport(Vec3 position, Vec3 forward);
     std::set<std::size_t> logic_contacts_;

@@ -30,6 +30,7 @@ struct BoostRider {
     std::span<const ProbeSphere> previous_probes{}, probes{};
     double contact_margin = 0;
     bool scripted_transport = false, transporting = false;
+    double step_seconds = -1; // Negative one uses the shared world duration.
 };
 
 using LapEntry = std::function<std::optional<unsigned>(std::uint64_t)>;
@@ -48,6 +49,8 @@ public:
     bool expired() const { return expired_; }
 
     bool occupied() const { return occupied_; }
+
+    std::vector<std::uint64_t> occupants() const;
 
 private:
     struct Latch {

@@ -1,4 +1,5 @@
 #include "openslope/ride_ui.hpp"
+#include "openslope/ai_field.hpp"
 #include "openslope/ui_font.hpp"
 #include "openslope/version.hpp"
 #include <cctype>
@@ -105,6 +106,10 @@ std::vector<UiButton> RideUi::buttons() const {
         list.push_back({.68, .85, .26, .085, "NEXT", UiAction::Next});
         return list;
     }
+    if (rider_options)
+        return {{.06, .36, .42, .12, "FEWER", UiAction::RiderDown},
+                {.52, .36, .42, .12, "MORE", UiAction::RiderUp},
+                {.06, .85, .88, .085, "BACK TO MENU", UiAction::Riders}};
     if (controls)
         return {{.06, .85, .88, .085, "BACK TO MENU", UiAction::Controls}};
     std::vector<UiButton> list{
@@ -122,9 +127,28 @@ std::vector<UiButton> RideUi::buttons() const {
          immersive ? UiAction::HeadSteer : UiAction::Recall},
         {.52, .78, .42, .095, immersive && map_picker ? "MAP LIBRARY" : "EXIT",
          immersive && map_picker ? UiAction::Maps : UiAction::Exit}};
+    list.push_back({.06, .895, immersive && map_picker ? .42 : .88, .065, "OPPONENTS", UiAction::Riders});
     if (immersive && map_picker)
-        list.push_back({.06, .895, .88, .065, "EXIT APP", UiAction::Exit});
+        list.push_back({.52, .895, .42, .065, "EXIT APP", UiAction::Exit});
     return list;
+}
+
+bool RideUi::riders(UiAction action, Player& player) {
+    if (action == UiAction::Riders) {
+        rider_options = !rider_options;
+        notice.clear();
+        return true;
+    }
+    if (action != UiAction::RiderDown && action != UiAction::RiderUp)
+        return false;
+    const auto count = player.ai_field() ? player.ai_field()->size() : 0;
+    try {
+        player.ai_riders(action == UiAction::RiderUp ? std::min(16u, count + 1) : count ? count - 1 : 0);
+        notice.clear();
+    } catch (const std::exception&) {
+        notice = "OPPONENTS UNAVAILABLE ON THIS MAP";
+    }
+    return true;
 }
 
 UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
@@ -207,6 +231,9 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.text("Y MENU  /  A JUMP  /  B BOOST", .04, .11, .0036, muted);
         if (stats)
             c.text("FPS " + std::to_string(int(fps)), .04, .20, .004, muted);
+        if (const auto* field = p.ai_field())
+            c.text("PLACE " + std::to_string(field->place() + 1) + " / " + std::to_string(field->size() + 1), .04, .27,
+                   .004, accent);
         return;
     }
     if (visible) {
@@ -214,6 +241,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.rect(0, 0, 1, .012, accent);
         c.text("OPEN SLOPE " + std::string(application_version()), .06, .045, .005, accent);
         c.text(loading            ? "LOADING COURSE"
+               : rider_options    ? "OPPONENTS"
                : graphics_options ? "GRAPHICS"
                : audio_options    ? (song_picker ? "CHOOSE SONG" : "AUDIO")
                : library          ? "MAP LIBRARY"
@@ -229,7 +257,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                                          : p.on_foot()      ? "ON FOOT"
                                                             : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
-        if (!audio_options && !graphics_options && !loading)
+        if (!audio_options && !graphics_options && !rider_options && !loading)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
         if (loading) {
             c.text(load_stage, .06, .38, .004, ink);
@@ -241,7 +269,12 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             c.text(!graphics_readout.empty() && !immersive ? graphics_readout : "0 CLEAR / 3 AMBIENT / 10 BLIZZARD",
                    .06, .79, .0027, muted);
         }
-        if (controls && !library && !audio_options && !graphics_options && !loading) {
+        if (rider_options && !loading) {
+            const auto count = p.ai_field() ? p.ai_field()->size() : 0;
+            c.text("AI RIDERS: " + std::to_string(count) + " / 16", .06, .56, .006, accent);
+            c.text("ZERO FOR A SOLO MOUNTAIN", .06, .68, .0038, muted);
+        }
+        if (controls && !library && !audio_options && !graphics_options && !rider_options && !loading) {
             const std::array<std::string, 10> rows =
                 wrist
                     ? std::array<std::string, 10>{"A   JUMP / DOUBLE JUMP FLY",      "B   AIM BOOST / BOARD THRUST",
@@ -271,7 +304,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : !notice.empty() ? notice
                : wrist           ? "POINT RIGHT HAND + TRIGGER"
                                  : "ESC TO RETURN TO THE SLOPE",
-               .06, immersive ? .973 : .94, immersive ? .0025 : .0033, muted);
+               .06, .973, .0025, muted);
     } else {
         c.rect(0, 0, 1, .048, panel);
         c.rect(0, 0, .004, .048, accent);
@@ -283,6 +316,9 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             c.text("SCORE " + std::to_string(p.scoring().status().banked), .57, .013, .0021);
         else if (run.mode == RunMode::Race)
             c.text("LAP " + std::to_string(run.lap) + "/" + std::to_string(run.passes), .57, .013, .0021);
+        if (const auto* field = p.ai_field())
+            c.text(std::to_string(field->place() + 1) + "/" + std::to_string(field->size() + 1), .72, .013, .0021,
+                   accent);
         c.text("BOOST", .79, .015, .0017, muted);
         c.rect(.86, .022, .12, .007, {.12f, .20f, .25f});
         const auto energy =

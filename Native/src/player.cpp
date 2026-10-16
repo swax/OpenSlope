@@ -1,11 +1,34 @@
 #include "openslope/player.hpp"
+#include "openslope/ai_field.hpp"
 #include <set>
 #include <stdexcept>
 
 namespace openslope {
+struct Player::SharedScene {
+    Terrain terrain;
+    CollisionWorld collision;
+    Rails rails;
+    WorldLogic logic;
+    std::map<std::uint64_t, Player*> actors;
+    std::uint64_t next_actor = 1;
+
+    explicit SharedScene(Terrain surface)
+        : terrain(std::move(surface)), collision(CollisionWorld::load(terrain.map_root())),
+          rails(Rails::load(terrain.map_root())), logic(WorldLogic::load(terrain.map_root())) {}
+};
+
 std::vector<ParticleSprite> Player::particles(double alpha, Vec3 eye) const {
     auto world = logic_.particles(alpha, eye);
     auto riding = effects_.surface_spray().draw(alpha);
+    if (field_)
+        for (unsigned i = 0; i < field_->size(); ++i) {
+            const auto& actor = field_->rider(i);
+            if (length(actor.render_position() - eye) > 100)
+                continue;
+            const auto extra = actor.effects().surface_spray().draw(actor.frame_alpha());
+            const auto count = std::min(extra.size(), std::size_t(8192) - riding.size());
+            riding.insert(riding.end(), extra.begin(), extra.begin() + count);
+        }
     // Keep a single bounded renderer submission, reserving room for the nearby
     // rider's feedback even when a large authored firework fills the world budget.
     if (world.size() + riding.size() > WorldParticles::maximum_sprites)
@@ -42,11 +65,16 @@ double carried_cap(const RideContract& contract, double current, double amount) 
 } // namespace
 
 Player::Player(Terrain terrain, PlayTuning tuning)
-    : terrain_(std::move(terrain)), world_(CollisionWorld::load(terrain_.map_root())),
-      rails_(Rails::load(terrain_.map_root())), run_(CourseRun::load(terrain_.map_root(), RunMode::Freeride)),
-      logic_(WorldLogic::load(terrain_.map_root())), course_recovery_(run_.paths()),
+    : Player(std::make_shared<SharedScene>(std::move(terrain)), tuning, true) {}
+
+Player::Player(std::shared_ptr<SharedScene> scene, PlayTuning tuning, bool human)
+    : scene_(std::move(scene)), human_(human), actor_(human ? 0 : scene_->next_actor++), terrain_(scene_->terrain),
+      world_(scene_->collision), rails_(scene_->rails), run_(CourseRun::load(terrain_.map_root(), RunMode::Freeride)),
+      logic_(scene_->logic), course_recovery_(run_.paths()),
       clock_(contract_.tick_seconds(), contract_.max_catchup_ticks()),
       get_up_(PoseAnimation::get_up(terrain_.map_root())), tuning_(tuning) {
+    if (scene_->actors.size() >= 17)
+        throw std::invalid_argument("The course already has seventeen riders");
     if (!std::isfinite(tuning.charge_rate) || tuning.charge_rate <= 0 || !std::isfinite(tuning.brake_acceleration) ||
         tuning.brake_acceleration < 0 || !std::isfinite(tuning.flip_recovery_rate) || tuning.flip_recovery_rate <= 0 ||
         tuning.jump_stat > 255 || !std::isfinite(tuning.body_radius) || tuning.body_radius <= 0 ||
@@ -64,6 +92,13 @@ Player::Player(Terrain terrain, PlayTuning tuning)
     spawn_position_ = spawn.first;
     spawn_forward_ = spawn.second;
     reset();
+    scene_->actors.emplace(actor_, this);
+}
+
+Player::~Player() {
+    field_.reset();
+    scene_->actors.erase(actor_);
+    logic_.retire_rider(actor_);
 }
 
 void Player::release_inputs() {
@@ -90,6 +125,17 @@ void Player::release_inputs() {
                          : rider_.grounded             ? Control::Cruise
                                                        : Control::Air;
     }
+}
+
+void Player::ai_riders(unsigned count) {
+    if (!human_ || count > 16)
+        throw std::invalid_argument("AI rider count must be between zero and sixteen");
+    if (!count)
+        field_.reset();
+    else if (field_)
+        field_->resize(*this, count);
+    else
+        field_ = std::make_unique<AiField>(*this, count);
 }
 
 void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
@@ -188,8 +234,10 @@ void Player::configure_run(RunMode mode) {
         throw std::runtime_error("This map has no race finish route. Choose Freeride or Showoff.");
     run_ = std::move(run);
     ++run_serial_;
-    rails_.reset();
-    logic_.restart(mode);
+    if (human_) {
+        rails_.reset();
+        logic_.restart(mode);
+    }
     apply_world_actions();
     course_recovery_ = CourseRecovery(run_.paths());
     last_recovery_.reset();
@@ -205,8 +253,10 @@ void Player::restart_run() {
     weather_time_ = 0;
     run_.restart();
     ++run_serial_;
-    rails_.reset();
-    logic_.restart(run_.status().mode, true);
+    if (human_) {
+        rails_.reset();
+        logic_.restart(run_.status().mode, true);
+    }
     apply_world_actions();
     course_recovery_ = CourseRecovery(run_.paths());
     last_recovery_.reset();
@@ -228,7 +278,10 @@ bool Player::request_course_recovery(bool manual, bool authored) {
     auto start = spawn_position_;
     if (const auto floor = trace_ground(start + Vec3{0, 2, 0}, start - Vec3{0, 10, 0}))
         start = floor->point;
-    const auto target = course_recovery_.choose(rider_.position, {start, spawn_forward_}, safe);
+    auto target = course_recovery_.choose(rider_.position, {start, spawn_forward_}, safe);
+    if (input_field_)
+        if (const auto biased = input_field_->recovery(*this); biased && safe(biased->position))
+            target = biased;
     if (!target)
         return false;
     const auto hit = trace_ground(target->position + Vec3{0, 2, 0}, target->position - Vec3{0, 3, 0});
@@ -458,6 +511,24 @@ void Player::land(const GroundContact& hit) {
 }
 
 void Player::notify_tick(const Rider& before) {
+    if (defer_tick_) {
+        deferred_before_ = before;
+        return;
+    }
+    auto step = prepare_tick(before);
+    logic_.apply_forces(contract_.tick_seconds(), world_, std::span(&step.driven, 1),
+                        [&](std::uint64_t) { return enter_lap(); });
+    finish_tick(step);
+}
+
+std::optional<unsigned> Player::enter_lap() {
+    if (run_.status().mode == RunMode::Freeride || run_.status().passes <= 1)
+        return {};
+    run_.enter_lap_volume();
+    return run_.status().remaining;
+}
+
+Player::ForceStep Player::prepare_tick(const Rider& before) {
     if (on_foot_ && foot_room_serial_ == placement_serial_)
         foot_contact_velocity_ += (foot_room_offset_ - previous_foot_room_offset_) / contract_.tick_seconds();
     if (!reset_pending() && !teleport_pending_ && (on_foot_ || run_.riding_allowed())) {
@@ -505,30 +576,42 @@ void Player::notify_tick(const Rider& before) {
         teleport_pending_.reset();
         teleport(position, forward);
     }
-    const auto dt = contract_.tick_seconds();
-    BoostRider driven{0,
-                      placed ? rider_.position : before.position,
-                      rider_.position,
-                      rider_.velocity,
-                      !placed && (on_foot_ || run_.riding_allowed()) && !reset_pending() && !recovering(),
-                      rider_.tube_stage};
-    auto previous_probes = volume(before, !before.grounded), probes = volume(rider_, !rider_.grounded);
+    ForceStep step;
+    step.before = before;
+    step.placed = placed;
+    auto& driven = step.driven;
+    driven = BoostRider{actor_,
+                        placed ? rider_.position : before.position,
+                        rider_.position,
+                        rider_.velocity,
+                        !placed && (on_foot_ || run_.riding_allowed()) && !reset_pending() && !recovering(),
+                        rider_.tube_stage};
+    step.previous = volume(before, !before.grounded);
+    step.probes = volume(rider_, !rider_.grounded);
     if (on_foot_) {
-        for (auto& probe : previous_probes)
+        for (auto& probe : step.previous)
             probe.centre += previous_foot_room_offset_;
-        for (auto& probe : probes)
+        for (auto& probe : step.probes)
             probe.centre += foot_room_offset_;
     }
-    driven.previous_probes = previous_probes;
-    driven.probes = probes;
+    driven.previous_probes = step.previous;
+    driven.probes = step.probes;
     driven.contact_margin = trigger_margin;
     driven.scripted_transport = true;
-    logic_.apply_forces(dt, world_, std::span(&driven, 1), [&](std::uint64_t) -> std::optional<unsigned> {
-        if (run_.status().mode == RunMode::Freeride || run_.status().passes <= 1)
-            return {};
-        run_.enter_lap_volume();
-        return run_.status().remaining;
-    });
+    return step;
+}
+
+void Player::finish_tick(ForceStep& step) {
+    const auto& before = step.before;
+    const auto placed = step.placed;
+    auto& driven = step.driven;
+    const auto dt = contract_.tick_seconds();
+    apply_driven(driven);
+    apply_world_actions();
+    finish_feedback(before, placed, dt);
+}
+
+void Player::apply_driven(const BoostRider& driven) {
     rider_.tube_stage = driven.stage;
     if (driven.transporting && !scripted_ascent_)
         foot_motion_.release();
@@ -565,7 +648,9 @@ void Player::notify_tick(const Rider& before) {
                 rider_.velocity = rider_.ground_velocity + relative * (rider_.speed_cap / speed);
         }
     }
-    apply_world_actions();
+}
+
+void Player::finish_feedback(const Rider& before, bool placed, double dt) {
     course_recovery_.tick(contract_.tick_seconds());
     if ((rider_.grounded || rider_.motion == Motion::Rail) && !recovering() && rider_.surface != 0 &&
         rider_.surface != 6 && rider_.surface != 10 && rider_.surface != 17)
@@ -615,7 +700,7 @@ void Player::notify_tick(const Rider& before) {
                             !recovering(),
                         rider_.launches, rider_.landings, placement_serial_},
                        dt);
-    if (tick_observer_)
+    if (tick_observer_ && !defer_observer_)
         tick_observer_(*this, placed ? rider_ : before);
 }
 
@@ -656,8 +741,8 @@ void Player::dispatch_world_contact(const WorldContact& contact, double speed, s
         const auto normal_speed = std::abs(dot(velocity - contact.surface_velocity, normal));
         const bool supported =
             support_normal.has_value() || (rider_.grounded && rider_.ground_instance == contact.instance);
-        logic_.contact(contact.instance, speed, true, fragile_contact_cost(normal_speed, normal, supported),
-                       velocity - contact.surface_velocity, ParticleContact{contact.point, normal});
+        logic_.contact(contact.instance, speed, human_, fragile_contact_cost(normal_speed, normal, supported),
+                       velocity - contact.surface_velocity, ParticleContact{contact.point, normal}, actor_);
         logic_.prepare_bodies(world_);
         apply_world_actions();
     }
@@ -685,39 +770,53 @@ bool Player::dispatch_fragile_ground(const GroundContact& contact) {
 
 void Player::apply_world_actions() {
     auto actions = logic_.take_actions();
-    world_actions_.insert(world_actions_.end(), actions.begin(), actions.end());
-    for (const auto& action : actions)
-        switch (action.kind) {
-        case WorldActionKind::Reset:
-            if (action.rider && !reset_contact_latches_.contains(action.target))
-                request_course_recovery(false, true);
-            break;
-        case WorldActionKind::Teleport:
-            if (action.rider && !teleport_pending_ && !reset_pending() && (on_foot_ || run_.riding_allowed()))
-                teleport_pending_ = logic_.teleport_destination(action.target, tuning_.rider_slot);
-            break;
-        case WorldActionKind::Multiplier:
-            if (action.rider)
-                score_.multiplier(unsigned(action.value));
-            break;
-        case WorldActionKind::SpeedBoost:
-            if (action.rider)
-                rider_.pads.request(false, action.value);
-            break;
-        case WorldActionKind::TrickBoost:
-            if (action.rider)
-                rider_.pads.request(true, action.value);
-            break;
-        case WorldActionKind::RailToggle:
-            if (action.target < rails_.splines())
-                rails_.enable(action.target, action.value != 0);
-            break;
-        case WorldActionKind::CourseSound:
-        case WorldActionKind::MainSound:
-        case WorldActionKind::BoostSound: break;
-        }
+    for (const auto& action : actions) {
+        const auto found = scene_->actors.find(action.actor);
+        auto* target = action.rider && found != scene_->actors.end() ? found->second : this;
+        const auto local = scene_->actors.find(0);
+        if (!action.rider && local != scene_->actors.end())
+            target = local->second;
+        if (action.rider && found == scene_->actors.end())
+            continue;
+        target->world_actions_.push_back(action);
+        target->apply_world_action(action);
+        if (action.kind == WorldActionKind::CourseSound && !target->human_ && local != scene_->actors.end())
+            local->second->world_actions_.push_back(action);
+    }
     world_.instance_flags(logic_.flags());
     world_.motion(logic_.motions(), contract_.tick_seconds());
+}
+
+void Player::apply_world_action(const WorldAction& action) {
+    switch (action.kind) {
+    case WorldActionKind::Reset:
+        if (action.rider && !reset_contact_latches_.contains(action.target))
+            request_course_recovery(false, true);
+        break;
+    case WorldActionKind::Teleport:
+        if (action.rider && !teleport_pending_ && !reset_pending() && (on_foot_ || run_.riding_allowed()))
+            teleport_pending_ = logic_.teleport_destination(action.target, tuning_.rider_slot);
+        break;
+    case WorldActionKind::Multiplier:
+        if (action.rider && human_)
+            score_.multiplier(unsigned(action.value));
+        break;
+    case WorldActionKind::SpeedBoost:
+        if (action.rider)
+            rider_.pads.request(false, action.value);
+        break;
+    case WorldActionKind::TrickBoost:
+        if (action.rider && human_)
+            rider_.pads.request(true, action.value);
+        break;
+    case WorldActionKind::RailToggle:
+        if (action.target < rails_.splines())
+            rails_.enable(action.target, action.value != 0);
+        break;
+    case WorldActionKind::CourseSound:
+    case WorldActionKind::MainSound:
+    case WorldActionKind::BoostSound: break;
+    }
 }
 
 bool Player::update_jump() {
@@ -833,6 +932,10 @@ void Player::ride_rail(const RailHit& hit, const RideInput& input, const Rider& 
 }
 
 void Player::tick(const RideInput& input) {
+    if (field_ && !field_tick_) {
+        field_->step(*this, input);
+        return;
+    }
     weather_time_ += contract_.tick_seconds();
     interpolate_board_ = false;
     previous_board_forward_ = render_forward();
@@ -857,9 +960,27 @@ void Player::tick(const RideInput& input) {
     std::erase_if(reset_contact_latches_, [&](auto host) { return !in_reset_volume(host); });
     const std::array<Vec3, 2> observers{rider_.position, world_view_.value_or(rider_.position + Vec3{0, 1.7, 0})};
     const std::array<CrowdActivity, 1> crowd_riders{{{rider_.position, 1, run_.riding_allowed() && !reset_pending()}}};
-    logic_.tick(dt, length(rider_.velocity), observers, crowd_riders);
-    world_.instance_flags(logic_.flags());
-    logic_.step_bodies(dt, terrain_, world_);
+    logic_.rider_speed(actor_, length(rider_.velocity));
+    if (human_) {
+        if (scene_->actors.size() == 1)
+            logic_.tick(dt, length(rider_.velocity), observers, crowd_riders);
+        else {
+            std::array<Vec3, 18> eyes;
+            std::array<CrowdActivity, 17> activity;
+            std::size_t count = 0;
+            for (const auto& [id, actor] : scene_->actors) {
+                (void)id;
+                eyes[count] = actor->rider_.position;
+                activity[count++] = {actor->rider_.position, 1,
+                                     actor->run_.riding_allowed() && !actor->reset_pending()};
+            }
+            eyes[count] = observers[1];
+            logic_.tick(dt, length(rider_.velocity), std::span(eyes).first(count + 1),
+                        std::span(activity).first(count));
+        }
+        world_.instance_flags(logic_.flags());
+        logic_.step_bodies(dt, terrain_, world_);
+    }
     apply_world_actions();
     if (on_foot_ && rider_.grounded && rider_.ground_object)
         rider_.position += world_.carry(*rider_.ground_object, rider_.position);
@@ -907,7 +1028,7 @@ void Player::tick(const RideInput& input) {
             return;
         }
     }
-    const auto running = run_.begin_tick(dt, !on_foot_);
+    const auto running = run_.begin_tick(external_run_tick_ < 0 ? dt : external_run_tick_, !on_foot_);
     if (recovery_target_) {
         reset_age_ += dt;
         jump_edges_.clear();

@@ -201,7 +201,8 @@ struct WorldLogic::Data {
     std::vector<std::vector<std::size_t>> fragile_targets;
     std::set<std::size_t> frame_owners;
     bool fragile_possible = false;
-    std::set<std::size_t> force_hosts, force_wait_exit, collected_pads;
+    std::set<std::size_t> force_hosts, collected_pads;
+    std::map<std::size_t, std::set<std::uint64_t>> force_wait_exit;
     std::set<std::size_t> body_hosts;
     std::vector<bool> pad_instances;
     std::vector<std::size_t> flag_models;
@@ -570,7 +571,8 @@ struct WorldLogic::Data {
     void destroy(std::size_t host, bool restore_flags = true) {
         body_hosts.erase(host);
         if (properties[host].force && properties[host].force->occupied())
-            force_wait_exit.insert(host);
+            for (const auto id : properties[host].force->occupants())
+                force_wait_exit[host].insert(id);
         force_hosts.erase(host);
         if (material_states.erase(host))
             materials_dirty = true;
@@ -640,7 +642,6 @@ struct WorldLogic::Data {
             return;
         }
         destroy(host);
-        force_wait_exit.erase(host);
         auto& property = properties[host];
         property.kind = kind;
         property.force = std::make_unique<ScriptedBoost>(law);
@@ -1682,13 +1683,12 @@ void WorldLogic::apply_forces(double seconds, const CollisionWorld& world, std::
         return hit;
     };
     for (auto it = d.force_wait_exit.begin(); it != d.force_wait_exit.end();) {
-        bool inside = false;
-        for (const auto& rider : riders)
-            if (rider_volume(*it, rider)) {
-                inside = true;
-                break;
-            }
-        if (!inside)
+        std::erase_if(it->second, [&](auto id) {
+            return std::none_of(riders.begin(), riders.end(), [&](const auto& rider) {
+                return rider.id == id && rider_volume(it->first, rider).has_value();
+            });
+        });
+        if (it->second.empty())
             it = d.force_wait_exit.erase(it);
         else
             ++it;
@@ -1701,7 +1701,8 @@ void WorldLogic::apply_forces(double seconds, const CollisionWorld& world, std::
         std::vector<std::optional<BoostVolume>> volumes;
         volumes.reserve(riders.size());
         for (const auto& rider : riders) {
-            const auto hit = rider_volume(host, rider);
+            const bool waiting = d.force_wait_exit.contains(host) && d.force_wait_exit.at(host).contains(rider.id);
+            const auto hit = waiting ? std::optional<WorldVolume>{} : rider_volume(host, rider);
             volumes.push_back(hit ? std::optional(BoostVolume{hit->box, hit->axis}) : std::nullopt);
         }
         property.force->apply(seconds, riders, volumes, lap_entry);
@@ -1752,7 +1753,7 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
         }
         return;
     }
-    if (d.force_wait_exit.contains(instance))
+    if (d.force_wait_exit.contains(instance) && d.force_wait_exit.at(instance).contains(actor))
         return;
     if (d.properties[instance].force) {
         d.properties[instance].force->contact(actor);
@@ -1853,6 +1854,10 @@ void WorldLogic::rider_speed(std::uint64_t actor, double speed) {
 
 void WorldLogic::retire_rider(std::uint64_t actor) {
     data_->rider_speeds.erase(actor);
+    for (auto& [host, riders] : data_->force_wait_exit) {
+        (void)host;
+        riders.erase(actor);
+    }
     for (auto& action : data_->actions)
         if (action.rider && action.actor == actor)
             action.rider = false;

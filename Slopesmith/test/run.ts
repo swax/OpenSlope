@@ -9,6 +9,9 @@
  *   npx tsx test/run.ts --jobs 1    # one at a time, for readable output when something is failing
  *   npx tsx test/run.ts --list      # print what would run and exit
  *
+ * SLOPESMITH_TEST_JOBS sets concurrency for callers such as the repository gate;
+ * an explicit --jobs takes precedence.
+ *
  * The suite is DISCOVERED, not listed. `test/*.test.ts` is the whole set (this runner is `run.ts`, so it
  * is not swept up by its own glob), so a new check joins the
  * gate by existing — there is no second place to remember to append to. That is deliberate: this file
@@ -170,7 +173,9 @@ const tier = tierValue as Tier;
 const only = argv[argv.indexOf('--only') + 1];
 const filter = argv.includes('--only') && only && !only.startsWith('--') ? only : null;
 const selectionLabel = filter ? `filter ${JSON.stringify(filter)}` : `${tier} tier`;
-const askedJobs = Number(argv[argv.indexOf('--jobs') + 1]);
+const askedJobs = Number(argv.includes('--jobs')
+  ? argv[argv.indexOf('--jobs') + 1]
+  : process.env.SLOPESMITH_TEST_JOBS);
 /**
  * Deliberately well under the core count. The gate's wall clock is pinned by its longest single check
  * (`rebuild.test.ts`, ~50s) rather than by throughput — the rest of the suite is ~165s of work, which six at a
@@ -180,8 +185,8 @@ const askedJobs = Number(argv[argv.indexOf('--jobs') + 1]);
  * start to flake (`sessions.test.ts` will fail on a SATURATED MACHINE EVEN RUN ALONE, so this is a property of
  * the checks, not of running them together). Raise `--jobs` if `rebuild` is ever sharded and the floor drops.
  */
-const jobs = argv.includes('--jobs') && Number.isFinite(askedJobs) && askedJobs > 0
-  ? Math.floor(askedJobs)
+const jobs = Number.isFinite(askedJobs) && askedJobs > 0
+  ? Math.max(1, Math.floor(askedJobs))
   : Math.max(1, Math.min(6, availableParallelism() - 1));
 
 const allDiscovered = readdirSync(here)

@@ -463,6 +463,33 @@ int main(int argc, char** argv) {
         player.tick(holding);
         check(player.carrying_board(), "GPU fixture genuinely carries the board");
         render("desktop-board-held", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+        {
+            std::vector<Vertex> field;
+            std::array<Matrix, 16> boards;
+            for (unsigned i = 0; i < 16; ++i) {
+                player.warp({(double(i % 4) - 1.5) * 3, 0, -double(i / 4) * 3}, {0, 0, -1});
+                const auto mesh = avatar.mesh(avatar_pose(player), false, false);
+                field.insert(field.end(), mesh.begin(), mesh.end());
+                boards[i] =
+                    board_transform(player.render_board_position(), player.render_forward(), player.render_up());
+            }
+            const auto hidden_board = board_transform({10000, 10000, 10000}, {0, 0, -1}, {0, 1, 0});
+            for (unsigned eye_index = 0; eye_index < 2; ++eye_index) {
+                auto& renderer = eye_index ? b : a;
+                const auto target = eye_index ? right.image : left.image;
+                renderer.targets(std::span(&target, 1), eye_index ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM,
+                                 1024, 1024, 4, 150);
+                const Vec3 eye{eye_index ? .032 : -.032, 7, 12};
+                const auto matrix = projection(-.85, .85, -.85, .85) * view(eye, Vec3{0, 0, -4} - eye);
+                renderer.render(0, matrix, hidden_board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {},
+                                field, 0, {}, {}, 1, {}, {}, {}, {}, {}, {}, false, {}, nullptr, boards);
+                check(renderer.stats().opponent_boards == 16 && renderer.stats().avatar_triangles == field.size() / 3,
+                      "The complete field and sixteen shared boards reach each actual stereo GPU submission");
+                const auto name = root / ("field-eye-" + std::to_string(eye_index) + ".ppm");
+                renderer.capture(0, name);
+                check(landmarks(pixels(name)) > 1000, "The full opponent field has visible figure pixels in both eyes");
+            }
+        }
         if (argc == 3) {
             const auto maps = std::filesystem::path(argv[2]);
             const auto course = maps / "MERQUER";

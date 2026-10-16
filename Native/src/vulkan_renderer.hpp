@@ -127,7 +127,7 @@ public:
             visible_props{}, prop_draws{}, terrain_patches{}, visible_terrain{}, terrain_draws{}, sprites{},
             wake_segments{}, wake_draws{}, sheet_segments{}, sheet_draws{}, boost_segments{}, boost_draws{},
             world_sprites{}, particle_draws{}, celestial_triangles{}, celestial_draws{}, lamp_glints{}, snowflakes{},
-            snow_draws{};
+            snow_draws{}, opponent_boards{};
         std::uint64_t terrain_indices{}, terrain_total_indices{};
         std::size_t visibility_tests{};
         bool terrain_compacted = false;
@@ -170,7 +170,7 @@ public:
                 std::span<const PropRouteMotion> routes = {}, std::span<const PropTextureFrame> texture_frames = {},
                 std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {},
                 CelestialView glare_view = {}, std::span<const Vertex> hud = {}, bool screen_hud = false,
-                SnowfallView snow = {}, const LampView* lamps = nullptr);
+                SnowfallView snow = {}, const LampView* lamps = nullptr, std::span<const Matrix> opponents = {});
 
     const Stats& stats() const { return stats_; }
 

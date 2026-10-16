@@ -1,4 +1,5 @@
 #include "openslope/boost.hpp"
+#include <algorithm>
 #include <set>
 #include <stdexcept>
 
@@ -96,12 +97,21 @@ void ScriptedBoost::contact(std::uint64_t rider) {
         activate();
 }
 
+std::vector<std::uint64_t> ScriptedBoost::occupants() const {
+    std::vector<std::uint64_t> result;
+    for (const auto& [id, latch] : riders_)
+        if (latch.inside)
+            result.push_back(id);
+    return result;
+}
+
 void ScriptedBoost::apply(double seconds, std::span<BoostRider> riders,
                           std::span<const std::optional<BoostVolume>> volumes, const LapEntry& lap_entry) {
     boost_tick(seconds);
-    if (riders.size() != volumes.size() || riders.size() > 16)
+    if (riders.size() != volumes.size() || riders.size() > 17)
         throw std::invalid_argument("Invalid boost rider set");
-    if (expired_ || seconds == 0)
+    if (expired_ || (seconds == 0 && std::none_of(riders.begin(), riders.end(),
+                                                  [](const auto& rider) { return rider.step_seconds > 0; })))
         return;
     remaining_ = std::max(0., remaining_ - seconds);
     occupied_ = false;
@@ -109,6 +119,10 @@ void ScriptedBoost::apply(double seconds, std::span<BoostRider> riders,
     std::set<std::uint64_t> present;
     for (std::size_t i = 0; i < riders.size(); ++i) {
         auto& rider = riders[i];
+        if (!std::isfinite(rider.step_seconds) || (rider.step_seconds < 0 && rider.step_seconds != -1) ||
+            rider.step_seconds > 1)
+            throw std::invalid_argument("Invalid per-rider force duration");
+        const auto step = rider.step_seconds < 0 ? seconds : rider.step_seconds;
         if (!present.insert(rider.id).second || !finite(rider.position) || !finite(rider.velocity) || rider.stage > 2)
             throw std::invalid_argument("Invalid boost rider");
         auto& latch = riders_[rider.id];
@@ -154,14 +168,14 @@ void ScriptedBoost::apply(double seconds, std::span<BoostRider> riders,
                 rider.position.y = law_.height;
                 rider.snapped = true;
             } else {
-                rider.velocity = boost_velocity(rider.velocity, latch.direction, latch.target, law_.rate, seconds);
+                rider.velocity = boost_velocity(rider.velocity, latch.direction, latch.target, law_.rate, step);
                 serviced = true;
             }
             rider.velocity.x = rider.velocity.z = 0;
         } else {
             if (law_.kind == 15)
                 rider.velocity.x = rider.velocity.z = 0;
-            rider.velocity = boost_velocity(rider.velocity, latch.direction, latch.target, law_.rate, seconds);
+            rider.velocity = boost_velocity(rider.velocity, latch.direction, latch.target, law_.rate, step);
             serviced = true;
         }
         rider.driven |= length(rider.velocity - before) > 1e-12 || rider.snapped;

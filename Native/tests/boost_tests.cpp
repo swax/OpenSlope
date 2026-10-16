@@ -466,6 +466,19 @@ void graph_forces(const std::filesystem::path& root) {
     logic.contact(0, 0);
     logic.apply_forces(dt, world, std::span(&rider, 1));
     near(rider.position.y, 40, "leave and reentry rearm a completed lift");
+    auto shared_lift = WorldLogic::load(root);
+    std::array<BoostRider, 2> arrivals{{{0, {0, 4, 0}, {0, 4, 0}, {}}, {81, {20, 4, 0}, {20, 4, 0}, {}}}};
+    shared_lift.contact(0, 0);
+    shared_lift.apply_forces(dt, world, arrivals);
+    near(arrivals[0].position.y, 40, "The first arrival completes its lift");
+    arrivals[0].previous = arrivals[0].position = {0, 4, 0};
+    arrivals[0].snapped = false;
+    arrivals[1].previous = arrivals[1].position = {0, 4, 0};
+    shared_lift.contact(0, 0, false, 1, {}, {}, 81);
+    shared_lift.apply_forces(dt, world, arrivals);
+    near(arrivals[0].position.y, 4, "A completed rider cannot reactivate its lift while still inside");
+    near(arrivals[1].position.y, 40, "A later rider can activate the same lift before the first leaves");
+
     Player transported(Terrain::load(root));
     transported.warp({0, 4, 0}, {1, 0, 0});
     AudioScene audio(root);
@@ -701,6 +714,61 @@ void owned(const std::filesystem::path& maps, const std::filesystem::path& refer
     std::cout << "Owned boosts: " << actors << " drivers, " << pads_count << " pads across eleven courses\n";
 }
 
+void field_steps() {
+    BoostLaw law;
+    law.mode = 1;
+    law.rate = 4;
+    law.target = 20;
+    law.direction = {1, 0, 0};
+    ScriptedBoost force(law);
+    std::array<BoostRider, 17> riders;
+    std::array<std::optional<BoostVolume>, 17> volumes;
+    for (unsigned i = 0; i < riders.size(); ++i) {
+        riders[i] = {i, {0, 4, 0}, {0, 4, 0}, {}};
+        riders[i].step_seconds = i == 2 ? 0 : dt;
+        volumes[i] = box;
+    }
+    force.apply(dt, riders, volumes);
+    near(riders[0].velocity.x, 20 * 4 * dt, "The local rider receives one force integration");
+    near(riders[2].velocity.x, 0, "A slow-clock opponent retains occupancy without receiving extra force");
+    riders[0].step_seconds = 0;
+    const auto local = riders[0].velocity;
+    force.apply(0, riders, volumes);
+    equal(riders[0].velocity, local, "A second AI microstep cannot boost the local player twice");
+    near(riders[1].velocity.x, 20 * (1 - (1 - 4 * dt) * (1 - 4 * dt)),
+         "A fast-clock opponent receives its second ordinary force integration");
+    law.kind = 15;
+    law.direction = {0, 1, 0};
+    ScriptedBoost lift(law);
+    unsigned entries = 0;
+    const LapEntry counter = [&](std::uint64_t) {
+        ++entries;
+        return 3;
+    };
+    lift.apply(dt, riders, volumes, counter);
+    check(entries == 17, "The lift latches a private entry for the human and all sixteen opponents");
+    for (unsigned i = 0; i < 30; ++i) {
+        lift.apply(dt, riders, volumes, counter);
+        lift.apply(0, riders, volumes, counter);
+    }
+    check(entries == 17 && !lift.expired(), "Idle and extra microsteps cannot rearm or retire occupied lift latches");
+    law.kind = 7;
+    law.mode = 0;
+    law.seconds = 1;
+    ScriptedBoost timer(law);
+    timer.activate();
+    for (auto& rider : riders)
+        rider.velocity = {};
+    for (unsigned i = 0; i < 35; ++i) {
+        timer.apply(dt, riders, volumes);
+        timer.apply(0, riders, volumes);
+    }
+    near(riders[1].velocity.y, 0, "Extra physics steps cannot prematurely advance a global cooldown");
+    for (unsigned i = 0; i < 30; ++i)
+        timer.apply(dt, riders, volumes);
+    check(riders[1].velocity.y > 0, "The global cooldown eventually ends in real time");
+}
+
 void air_profile() {
     equal(air_boost_velocity({10, 0, 0}, {0, 1, 0}, 33.47, dt), {10, 8 * dt, 0},
           "held air thrust follows visible deck pitch");
@@ -721,6 +789,7 @@ int main(int argc, char** argv) {
         elevators();
         lap_and_tube();
         air_profile();
+        field_steps();
         const auto root =
             std::filesystem::temp_directory_path() /
             ("openslope-boost-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));

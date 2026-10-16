@@ -240,5 +240,7 @@ The AI input foundation consumes clean 395's ground-plane ruler, cached
 projection, pursuit/control quantization, network choice, rating, jump windows,
 rivals and catch-up request. It drives the existing Player in physical tests.
 Nominal profile choices and the public Slopesmith unreachable-target guard are
-explicit in `ai-input.md`. Visible field, world ownership, standings and clock
-integration remain required; this foundation does not establish AI parity.
+explicit in `ai-input.md`. Build 0.66 integrates the visible shared field, actor
+command routing, batched forces, private laps, standings and body separation.
+Application policies, evidence and remaining scope are recorded in `ai-field.md`;
+this milestone does not establish complete AI or shared-session parity.

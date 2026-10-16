@@ -152,3 +152,9 @@ see avatar.md for optional body tracking and fallback behavior.
 Mounting starts the countdown, the title displays the clock/checkpoints/lap,
 and T restarts the event. Quest's library has the same mode selector; its
 left-controller clock panel labels Y controls. See course-runs.md.
+
+**Opponents** in either menu enables zero to sixteen AI riders; zero is the
+default. **More / Fewer** changes the field and the HUD shows your place.
+Desktop also accepts `--ai-riders 6`. Opponents keep riding when you get off
+your board and restart with the run. See ai-field.md for route requirements
+and current verification limits.

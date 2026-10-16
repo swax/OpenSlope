@@ -1,6 +1,7 @@
 #include "openxr_app.hpp"
 #include "audio_device.hpp"
 #include "body_tracking_compat.hpp"
+#include "field_presentation.hpp"
 #include "openslope/audio_preferences.hpp"
 #include "openslope/avatar.hpp"
 #include "openslope/graphics_preferences.hpp"
@@ -812,6 +813,9 @@ struct State {
         if (selected.consumed)
             equipment.trigger[1] = false;
         switch (selected.action) {
+        case UiAction::Riders:
+        case UiAction::RiderDown:
+        case UiAction::RiderUp: ui.riders(selected.action, player); break;
         case UiAction::Resume: presentation.controls = false; break;
         case UiAction::Restart:
             player.restart_run();
@@ -1044,6 +1048,9 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                     pointer.origin += body + camera_offset;
                     state.ui.append_pointer(hud, pointer);
                 }
+                const auto opponents =
+                    append_opponents(player, state.avatar, avatar_mesh, tracked.head + camera_offset);
+                const FieldEffects effects(player, tracked.head + camera_offset);
                 CelestialView glare_view;
                 glare_view.stereo = true;
                 glare_view.anchor = tracked.head + camera_offset;
@@ -1090,14 +1097,13 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                     eye.renderer->render(
                         image, eye_matrices[i],
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, {}, {}, eye_position, player.effects().sprites(),
-                        player.effects().wake(), player.effects().sheet(), avatar_mesh, player.reset_fade(),
-                        player.logic().flags(), player.logic().motions(), player.frame_alpha(),
-                        player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices(), player.particles(player.frame_alpha(), eye_position),
-                        glare_view, hud, false,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, {}, {}, eye_position, effects.sprites(),
+                        effects.wake(), effects.sheet(), avatar_mesh, player.reset_fade(), player.logic().flags(),
+                        player.logic().motions(), player.frame_alpha(), player.logic().route_motions(),
+                        player.logic().texture_frames(), effects.boost(),
+                        player.particles(player.frame_alpha(), eye_position), glare_view, hud, false,
                         {tracked.head + camera_offset, player.weather_time(), state.graphics_preferences.snow},
-                        &lamp_view);
+                        &lamp_view, opponents);
                     this_render += ms(render_start, Clock::now());
                     const auto& stats = eye.renderer->stats();
                     this_resource_wait += stats.wait_ms;

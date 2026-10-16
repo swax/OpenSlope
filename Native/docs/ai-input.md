@@ -83,8 +83,7 @@ correction additionally passes the affected Native build/test gate, owned-course
 runs and Quest checks. Unchanged component results are retained from that full
 gate. The Native source audit checks 404 files without forbidden references.
 
-The existing playable build remains 0.65. Visible opponents, their first-party
-avatar/board poses, standings/HUD, controls/settings, shared prop interaction,
-field lifecycle and measured multi-rider performance are still required before
-this can be presented as an AI race-field feature. Shared human play sessions
-and the wider parity matrix also remain active requirements.
+This document records the input foundation at its original milestone. Build
+0.66 connects it to the visible shared world, force clocks, standings and
+desktop/wrist controls; see `ai-field.md` for current scope and validation.
+Shared human play sessions and the wider parity matrix remain active work.

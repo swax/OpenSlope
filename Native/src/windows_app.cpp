@@ -1,4 +1,5 @@
 #include "audio_device.hpp"
+#include "field_presentation.hpp"
 #include "openslope/audio_preferences.hpp"
 #include "openslope/audio_scene.hpp"
 #include "openslope/avatar.hpp"
@@ -151,6 +152,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         const auto body = avatar.mesh(desktop_avatar_pose(player, chase, first_person, look_down), first_person, false,
                                       chase.pose().eye);
         std::vector<Vertex> presented(body.begin(), body.end());
+        const auto opponents = append_opponents(player, avatar, presented, chase.pose().eye);
+        const FieldEffects effects(player, chase.pose().eye);
         equipment_outline(presented, player);
         std::vector<Vertex> hud;
         ui.append(hud, player);
@@ -161,12 +164,12 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         const auto started = std::chrono::steady_clock::now();
         renderer.render(0, camera_for(player, 1280.0 / 720, first_person, look_down, &chase),
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
-                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, chase.pose().eye, player.effects().sprites(),
-                        player.effects().wake(), player.effects().sheet(), presented, player.reset_fade(),
-                        player.logic().flags(), player.logic().motions(), player.frame_alpha(),
-                        player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices(), player.particles(player.frame_alpha(), chase.pose().eye),
-                        glare_view, hud, true, {chase.pose().eye, player.weather_time(), graphics.snow});
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, chase.pose().eye, effects.sprites(),
+                        effects.wake(), effects.sheet(), presented, player.reset_fade(), player.logic().flags(),
+                        player.logic().motions(), player.frame_alpha(), player.logic().route_motions(),
+                        player.logic().texture_frames(), effects.boost(),
+                        player.particles(player.frame_alpha(), chase.pose().eye), glare_view, hud, true,
+                        {chase.pose().eye, player.weather_time(), graphics.snow}, nullptr, opponents);
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         gpu += renderer.stats().gpu_ms;
         cull += renderer.stats().cull_ms;
@@ -195,6 +198,9 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                   << " ms; render wall " << wall / frames << " ms; GPU " << gpu / frames << " ms\n";
     }
     const auto stats = renderer.stats();
+    if (const auto* field = player.ai_field())
+        std::cout << "AI field: " << field->size() << " opponents; " << stats.opponent_boards
+                  << " visible boards; place " << field->place() + 1 << '/' << field->size() + 1 << '\n';
     std::cout << "Snowfall: " << stats.snowflakes << " flakes; " << stats.snow_draws << " instanced draws; level "
               << graphics.snow << char(10);
     std::cout << "Celestial: " << stats.celestial_triangles << " triangles; " << stats.celestial_draws << " draws\n";
@@ -512,6 +518,8 @@ struct Window {
         const auto body_mesh = avatar.mesh(desktop_avatar_pose(player, camera, first_person, look_down), first_person,
                                            false, camera.pose().eye);
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
+        const auto opponents = append_opponents(player, avatar, presented, camera.pose().eye);
+        const FieldEffects effects(player, camera.pose().eye);
         equipment_outline(presented, player);
         std::vector<Vertex> hud;
         ui.append(hud, player, false, fps);
@@ -521,12 +529,12 @@ struct Window {
         player.world_view(camera.pose().eye);
         renderer.render(image, camera_for(player, double(width) / height, first_person, look_down, &camera),
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
-                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, available, finished, camera.pose().eye,
-                        player.effects().sprites(), player.effects().wake(), player.effects().sheet(), presented,
-                        player.reset_fade(), player.logic().flags(), player.logic().motions(), player.frame_alpha(),
-                        player.logic().route_motions(), player.logic().texture_frames(),
-                        player.boost_trail_mesh().vertices(), player.particles(player.frame_alpha(), camera.pose().eye),
-                        glare_view, hud, true, {camera.pose().eye, player.weather_time(), graphics.snow});
+                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, available, finished, camera.pose().eye, effects.sprites(),
+                        effects.wake(), effects.sheet(), presented, player.reset_fade(), player.logic().flags(),
+                        player.logic().motions(), player.frame_alpha(), player.logic().route_motions(),
+                        player.logic().texture_frames(), effects.boost(),
+                        player.particles(player.frame_alpha(), camera.pose().eye), glare_view, hud, true,
+                        {camera.pose().eye, player.weather_time(), graphics.snow}, nullptr, opponents);
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &finished;
@@ -551,6 +559,7 @@ int main(int argc, char** argv) {
         double seconds = 0;
         GraphicsPreferences overrides;
         bool scale_set = false, snow_set = false, ui_graphics_option = false;
+        unsigned ai_count = 0;
         RunMode run_option = RunMode::Freeride;
         bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_audio_option = false,
              ui_smoke = false, ui_failure = false;
@@ -570,6 +579,11 @@ int main(int argc, char** argv) {
                 ui_menu_option = true;
             else if (option == "--ui-audio") {
                 ui_menu_option = ui_audio_option = true;
+            } else if (option == "--ai-riders" && i + 1 < argc) {
+                const std::string value = argv[++i];
+                if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos || value.size() > 2 ||
+                    (ai_count = unsigned(std::stoul(value))) > 16)
+                    throw std::runtime_error("AI riders must be between zero and sixteen");
             } else if (option == "--audio-preferences" && i + 1 < argc)
                 preferences_path = argv[++i];
             else if (option == "--graphics-preferences" && i + 1 < argc)
@@ -634,7 +648,7 @@ int main(int argc, char** argv) {
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
                        "[--msaa 1|2|4|8] [--render-scale 100|125|150|200] [--snow 0..10] [--graphics-preferences "
                        "<file>] [--ui-graphics] [--no-terrain-culling] [--audio-preferences <file>] "
-                       "[--ui-audio]\nDesktop: "
+                       "[--ui-audio] [--ai-riders 0..16]\nDesktop: "
                        "A/D steer/spin, W/S tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
                        "spawn board, G "
@@ -683,6 +697,7 @@ int main(int argc, char** argv) {
         auto player = std::make_unique<Player>(map.empty() ? Terrain::demo() : Terrain::load(map));
         if (run_option != RunMode::Freeride)
             player->configure_run(run_option);
+        player->ai_riders(ai_count);
         if (xr) {
             XrPlatform platform;
             platform.head_steering = head_steering;
@@ -927,6 +942,9 @@ int main(int argc, char** argv) {
                 ++ui_step;
             }
             switch (click.action) {
+            case UiAction::Riders:
+            case UiAction::RiderUp:
+            case UiAction::RiderDown: window.ui.riders(click.action, *player); break;
             case UiAction::Resume:
                 window.ui.visible = false;
                 paused = false;
@@ -982,6 +1000,7 @@ int main(int argc, char** argv) {
                 break;
             }
             case UiAction::LoadMap: {
+                const auto opponent_count = player->ai_field() ? player->ai_field()->size() : 0;
                 window.ui.loading = window.ui.visible = true;
                 window.ui.load_progress = .02;
                 window.ui.load_name = click.map.filename().string();
@@ -998,7 +1017,8 @@ int main(int argc, char** argv) {
                 const auto mode = player->course_run().status().mode;
                 const bool with_audio = !no_audio && (!smoke_window || ui_smoke);
                 try {
-                    loading = std::async(std::launch::async, [path = click.map, mode, with_audio, load_stage] {
+                    loading = std::async(std::launch::async, [path = click.map, mode, with_audio, load_stage,
+                                                              opponent_count] {
                         PreparedCourse next;
                         auto terrain = Terrain::load(path);
                         load_stage->store(1);
@@ -1009,6 +1029,8 @@ int main(int argc, char** argv) {
                             next.player->configure_run(RunMode::Freeride);
                         }
                         next.player->start_on_foot();
+                        if (opponent_count && AiNetwork(CoursePaths::load(path)).choose(next.player->rider().position))
+                            next.player->ai_riders(opponent_count);
                         load_stage->store(2);
                         auto mesh = next.player->terrain().mesh();
                         next.assets = SceneAssets::prepare(

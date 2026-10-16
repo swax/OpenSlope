@@ -33,6 +33,9 @@ enum class UiAction {
     Previous,
     Next,
     Mode,
+    Riders,
+    RiderDown,
+    RiderUp,
     Exit
 };
 
@@ -63,7 +66,7 @@ public:
     bool visible = false, controls = false, stats = false, sound_muted = false, third_person = true, head_steer = false,
          immersive = false, library = false, map_picker = false;
     bool audio_options = false, song_picker = false, music_enabled = true, authored_music = false;
-    bool graphics_options = false, loading = false;
+    bool graphics_options = false, rider_options = false, loading = false;
     unsigned render_scale = 150, antialiasing = 4;
     double snow_amount = 3, load_progress = 0;
     std::string graphics_readout, load_name, load_stage;
@@ -76,6 +79,7 @@ public:
     std::string notice;
     std::vector<UiButton> buttons() const;
     UiResult pointer(const EquipmentRay& ray, bool down);
+    bool riders(UiAction action, Player& player);
 
     void frame(UiFrame value) { frame_ = value; }
 
