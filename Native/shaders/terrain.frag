@@ -21,7 +21,7 @@ void main() {
         float r=length(q);
         float halo=exp(-100.0*(r-0.88)*(r-0.88))*(1.0-smoothstep(0.95,1.0,r));
         float core=exp(-5.0*dot(q,q))*(1.0-smoothstep(0.75,1.0,r));
-        float spike=pow(max(0.0,1.0-abs(q.x)),1.5)*exp(-6.0*q.y*q.y)*(1.0-smoothstep(0.8,1.0,abs(q.y)));
+        float spike=pow(max(0.0,1.0-r),1.5)*exp(-90.0*min(q.x*q.x,q.y*q.y));
         alpha=effectAlpha*(lightmapTile.x>1.5?core:lightmapTile.x>0.5?spike:halo);
         if(transform.options.z!=0){
             // Owned lens art: ring upper-left, soft core upper-right, star lower-left.

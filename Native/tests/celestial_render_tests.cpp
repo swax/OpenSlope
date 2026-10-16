@@ -78,11 +78,12 @@ std::array<Vertex, 6> quad(double width, double z, std::array<float, 3> colour) 
 }
 
 void submit(VulkanRenderer& renderer, const Matrix& camera, CelestialView frame = {}, Vec3 eye = {},
-            std::span<const Vertex> body = {}, std::span<const Vertex> hud = {}, float fade = 0) {
+            std::span<const Vertex> body = {}, std::span<const Vertex> hud = {}, float fade = 0,
+            const LampView* lamps = nullptr) {
     auto board = Matrix::identity();
     board.values[12] = 20;
     renderer.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body, fade, {}, {},
-                    1, {}, {}, {}, {}, frame, hud);
+                    1, {}, {}, {}, {}, frame, hud, false, {}, lamps);
 }
 
 int channel(const std::vector<unsigned char>& image, unsigned x, unsigned y, unsigned c) {
@@ -197,36 +198,60 @@ int main(int argc, char** argv) {
             std::ofstream(lamps / "Lights.json")
                 << (atlas ? R"({"Lights":[{"SpriteRes":32,"Colour":[1,1,1],"Position":[0,500,0]}]})"
                           : R"({"Lights":[{"SpriteRes":32,"Colour":[1,0,0],"Position":[0,500,0]}]})");
-            for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB}) {
-                Target image(context, format);
-                VulkanRenderer renderer(context);
-                Mesh mesh;
-                mesh.map_root = lamps;
-                renderer.upload(mesh);
-                renderer.targets(std::span(&image.image, 1), format, 128, 128);
-                submit(renderer, camera);
-                const auto lit = pixels(renderer, lamps / "visible.ppm");
-                check(renderer.stats().lamp_glints == 1 && channel(lit, 64, 64, atlas ? 1 : 0) > 120,
-                      "Real GPU lamp batch adds its source hue at the projected light");
-                check(channel(lit, 32, 32, 0) > 20 && channel(lit, 42, 42, 0) < 10,
-                      "Lamp draws a circular halo rim with a dark interior away from its star and fixed core");
-                if (atlas) {
-                    check(channel(lit, 32, 32, 1) < 5 && channel(lit, 32, 32, 2) < 5,
-                          "Halo samples the isolated upper-left lens ring tile");
-                    check(channel(lit, 64, 64, 0) < 10 && channel(lit, 64, 64, 1) > 120,
-                          "Core uses the upper-right tile without the unused lower-right tile");
+            for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB})
+                for (const auto samples : {1u, 4u}) {
+                    Target image(context, format);
+                    VulkanRenderer renderer(context);
+                    Mesh mesh;
+                    mesh.map_root = lamps;
+                    auto scene = std::make_shared<VulkanScene>(context);
+                    scene->upload(mesh);
+                    renderer.use_scene(scene);
+                    renderer.targets(std::span(&image.image, 1), format, 128, 128, samples);
+                    submit(renderer, camera);
+                    const auto lit = pixels(renderer, lamps / "visible.ppm");
+                    check(renderer.stats().lamp_glints == 1 && channel(lit, 64, 64, atlas ? 1 : 0) > 120,
+                          "Real GPU lamp batch adds its source hue at the projected light");
+                    check(channel(lit, 50, 50, 0) > channel(lit, 54, 54, 0) + 20,
+                          "Lamp draws a circular rim around its soft aura, rather than a flat disc");
+                    if (atlas) {
+                        check(channel(lit, 50, 50, 1) < channel(lit, 50, 50, 0) / 2 && channel(lit, 50, 50, 2) < 5,
+                              "Halo samples the isolated upper-left lens ring tile");
+                        check(channel(lit, 64, 64, 0) < 10 && channel(lit, 64, 64, 1) > 120,
+                              "Core uses the upper-right tile without the unused lower-right tile");
+                    }
+                    const auto wall = quad(20, -2, {0, 0, 0});
+                    submit(renderer, camera, {}, {}, wall);
+                    const auto hidden = pixels(renderer, lamps / "hidden.ppm");
+                    check(channel(hidden, 64, 64, 0) == 0 && channel(hidden, 50, 50, 0) == 0,
+                          "World geometry in front of the pulled glow occludes its halo and fixed core");
+                    const auto edge = quad(.2, -2, {0, 0, 0});
+                    submit(renderer, camera, {}, {}, edge);
+                    const auto partial = pixels(renderer, lamps / "partial.ppm");
+                    check(channel(partial, 64, 64, 0) == 0 && channel(partial, 50, 50, 0) > 20,
+                          "Halo clips per pixel at an occluder edge without reading through its centre");
+                    Target other_image(context, format);
+                    VulkanRenderer other(context);
+                    other.use_scene(scene);
+                    other.targets(std::span(&other_image.image, 1), format, 128, 128, samples);
+                    const Vec3 left_eye{-.032, 0, 0}, right_eye{.032, 0, 0};
+                    const auto left = projection(-1, 1, -1, 1) * view(left_eye, {0, 0, -1});
+                    const auto right = projection(-1, 1, -1, 1) * view(right_eye, {0, 0, -1});
+                    const auto common = stereo_lamp_view(left.values, right.values, left_eye, right_eye);
+                    submit(renderer, left, {}, left_eye, {}, {}, 0, &common);
+                    submit(other, right, {}, right_eye, {}, {}, 0, &common);
+                    const auto l = pixels(renderer, lamps / "left.ppm");
+                    const auto r = pixels(other, lamps / "right.ppm");
+                    double l_energy = 0, r_energy = 0;
+                    for (std::size_t i = 0; i < l.size(); ++i) {
+                        l_energy += l[i];
+                        r_energy += r[i];
+                    }
+                    check(renderer.stats().lamp_glints == 1 && other.stats().lamp_glints == 1 && l != r,
+                          "Queued eye renderers draw the shared lamp cloud with visible stereo separation");
+                    check(l_energy > 1000 && std::abs(l_energy - r_energy) < l_energy * .02,
+                          "Cyclopean bloom retains matching stereo glow energy after both eyes are queued");
                 }
-                const auto wall = quad(20, -2, {0, 0, 0});
-                submit(renderer, camera, {}, {}, wall);
-                const auto hidden = pixels(renderer, lamps / "hidden.ppm");
-                check(channel(hidden, 64, 64, 0) == 0 && channel(hidden, 30, 64, 0) == 0,
-                      "Opaque world depth occludes the complete halo and fixed core");
-                const auto edge = quad(.2, -2, {0, 0, 0});
-                submit(renderer, camera, {}, {}, edge);
-                const auto partial = pixels(renderer, lamps / "partial.ppm");
-                check(channel(partial, 64, 64, 0) == 0 && channel(partial, 32, 32, 0) > 20,
-                      "Halo clips per pixel at an occluder edge without reading through its centre");
-            }
         }
         std::cout << "PASS: " << checks
                   << " actual Vulkan celestial, depth, HUD, camera, stereo and queued-eye checks\n";

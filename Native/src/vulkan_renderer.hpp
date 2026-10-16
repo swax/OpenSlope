@@ -170,7 +170,7 @@ public:
                 std::span<const PropRouteMotion> routes = {}, std::span<const PropTextureFrame> texture_frames = {},
                 std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {},
                 CelestialView glare_view = {}, std::span<const Vertex> hud = {}, bool screen_hud = false,
-                SnowfallView snow = {});
+                SnowfallView snow = {}, const LampView* lamps = nullptr);
 
     const Stats& stats() const { return stats_; }
 

@@ -228,3 +228,10 @@ contact, spring, surface and recovery rules, including permitted powder sink.
 Authored steep-corner regressions reproduce the previous failure on desktop
 and Quest; sampled Snowdream/Mesa traversal adds owned-course coverage. See
 `jump-corners-0.64.md` for evidence and exact-location verification limits.
+
+Build 0.65 retains clean 160's selection, hue, brightness, pixel core, bloom,
+rotation and range law. Its independently authored preview profile adds square
+lens stars, a same-hue aura, class-proportional sizing, bounded camera pull and
+shared stereo bloom, calibrated from a matched rendered Snowdream view and
+public behavior tests. Original source-depth/world-size differences are explicit
+in `lamp-profile-0.65.md`; no other port's runtime is implementation guidance.

@@ -860,7 +860,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                             std::span<const PropMotion> motions, double alpha, std::span<const PropRouteMotion> routes,
                             std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost,
                             std::span<const ParticleSprite> particles, CelestialView glare_view,
-                            std::span<const Vertex> hud, bool screen_hud, SnowfallView snow) {
+                            std::span<const Vertex> hud, bool screen_hud, SnowfallView snow, const LampView* lamps) {
     if (!finite(snow.eye) || !std::isfinite(snow.time) || snow.time < 0 || snow.time > 1e9)
         throw std::invalid_argument("Invalid snowfall view");
     const auto weather = snow_settings(snow.amount);
@@ -983,7 +983,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     if (!glare_view.stereo)
         glare_view.anchor = eye;
     auto celestial = celestial_mesh(glare(), glare_view);
-    const auto glints = lamp_glint_mesh(scene_->world_.glints, camera.values, eye, width_, height_);
+    const auto glints = lamp_glint_mesh(scene_->world_.glints, camera.values, eye, width_, height_, 600, lamps);
     const auto fan_count = celestial.fan.size();
     celestial.fan.insert(celestial.fan.end(), celestial.corona.begin(), celestial.corona.end());
     const auto visibility = 1 - fade;
@@ -1220,7 +1220,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     upload_dynamic(celestial.fan, celestial_vertices_, celestial_capacity_);
     upload_dynamic(hud, hud_vertices_, hud_capacity_);
     upload_dynamic(glints, glint_vertices_, glint_capacity_);
-    stats_.lamp_glints = unsigned(glints.size() / 24);
+    stats_.lamp_glints = unsigned(glints.size() / 30);
     boost_mesh_.clear();
     boost_mesh_.reserve(boost.size());
     for (const auto& point : boost) {

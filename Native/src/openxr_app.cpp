@@ -1049,6 +1049,28 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                 glare_view.anchor = tracked.head + camera_offset;
                 glare_view.visibility = state.glare_visibility.step(player.terrain(), state.eyes[0].renderer->glare(),
                                                                     glare_view.anchor, std::clamp(dt, 0., 1.));
+                std::array<Matrix, 2> eye_matrices;
+                std::array<Vec3, 2> eye_positions;
+                for (unsigned i = 0; i < 2; ++i) {
+                    const auto& camera = views[i];
+                    auto& eye_position = eye_positions[i];
+                    eye_position = body +
+                                   quaternion_rotate(body_rotation, Vec3{camera.pose.position.x, camera.pose.position.y,
+                                                                         camera.pose.position.z} -
+                                                                        state.origin) +
+                                   camera_offset;
+                    const auto forward =
+                        quaternion_rotate(body_rotation, quaternion_rotate(camera.pose.orientation, {0, 0, -1}));
+                    const auto up =
+                        quaternion_rotate(body_rotation, quaternion_rotate(camera.pose.orientation, {0, 1, 0}));
+                    if (i == 0)
+                        audio.listener({eye_position, forward, up});
+                    eye_matrices[i] = projection(std::tan(camera.fov.angleLeft), std::tan(camera.fov.angleRight),
+                                                 std::tan(camera.fov.angleDown), std::tan(camera.fov.angleUp)) *
+                                      view(eye_position, forward, up);
+                }
+                const auto lamp_view = stereo_lamp_view(eye_matrices[0].values, eye_matrices[1].values,
+                                                        eye_positions[0], eye_positions[1]);
                 for (unsigned i = 0; i < 2; ++i) {
                     if (i == 0)
                         pose_time += ms(simulated, Clock::now());
@@ -1063,24 +1085,10 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                     this_image_wait += ms(image_start, Clock::now());
                     const auto render_start = Clock::now();
                     const auto& camera = views[i];
-                    const auto eye_position =
-                        body +
-                        quaternion_rotate(body_rotation,
-                                          Vec3{camera.pose.position.x, camera.pose.position.y, camera.pose.position.z} -
-                                              state.origin) +
-                        camera_offset;
+                    const auto eye_position = eye_positions[i];
                     player.world_view(eye_position);
-                    const auto forward =
-                        quaternion_rotate(body_rotation, quaternion_rotate(camera.pose.orientation, {0, 0, -1}));
-                    const auto up =
-                        quaternion_rotate(body_rotation, quaternion_rotate(camera.pose.orientation, {0, 1, 0}));
-                    if (i == 0)
-                        audio.listener({eye_position, forward, up});
-                    const auto matrix = projection(std::tan(camera.fov.angleLeft), std::tan(camera.fov.angleRight),
-                                                   std::tan(camera.fov.angleDown), std::tan(camera.fov.angleUp)) *
-                                        view(eye_position, forward, up);
                     eye.renderer->render(
-                        image, matrix,
+                        image, eye_matrices[i],
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, {}, {}, eye_position, player.effects().sprites(),
                         player.effects().wake(), player.effects().sheet(), avatar_mesh, player.reset_fade(),
@@ -1088,7 +1096,8 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                         player.logic().route_motions(), player.logic().texture_frames(),
                         player.boost_trail_mesh().vertices(), player.particles(player.frame_alpha(), eye_position),
                         glare_view, hud, false,
-                        {tracked.head + camera_offset, player.weather_time(), state.graphics_preferences.snow});
+                        {tracked.head + camera_offset, player.weather_time(), state.graphics_preferences.snow},
+                        &lamp_view);
                     this_render += ms(render_start, Clock::now());
                     const auto& stats = eye.renderer->stats();
                     this_resource_wait += stats.wait_ms;

@@ -105,21 +105,68 @@ void geometry() {
 void lamps(const std::filesystem::path& root) {
     using Json = nlohmann::json;
     Json rows = Json::array();
-    for (auto res : {16, 32, 64, 256, 512})
+    for (auto res : {16, 32, 64, 256, 512, 0x70})
         rows.push_back({{"SpriteRes", res}, {"Colour", {1000, 0, 0}}, {"Position", {0, 1000, 0}}});
     rows.push_back({{"SpriteRes", 32}, {"Colour", {-1, -1, -1}}, {"Position", {0, 1000, 0}}});
     std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
     const auto lights = load_lamp_glints(root);
-    check(lights.size() == 3, "Only small additive sprite classes become lamp glints");
+    check(lights.size() == 4 && lights[3].size == 0, "The small-class gate retains a pixel-only unclassified mask");
     close(lights[0].position.z, -10, 1e-9, "Light positions use native metre axes");
     close(lights[0].hue.x, 1, 1e-9, "Illumination magnitude divides out of glint hue");
     const auto matrix = (projection(-1, 1, -1, 1) * view({}, {0, 0, -1})).values;
     const auto mesh = lamp_glint_mesh(lights, matrix, {}, 128, 128);
-    check(mesh.size() == 72, "Each lamp has halo, crossed spikes and fixed pixel core");
+    check(mesh.size() == 120, "Each lamp has halo, crossed square stars, fixed core and same-hue aura");
     const auto wider = lamp_glint_mesh(lights, matrix, {}, 256, 256);
     close(std::abs(mesh[18].x) / std::abs(wider[18].x), 2, 1e-6, "Core retains pixel size as resolution changes");
+    const auto point = [](const Vertex& v) { return Vec3{v.x, v.y, v.z}; };
+    const auto centre = [&](const auto& vertices, unsigned base = 0) {
+        return (point(vertices[base]) + point(vertices[base + 2])) * .5;
+    };
+    const auto extent = [&](const auto& vertices, unsigned base) {
+        return length(point(vertices[base + 1]) - point(vertices[base]));
+    };
+    close(centre(mesh).z, -7, 1e-6, "Small glow pulls three metres toward the viewer");
+    close(centre(mesh, 30).z, -5, 1e-6, "Medium glow pulls five metres toward the viewer");
+    close(extent(mesh, 30) / extent(mesh, 0), 2, 1e-6, "Small and medium glow sizes retain their class ratio");
+    close(extent(mesh, 60) / extent(mesh, 30), 2, 1e-6, "Large glow is twice medium in the preview profile");
+    close(length(point(mesh[7]) - point(mesh[6])), length(point(mesh[8]) - point(mesh[7])), 1e-6,
+          "Lens star art retains a square aspect ratio");
+    close(centre(mesh, 90).z, -10, 1e-6, "Unclassified masks retain the fixed source core without world glow");
+    close(extent(mesh, 90), 0, 1e-6, "Unclassified masks cannot invent a world-size class");
+    close(extent(mesh, 24), extent(mesh, 0), 1e-6, "The soft same-hue aura spans the circular halo");
+    const auto projected = [&](Vec3 p, const auto& m, unsigned axis) {
+        const auto w = m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15];
+        return (m[axis] * p.x + m[4 + axis] * p.y + m[8 + axis] * p.z + m[12 + axis]) / w;
+    };
+    close(std::abs(projected(point(mesh[19]), matrix, 0) - projected(point(mesh[18]), matrix, 0)) * 64, 16, 1e-5,
+          "Pulled core remains sixteen final pixels wide");
+    close(std::abs(projected(point(mesh[20]), matrix, 1) - projected(point(mesh[19]), matrix, 1)) * 64, 8, 1e-5,
+          "Pulled core remains eight final pixels high");
+    const Vec3 left_eye{-.032, 0, 0}, right_eye{.032, 0, 0};
+    const auto left = (projection(-1, 1, -1, 1) * view(left_eye, {0, 0, -1})).values;
+    const auto right = (projection(-1, 1, -1, 1) * view(right_eye, {0, 0, -1})).values;
+    const auto shared = stereo_lamp_view(left, right, left_eye, right_eye);
+    std::array<LampGlint, 1> off_axis{{{{1.2, .1, -10}, {1, 0, 0}, 32, 1}}};
+    close(projected(off_axis[0].position, shared.bloom_clip, 0),
+          (projected(off_axis[0].position, left, 0) + projected(off_axis[0].position, right, 0)) * .5, 1e-6,
+          "Parallel-eye matrix averaging retains the cyclopean projected source");
+    const auto l = lamp_glint_mesh(off_axis, left, left_eye, 128, 128, 600, &shared);
+    const auto r = lamp_glint_mesh(off_axis, right, right_eye, 128, 128, 600, &shared);
+    close(l[0].ls, r[0].ls, 1e-9, "Both eyes use one cyclopean bloom and distance gain");
+    close(length(centre(l) - centre(r)), 0, 1e-6, "Stereo camera pull retains one common world anchor");
+    close(extent(l, 0), extent(r, 0), 1e-6, "Both eyes retain the same halo size");
+    check(length(point(l[6]) - point(r[6])) > 1e-4, "Star rotation still responds to each eye's projected X");
+    off_axis[0] = {{0, 0, -30}, {1, 0, 0}, 64, 1};
+    const auto far = lamp_glint_mesh(off_axis, matrix, {}, 128, 128);
+    close(centre(far).z, -22, 1e-6, "An unclamped large glow pulls eight metres toward the viewer");
+    off_axis[0].position = {0, 0, -.1};
+    const auto near = lamp_glint_mesh(off_axis, matrix, {}, 128, 128);
+    check(centre(near).z < 0, "A nearby glow cannot pull through the eye plane");
+    auto bad_shared = shared;
+    bad_shared.bloom_clip[0] = std::numeric_limits<float>::infinity();
+    rejects([&] { lamp_glint_mesh(off_axis, matrix, {}, 128, 128, 600, &bad_shared); });
     auto many = std::vector<LampGlint>(30, lights[0]);
-    check(lamp_glint_mesh(many, matrix, {}, 128, 128).size() == 240, "Lamp selection is bounded to ten visible lights");
+    check(lamp_glint_mesh(many, matrix, {}, 128, 128).size() == 300, "Lamp selection is bounded to ten visible lights");
     many[0].position.z = 10;
     check(lamp_glint_mesh(std::span(many.data(), 1), matrix, {}, 128, 128).empty(), "Behind-camera lamps draw nothing");
     many[0].position.z = -601;

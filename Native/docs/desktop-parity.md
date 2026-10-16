@@ -216,3 +216,9 @@ related to the Snowdream jump-corner report. Desktop and Quest pass the same
 1,488-case corner matrix and sampled Snowdream/Mesa traversal. The user's exact
 jump still needs a play test; see `jump-corners-0.64.md`. Ground-flare appearance
 and broader parity remain active.
+
+Build 0.65 makes the ground-flare composition substantially closer to the
+Slopesmith preview using a matched Snowdream view: square lens stars, a soft
+same-hue aura, calibrated world size and bounded camera pull. Shared stereo bloom
+retains independent eye rotation. See `lamp-profile-0.65.md` for the deliberate
+presentation differences, validation and remaining worn appearance checks.

@@ -110,7 +110,7 @@ std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root) {
     std::vector<LampGlint> result;
     for (const auto& row : rows) {
         const auto mask = row.value("SpriteRes", 0) & 0x70;
-        if (mask != 16 && mask != 32 && mask != 64)
+        if (!mask)
             continue;
         const auto vector = [&](const char* key) {
             const auto& v = row.at(key);
@@ -128,23 +128,42 @@ std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root) {
         const auto brightness = row.value("UnknownFloat1", 1.);
         if (!std::isfinite(brightness) || brightness < 0 || brightness > 100)
             throw std::runtime_error("Invalid course light brightness");
-        result.push_back({{p.x / 100, p.z / 100, -p.y / 100}, colour / length(colour), unsigned(mask), brightness});
+        const auto size = mask == 16 || mask == 32 || mask == 64 ? unsigned(mask) : 0u;
+        result.push_back({{p.x / 100, p.z / 100, -p.y / 100}, colour / length(colour), size, brightness});
     }
     return result;
 }
 
+LampView stereo_lamp_view(const std::array<float, 16>& left, const std::array<float, 16>& right, Vec3 left_eye,
+                          Vec3 right_eye) {
+    LampView result;
+    result.anchor = (left_eye + right_eye) * .5;
+    for (unsigned i = 0; i < result.bloom_clip.size(); ++i)
+        result.bloom_clip[i] = left[i] * .5f + right[i] * .5f;
+    return result;
+}
+
 std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std::array<float, 16>& clip, Vec3 eye,
-                                    unsigned width, unsigned height, double range) {
+                                    unsigned width, unsigned height, double range, const LampView* shared) {
     if (!finite(eye) || !width || !height || !std::isfinite(range) || range <= 0)
         throw std::invalid_argument("Invalid lamp glint view");
     for (const auto v : clip)
         if (!std::isfinite(v))
             throw std::invalid_argument("Invalid lamp projection");
+    if (shared) {
+        if (!finite(shared->anchor))
+            throw std::invalid_argument("Invalid shared lamp anchor");
+        for (const auto v : shared->bloom_clip)
+            if (!std::isfinite(v))
+                throw std::invalid_argument("Invalid shared lamp projection");
+    }
+    const auto anchor = shared ? shared->anchor : eye;
     const auto forward = normalized(Vec3{clip[3], clip[7], clip[11]}, {0, 0, -1});
     const Vec3 row_x{clip[0], clip[4], clip[8]}, row_y{clip[1], clip[5], clip[9]};
     const auto right = normalized(project(row_x, forward), {1, 0, 0}),
                up = normalized(-project(row_y, forward), {0, 1, 0});
     const CelestialView view{clip};
+    const CelestialView bloom_view{shared ? shared->bloom_clip : clip};
 
     struct Visible {
         const LampGlint* light;
@@ -154,7 +173,7 @@ std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std
 
     std::vector<Visible> visible;
     for (const auto& light : lights) {
-        const auto distance = length(light.position - eye);
+        const auto distance = length(light.position - anchor);
         const auto p = project(view, light.position);
         if (distance >= range || distance < .05 || p[3] <= 1e-6 || p[2] < 0 || p[2] > p[3] || std::abs(p[0]) > p[3] ||
             std::abs(p[1]) > p[3])
@@ -166,9 +185,9 @@ std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std
     if (visible.size() > 10)
         visible.resize(10);
     std::vector<Vertex> result;
-    const auto quad = [&](const LampGlint& light, Vec3 x, Vec3 y, double gain, double kind) {
+    const auto quad = [&](const LampGlint& light, Vec3 centre, Vec3 x, Vec3 y, double gain, double kind) {
         for (const auto uv : std::array<std::array<double, 2>, 6>{{{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}}}) {
-            const auto p = light.position + x * (uv[0] * 2 - 1) + y * (1 - uv[1] * 2);
+            const auto p = centre + x * (uv[0] * 2 - 1) + y * (1 - uv[1] * 2);
             Vertex v{float(p.x), float(p.y), float(p.z), float(light.hue.x), float(light.hue.y), float(light.hue.z)};
             v.s = float(uv[0]);
             v.t = float(uv[1]);
@@ -179,19 +198,27 @@ std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std
     };
     for (const auto& lamp : visible) {
         const auto& light = *lamp.light;
-        const auto nx = lamp.p[0] / lamp.p[3], ny = lamp.p[1] / lamp.p[3];
-        const auto bloom = std::pow(std::max(0., 1 - std::hypot(nx, ny)), 4);
+        const auto nx = lamp.p[0] / lamp.p[3];
+        const auto common = project(bloom_view, light.position);
+        const auto bloom =
+            common[3] > 1e-6 ? std::pow(std::max(0., 1 - std::hypot(common[0], common[1]) / common[3]), 4) : 0.;
         const auto gain = light.brightness * (1 + bloom) * std::min(1., 2 * (1 - lamp.distance / range));
-        const auto radius = (light.size == 64 ? 2.5 : light.size == 32 ? 1. : .5) * (1 + bloom);
-        quad(light, right * radius * 2, up * radius * 2, gain, 0);
+        // First-party preview profile, calibrated from matched rendered views.
+        // Keep the lens star square; the art already contains its thin streaks.
+        const auto radius = .225 * (light.size / 32.) * (1 + bloom);
+        const auto pull = light.size == 64 ? 8. : light.size == 32 ? 5. : light.size == 16 ? 3. : 0.;
+        const auto centre = light.position + normalized(anchor - light.position) * std::min(pull, lamp.distance * .5);
+        quad(light, centre, right * radius * 2, up * radius * 2, gain, 0);
         const auto angle = -pi * .5 * nx;
         const auto x = right * std::cos(angle) + up * std::sin(angle),
                    y = up * std::cos(angle) - right * std::sin(angle);
-        quad(light, x * radius, y * radius * .15, gain, 1);
-        quad(light, y * radius, x * radius * .15, gain, 1);
-        const auto px = 2 * lamp.p[3] / (width * std::max(length(row_x), 1e-9));
-        const auto py = 2 * lamp.p[3] / (height * std::max(length(row_y), 1e-9));
-        quad(light, right * px * 8, up * py * 4, gain, 2);
+        quad(light, centre, x * radius * 2, y * radius * 2, gain, 1);
+        quad(light, centre, y * radius * 2, -x * radius * 2, gain, 1);
+        const auto p = project(view, centre);
+        const auto px = 2 * p[3] / (width * std::max(length(row_x), 1e-9));
+        const auto py = 2 * p[3] / (height * std::max(length(row_y), 1e-9));
+        quad(light, centre, right * px * 8, up * py * 4, gain, 2);
+        quad(light, centre, right * radius * 2, up * radius * 2, gain, 2);
     }
     return result;
 }
