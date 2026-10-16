@@ -29,6 +29,7 @@ public:
 private:
     friend class Player;
     struct Member;
+    Player& primary_;
     std::shared_ptr<const AiNetwork> network_;
     std::vector<std::unique_ptr<Member>> members_;
     std::vector<AiStanding> standings_;
@@ -41,6 +42,7 @@ private:
     void force_step(Player& primary, std::span<Player* const> actors, double world_seconds);
     std::optional<AiProjection> recovery_anchor(const Player& actor) const;
     bool recovery_blocked(const Player& actor) const;
+    double recovery_bias(const Player& actor) const;
     std::optional<RecoveryPose> recovery(const Player& actor) const;
 };
 } // namespace openslope

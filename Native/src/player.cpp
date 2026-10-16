@@ -331,7 +331,8 @@ bool Player::request_course_recovery(bool manual, bool authored) {
     auto start = spawn_position_;
     if (const auto floor = trace_ground(start + Vec3{0, 2, 0}, start - Vec3{0, 10, 0}))
         start = floor->point;
-    auto target = course_recovery_.choose(rider_.position, {start, spawn_forward_}, safe);
+    auto target = course_recovery_.choose(rider_.position, {start, spawn_forward_}, safe,
+                                          field_ ? field_->recovery_bias(*this) : 0);
     if (input_field_)
         if (const auto biased = input_field_->recovery(*this); biased && safe(biased->position))
             target = biased;

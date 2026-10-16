@@ -1,5 +1,12 @@
 # Native prototype specification alignment
 
+Build 0.70 follows detailed clean `390-reset-bias` for the adjacent competitor's
+speed and solo/mode/course/finish exclusions, shared by the local player and
+opponents. It replaces the previous mean-progress interpretation from 395's
+overview. The conflicting overview remains a source-spec discrepancy. Existing
+continuous-progress standings and candidate-scoring differences are not closed
+by this correction; see [reset bias](reset-bias-0.70.md).
+
 The clean bodies of Trailmap chapters 002, 110, 160, 200, 210, 220, 310, 320, 330, 340, 360, and 400 were consulted for the
 initial terrain/contact milestone. Raw provenance annotations are not implementation guidance.
 `Contracts/ride-v1.json` matches the current local `Trailmap/specs/data/ride-v1.json` byte for byte.

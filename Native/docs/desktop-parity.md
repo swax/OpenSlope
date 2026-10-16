@@ -1,5 +1,10 @@
 # Desktop gameplay parity work
 
+Build 0.70 shares the detailed clean 390 forward-reset rule between the human
+and opponents, with mode/course/finish exclusions. Full standings authority,
+terrain junctions and broader racing parity remain open; see
+[reset-bias validation](reset-bias-0.70.md).
+
 The active objective is feature parity with playing in Slopesmith, including
 sound, music, effects, collisions, culling, anti-aliasing, graphical improvements,
 performance work and the VR path. Desktop behavior is the current verification

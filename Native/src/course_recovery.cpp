@@ -169,8 +169,9 @@ bool CourseRecovery::blocked(Vec3 position) const {
 }
 
 std::optional<RecoveryPose> CourseRecovery::choose(Vec3 position, RecoveryPose start,
-                                                   const std::function<bool(Vec3)>& safe) {
-    if (!finite(position) || !finite(start.position) || !finite(start.forward) || !safe)
+                                                   const std::function<bool(Vec3)>& safe, double forward_bias) {
+    if (!finite(position) || !finite(start.position) || !finite(start.forward) || !safe ||
+        !std::isfinite(forward_bias) || forward_bias < 0)
         throw std::invalid_argument("Invalid course recovery request");
     if (blocked(position))
         return {};
@@ -190,7 +191,11 @@ std::optional<RecoveryPose> CourseRecovery::choose(Vec3 position, RecoveryPose s
     if (tracked_) {
         const auto projection = project(*tracked_, position);
         if (horizontal(projection.point - position) <= 150)
-            anchor = projection.point;
+            anchor = pose(*tracked_, projection.station + forward_bias).position;
+    } else if (forward_bias > 0) {
+        const auto current = nearest(position, true, false);
+        if (!current.empty() && horizontal(current.front().point - position) <= 150)
+            anchor = pose(current.front().path, current.front().station + forward_bias).position;
     }
     const auto candidates = nearest(anchor, true, true);
     std::vector<std::pair<double, Projection>> ranked;

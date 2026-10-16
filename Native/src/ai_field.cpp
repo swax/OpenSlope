@@ -15,7 +15,8 @@ struct AiField::Member {
 };
 
 AiField::AiField(Player& primary, unsigned count, std::shared_ptr<const AiNetwork> network)
-    : network_(network ? std::move(network)
+    : primary_(primary),
+      network_(network ? std::move(network)
                        : std::make_shared<AiNetwork>(CoursePaths::load(primary.terrain().map_root()))) {
     if (!primary.human_ || count > 16)
         throw std::invalid_argument("AI field needs a local player and at most sixteen opponents");
@@ -101,23 +102,27 @@ bool AiField::recovery_blocked(const Player& actor) const {
     return current && reset_forbidden(network_->paths().ai[current->path].events, current->station);
 }
 
+double AiField::recovery_bias(const Player& actor) const {
+    // [Trailmap: 390-reset-bias] Record 0.8 seconds of the next placed rider's
+    // speed; last place uses the rider ahead. Progress gaps are not a distance bias.
+    if (!primary_.run_.reset_bias_allowed() || standings_.size() < 2)
+        return 0;
+    const auto progress = actor.run_.locate(actor.rider_.position);
+    if (!progress || progress->distance_to_finish < 100)
+        return 0;
+    const auto found =
+        std::find_if(standings_.begin(), standings_.end(), [&](const auto& row) { return row.rider == &actor; });
+    if (found == standings_.end())
+        return 0;
+    const auto adjacent = found + 1 == standings_.end() ? found - 1 : found + 1;
+    return .8 * length(adjacent->rider->rider_.velocity);
+}
+
 std::optional<RecoveryPose> AiField::recovery(const Player& actor) const {
     const auto current = recovery_anchor(actor);
     if (!current)
         return {};
-    const auto progress = [&](const Player& rider) {
-        const auto foot = rider.course_run().locate(rider.rider().position);
-        return foot ? total_ - foot->distance_to_finish + (rider.course_run().status().lap - 1) * total_ : 0.;
-    };
-    double mean = 0;
-    unsigned count = 0;
-    for (const auto& row : standings_)
-        if (row.rider != &actor && !row.rider->reset_pending()) {
-            mean += progress(*row.rider);
-            ++count;
-        }
-    const auto delta = count ? std::max(0., mean / count - progress(actor)) : 0;
-    const auto ahead = network_->point(current->path, current->station + delta);
+    const auto ahead = network_->point(current->path, current->station + recovery_bias(actor));
     // Recovery also needs space for the raised spawn and the seated body.
     // This is an application safety check; it does not alter route following.
     const auto clear = [&](const AiProjection& candidate) {

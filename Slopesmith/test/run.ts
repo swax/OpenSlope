@@ -30,9 +30,9 @@
  * rather than of this file: anything with state on disk redirects its roots into its own `mkdtemp` through
  * `SLOPESMITH_*_ROOT`, and anything that stands up a service binds `port: 0`. Nothing shares a fixed path or a
  * fixed port, so nothing collides. Keep it that way — a check that writes to a hardcoded location is a check
- * that fails only when the machine is busy, which is the worst kind. The perf claims in `rebuild.test.ts` are
- * ratios against a full rebuild measured in the same process, so they hold under load too; the async waits
- * elsewhere are multi-second deadlines, not budgets.
+ * that fails only when the machine is busy, which is the worst kind. The timing ratios in `rebuild.test.ts`
+ * compare operations measured in separate batches. Run that benchmark alone so competing checks cannot
+ * distort their relative costs; its assertions and measurement batches stay unchanged.
  *
  * Each check is spawned as `node --import tsx <file>` rather than `npx tsx <file>`. Same resolution, same
  * loader, but `npx` costs an extra ~0.75s of process startup per check — a minute across the suite, spent
@@ -96,8 +96,8 @@ function declaredTier(name: string): Exclude<Tier, 'full'> {
  * All three stand up the API service over the accounts store and the on-disk library cache. Run together they
  * fail on cache entries and token rows they did not write; run alone, each passes. That reproduced reliably
  * enough to be mistaken for a property of the machine, and it was cheaper to call it a known flake than to
- * find it — which is exactly the cost of leaving it. They still overlap the REST of the suite, so the gate's
- * wall clock is unchanged: it is pinned by `rebuild.test.ts`, which is longer than these three end to end.
+ * find it — which is exactly the cost of leaving it. They still overlap unrelated checks, while checks in
+ * RUN_ALONE hold the complete pool.
  *
  * Not the same thing as `sessions.test.ts`, which fails on a saturated machine EVEN RUN ALONE. That one is
  * about total load rather than about who else touches its state, and serialising cannot help it.
@@ -118,10 +118,10 @@ const EXCLUSIVE_GROUP = new Map([
 
 /**
  * This real-socket check has deadlines wide enough for an ordinary machine but is known to fail when unrelated
- * CPU-heavy checks saturate the event loop. Giving it the worker pool briefly is cheaper than retrying a red
- * gate and does not extend the usual wall clock: the full tier's long rebuild check already runs for longer.
+ * CPU-heavy checks saturate the event loop. The rebuild benchmark also needs the pool while measuring its
+ * relative operation costs. Isolating these checks retains their deadlines, ratios and complete coverage.
  */
-const RUN_ALONE = new Set(['sessions.test.ts', 'sync.test.ts', 'public-home.test.ts']);
+const RUN_ALONE = new Set(['sessions.test.ts', 'sync.test.ts', 'public-home.test.ts', 'rebuild.test.ts']);
 
 /** A check spawned through the TypeScript loader, without paying for an `npx` resolution to find it. */
 const tsx = (file: string, ...args: string[]): { command: string; args: string[] } =>
@@ -177,13 +177,10 @@ const askedJobs = Number(argv.includes('--jobs')
   ? argv[argv.indexOf('--jobs') + 1]
   : process.env.SLOPESMITH_TEST_JOBS);
 /**
- * Deliberately well under the core count. The gate's wall clock is pinned by its longest single check
- * (`rebuild.test.ts`, ~50s) rather than by throughput — the rest of the suite is ~165s of work, which six at a
- * time finishes inside that window anyway. So the cores left idle here buy nothing in speed and cost nothing:
- * they are headroom, and headroom is what keeps the checks that wait on sockets and debounce windows off their
- * deadlines. Those waits are seconds wide and hold fine on an unloaded machine; saturate the box and they
- * start to flake (`sessions.test.ts` will fail on a SATURATED MACHINE EVEN RUN ALONE, so this is a property of
- * the checks, not of running them together). Raise `--jobs` if `rebuild` is ever sharded and the floor drops.
+ * Deliberately well under the core count. The ordinary checks share a bounded pool; timing benchmarks and
+ * load-sensitive socket checks hold it alone. Leave headroom for browser processes, worker threads and
+ * deadlines rather than assuming one test process consumes one core. `--jobs` can tune throughput for the
+ * machine without changing discovery, assertions or the isolation rules.
  */
 const jobs = Number.isFinite(askedJobs) && askedJobs > 0
   ? Math.max(1, Math.floor(askedJobs))

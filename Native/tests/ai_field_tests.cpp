@@ -197,8 +197,9 @@ void commands(const std::filesystem::path& root) {
     for (unsigned i = 0; i < 90; ++i)
         reset.tick({});
     const auto recovered = reset.ai_field()->rider(0).last_course_recovery();
-    check(recovered && recovered->source == RecoverySource::AIPath && recovered->station > 100,
-          "An opponent recovers on a safe AI line biased forward toward the rest of the field");
+    check(recovered && recovered->source == RecoverySource::AIPath && recovered->station > 15 &&
+              recovered->station < 25,
+          "An opponent's Freeride reset stays near its current station despite a distant field");
 
     fixture(root, Json::array({node(24, Json::object(), {{"instance", "instance:1"}})}));
     auto rows = Json::parse(std::ifstream(root / "Instances.json"));
@@ -339,6 +340,80 @@ void recovery_paths(const std::filesystem::path& root) {
          "Opponent drop-in seeds horizontal course velocity rather than the path's vertical slope");
     near(length(sloped.ai_field()->rider(0).rider().velocity), 30. / 3.6,
          "The shared drop-in retains its exact thirty-kilometre-per-hour speed");
+}
+
+void reset_bias(const std::filesystem::path& root) {
+    const auto scenario = [&](const char* name, RunMode mode, unsigned subject, unsigned reference,
+                              std::array<double, 3> stations, bool biased, bool megaplex = false, unsigned laps = 1) {
+        const auto map = root / name;
+        std::filesystem::create_directory(map);
+        fixture(map);
+        write(map, "Instances.json", {{"Instances", Json::array()}});
+        write(map, "Slopesmith.json", {{"schema", 1}, {"kind", "slopesmith-export"}, {"laps", laps}});
+        if (megaplex)
+            write(map, "Origin.json", {{"Schema", "openslope-origin/v1"}, {"Course", "MEGAPLE"}});
+        Player player(Terrain::load(map));
+        player.configure_run(mode);
+        for (unsigned tick = 0; tick < 181; ++tick)
+            player.tick({.posture = -1});
+        player.ai_riders(2);
+        std::array<Player*, 3> actors{&player, &player.ai_field()->rider(0), &player.ai_field()->rider(1)};
+        for (unsigned i = 0; i < actors.size(); ++i)
+            seat(*actors[i], i == 1 ? 10 : -10, stations[i], 7 + i * 6);
+        for (unsigned tick = 0; tick < 6; ++tick)
+            player.tick({.posture = -1});
+        auto& rider = *actors[subject];
+        check(player.course_run().status().phase == RunPhase::Running,
+              "Reset-bias fixtures use an active run and the real shared field");
+        const auto station = -rider.rider().position.z;
+        const auto expected = station + (biased ? .8 * length(actors[reference]->rider().velocity) : 0);
+        const auto accepted = rider.recover_course(subject == 0);
+        if (!accepted)
+            std::cerr << name << " refused reset at station " << station << " pending " << rider.reset_pending()
+                      << '\n';
+        check(accepted, "The field rider accepts an ordinary reset request");
+        for (unsigned tick = 0; tick < 120 && !rider.last_course_recovery(); ++tick)
+            player.tick({.posture = -1});
+        const auto recovered = rider.last_course_recovery();
+        check(recovered && recovered->source == RecoverySource::AIPath,
+              "The shared reset completes on an authored respawn path");
+        if (std::abs(recovered->station - expected) >= 1e-7)
+            std::cerr << name << " reset station " << recovered->station << " expected " << expected << '\n';
+        near(recovered->station, expected,
+             "Race reset advances by the adjacent competitor's speed with the authored exclusions");
+    };
+    scenario("leader", RunMode::Race, 2, 0, {180, 40, 260}, true);
+    scenario("middle-opponent", RunMode::Race, 1, 0, {40, 180, 260}, true);
+    scenario("middle-human", RunMode::Race, 0, 1, {180, 40, 260}, true);
+    scenario("leader-human", RunMode::Race, 0, 2, {260, 40, 180}, true);
+    scenario("last-human", RunMode::Race, 0, 1, {40, 180, 260}, true);
+    scenario("last", RunMode::Race, 1, 0, {180, 40, 260}, true);
+    scenario("different-gaps", RunMode::Race, 1, 0, {260, 40, 280}, true);
+    scenario("near-finish", RunMode::Race, 2, 0, {180, 40, 310}, false);
+    scenario("near-finish-human", RunMode::Race, 0, 2, {310, 40, 180}, false);
+    scenario("freeride", RunMode::Freeride, 1, 0, {180, 40, 260}, false);
+    scenario("freeride-human", RunMode::Freeride, 0, 1, {180, 40, 260}, false);
+    scenario("showoff", RunMode::Showoff, 1, 0, {180, 40, 260}, false);
+    scenario("showoff-human", RunMode::Showoff, 0, 1, {180, 40, 260}, false);
+    scenario("megaplex", RunMode::Race, 1, 0, {180, 40, 260}, false, true);
+    scenario("megaplex-human", RunMode::Race, 0, 1, {180, 40, 260}, false, true);
+    scenario("custom-laps", RunMode::Race, 1, 0, {180, 40, 260}, true, false, 4);
+
+    const auto solo = root / "solo";
+    std::filesystem::create_directory(solo);
+    fixture(solo);
+    Player player(Terrain::load(solo));
+    player.configure_run(RunMode::Race);
+    for (unsigned tick = 0; tick < 181; ++tick)
+        player.tick({.posture = -1});
+    seat(player, -10, 50, 12);
+    player.tick({.posture = -1});
+    const auto station = -player.rider().position.z;
+    check(player.recover_course(false), "A solo racer accepts a normal reset request");
+    for (unsigned tick = 0; tick < 120 && !player.last_course_recovery(); ++tick)
+        player.tick({.posture = -1});
+    check(player.last_course_recovery().has_value(), "A solo reset completes its normal hold");
+    near(player.last_course_recovery()->station, station, "A solo reset has no competitor-derived forward bias");
 }
 
 void menu(const std::filesystem::path& root) {
@@ -548,6 +623,9 @@ int main(int argc, char** argv) {
         const auto reset_root = root / "recovery-paths";
         std::filesystem::create_directory(reset_root);
         recovery_paths(reset_root);
+        const auto bias_root = root / "reset-bias";
+        std::filesystem::create_directory(bias_root);
+        reset_bias(bias_root);
         if (argc == 2)
             owned(argv[1]);
         std::cout << "PASS: " << checks << " shared AI field checks\n";

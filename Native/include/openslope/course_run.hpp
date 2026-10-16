@@ -15,6 +15,7 @@ struct RunSettings {
     RunMode mode = RunMode::Freeride;
     unsigned laps = 1;
     double showoff_seconds = 120, countdown_seconds = 3;
+    bool forward_reset_bias = true;
     static RunSettings load(const std::filesystem::path& root, RunMode mode);
 };
 
@@ -49,6 +50,8 @@ public:
     bool enter_lap_volume();
 
     bool riding_allowed() const { return status_.phase != RunPhase::Ready && status_.phase != RunPhase::Countdown; }
+
+    bool reset_bias_allowed() const { return settings_.mode == RunMode::Race && settings_.forward_reset_bias; }
 
     const RunStatus& status() const { return status_; }
 

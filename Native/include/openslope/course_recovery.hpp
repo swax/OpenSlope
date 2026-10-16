@@ -23,7 +23,8 @@ public:
     void tick(double seconds);
     void observe(Vec3 position, Vec3 forward);
     bool blocked(Vec3 position) const;
-    std::optional<RecoveryPose> choose(Vec3 position, RecoveryPose start, const std::function<bool(Vec3)>& safe);
+    std::optional<RecoveryPose> choose(Vec3 position, RecoveryPose start, const std::function<bool(Vec3)>& safe,
+                                       double forward_bias = 0);
 
 private:
     struct Line {

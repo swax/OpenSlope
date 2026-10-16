@@ -83,6 +83,12 @@ void queries() {
     CourseRecovery current(ties);
     current.observe({1, 0, 50}, {0, 0, 1});
     check(current.choose({0, 0, 60}, start, safe)->path == 1, "retain the currently tracked line when it wins");
+    CourseRecovery biased(source);
+    biased.observe({6, -40, 80}, {0, 0, 1});
+    const auto shifted = biased.choose({6, -40, 80}, start, safe, 16);
+    check(shifted && shifted->source == RecoverySource::AIPath, "Forward bias retains a supported respawn path");
+    near(shifted->station, 96, "Forward reset bias advances horizontal path metres on a slope");
+    near(shifted->position.y, -48, "The biased anchor follows the path's height");
 }
 
 void windows() {
@@ -104,6 +110,10 @@ void windows() {
     CourseRecovery priority(paths(p));
     near(priority.choose({6, 0, 30}, start, safe)->station, 10,
          "declared pullback-before-push-before-jump overlap policy");
+    CourseRecovery biased_window(paths(p));
+    biased_window.observe({6, 0, 5}, {0, 0, 1});
+    near(biased_window.choose({6, 0, 5}, start, safe, 25)->station, 10,
+         "Authored reset-window adjustment applies after the forward bias");
     p.events = {{105, 0, 150, 220}};
     CourseRecovery extrapolate(paths(p));
     near(extrapolate.choose({6, 0, 180}, start, safe)->position.z, 220,

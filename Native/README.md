@@ -3,10 +3,11 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
-Build 0.69 improves shared terrain contact after landings and at narrow corners
-on desktop and Quest, and prevents cached probes from pulling airborne riders
-back onto walls they have left. Existing maps need no re-import. See
-[landing validation and remaining work](docs/landing-frame-0.69.md) and
+Build 0.70 corrects the forward reset bias for the local player and opponents:
+race resets use the adjacent competitor's speed, with solo, mode, course and
+finish exclusions. Existing maps need no re-import. See
+[reset validation and remaining work](docs/reset-bias-0.70.md),
+[landing containment](docs/landing-frame-0.69.md) and
 [opponent recovery](docs/opponent-recovery-0.68.md).
 
 Experimental C++20 player for portable OpenSlope maps, with a Vulkan renderer and OpenXR host.

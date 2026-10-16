@@ -97,8 +97,10 @@ RunSettings RunSettings::load(const std::filesystem::path& root, RunMode mode) {
     for (auto& c : course)
         c = char(std::toupper(static_cast<unsigned char>(c)));
     // [Trailmap: 390-showoff-clock, 390-lap-counter] Slot defaults, never inferred from mountain shape.
-    if (course == "MEGAPLE")
+    if (course == "MEGAPLE") {
         result.laps = 4;
+        result.forward_reset_bias = false;
+    }
     if (course == "ALASKA")
         result.showoff_seconds = 135;
     else if (course == "TRICK" || course == "UNTRACK")
