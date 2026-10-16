@@ -1,5 +1,15 @@
 # Desktop gameplay parity work
 
+Build 0.74 handles upward travel into banks, shares a pelvis-centred flip
+transform between the deck and collision pose, and clears residual live-prop
+overlap after the normal shove. The wider parity goal remains paused while
+these reported desktop issues are tested. See [playtest fixes](playtest-contact-0.74.md).
+
+Build 0.73 resolves a terrain-guard/landing disagreement that could hold a rider
+against the snow in the air state. Actual falling contacts hand off to grounded
+steering/audio, and a root crossing from a steep bank to another terrain plane
+retains corner containment. See [bank touchdown validation](bank-touchdown-0.73.md).
+
 Build 0.71 ranks unfinished Race riders by earned checkpoints and records
 completion on a shared field clock, including late entrants. It preserves
 continuous distance separately and retains previous order on equal counts.

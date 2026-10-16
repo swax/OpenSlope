@@ -284,3 +284,23 @@ The compound-body adapter preserves each terrain contact's source sphere so
 initial overlap depth can be oriented toward the body's centre. This is a Native
 thin-surface clearance policy; actual swept crossings and closed-prop contacts
 retain their existing response.
+
+Build 0.73 adds a Native handoff between the containment guard and ordinary
+touchdown. While descending, an actual guard contact can refine its front-facing
+terrain sheet and land a rider whose root would otherwise never reach it.
+Actual root crossings also hand off from steep support to an adjacent plane.
+The cached support probe alone cannot land an airborne rider. These guard rules
+are Native containment policy, retaining clean 320 contact and 340 touchdown
+response; see `bank-touchdown-0.73.md` for scope and regression evidence.
+
+Build 0.74 admits guard touchdowns based on incoming surface-relative velocity,
+including upward world travel. Departing contacts still cannot use the handoff.
+The original Native probe profile now flips around its crouch-dependent pelvis,
+with the same stance sign and translation as the rendered deck and boost trail.
+Headset tracking and camera orientation remain independent. After the clean
+370 live-body impulse, bounded positional passes clear remaining limb overlap
+against the current body pose. Grounded correction follows the support plane
+and checks terrain and neighboring solids. Deepest simultaneous occupancy
+contacts win equal-time ties. These are explicit Native stability/presentation
+policies, not claims of recovered retail solver behavior; see
+`playtest-contact-0.74.md`.

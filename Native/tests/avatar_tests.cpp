@@ -23,6 +23,46 @@ void finite_mesh(std::span<const Vertex> mesh) {
     }
 }
 
+void flip_pivot(Avatar& avatar) {
+    for (const auto lead : {-1, 1})
+        for (const auto crouch : {0., 1.})
+            for (const auto bank : {0., .8}) {
+                Player player(Terrain::demo());
+                player.warp({50, 100, 20}, {0, 0, -1}, {}, rotate({0, 1, 0}, {0, 0, -1}, bank));
+                auto& rider = const_cast<Rider&>(player.rider());
+                rider.motion = Motion::Air;
+                rider.grounded = false;
+                rider.lead = lead;
+                rider.crouch = crouch;
+                const auto deck = player.render_board_position(), camera = player.camera_forward();
+                const auto centre = deck + player.render_up() * (.92 - .3 * crouch);
+                const auto hips = avatar_pose(player).joint(J::Hips);
+                AvatarTracking tracking;
+                tracking.head = player.render_position() + Vec3{0, 1.65, 0};
+                tracking.forward = {0, 0, -1};
+                tracking.up = {0, 1, 0};
+                const auto tracked = avatar_pose(player, &tracking);
+                for (const auto degrees : {45., 90., 180., 270., 360.}) {
+                    rider.flip_degrees = degrees;
+                    const auto root = player.render_board_position(), up = player.render_up();
+                    close(root + up * (.92 - .3 * crouch), centre,
+                          "Both stances flip around the airborne pelvis instead of the stationary board");
+                    const auto pose = avatar_pose(player);
+                    check(length(pose.joint(J::Hips) - hips) < (crouch ? .62 : .02),
+                          "Animated pelvis stays near the flight centre through a full flip");
+                    for (unsigned side = 0; side < 2; ++side)
+                        close(pose.joint(side ? J::RightAnkle : J::LeftAnkle),
+                              root - player.render_forward() * (side ? .27 : -.27) + up * .12,
+                              "Both feet remain on the orbiting deck during flips");
+                    close(player.camera_forward(), camera, "Flip orbit never rotates the flight camera");
+                    const auto vr = avatar_pose(player, &tracking);
+                    close(vr.joint(J::Head), tracked.joint(J::Head), "Flip orbit preserves physical headset pose");
+                    finite_mesh(avatar.mesh(pose));
+                }
+                close(player.render_board_position(), deck, "A full flip returns the deck to its flight path");
+            }
+}
+
 void palm_curls(Avatar& avatar, const AvatarPose& base) {
     // Distal end-cap triangles in the unchanged first-party figure GLB. Their
     // open centres are measured in grip right/up/forward coordinates, not from
@@ -105,6 +145,7 @@ int main() {
     try {
         Player player(Terrain::demo());
         Avatar avatar;
+        flip_pivot(avatar);
         check(avatar.source_vertices() == 8744, "unchanged figure vertices");
         check(avatar.source_triangles() == 4816, "unchanged figure triangles");
         const auto pose = avatar_pose(player);

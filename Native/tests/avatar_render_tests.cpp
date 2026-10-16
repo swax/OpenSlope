@@ -125,6 +125,23 @@ int main(int argc, char** argv) {
             return p;
         };
         render("desktop", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+        for (const auto lead : {-1, 1}) {
+            player.warp({0, 10, 0}, {0, 0, -1});
+            auto& rider = const_cast<Rider&>(player.rider());
+            rider.grounded = false;
+            rider.motion = Motion::Air;
+            rider.lead = lead;
+            const auto hips = avatar_pose(player).joint(AvatarJoint::Hips);
+            for (const auto flip : {90., 180., 270.}) {
+                rider.flip_degrees = flip;
+                const auto pose = avatar_pose(player);
+                check(length(pose.joint(AvatarJoint::Hips) - hips) < .02,
+                      "Rendered flips retain the airborne pelvis centre");
+                render("flip-" + std::to_string(lead) + "-" + std::to_string(unsigned(flip)), pose, false,
+                       {2.8, 12.1, 3.2}, {-2.8, -1.2, -3.2}, false);
+            }
+        }
+        player.warp({0, 0, 0}, {0, 0, -1});
         const AvatarLook down_look{normalized(Vec3{0, -1, -.22}), {0, 1, 0}};
         const auto down_pose = avatar_pose(player, nullptr, &down_look);
         render("desktop-down", down_pose, true, down_pose.eye(), down_look.forward, false);

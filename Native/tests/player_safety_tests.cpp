@@ -24,7 +24,58 @@ Terrain floor(double slope = 0, int surface = 1) {
     return Terrain({patch});
 }
 
+void bank_landings() {
+    for (const auto surface : {1, 3, 5, 18})
+        for (const auto yaw : {0., pi * .5, pi})
+            for (const auto degrees : {0., 20., 45., 65., 70., 75.})
+                for (const bool downhill : {false, true})
+                    for (const auto roll : {0., 75.})
+                        for (const bool ascending : {false, true}) {
+                            if (ascending && degrees < 45)
+                                continue;
+                            const auto turn = [&](Vec3 point) { return rotate(point, {0, 1, 0}, yaw); };
+                            const auto slope = std::tan(degrees * pi / 180);
+                            Patch patch, spawn;
+                            patch.surface = surface;
+                            for (unsigned u = 0; u < 4; ++u)
+                                for (unsigned v = 0; v < 4; ++v) {
+                                    const auto x = (u / 3. - .5) * 2000;
+                                    patch.points[u * 4 + v] = turn({x, slope * x, (v / 3. - .5) * 2000});
+                                    spawn.points[u * 4 + v] = {10000. + u, 2000., 10000. + v};
+                                }
+                            const auto normal = turn(normalized(Vec3{-slope, 1, 0}));
+                            const auto forward = turn(downhill ? normalized(Vec3{-1, -slope, 0}) : Vec3{0, 0, -1});
+                            Player player(Terrain({patch, spawn}));
+                            const auto uphill = normalized(project(Vec3{0, 1, 0}, normal));
+                            player.warp(normal * .5, forward,
+                                        forward * 8 - normal * 3 + (ascending ? uphill * 18 : Vec3{}),
+                                        rotate(Vec3{0, 1, 0}, forward, roll * pi / 180));
+                            const auto serial = player.placement_serial();
+                            unsigned first_landing = 0, settled_ground = 0;
+                            for (unsigned tick = 0; tick < 120; ++tick) {
+                                player.tick({.steer = .25});
+                                const auto& rider = player.rider();
+                                if (!first_landing && rider.landings)
+                                    first_landing = tick + 1;
+                                if (tick >= 90 && rider.grounded && rider.motion == Motion::Ground)
+                                    ++settled_ground;
+                            }
+                            if (!first_landing || settled_ground < 29)
+                                std::cerr << "bank landing surface " << surface << " yaw " << yaw << " slope "
+                                          << degrees << " downhill " << downhill << " roll " << roll << " first "
+                                          << first_landing << " ascending " << ascending << " settled "
+                                          << settled_ground << '\n';
+                            check(first_landing && first_landing <= 30, "An incoming rider lands on a bank instead of "
+                                                                        "remaining held above it by the terrain guard");
+                            check(settled_ground >= 29,
+                                  "Sliding on a continuous bank retains ground controls instead of free air spins");
+                            check(player.placement_serial() == serial && finite(player.rider().position),
+                                  "Bank touchdown uses ordinary contact without a reset or distant placement");
+                        }
+}
+
 void regressions() {
+    bank_landings();
     unsigned landing_cases = 0, side_landings = 0;
     for (const auto surface : {1, 3, 18})
         for (const auto yaw : {0., pi * .5, pi, pi * 1.5})

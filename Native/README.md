@@ -3,6 +3,14 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.74 extends the landing correction to upward travel into banks, centres
+flips on the rider's pelvis, and clears lingering live-bag overlaps. See
+[playtest fixes and validation](docs/playtest-contact-0.74.md).
+
+Build 0.73 fixes sliding along banks in the air state and restores grounded
+steering and carve audio after tilted-board landings. See
+[bank touchdown validation](docs/bank-touchdown-0.73.md).
+
 Build 0.72 makes swept terrain collision follow the curved patches more closely
 and clears partly embedded compound props toward the body's side of the terrain.
 It also fixes initial sphere overlaps choosing the wrong triangle feature. See

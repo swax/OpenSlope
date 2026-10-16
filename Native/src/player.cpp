@@ -741,7 +741,7 @@ void Player::finish_feedback(const Rider& before, bool placed, double dt) {
     foot_trail_ = attachment == 2;
     const BoostTrailPose trail_pose =
         foot_trail_ ? BoostTrailPose{rider_.position, rider_.forward, {0, 1, 0}, true}
-                    : BoostTrailPose{carry_.held() ? carry_.pose().position : deck,
+                    : BoostTrailPose{carry_.held() ? carry_.pose().position : deck + flip_offset(rider_),
                                      render_forward() * double(carry_.held() ? 1 : rider_.boost_end), render_up()};
     boost_trail_.step(game_frame_, trail_pose,
                       carry_.held() && carry_thrust_     ? 1
@@ -1005,6 +1005,7 @@ void Player::tick(const RideInput& input) {
     interpolate_board_ = false;
     previous_board_forward_ = render_forward();
     previous_board_up_ = render_up();
+    previous_flip_offset_ = flip_offset(rider_);
     previous_board_serial_ = placement_serial_;
     ++game_frame_;
     world_actions_.clear();
@@ -1466,9 +1467,20 @@ void Player::advance(double seconds, const RideInput& input) {
     if (previous_board_serial_ != placement_serial_) {
         previous_board_forward_ = render_forward();
         previous_board_up_ = render_up();
+        previous_flip_offset_ = flip_offset(rider_);
         previous_board_serial_ = placement_serial_;
     }
     interpolate_board_ = input.vr.enabled && !on_foot_;
+}
+
+Vec3 Player::flip_offset(const Rider& pose) const {
+    const auto forward = normalized(project(pose.forward, pose.board_up), pose.forward),
+               right = normalized(cross(forward, pose.board_up));
+    const auto up = rotate(pose.board_up, right, -pose.flip_degrees * pose.lead * pi / 180);
+    // Keep the pelvis on the flight path while the deck and limbs orbit it.
+    // This kinematic pivot is shared by rendering and collision, independently
+    // of the presentation-only body animation and physical headset tracking.
+    return (pose.board_up - up) * (.92 - .3 * std::clamp(pose.crouch, 0., 1.));
 }
 
 std::vector<ProbeSphere> Player::volume(const Rider& pose, bool airborne, bool rail) const {
@@ -1477,15 +1489,15 @@ std::vector<ProbeSphere> Player::volume(const Rider& pose, bool airborne, bool r
     // four board spheres. Ground excludes the board spheres; air uses all.
     const auto forward = normalized(project(pose.forward, pose.board_up), pose.forward),
                right = normalized(cross(forward, pose.board_up));
-    const auto nose = rotate(forward, right, -pose.flip_degrees * pi / 180);
-    auto up = rotate(pose.board_up, right, -pose.flip_degrees * pi / 180);
+    const auto nose = rotate(forward, right, -pose.flip_degrees * pose.lead * pi / 180);
+    auto up = rotate(pose.board_up, right, -pose.flip_degrees * pose.lead * pi / 180);
     if (pose.motion == Motion::Ground)
         up = rotate(up, nose, -contract_.value("steering", "bankMaxDeg") * pi / 180 * pose.lean * pose.lead);
     up = normalized(up);
     const auto side = normalized(cross(nose, up));
     const auto lateral = normalized(cross(pose.normal, pose.forward * double(pose.lead)));
-    const auto base =
-        pose.position + pose.smoothed_up * pose.lift + lateral * pose.slide + pose.normal * pose.recovery_height;
+    const auto base = pose.position + pose.smoothed_up * pose.lift + lateral * pose.slide +
+                      pose.normal * pose.recovery_height + flip_offset(pose);
     const auto bend = std::clamp(pose.crouch, 0.0, 1.0);
     const auto point = [&](Vec3 local) { return base + side * local.x + up * local.y + nose * local.z; };
     const double hips = .92 - .3 * bend, chest = 1.32 - .35 * bend, head = 1.65 - .4 * bend;
@@ -1566,6 +1578,7 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
     std::map<std::size_t, WorldContact> seen;
     std::map<std::size_t, CollisionResponse> responses;
     std::set<std::size_t> resolved;
+    bool live_contact = false;
     const auto collect = [&](const WorldContact& hit, double portion) {
         auto contact = hit;
         contact.t = elapsed + hit.t * portion;
@@ -1593,6 +1606,14 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         const auto start_contact = start.position + deck_slide(start),
                    end_contact = rider_.position + deck_slide(rider_);
         auto floor = landing_allowed && !landed ? trace_ground(start_contact, end_contact) : std::nullopt;
+        if (rider_.grounded && !rail && !landed)
+            if (const auto hit = terrain_.intersect(start.position, rider_.position, true);
+                hit && dot(hit->normal, rider_.normal) < .5) {
+                // On a steep bank the sideways carve offset can leave the deck
+                // above a crossing floor while the rider's root passes through.
+                // A real root crossing hands support to that adjacent surface.
+                floor = GroundContact{hit->point, hit->normal, hit->t, hit->surface, {}};
+            }
         // Orientation grace never disables terrain collision. Ground travel also
         // has a small swept root guard beyond the ordinary spring's allowance.
         if (!rider_.grounded && !rail && !landed)
@@ -1622,6 +1643,19 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         }
         if (guard && guard->depth <= 1e-7 && dot(guard_delta, guard->normal) >= -1e-9)
             guard.reset();
+        if (guard && landing_allowed && !rider_.grounded && !landed && (!floor || guard->t < floor->t)) {
+            // The raised sphere can touch a bank before the deck's root crosses
+            // it. Resolve that incoming contact as a landing, or the guard can
+            // hold the rider above the surface indefinitely in the air state.
+            // Refine the contacted sheet and require its front side; a cached
+            // wall behind a departing rider is never a new touchdown.
+            const auto contact =
+                terrain_.intersect(guard->point + guard->normal * .01, guard->point - guard->normal * .01, true);
+            const auto root = start_contact + (end_contact - start_contact) * guard->t;
+            if (contact && contact->patch == guard->patch && dot(contact->normal, guard->normal) > .5 &&
+                dot(root - contact->point, contact->normal) >= -1e-6 && dot(rider_.velocity, contact->normal) < -1e-8)
+                floor = GroundContact{contact->point, contact->normal, guard->t, contact->surface, {}};
+        }
         const auto stop = std::min({solid ? solid->t : 1.0, floor ? floor->t : 1.0, guard ? guard->t : 1.0}),
                    portion = remaining / contract_.tick_seconds();
         bool activated_body = false;
@@ -1695,6 +1729,7 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             break;
         rider_.position = start.position + (rider_.position - start.position) * solid->t;
         const auto dynamic_response = logic_.shove(*solid, rider_.velocity, render_up());
+        live_contact |= dynamic_response.has_value();
         const auto response =
             dynamic_response ? *dynamic_response : collision_response(*solid, rider_.velocity, render_up());
         responses[solid->instance] = response;
@@ -1716,6 +1751,48 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         start = rider_;
         rider_.position += rider_.velocity * remaining;
     }
+    if (live_contact)
+        for (unsigned pass = 0; pass < 4; ++pass) {
+            // The impulse is applied once per body above. Clear residual overlap
+            // against its final pose without replaying its motion or its impulse.
+            // The first sphere gates mode-3 queries; only limbs are physical.
+            const auto body = volume(rider_, airborne, rider_.motion == Motion::Rail);
+            const auto probes = std::span(body).subspan(1);
+            const auto hits = world_.sweep_body(probes, probes, ~std::size_t(0));
+            const WorldContact* deepest = nullptr;
+            for (const auto& hit : hits)
+                if ((logic_.flags()[hit.instance] & WorldDynamic) && hit.depth > 1e-5 &&
+                    (!deepest || hit.depth > deepest->depth))
+                    deepest = &hit;
+            if (!deepest)
+                break;
+            // Grounded clearance follows the support plane; a downward-facing
+            // bag leaf must not resolve by pressing the deck into the snow.
+            const auto direction = rider_.grounded ? project(deepest->normal, rider_.normal) : deepest->normal;
+            const auto separation = dot(direction, deepest->normal);
+            if (separation < 1e-6)
+                break;
+            auto delta = direction * ((deepest->depth + .001) / separation);
+            // Near-vertical normals must not turn a shallow overlap into a
+            // large horizontal relocation. Four bounded passes handle the rest.
+            if (const auto distance = length(delta); distance > .5)
+                delta *= .5 / distance;
+            auto fraction = 1.;
+            const auto centre = rider_.position + deck_slide(rider_) +
+                                normalized(rider_.grounded ? rider_.normal : rider_.board_up) *
+                                    (.2 + std::max(.2, rider_.budget + .05));
+            if (const auto hit = terrain_.sweep(centre, centre + delta, .2); hit && dot(delta, hit->normal) < -1e-8)
+                fraction = std::max(0., hit->t - .001);
+            auto target = std::vector<ProbeSphere>(probes.begin(), probes.end());
+            for (auto& probe : target)
+                probe.centre += delta;
+            for (const auto& hit : world_.sweep_body(probes, target, deepest->instance))
+                if (dot(delta, hit.normal) < -1e-8)
+                    fraction = std::min(fraction, std::max(0., hit.t - .001));
+            if (fraction <= 1e-8)
+                break;
+            rider_.position += delta * fraction;
+        }
     const auto stationary = volume(rider_, airborne, rider_.motion == Motion::Rail);
     for (const auto& contact : world_.sweep(stationary, stationary, trigger_margin))
         if (!seen.contains(contact.instance)) {
@@ -1805,7 +1882,10 @@ Vec3 Player::render_board_position() const {
         return carry_.preview(holding_hand()).position;
     if (on_foot_)
         return loose_board_.previous * (1 - clock_.alpha()) + loose_board_.position * clock_.alpha();
-    return render_position() + rider_.normal * rider_.recovery_height;
+    const auto offset = interpolate_board_
+                            ? previous_flip_offset_ * (1 - clock_.alpha()) + flip_offset(rider_) * clock_.alpha()
+                            : flip_offset(rider_);
+    return render_position() + rider_.normal * rider_.recovery_height + offset;
 }
 
 Vec3 Player::render_forward() const {

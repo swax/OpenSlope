@@ -339,6 +339,7 @@ private:
     BoostTrail boost_trail_;
     std::uint64_t game_frame_ = 0;
     Vec3 previous_board_forward_{0, 0, -1}, previous_board_up_{0, 1, 0};
+    Vec3 previous_flip_offset_{};
     std::uint64_t previous_board_serial_ = 0;
     bool interpolate_board_ = false;
     std::vector<WorldContact> foot_contacts_;
@@ -407,6 +408,7 @@ private:
     std::optional<GroundContact> trace_ground(Vec3 start, Vec3 end) const;
     std::optional<GroundContact> probe(Vec3 position) const;
     std::vector<ProbeSphere> volume(const Rider& pose, bool airborne, bool rail = false) const;
+    Vec3 flip_offset(const Rider& pose) const;
     bool move_world(const Rider& before, Vec3 destination, bool landing_allowed);
     void record_contacts(std::map<std::size_t, WorldContact> seen,
                          const std::map<std::size_t, CollisionResponse>& responses = {});

@@ -622,7 +622,10 @@ struct CollisionWorld::Data {
             if (!mask || depth + 1 == body.levels.size()) {
                 const auto contact =
                     sphere(start, end, transform_point(object.world, centre), level.radius, object.principal);
-                if (contact && (!best || contact->t < best->t))
+                // Simultaneous initial overlaps need the deepest leaf, rather
+                // than a tree-order tangent that leaves the compound embedded.
+                if (contact &&
+                    (!best || contact->t < best->t || (contact->t == best->t && contact->depth > best->depth)))
                     best = contact;
             } else
                 for (unsigned bit = 0; bit < 8; ++bit)

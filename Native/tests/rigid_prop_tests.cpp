@@ -204,6 +204,31 @@ void integration(const std::filesystem::path& root) {
         check(std::abs(player.logic().motions()[0].current[0][12]) > .05,
               "real player contact knocks the native prop away");
     }
+    for (const auto speed : {0., 8., 14.}) {
+        Player player(Terrain::load(root));
+        player.warp({-.45, -.005, 0}, {1, 0, 0}, {speed, 0, 0});
+        for (unsigned tick = 0; tick < 8; ++tick) {
+            player.tick({});
+            const auto& rider = player.rider();
+            const auto nose = player.render_forward(), up = player.render_up();
+            const auto side = normalized(cross(nose, up));
+            const auto deck = rider.position + rider.smoothed_up * rider.lift +
+                              normalized(cross(rider.normal, rider.forward * double(rider.lead))) * rider.slide;
+            // Binding landmarks sample the current physical pose, not the
+            // interpolated previous render position or a swept motion history.
+            const std::array<ProbeSphere, 2> bindings{
+                {{deck + side * .18 + up * .12 + nose * .2, .3}, {deck - side * .18 + up * .12 - nose * .2, .3}}};
+            for (const auto& hit : player.world().sweep_body(bindings, bindings, ~std::size_t(0)))
+                if (hit.instance == 0)
+                    check(hit.depth < .01, "A live bag clears the mounted bindings without a lingering overlap");
+            if (rider.position.y <= -.1 || !finite(rider.position) || player.recovering())
+                std::cerr << "Embedded bag: speed " << speed << "; tick " << tick << "; y " << rider.position.y
+                          << "; grounded " << rider.grounded << "; motion " << unsigned(rider.motion) << '\n';
+            check(rider.position.y > -.1 && finite(rider.position) && !player.recovering(),
+                  "Live-body clearance preserves terrain containment and rider control");
+        }
+        check(player.logic().bodies() == 1, "Initially overlapping bag still activates its normal live-body graph");
+    }
 }
 
 void scripted(const std::filesystem::path& root) {
