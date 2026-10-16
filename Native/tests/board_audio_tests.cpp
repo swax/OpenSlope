@@ -174,6 +174,14 @@ void library_cache() {
         check(scene.stats().prewarmed == 1, "map without Audio finds a case-insensitive shared board bank");
     }
     {
+        struct RestoreDirectory {
+            std::filesystem::path previous = std::filesystem::current_path();
+
+            ~RestoreDirectory() { std::filesystem::current_path(previous); }
+        } restore_directory;
+
+        // Runner checkouts and temporary fixtures can live on different Windows volumes.
+        std::filesystem::current_path(base);
         AudioScene scene(std::filesystem::relative(root));
         check(scene.stats().prewarmed == 1, "relative map paths retain the same shared source containment");
     }
