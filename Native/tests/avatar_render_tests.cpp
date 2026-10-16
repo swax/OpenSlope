@@ -320,6 +320,24 @@ int main(int argc, char** argv) {
         check(bailed.score_result == -1 && bailed.score_text[1] == "LOST 850", "crash selects red lost-trick result");
         const auto red = render("vr-score-lost", bailed, true, tracking.head, {0, -.7, -1}, true);
         check(red != green, "lost trick changes rendered feedback");
+        player.scoring().start();
+        player.scoring().step(1. / 60, ScoreMotion::Air);
+        player.scoring().step_off_board(1, 0);
+        const auto grab = avatar_pose(player, &tracking);
+        check(grab.score_text[1] == "TRICK +4590" && grab.score_text[3] == "LEFT GRAB 1.0S",
+              "VR grab readout shares the scored hand, points and duration");
+        const auto held_grab = render("vr-score-grab", grab, true, tracking.head, {0, -.7, -1}, true);
+        auto no_detail = grab;
+        no_detail.score_text[3].clear();
+        const auto hidden_detail =
+            render("vr-score-grab-no-detail", no_detail, true, tracking.head, {0, -.7, -1}, true);
+        changed = 0;
+        for (std::size_t i = 0; i < held_grab.size(); i += 3)
+            changed += std::abs(int(held_grab[i]) - int(hidden_detail[i])) +
+                           std::abs(int(held_grab[i + 1]) - int(hidden_detail[i + 1])) +
+                           std::abs(int(held_grab[i + 2]) - int(hidden_detail[i + 2])) >
+                       30;
+        check(changed > 100, "Grab hand and timer reach actual controller-panel pixels");
         auto neutral = landed;
         neutral.score_result = 0;
         const auto white_bank = render("vr-score-bank-white", neutral, true, tracking.head, {0, -.7, -1}, true);

@@ -491,6 +491,20 @@ void graph_forces(const std::filesystem::path& root) {
           "real vent leaves ground and exceeds ordinary air speed cap");
     check(vent.rider().pads.speed == 0 && vent.rider().pads.trick == 0,
           "scripted force cannot impersonate pad windows");
+    write(root, "Slopesmith.json", {{"schema", 1}, {"kind", "slopesmith-export"}, {"showoffSeconds", .01}});
+    Player expired(Terrain::load(root));
+    expired.configure_run(RunMode::Showoff);
+    expired.warp({20, -.005, 0}, {1, 0, 0});
+    for (unsigned i = 0; i < 181; ++i)
+        expired.tick({});
+    check(expired.course_run().status().phase == RunPhase::Expired, "Vent regression starts with an expired result");
+    expired.warp({0, .01, 0}, {1, 0, 0});
+    for (unsigned i = 0; i < 5; ++i)
+        expired.tick({});
+    check(!expired.rider().grounded && expired.rider().velocity.y > 10 && expired.course_run().status().clock == 0 &&
+              !expired.scoring().status().active,
+          "Post-result body contacts still activate and apply an authored vent without reopening scoring");
+    std::filesystem::remove(root / "Slopesmith.json");
     Player walker(Terrain::load(root));
     walker.warp({0, .01, 0}, {1, 0, 0});
     walker.start_on_foot();

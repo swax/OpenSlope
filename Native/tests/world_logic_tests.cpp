@@ -452,6 +452,22 @@ void production(const std::filesystem::path& root) {
         player.tick({});
     check(!player.reset_pending() && player.last_course_recovery(),
           "authored volume completes course placement under fade");
+    write(root, "Slopesmith.json", {{"schema", 1}, {"kind", "slopesmith-export"}, {"showoffSeconds", .01}});
+    Player expired(Terrain::load(root));
+    expired.configure_run(RunMode::Showoff);
+    expired.warp({-200, -.005, 0}, {1, 0, 0});
+    for (unsigned i = 0; i < 181; ++i)
+        expired.tick({});
+    check(expired.course_run().status().phase == RunPhase::Expired, "World-contact regression starts after time up");
+    expired.warp({-3, -.005, 0}, {1, 0, 0}, {600, 0, 0});
+    expired.tick({});
+    check(expired.logic().flags()[0] == 0 && expired.scoring().status().multiplier == 1 &&
+              expired.scoring().status().total() == 0,
+          "Expired rider still activates and tombstones a pickup while scoring remains frozen");
+    expired.warp({17, -.005, 0}, {1, 0, 0}, {600, 0, 0});
+    expired.tick({});
+    check(expired.reset_pending(), "Authored reset contacts remain available after time up");
+    std::filesystem::remove(root / "Slopesmith.json");
     const auto audio_root = root / "Audio";
     std::filesystem::create_directories(audio_root / "SFX/main");
     write(root, "Audio/SoundIndex.json",

@@ -93,6 +93,11 @@ void Player::release_inputs() {
 }
 
 void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
+    mount_board(position, forward, velocity, up);
+    score_.lose(ScoreLoss::Reset);
+}
+
+void Player::mount_board(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     if (!finite(position) || !finite(forward) || !finite(velocity) || !finite(up) || length(forward) < 1e-9 ||
         length(cross(forward, up)) < 1e-9)
         throw std::runtime_error("Invalid rider placement");
@@ -101,7 +106,7 @@ void Player::warp(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     teleport_pending_.reset();
     recovery_target_.reset();
     reset_age_ = reset_fade_in_ = 0;
-    score_.lose(ScoreLoss::Reset);
+    score_.release_grab();
     carry_.clear();
     holding_hand_ = {};
     on_foot_ = false;
@@ -213,9 +218,7 @@ void Player::restart_run() {
 bool Player::recover_course(bool manual) { return request_course_recovery(manual, false); }
 
 bool Player::request_course_recovery(bool manual, bool authored) {
-    const auto phase = run_.status().phase;
-    if (teleport_pending_ || recovery_target_ || phase == RunPhase::Finished || phase == RunPhase::Expired ||
-        (!manual && !authored && !run_active() && !on_foot_))
+    if (teleport_pending_ || recovery_target_ || (!manual && !authored && !run_active() && !on_foot_))
         return false;
     const auto safe = [&](Vec3 point) {
         const auto hit = trace_ground(point + Vec3{0, 2, 0}, point - Vec3{0, 3, 0});
@@ -423,9 +426,9 @@ void Player::land(const GroundContact& hit) {
         length(travel) > 1e-6 ? std::acos(std::clamp(std::abs(dot(normalized(travel), nose)), 0.0, 1.0)) : 0;
     const auto impact = -dot(rider_.velocity - hit.velocity, hit.normal);
     const bool unrideable = hit.surface == 6 || hit.surface == 10;
-    const bool hard = tuning_.knockdowns && !recovering() &&
-                      (tilt >= pi / 2 || impact > tuning_.hard_landing_speed ||
-                       (unrideable && length(travel) > tuning_.unrideable_speed));
+    const bool bad_landing = !recovering() && (tilt >= pi / 2 || impact > tuning_.hard_landing_speed ||
+                                               (unrideable && length(travel) > tuning_.unrideable_speed));
+    const bool hard = tuning_.knockdowns && bad_landing;
     rider_.landing_scale = recovering() ? 1 : contract_.landing_retention(tilt, yaw);
     rider_.velocity = hit.velocity + (rider_.velocity - hit.velocity) * rider_.landing_scale;
     if (length(travel) > .5)
@@ -448,6 +451,8 @@ void Player::land(const GroundContact& hit) {
         rider_.control = Control::Cruise;
     if (hard)
         crash(unrideable ? CrashCause::Unrideable : CrashCause::Landing, hit.normal);
+    else if (bad_landing)
+        score_.lose(ScoreLoss::Crash, .1);
     else if (!recovering())
         score_.land();
 }
@@ -455,7 +460,7 @@ void Player::land(const GroundContact& hit) {
 void Player::notify_tick(const Rider& before) {
     if (on_foot_ && foot_room_serial_ == placement_serial_)
         foot_contact_velocity_ += (foot_room_offset_ - previous_foot_room_offset_) / contract_.tick_seconds();
-    if (!reset_pending() && !teleport_pending_ && (on_foot_ || run_.status().phase == RunPhase::Running)) {
+    if (!reset_pending() && !teleport_pending_ && (on_foot_ || run_.riding_allowed())) {
         if (on_foot_) {
             std::map<std::size_t, WorldContact> seen;
             const auto contact = [&](const WorldContact& hit) {
@@ -505,8 +510,7 @@ void Player::notify_tick(const Rider& before) {
                       placed ? rider_.position : before.position,
                       rider_.position,
                       rider_.velocity,
-                      !placed && (on_foot_ || run_.status().phase == RunPhase::Running) && !reset_pending() &&
-                          !recovering(),
+                      !placed && (on_foot_ || run_.riding_allowed()) && !reset_pending() && !recovering(),
                       rider_.tube_stage};
     auto previous_probes = volume(before, !before.grounded), probes = volume(rider_, !rider_.grounded);
     if (on_foot_) {
@@ -566,12 +570,18 @@ void Player::notify_tick(const Rider& before) {
     if ((rider_.grounded || rider_.motion == Motion::Rail) && !recovering() && rider_.surface != 0 &&
         rider_.surface != 6 && rider_.surface != 10 && rider_.surface != 17)
         course_recovery_.observe(rider_.position, camera_forward());
+    if (on_foot_) {
+        if (rider_.grounded) {
+            score_.lose(ScoreLoss::BoardReleased);
+            score_.step(dt, ScoreMotion::Ground);
+        } else
+            score_.step_off_board(dt, carry_.hand());
+    }
     run_.end_tick(rider_.position, placement_serial_);
     if (score_.status().active &&
         (run_.status().phase == RunPhase::Finished || run_.status().phase == RunPhase::Expired))
         score_.finish();
-    const bool board_active =
-        !on_foot_ && !reset_pending() && !recovering() && run_.status().phase == RunPhase::Running;
+    const bool board_active = !on_foot_ && !reset_pending() && !recovering() && run_.riding_allowed();
     const auto lateral = normalized(cross(rider_.normal, rider_.forward * double(rider_.lead)));
     const auto deck = rider_.position + rider_.smoothed_up * rider_.lift + lateral * rider_.slide +
                       rider_.normal * rider_.recovery_height;
@@ -639,7 +649,7 @@ void Player::teleport(Vec3 position, Vec3 forward) {
 }
 
 void Player::dispatch_world_contact(const WorldContact& contact, double speed, std::optional<Vec3> support_normal) {
-    if (!reset_pending() && !teleport_pending_ && (on_foot_ || run_.status().phase == RunPhase::Running) &&
+    if (!reset_pending() && !teleport_pending_ && (on_foot_ || run_.riding_allowed()) &&
         logic_contacts_.insert(contact.instance).second) {
         const auto normal = support_normal.value_or(contact.normal);
         const auto velocity = on_foot_ ? foot_contact_velocity_ : rider_.velocity;
@@ -683,7 +693,7 @@ void Player::apply_world_actions() {
                 request_course_recovery(false, true);
             break;
         case WorldActionKind::Teleport:
-            if (action.rider && !teleport_pending_ && !reset_pending() && run_.status().phase == RunPhase::Running)
+            if (action.rider && !teleport_pending_ && !reset_pending() && (on_foot_ || run_.riding_allowed()))
                 teleport_pending_ = logic_.teleport_destination(action.target, tuning_.rider_slot);
             break;
         case WorldActionKind::Multiplier:
@@ -789,6 +799,7 @@ void Player::ride_rail(const RailHit& hit, const RideInput& input, const Rider& 
     rider_.forward = normalized(rotate(hit.tangent * (direction * rider_.lead), hit.up, rider_.rail_spin * pi / 180));
     flight_heading_ = normalized(project(hit.tangent * direction, {0, 1, 0}), flight_heading_);
     rider_.position += hit.right * std::clamp(-hit.offset.y, -2.9, 2.9) + hit.up * std::clamp(-hit.offset.z, -2.9, 2.9);
+    const auto score_spin = rider_.rail_spin_rate * dt;
     const bool launch = update_jump();
     if (launch) {
         rider_.velocity +=
@@ -801,7 +812,7 @@ void Player::ride_rail(const RailHit& hit, const RideInput& input, const Rider& 
         jump_cooldown_ = .35;
         air_grace_ = contract_.value("pose", "orientationGrace");
     }
-    score_.step(dt, ScoreMotion::Rail);
+    score_.step(dt, ScoreMotion::Rail, score_spin);
     const auto destination = rider_.position + rider_.velocity * dt;
     rider_.velocity +=
         hit.tangent *
@@ -845,8 +856,7 @@ void Player::tick(const RideInput& input) {
     rider_.pads.tick(dt);
     std::erase_if(reset_contact_latches_, [&](auto host) { return !in_reset_volume(host); });
     const std::array<Vec3, 2> observers{rider_.position, world_view_.value_or(rider_.position + Vec3{0, 1.7, 0})};
-    const std::array<CrowdActivity, 1> crowd_riders{
-        {{rider_.position, 1, run_.status().phase == RunPhase::Running && !reset_pending()}}};
+    const std::array<CrowdActivity, 1> crowd_riders{{{rider_.position, 1, run_.riding_allowed() && !reset_pending()}}};
     logic_.tick(dt, length(rider_.velocity), observers, crowd_riders);
     world_.instance_flags(logic_.flags());
     logic_.step_bodies(dt, terrain_, world_);

@@ -35,6 +35,7 @@ void Player::drop_board(bool motion) {
     if (!carry_.held())
         return;
     const auto drop = carry_.release(motion);
+    score_.release_grab();
     loose_board_ = {
         drop.pose.position, drop.pose.position, drop.velocity, drop.pose.forward, drop.pose.up, false, 1, 0};
     loose_board_.spin = drop.spin;
@@ -49,7 +50,7 @@ bool Player::equip_held_board() {
     const auto heading = normalized(project(carry_.pose().forward, {0, 1, 0}), camera_forward());
     const bool airborne = !rider_.grounded;
     const auto serial = placement_serial_;
-    warp(position, heading, velocity, rider_.normal);
+    mount_board(position, heading, velocity, rider_.normal);
     rider_.speed_cap = std::max(rider_.speed_cap, length(velocity));
     if (airborne) {
         rider_.grounded = false;
@@ -100,7 +101,7 @@ bool Player::tick_equipment(const EquipmentInput& raw) {
                 return transition(interact_board());
             if (ray) {
                 const auto b = loose_board_;
-                warp(b.position, b.forward, b.velocity + (b.grounded ? b.ground_velocity : Vec3{}), b.up);
+                mount_board(b.position, b.forward, b.velocity + (b.grounded ? b.ground_velocity : Vec3{}), b.up);
                 rider_.lead = b.lead;
                 return transition(true);
             }
@@ -117,7 +118,7 @@ bool Player::tick_equipment(const EquipmentInput& raw) {
         const auto position = rider_.position, velocity = rider_.velocity;
         if (airborne) {
             const auto serial = placement_serial_;
-            interact_board();
+            dismount_board(true);
             placement_serial_ = serial;
             rider_.position = rider_.previous_position = position;
             rider_.velocity = velocity;

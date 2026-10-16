@@ -1,4 +1,4 @@
-#include "openslope/player.hpp"
+#include "openslope/avatar.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -259,8 +259,40 @@ void production(const std::filesystem::path& root) {
               expiring.placement_serial() == expiry_serial + 1,
           "expiry allows an already accepted placement to finish");
     near(expiring.reset_fade(), 0, "accepted warp fades back in after clock expiry");
-    check(!expiring.recover_course(true), "expired event refuses a new reset");
+    const auto frozen = expiring.scoring().status().total();
+    expiring.warp({25, 12, 100}, {0, 0, 1}, {0, 0, 12});
+    const auto expired_position = expiring.rider().position;
+    expiring.tick({.steer = 1, .boost = true});
+    check(length(expiring.rider().position - expired_position) > .1 && expiring.board_boosting() &&
+              expiring.scoring().status().total() == frozen,
+          "Expired rider retains physical movement, steering and unlimited boost with a frozen result");
+    check(expiring.recover_course(true), "continued riding can reset after event expiry");
+    for (unsigned i = 0; i < 61; ++i)
+        expiring.tick({});
+    check(!expiring.reset_pending() && expiring.scoring().status().total() == frozen &&
+              expiring.course_run().status().phase == RunPhase::Expired,
+          "post-result reset completes without reopening or changing the score");
     std::filesystem::remove(root / "Slopesmith.json");
+    Player finisher(Terrain::load(root));
+    finisher.configure_run(RunMode::Race);
+    for (unsigned i = 0; i < 181; ++i)
+        finisher.tick({});
+    const auto [finish_position, finish_forward] = *finisher.course_run().finish();
+    finisher.warp(finish_position - finish_forward * .3, finish_forward, finish_forward * 12);
+    finisher.tick({});
+    finisher.tick({});
+    check(finisher.course_run().status().phase == RunPhase::Finished,
+          "Production rider crosses the actual finish plane");
+    const auto final_clock = finisher.course_run().status().clock;
+    const auto finished_position = finisher.rider().position;
+    finisher.tick({.boost = true});
+    check(length(finisher.rider().position - finished_position) > .1 && finisher.board_boosting(),
+          "Finished race rider continues moving and boosting");
+    near(finisher.course_run().status().clock, final_clock, "Continued race movement leaves the result clock frozen");
+    const auto race_avatar = avatar_pose(finisher);
+    check(race_avatar.score_text[0] == "BOOST UNLIMITED" && race_avatar.score_text[1].empty() &&
+              length(race_avatar.joint(AvatarJoint::Head) - race_avatar.joint(AvatarJoint::Hips)) > .3,
+          "Race HUD hides trick points while the full avatar remains posed");
     Json terrain;
     {
         std::ifstream input(root / "Patches.json");

@@ -201,29 +201,34 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking, con
     const auto crouch = std::clamp(motion.crouch, 0., 1.);
     const auto& run = player.course_run().status();
     if (run.mode != RunMode::Freeride) {
-        p.run_text[0] = std::string(run_name(run.mode)) + " " + run_clock(run.clock);
-        p.run_text[1] = run.phase == RunPhase::Ready       ? "MOUNT TO START"
-                        : run.phase == RunPhase::Countdown ? "START IN " + std::to_string(int(std::ceil(run.countdown)))
-                                                           : std::string(run_name(run.phase));
-        p.run_text[2] = run.checkpoint_notice > 0
-                            ? (run.mode == RunMode::Race ? std::string("CHECKPOINT")
-                                                         : "CHECKPOINT +" + std::to_string(int(run.checkpoint_bonus)))
-                            : "CP " + std::to_string(run.checkpoints) + " LAP " + std::to_string(run.lap) + "/" +
-                                  std::to_string(run.passes);
+        p.run_text[0] = run_readout(run);
+        p.run_text[1] = run_notice(run);
+        p.run_text[2] = "CP " + std::to_string(run.checkpoints) + " LAP " + std::to_string(run.lap) + "/" +
+                        std::to_string(run.passes);
     }
     if (player.reset_pending() && !p.run_text[0].empty())
         p.run_text[1] = "RETURNING TO COURSE";
     if (run.mode != RunMode::Freeride) {
         const auto& score = player.scoring().status();
-        p.score_text[0] = "SCORE " + std::to_string(score.banked);
-        p.score_text[1] = score.preview ? "TRICK +" + std::to_string(score.preview)
-                          : score.resolution && score.result_age < 3
-                              ? (score.bailed ? "LOST " : "BANKED ") + std::to_string(score.result)
-                              : "LAND TO BANK";
-        p.score_text[2] = "BOOST " + std::to_string(player.scoring().meter_segments()) + "/15";
-        if (score.multiplier > 1)
-            p.score_text[2] += " X" + std::to_string(score.multiplier);
-        p.score_result = score.preview ? 0 : score.resolution && score.result_age < 3 ? (score.bailed ? -1 : 1) : 0;
+        const auto display = trick_display(player.scoring());
+        const auto boost =
+            score.active ? "BOOST " + std::to_string(player.scoring().meter_segments()) + "/15" : "BOOST UNLIMITED";
+        p.score_text[0] = run.mode == RunMode::Showoff ? "SCORE " + std::to_string(score.banked) : boost;
+        if (run.mode == RunMode::Showoff) {
+            p.score_text[1] = display.state == TrickDisplayState::None
+                                  ? "LAND TO BANK"
+                                  : (display.state == TrickDisplayState::Live   ? "TRICK +"
+                                     : display.state == TrickDisplayState::Lost ? "LOST "
+                                                                                : "BANKED ") +
+                                        std::to_string(display.points);
+            p.score_text[2] = boost;
+            p.score_text[3] = display.state == TrickDisplayState::Live ? display.detail : "";
+            if (score.multiplier > 1)
+                p.score_text[2] += " X" + std::to_string(score.multiplier);
+            p.score_result = display.state == TrickDisplayState::Lost     ? -1
+                             : display.state == TrickDisplayState::Banked ? 1
+                                                                          : 0;
+        }
     }
     const auto nose = player.render_forward(), deck_up = player.render_up();
     const auto bank = player.contract().value("steering", "bankMaxDeg") * pi / 180;

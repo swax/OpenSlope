@@ -53,7 +53,7 @@ struct AvatarPose {
     Vec3 head_forward{0, 0, -1}, head_up{0, 1, 0};
     bool tracked_body = false, tracked_legs = false, on_foot = false, controller_models = true;
     std::array<std::string, 3> run_text{};
-    std::array<std::string, 3> score_text{};
+    std::array<std::string, 4> score_text{};
     int score_result = 0;
 
     Vec3 joint(AvatarJoint j) const { return joints[unsigned(j)]; }

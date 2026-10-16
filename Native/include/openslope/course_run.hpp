@@ -30,7 +30,11 @@ struct RunStatus {
     double clock{}, countdown{}, elapsed{}, checkpoint_notice{}, checkpoint_bonus{};
     unsigned checkpoints{}, lap = 1, remaining{}, passes = 1;
     std::optional<CourseProgress> progress;
+    bool timed = false;
 };
+
+std::string run_readout(const RunStatus& status);
+std::string run_notice(const RunStatus& status);
 
 // Course events and clocks are independent of the rider's recovered motion/control states.
 class CourseRun {
@@ -43,6 +47,8 @@ public:
     bool begin_tick(double seconds, bool mounted);
     void end_tick(Vec3 position, std::uint64_t placement_serial);
     bool enter_lap_volume();
+
+    bool riding_allowed() const { return status_.phase != RunPhase::Ready && status_.phase != RunPhase::Countdown; }
 
     const RunStatus& status() const { return status_; }
 

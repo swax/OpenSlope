@@ -278,22 +278,35 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         const auto state = p.carrying_board() ? "IN HAND" : p.flying() ? "FLYING" : p.on_foot() ? "ON FOOT" : "RIDING";
         c.text(state, .014, .013, .0022, accent);
         c.text(speed + " KM/H", .16, .013, .0022);
-        c.text(std::string(run_name(run.mode)) + (run.mode == RunMode::Freeride ? "" : "  " + run_clock(run.clock)),
-               .30, .013, .0021, muted);
-        c.text("SCORE " + std::to_string(p.scoring().status().total()), .57, .013, .0021);
+        c.text(run_readout(run), .30, .013, .0021, muted);
+        if (run.mode == RunMode::Showoff)
+            c.text("SCORE " + std::to_string(p.scoring().status().banked), .57, .013, .0021);
+        else if (run.mode == RunMode::Race)
+            c.text("LAP " + std::to_string(run.lap) + "/" + std::to_string(run.passes), .57, .013, .0021);
         c.text("BOOST", .79, .015, .0017, muted);
         c.rect(.86, .022, .12, .007, {.12f, .20f, .25f});
         const auto energy =
-            p.on_foot() || run.mode == RunMode::Freeride ? 1. : double(p.scoring().meter_segments()) / 15;
+            p.on_foot() || !p.scoring().status().active ? 1. : double(p.scoring().meter_segments()) / 15;
         c.rect(.86, .022, .12 * energy, .007, accent);
         c.rect(0, .965, 1, .035, panel);
-        c.text(p.carrying_board()    ? "RELEASE RMB THROW / LMB RIDE"
-               : p.flying()          ? "WASD THRUST / SPACE UP / CTRL DOWN"
-               : p.board_highlight() ? "LMB RIDE / HOLD RMB CARRY"
-               : p.on_foot()         ? "SPACE TWICE FLY / E BOARD / ESC MENU"
-                                     : "LMB OFF BOARD / E SPAWN / SPACE JUMP",
-               .014, .976, .0017, p.board_highlight() ? accent : ink);
-        if (p.rider().charge > 0) {
+        const auto display = trick_display(p.scoring());
+        if (run.mode == RunMode::Showoff && display.state != TrickDisplayState::None) {
+            const auto colour = display.state == TrickDisplayState::Lost ? Colour{1, .25f, .2f} : accent;
+            const auto prefix = display.state == TrickDisplayState::Live   ? "+"
+                                : display.state == TrickDisplayState::Lost ? "LOST "
+                                                                           : "BANKED ";
+            c.text(prefix + std::to_string(display.points) + "  " + display.detail, .014, .976, .0017, colour);
+        } else
+            c.text(p.carrying_board()    ? "RELEASE RMB THROW / LMB RIDE"
+                   : p.flying()          ? "WASD THRUST / SPACE UP / CTRL DOWN"
+                   : p.board_highlight() ? "LMB RIDE / HOLD RMB CARRY"
+                   : p.on_foot()         ? "SPACE TWICE FLY / E BOARD / ESC MENU"
+                                         : "LMB OFF BOARD / E SPAWN / SPACE JUMP",
+                   .014, .976, .0017, p.board_highlight() ? accent : ink);
+        const auto run_message = run_notice(run);
+        if (!run_message.empty())
+            c.text(run_message, .65, .976, .0017, accent);
+        else if (p.rider().charge > 0) {
             c.text("JUMP", .65, .977, .0015, muted);
             c.rect(.70, .981, .12, .006, {.12f, .20f, .25f});
             c.rect(.70, .981, .12 * p.rider().charge, .006, accent);

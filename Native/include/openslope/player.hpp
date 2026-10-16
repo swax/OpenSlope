@@ -183,7 +183,7 @@ public:
     void run_active(bool active) { run_active_ = active; }
 
     bool run_active() const {
-        return run_active_ || (run_.status().mode != RunMode::Freeride && run_.status().phase == RunPhase::Running);
+        return run_active_ || (run_.status().mode != RunMode::Freeride && run_.riding_allowed());
     }
 
     void configure_run(RunMode mode);
@@ -202,13 +202,12 @@ public:
     bool flying() const { return on_foot_ && foot_motion_.flying(); }
 
     bool flight_boosting() const {
-        return boost_requested_ && on_foot_ && foot_motion_.boosting() && run_.status().phase == RunPhase::Running &&
-               !reset_pending();
+        return boost_requested_ && on_foot_ && foot_motion_.boosting() && run_.riding_allowed() && !reset_pending();
     }
 
     bool board_boosting() const {
-        return boost_requested_ && !on_foot_ && boost_engaged_ && run_.status().phase == RunPhase::Running &&
-               !reset_pending() && !recovering();
+        return boost_requested_ && !on_foot_ && boost_engaged_ && run_.riding_allowed() && !reset_pending() &&
+               !recovering();
     }
 
     unsigned boost_sound_slot() const { return held_boost_ > .666 ? 120 : held_boost_ > .334 ? 121 : 122; }
@@ -347,10 +346,12 @@ private:
     EquipmentInput equipment_frame(EquipmentInput input) const;
     void drop_board(bool motion);
     bool equip_held_board();
+    void mount_board(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up);
+    bool dismount_board(bool preserve_score);
 
     bool on_foot_ = false, start_on_foot_ = false, mount_held_ = false, mount_pending_ = false;
     double walk_phase_ = 0;
-    void place_foot(Vec3 position, Vec3 forward, Vec3 velocity = {});
+    void place_foot(Vec3 position, Vec3 forward, Vec3 velocity = {}, bool preserve_score = false);
     void tick_foot(const RideInput& input, const Rider& before);
     void tick_loose_board();
     std::optional<GroundContact> walk_ground(Vec3 start, Vec3 end) const;

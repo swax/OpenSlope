@@ -259,9 +259,9 @@ private:
     std::vector<Vertex> sheet_mesh_;
 
     struct Target {
-        VkImage colour{}, depth{}, multisample{}, resolved{};
-        VkDeviceMemory depth_memory{}, multisample_memory{}, resolved_memory{};
-        VkImageView colour_view{}, depth_view{}, multisample_view{}, resolved_view{};
+        VkImage colour{}, depth{}, multisample{}, resolved{}, presentation_multisample{};
+        VkDeviceMemory depth_memory{}, multisample_memory{}, resolved_memory{}, presentation_memory{};
+        VkImageView colour_view{}, depth_view{}, multisample_view{}, resolved_view{}, presentation_view{};
         VkFramebuffer framebuffer{}, presentation_framebuffer{};
         VkDescriptorSet presentation_set{};
     };

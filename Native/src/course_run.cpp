@@ -179,6 +179,7 @@ void CourseRun::restart() {
     status_.passes = settings_.laps;
     status_.remaining = settings_.laps > 1 ? settings_.laps : 0;
     status_.clock = settings_.mode == RunMode::Showoff ? settings_.showoff_seconds : 0;
+    status_.timed = settings_.mode == RunMode::Showoff && settings_.showoff_seconds > 0;
     previous_dtf_.reset();
     previous_position_.reset();
     last_lap_time_ = tube_suppress_until_ = -1e30;
@@ -189,6 +190,25 @@ void CourseRun::abandon() {
     status_ = {};
     status_.mode = RunMode::Freeride;
     status_.phase = RunPhase::Running;
+}
+
+std::string run_readout(const RunStatus& status) {
+    return std::string(run_name(status.mode)) +
+           (status.mode == RunMode::Race || status.timed ? " " + run_clock(status.clock) : "");
+}
+
+std::string run_notice(const RunStatus& status) {
+    if (status.phase == RunPhase::Ready)
+        return "MOUNT TO START";
+    if (status.phase == RunPhase::Countdown)
+        return "START IN " + std::to_string(int(std::ceil(status.countdown)));
+    if (status.phase == RunPhase::Finished || status.phase == RunPhase::Expired)
+        return run_name(status.phase);
+    if (status.checkpoint_notice > 0)
+        return status.mode == RunMode::Showoff && status.checkpoint_bonus > 0
+                   ? "CHECKPOINT +" + std::to_string(int(status.checkpoint_bonus))
+                   : "CHECKPOINT";
+    return {};
 }
 
 bool CourseRun::begin_tick(double seconds, bool mounted) {
@@ -212,7 +232,7 @@ bool CourseRun::begin_tick(double seconds, bool mounted) {
         else
             status_.clock += seconds;
     }
-    return !mounted || status_.phase == RunPhase::Running;
+    return !mounted || riding_allowed();
 }
 
 std::optional<CourseProgress> CourseRun::locate(Vec3 position) const {

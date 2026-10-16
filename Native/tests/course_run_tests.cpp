@@ -117,6 +117,7 @@ int main() {
         start(finished, {0, 0, 79});
         step(finished, {0, 0, 81}, .5);
         check(finished.status().phase == RunPhase::Finished, "forward bounded crossing finishes");
+        check(finished.begin_tick(0, true), "A finished result permits continued mounted riding");
         step(finished, {0, 0, 90}, 1);
         near(finished.status().clock, .5, "result clock freezes");
         finished.restart();
@@ -140,6 +141,8 @@ int main() {
         start(timeout);
         step(timeout, {0, 0, 1}, 1);
         check(timeout.status().phase == RunPhase::Expired && timeout.status().clock == 0, "showoff expires at zero");
+        check(timeout.begin_tick(0, true), "Time up permits continued mounted riding");
+        check(run_notice(timeout.status()) == "TIME UP", "Expiry has a shared desktop/controller notice");
         step(timeout, {0, 0, 2}, 1);
         near(timeout.status().elapsed, 1, "expired elapsed freezes");
         auto last_tick = paths;
@@ -155,6 +158,7 @@ int main() {
             step(untimed, {0, 0, 1}, 1);
         check(untimed.status().phase == RunPhase::Running && untimed.status().clock == 0,
               "zero-clock slot does not expire instantly");
+        check(run_readout(untimed.status()) == "SHOWOFF", "An authored zero clock has no timer readout");
         auto free = run(paths, RunMode::Freeride);
         start(free, {0, 0, 40});
         step(free, {0, 0, 60});

@@ -254,12 +254,142 @@ void production() {
     tier.tick({0, true});
     near(tier.rider().speed_cap, 33.472, "high meter selects strong raised cap");
 }
+
+void held_grabs() {
+    for (const auto hand : {0u, 1u}) {
+        TrickScore score;
+        score.start();
+        score.step(h, ScoreMotion::Air);
+        score.step_off_board(1, hand);
+        check(score.status().preview == 4590 && score.status().grab_hand == hand,
+              "One held second combines 590 style points and the flat 4000-point tier");
+        const auto display = trick_display(score);
+        check(display.state == TrickDisplayState::Live && display.points == 4590 &&
+                  display.detail == (hand ? "RIGHT GRAB 1.0S" : "LEFT GRAB 1.0S"),
+              "Live grab itemizes the holding hand and accumulated duration");
+        score.step(h, ScoreMotion::Air);
+        score.land();
+        check(score.status().banked == 4590 && !score.status().grab_hand,
+              "Remount and clean landing bank the grab once and clear its label");
+        near(score.status().meter, .309, "Only the 590 base-style points fill boost");
+        check(trick_display(score).state == TrickDisplayState::Banked, "Grab landing holds a green result");
+        score.step(3, ScoreMotion::Ground);
+        check(trick_display(score).state == TrickDisplayState::None, "Landed feedback expires after three seconds");
+    }
+    for (const auto [seconds, points] : std::array<std::pair<double, std::int64_t>, 6>{
+             {{.5, 440}, {1, 4590}, {1.5, 8750}, {2, 12900}, {2.5, 17050}, {3, 17200}}}) {
+        TrickScore score;
+        score.start();
+        score.step(h, ScoreMotion::Air);
+        for (unsigned i = 0; i < unsigned(std::round(seconds / h)); ++i)
+            score.step_off_board(h, 0);
+        check(score.status().preview == points, "Fixed ticks cross each half-second grab tier and cap the flat bonus");
+    }
+    TrickScore score;
+    score.start();
+    score.step(h, ScoreMotion::Air);
+    score.multiplier(5);
+    score.step_off_board(1, 0);
+    check(score.status().preview == 6970, "Gem scales grab style but never the flat ladder");
+    score.land();
+    near(score.status().meter, .309, "Gem leaves grab boost fill unchanged");
+    score.start();
+    score.step(h, ScoreMotion::Air);
+    score.step_off_board(.4, 0);
+    score.step_off_board(.6, 1);
+    near(score.status().style, .0875, "Passing between hands does not recognize the same held trick twice");
+    score.step_off_board(.5, {});
+    near(score.status().grab_time, 1, "A throw pauses the hold timer");
+    score.step_off_board(.1, 0);
+    near(score.status().style, .1345, "A fresh catch earns one recognition bump and resumes held style");
+    near(score.status().grab_time, 1.1, "Recatch resumes the existing hold ladder");
+    score.lose(ScoreLoss::BoardReleased);
+    check(score.status().banked == 0 && score.status().bailed && !score.status().grab_hand,
+          "Landing without the board loses pending grab points");
+    score.start();
+    score.step(h, ScoreMotion::Air);
+    score.step_off_board(1, 0);
+    score.step_off_board(3, {});
+    check(score.status().preview == 5590, "Big-air bonus remains separate from the held-board ladder");
+    score.finish();
+    score.step_off_board(3, 1);
+    check(score.status().banked == 5590 && trick_display(score).state == TrickDisplayState::None,
+          "Finished grab result freezes while transient feedback still ages out");
+    score.start();
+    score.step(1, ScoreMotion::Rail, 360);
+    check(score.status().preview == 2710, "Rail turns and linear grind style combine before rounding");
+    check(trick_display(score).detail == "GRIND 1.0S", "Live grind itemizes its held time");
+    score.start();
+    air(score, 80, 4.5);
+    check(trick_display(score).detail == "360/360 X .25 X 6786.9 X 1", "Air trick exposes the four-factor equation");
+    bool rejected = false;
+    try {
+        score.step_off_board(h, 2);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    check(rejected, "Invalid grab hand cannot enter scoring state");
+}
+
+void production_grabs() {
+    for (const auto tracked : {false, true}) {
+        Player player(floor());
+        begin(player);
+        player.warp({0, 20, 0}, {0, 0, -1}, {0, 0, -8});
+        for (unsigned i = 0; i < 20; ++i)
+            player.tick({.steer = 1});
+        const auto style = player.scoring().status().style;
+        const auto serial = player.placement_serial(), run_serial = player.run_serial();
+        RideInput grab;
+        grab.equipment.tracked = tracked;
+        grab.equipment.relative = true;
+        grab.equipment.head = {0, 1.65, 0};
+        for (auto& hand : grab.equipment.hands)
+            hand = {{0, 1.1, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, -1}, true};
+        grab.equipment.grip[1] = true;
+        for (unsigned i = 0; i < 60; ++i)
+            player.tick(grab);
+        check(player.on_foot() && player.carrying_board() && player.scoring().status().active,
+              "Desktop/VR airborne grip keeps the scored run active");
+        check(player.placement_serial() == serial && player.run_serial() == run_serial,
+              "Air grab preserves continuous course progress and run identity");
+        near(player.scoring().status().style, style + .0875,
+             "Production grab preserves rotation style and accrues hold style");
+        near(player.scoring().status().grab_time, 1, "Production grip records exactly sixty held ticks");
+        const auto preview = player.scoring().status().preview;
+        const auto avatar = avatar_pose(player);
+        check(avatar.score_text[1] == "TRICK +" + std::to_string(preview) && avatar.score_text[3] == "RIGHT GRAB 1.0S",
+              "Controller HUD follows the live carried-board score");
+        grab.equipment.trigger[1] = true;
+        player.tick(grab);
+        check(!player.on_foot() && !player.carrying_board() && player.scoring().status().preview == preview,
+              "Air re-equip preserves pending rotation and grab points");
+        for (unsigned i = 0; i < 180 && !player.rider().grounded; ++i)
+            player.tick({});
+        check(player.rider().grounded && player.scoring().status().banked == preview,
+              "Production landing banks the remounted grab without a placement loss");
+    }
+    Player unfinished(floor());
+    begin(unfinished);
+    unfinished.warp({0, 20, 0}, {0, 0, -1}, {0, 0, -12});
+    for (unsigned i = 0; i < 20; ++i)
+        unfinished.tick({.posture = 1});
+    for (unsigned i = 0; i < 180 && !unfinished.rider().grounded; ++i)
+        unfinished.tick({});
+    check(unfinished.rider().grounded && !unfinished.recovering() && unfinished.rider().motion != Motion::Wipeout &&
+              unfinished.scoring().status().banked == 0 && unfinished.scoring().status().bailed,
+          "Default unfinished landing loses the combo without forcing a knockdown");
+    near(unfinished.scoring().status().meter, .15,
+         "Scoring loss retains the crash meter cost without a physical wipeout");
+}
 } // namespace
 
 int main() {
     try {
         arithmetic();
+        held_grabs();
         production();
+        production_grabs();
         Player dismount(floor());
         begin(dismount);
         dismount.scoring().spend(100, true);

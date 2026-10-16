@@ -1,6 +1,8 @@
 #include "openslope/score.hpp"
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 
 namespace openslope {
@@ -20,7 +22,7 @@ void duration(double seconds) {
 void TrickScore::reset() {
     status_ = {};
     motion_ = ScoreMotion::Ground;
-    open_ = rail_ = false;
+    open_ = rail_ = grab_held_ = false;
 }
 
 void TrickScore::start() {
@@ -31,7 +33,9 @@ void TrickScore::start() {
 void TrickScore::clear_combo(bool consume_multiplier) {
     status_.preview = 0;
     status_.style = status_.airtime = status_.grind_time = 0;
-    open_ = rail_ = false;
+    status_.spin_degrees = status_.flip_degrees = status_.grab_time = 0;
+    status_.grab_hand.reset();
+    open_ = rail_ = grab_held_ = false;
     motion_ = ScoreMotion::Ground;
     if (consume_multiplier)
         status_.multiplier = 1;
@@ -39,16 +43,31 @@ void TrickScore::clear_combo(bool consume_multiplier) {
 
 void TrickScore::preview() {
     const auto air = status_.airtime + 1e-9 >= 4 ? std::int64_t(std::floor((status_.airtime - 3) * 1000 + .5)) : 0;
-    status_.preview = style_points(status_.style, status_.multiplier) + air;
+    const auto tier = std::min(5., std::floor((status_.grab_time + 1e-9) / .5));
+    const auto grab = tier >= 2 ? std::int64_t(tier - 1) * 4000 : 0;
+    status_.preview = style_points(status_.style, status_.multiplier) + air + grab;
 }
 
 void TrickScore::step(double seconds, ScoreMotion motion, double spin, double flip) {
+    accumulate(seconds, motion, spin, flip, {});
+}
+
+void TrickScore::step_off_board(double seconds, std::optional<unsigned> hand) {
+    if (hand && *hand > 1)
+        throw std::invalid_argument("Invalid scoring hand");
+    accumulate(seconds, ScoreMotion::Air, 0, 0, hand);
+}
+
+void TrickScore::accumulate(double seconds, ScoreMotion motion, double spin, double flip,
+                            std::optional<unsigned> hand) {
     duration(seconds);
     if (!std::isfinite(spin) || !std::isfinite(flip) || std::abs(spin) > 3600 || std::abs(flip) > 3600)
         throw std::invalid_argument("Invalid scoring rotation");
-    if (!status_.active || seconds == 0)
+    if (seconds == 0)
         return;
     status_.result_age += seconds;
+    if (!status_.active)
+        return;
     if (motion == ScoreMotion::Ground) {
         if (open_)
             land();
@@ -56,6 +75,9 @@ void TrickScore::step(double seconds, ScoreMotion motion, double spin, double fl
         return;
     }
     open_ = true;
+    status_.spin_degrees += std::abs(spin);
+    status_.flip_degrees += std::abs(flip);
+    status_.style += (std::abs(spin) + std::abs(flip)) / 1440;
     if (motion == ScoreMotion::Rail) {
         rail_ = true;
         status_.grind_time += seconds;
@@ -63,8 +85,15 @@ void TrickScore::step(double seconds, ScoreMotion motion, double spin, double fl
     } else {
         if (motion_ == ScoreMotion::Air)
             status_.airtime += seconds;
-        status_.style += (std::abs(spin) + std::abs(flip)) / 1440;
     }
+    if (hand) {
+        if (!grab_held_)
+            status_.style += .0425;
+        status_.style += .045 * seconds;
+        status_.grab_time += seconds;
+        status_.grab_hand = hand;
+    }
+    grab_held_ = hand.has_value();
     motion_ = motion;
     preview();
 }
@@ -146,6 +175,30 @@ std::int64_t TrickScore::finish() {
         status_.finished = true;
     }
     return status_.total();
+}
+
+TrickDisplay trick_display(const TrickScore& score) {
+    const auto& s = score.status();
+    if (s.preview > 0) {
+        std::ostringstream detail;
+        detail << std::fixed << std::setprecision(1);
+        if (s.grab_hand)
+            detail << (*s.grab_hand == 0 ? "LEFT" : "RIGHT") << " GRAB " << s.grab_time << "S";
+        else if (s.grind_time > 0)
+            detail << "GRIND " << s.grind_time << "S";
+        else
+            detail << std::setprecision(0) << s.spin_degrees + s.flip_degrees << "/360 X .25 X 6786.9 X "
+                   << s.multiplier;
+        return {TrickDisplayState::Live, s.preview, detail.str()};
+    }
+    if (s.resolution && s.result_age < 3) {
+        const auto detail = s.loss == ScoreLoss::Crash           ? "CRASH"
+                            : s.loss == ScoreLoss::Reset         ? "RESET"
+                            : s.loss == ScoreLoss::BoardReleased ? "OFF BOARD"
+                                                                 : "BANKED";
+        return {s.bailed ? TrickDisplayState::Lost : TrickDisplayState::Banked, s.result, detail};
+    }
+    return {};
 }
 
 std::string score_readout(const TrickScore& score) {

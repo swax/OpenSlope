@@ -314,6 +314,12 @@ void VulkanRenderer::clear_targets() {
     for (auto& target : targets_) {
         if (target.presentation_framebuffer)
             vkDestroyFramebuffer(context_.device, target.presentation_framebuffer, nullptr);
+        if (target.presentation_view)
+            vkDestroyImageView(context_.device, target.presentation_view, nullptr);
+        if (target.presentation_multisample)
+            vkDestroyImage(context_.device, target.presentation_multisample, nullptr);
+        if (target.presentation_memory)
+            vkFreeMemory(context_.device, target.presentation_memory, nullptr);
         if (target.framebuffer)
             vkDestroyFramebuffer(context_.device, target.framebuffer, nullptr);
         if (target.colour_view)
@@ -616,13 +622,22 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         auto attachment = resolve;
         attachment.format = format_;
         attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.samples = samples_;
+        auto output_attachment = attachment;
+        output_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        if (samples_ != VK_SAMPLE_COUNT_1_BIT)
+            attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        const std::array<VkAttachmentDescription, 2> present_attachments{attachment, output_attachment};
+        const VkAttachmentReference present_resolve{1, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
         VkSubpassDescription present_subpass{};
         present_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         present_subpass.colorAttachmentCount = 1;
         present_subpass.pColorAttachments = &colour_ref;
+        if (samples_ != VK_SAMPLE_COUNT_1_BIT)
+            present_subpass.pResolveAttachments = &present_resolve;
         VkRenderPassCreateInfo present_pass{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-        present_pass.attachmentCount = 1;
-        present_pass.pAttachments = &attachment;
+        present_pass.attachmentCount = samples_ == VK_SAMPLE_COUNT_1_BIT ? 1 : 2;
+        present_pass.pAttachments = present_attachments.data();
         present_pass.subpassCount = 1;
         present_pass.pSubpasses = &present_subpass;
         present_pass.dependencyCount = 1;
@@ -630,7 +645,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         vk_check(vkCreateRenderPass(context_.device, &present_pass, nullptr, &presentation_pass_),
                  "Create native-resolution presentation pass");
         pipeline.renderPass = presentation_pass_;
-        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisample.rasterizationSamples = samples_;
         depth_state.depthTestEnable = VK_FALSE;
         vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &presentation_pipeline_),
                  "Create scene downsampling pipeline");
@@ -748,10 +763,34 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
                 writes[i].pImageInfo = &texture;
             }
             vkUpdateDescriptorSets(context_.device, unsigned(writes.size()), writes.data(), 0, nullptr);
+            if (samples_ != VK_SAMPLE_COUNT_1_BIT) {
+                auto native_info = info;
+                native_info.format = format_;
+                native_info.extent = {width_, height_, 1};
+                native_info.samples = samples_;
+                native_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                vk_check(vkCreateImage(context_.device, &native_info, nullptr, &target.presentation_multisample),
+                         "Create native-resolution UI multisample image");
+                vkGetImageMemoryRequirements(context_.device, target.presentation_multisample, &requirements);
+                allocation.allocationSize = requirements.size;
+                allocation.memoryTypeIndex =
+                    memory_type(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                vk_check(vkAllocateMemory(context_.device, &allocation, nullptr, &target.presentation_memory),
+                         "Allocate native-resolution UI multisample image");
+                vk_check(
+                    vkBindImageMemory(context_.device, target.presentation_multisample, target.presentation_memory, 0),
+                    "Bind native-resolution UI multisample image");
+                view_info.image = target.presentation_multisample;
+                view_info.format = format_;
+                vk_check(vkCreateImageView(context_.device, &view_info, nullptr, &target.presentation_view),
+                         "Create native-resolution UI multisample view");
+            }
+            const std::array<VkImageView, 2> native_views{
+                samples_ == VK_SAMPLE_COUNT_1_BIT ? target.colour_view : target.presentation_view, target.colour_view};
             VkFramebufferCreateInfo framebuffer{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
             framebuffer.renderPass = presentation_pass_;
-            framebuffer.attachmentCount = 1;
-            framebuffer.pAttachments = &target.colour_view;
+            framebuffer.attachmentCount = samples_ == VK_SAMPLE_COUNT_1_BIT ? 1 : 2;
+            framebuffer.pAttachments = native_views.data();
             framebuffer.width = width_;
             framebuffer.height = height_;
             framebuffer.layers = 1;

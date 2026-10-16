@@ -92,6 +92,12 @@ Spin/flip/rail style, bank/loss and energy gates use clean 360/390. Rounded base
 energy and quarter-bar starts are the first-party play profile and stand in for
 retail character stats; flip divisor, airborne bleed and uber tiers remain
 explicit in trick-scoring.md.
+Airborne held-board scoring follows clean 390's flat ladder and the public
+Slopesmith scoring assertions; recognition/hold style and throw/recatch behavior
+are described in the first-party public scoring documentation. The shared HUD
+itemizes rotations, rail time and held-board time. Timed results freeze scoring
+and clocks while physical riding and world interaction continue. Explicit
+dismount retains the user's free-ride reset behavior. See trick-scoring.md.
 VR head/stick selection and seat carry are application controls from first-party
 behavioral tests, outside the original game's recovered inputs. They retain the
 shared 330 carve and desktop 350 rail paths; see vr-steering.md.

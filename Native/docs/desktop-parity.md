@@ -78,6 +78,13 @@ interaction, rails/races/tricks, presentation/camera, audio/music/effects and th
 remaining rendering/performance work. Evidence may change the order, but cannot
 remove requirements from this matrix merely because an easier slice is complete.
 
+Build 0.63 adds scored airborne held-board grabs, throw/recatch continuity, rail
+rotation style and shared itemized desktop/controller readouts. Timed results
+freeze clocks/points while riding and world interactions continue. Bad landings
+can lose the combo without imposing a default knockdown. Supersampled desktop UI
+now retains native-size MSAA coverage. See score-ui-0.63.md for validation and the
+open Snowdream jump-corner fall-through and flare-appearance play-test reports.
+
 Build 0.44 independently recovers collision-event sound routes during ISO import.
 All eleven fresh imports match existing portable route exports, and actual GARI
 walking/riding captures play the smash cue with unchanged physics. Build 0.45 adds board-family routing;

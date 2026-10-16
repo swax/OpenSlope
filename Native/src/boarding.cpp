@@ -55,8 +55,9 @@ Vec3 Player::walk_move(Vec3 start, Vec3 destination, Vec3& velocity, double radi
     return destination;
 }
 
-void Player::place_foot(Vec3 position, Vec3 forward, Vec3 velocity) {
-    score_.lose(ScoreLoss::BoardReleased);
+void Player::place_foot(Vec3 position, Vec3 forward, Vec3 velocity, bool preserve_score) {
+    if (!preserve_score)
+        score_.lose(ScoreLoss::BoardReleased);
     rider_.view_yaw = 0;
     on_foot_ = true;
     foot_motion_.reset(length(project(velocity, {0, 1, 0})) > FootMotion::run_speed);
@@ -143,6 +144,7 @@ bool Player::recall_board(Vec3 facing) {
         up = floor->normal;
     }
     carry_.clear();
+    score_.release_grab();
     holding_hand_ = {};
     loose_board_ = {position, position, {}, normalized(project(forward, up), forward), up, bool(floor), 1, 0};
     if (floor) {
@@ -167,16 +169,22 @@ bool Player::interact_board(Vec3 room_offset) {
         if (board_distance(room_offset) > 1.6)
             return false;
         const auto board = loose_board_;
-        warp(board.position, board.forward, board.velocity + (board.grounded ? board.ground_velocity : Vec3{}),
-             board.up);
+        mount_board(board.position, board.forward, board.velocity + (board.grounded ? board.ground_velocity : Vec3{}),
+                    board.up);
         rider_.lead = board.lead;
         return true;
     }
-    run_.abandon();
-    score_.reset();
-    score_started_ = false;
-    run_active_ = false;
-    ++run_serial_;
+    return dismount_board(false);
+}
+
+bool Player::dismount_board(bool preserve_score) {
+    if (!preserve_score) {
+        run_.abandon();
+        score_.reset();
+        score_started_ = false;
+        run_active_ = false;
+        ++run_serial_;
+    }
     const auto position = render_board_position(), forward = render_forward(), up = render_up(),
                heading = camera_forward();
     const auto velocity = rider_.velocity;
@@ -203,7 +211,7 @@ bool Player::interact_board(Vec3 room_offset) {
                 feet = floor->point;
         }
     }
-    place_foot(feet, heading, velocity);
+    place_foot(feet, heading, velocity, preserve_score);
     return true;
 }
 

@@ -98,7 +98,13 @@ int main(int argc, char** argv) {
         VulkanContext context;
         context.create(false);
         const auto camera = projection(-1, 1, -1, 1, .01) * view({}, {0, 0, -1});
-        const auto hud = quad(.101, 0, {0, .7f, .2f});
+        const auto hud_quad = quad(.101, 0, {0, .7f, .2f});
+        std::vector<Vertex> hud(hud_quad.begin(), hud_quad.end());
+        Player menu_player(Terrain::demo());
+        RideUi menu;
+        menu.visible = true;
+        menu.frame(RideUi::desktop(CameraPose{}, 1, true));
+        menu.append(hud, menu_player);
         const std::array<Vertex, 3> triangle{
             {{-.773f, -.631f, -1, 1, 0, 0}, {.817f, -.613f, -1, 1, 0, 0}, {-.183f, .807f, -1, 1, 0, 0}}};
         for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB})
@@ -117,13 +123,9 @@ int main(int argc, char** argv) {
                     const auto drawn_hud = capture(renderer, root);
                     if (scale == 100)
                         native_hud = drawn_hud;
-                    else {
-                        if (msaa == 1 || scale > 125)
-                            check(drawn_hud == native_hud,
-                                  "Menu pixels remain exactly at native resolution across render scales");
-                        if (scale == 125)
-                            native_hud = drawn_hud;
-                    }
+                    else
+                        check(drawn_hud == native_hud,
+                              "Native UI retains identical edge coverage and MSAA at every scene scale");
                     submit(renderer, camera, {}, triangle);
                     const auto scene = capture(renderer, root);
                     check(lit(scene) > 20000, "The scaled world reaches the final output");
