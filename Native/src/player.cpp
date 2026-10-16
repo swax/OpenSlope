@@ -1402,9 +1402,12 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             floor.reset();
         const auto allowance = std::max(.2, rider_.budget + .05);
         const auto offset = normalized(rider_.normal) * (.2 + allowance);
-        auto guard =
-            rail ? std::optional<TerrainHit>{} : terrain_.sweep(start.position + offset, rider_.position + offset, .2);
-        if (guard && guard->depth <= 1e-7 && dot(rider_.position - start.position, guard->normal) >= -1e-9)
+        const auto start_offset = normalized(start.normal) * (.2 + std::max(.2, start.budget + .05));
+        const auto offset_delta = offset - start_offset;
+        const auto guard_delta = rider_.position - start.position + offset_delta;
+        const auto guard_start = start.position + start_offset, guard_end = rider_.position + offset;
+        auto guard = rail ? std::optional<TerrainHit>{} : terrain_.sweep(guard_start, guard_end, .2);
+        if (guard && guard->depth <= 1e-7 && dot(guard_delta, guard->normal) >= -1e-9)
             guard.reset();
         const auto stop = std::min({solid ? solid->t : 1.0, floor ? floor->t : 1.0, guard ? guard->t : 1.0}),
                    portion = remaining / contract_.tick_seconds();
@@ -1438,9 +1441,12 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         if (guard && (!solid || guard->t <= solid->t)) {
             if (guard->surface == 0 && run_active() && recover_course(false))
                 return false;
-            const auto delta = rider_.position - start.position;
-            rider_.position =
-                start.position + delta * std::max(0., guard->t - .001) + guard->normal * (guard->depth + .002);
+            // Sweep the guard's actual centre through a support-frame change.
+            // Map its contact back using the final offset; changing the normal
+            // must not teleport the guard beneath an adjacent floor.
+            const auto delta = guard_delta;
+            rider_.position = start.position + delta * std::max(0., guard->t - .001) - offset_delta +
+                              guard->normal * (guard->depth + .002);
             rider_.velocity -= guard->normal * std::min(0., dot(rider_.velocity, guard->normal));
             elapsed += guard->t * portion;
             remaining *= 1 - guard->t;

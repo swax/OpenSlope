@@ -206,3 +206,13 @@ warm comet-trailed rail/rock/metal sparks, including occasional flares. All
 twenty rows are independently checked against the user's image and shared
 motion facts. See `surface-spray-0.62.md` for tested behavior and remaining
 bindings, other effects and worn-device limits.
+
+Build 0.63 preserves scored airborne board grabs through release/recatch/remount,
+adds shared live trick/result feedback, and retains anti-aliased native-size UI
+when the world is supersampled. See `score-ui-0.63.md` for validation and limits.
+
+Build 0.64 fixes a reproduced floor-to-steep-wall root-guard discontinuity
+related to the Snowdream jump-corner report. Desktop and Quest pass the same
+1,488-case corner matrix and sampled Snowdream/Mesa traversal. The user's exact
+jump still needs a play test; see `jump-corners-0.64.md`. Ground-flare appearance
+and broader parity remain active.

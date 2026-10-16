@@ -221,3 +221,10 @@ The emitter, bounded snapshot reconstruction and renderer integration are
 independently authored. Surface-spray-0.62.md identifies provisional throw/puff
 bindings, seed, trail spacing and application bounds separately from the clean
 rules and measured scalar facts.
+
+Build 0.64 corrects the root-guard sweep across changing support frames using
+independently authored standard geometry. It preserves clean 300/340/370's
+contact, spring, surface and recovery rules, including permitted powder sink.
+Authored steep-corner regressions reproduce the previous failure on desktop
+and Quest; sampled Snowdream/Mesa traversal adds owned-course coverage. See
+`jump-corners-0.64.md` for evidence and exact-location verification limits.

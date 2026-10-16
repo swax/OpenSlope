@@ -135,11 +135,72 @@ void owned(const std::filesystem::path& root) {
     std::cout << "PASS: " << trials << " owned terrain starts; " << frames
               << " fixed ticks without a deep terrain crossing\n";
 }
+
+void jump_corners() {
+    unsigned cases = 0, wall_cases = 0, frames = 0;
+    const auto play = [&](double width, double runup, double distance, double approach, double steer, int surface,
+                          double yaw, bool jumping) {
+        Patch wall, front, top;
+        for (unsigned u = 0; u < 4; ++u)
+            for (unsigned v = 0; v < 4; ++v) {
+                wall.points[u * 4 + v] = {width * u / 3, 10. * u / 3, 20. * v / 3};
+                front.points[u * 4 + v] = {20. * u / 3, 10. * v / 3, width * v / 3};
+                top.points[u * 4 + v] = {width + 20. * u / 3, 10, width + 20. * v / 3};
+            }
+        std::vector<Patch> patches{floor(0, surface).patches()[0], wall, front, top};
+        const auto turn = [&](Vec3 p) { return rotate(p, {0, 1, 0}, yaw); };
+        for (auto& patch : patches)
+            for (auto& point : patch.points)
+                point = turn(point);
+        Player rider(Terrain(std::move(patches)));
+        const auto sink = rider.contract().surface(surface).bog;
+        rider.warp(turn({-distance, -sink, -runup}), turn({0, 0, 1}), turn({approach, 0, 15}));
+        const auto serial = rider.placement_serial();
+        double low_normal = 1;
+        for (unsigned frame = 0; frame < 120; ++frame) {
+            const auto before = rider.rider();
+            rider.tick({.steer = steer, .jump = jumping && frame < 10});
+            const auto& after = rider.rider();
+            low_normal = std::min(low_normal, after.normal.y);
+            const auto permitted = std::max(.3, std::max(before.budget, after.budget) + .06);
+            const bool contained = finite(after.position) && finite(after.velocity) &&
+                                   rider.placement_serial() == serial && after.position.y >= -permitted;
+            if (!contained)
+                std::cerr << "jump corner width " << width << " runup " << runup << " distance " << distance
+                          << " approach " << approach << " steer " << steer << " surface " << surface << " yaw " << yaw
+                          << " jumping " << jumping << " tick " << frame << " before [" << before.position.x << ','
+                          << before.position.y << ',' << before.position.z << "] normal [" << before.normal.x << ','
+                          << before.normal.y << ',' << before.normal.z << "] after [" << after.position.x << ','
+                          << after.position.y << ',' << after.position.z << "] normal [" << after.normal.x << ','
+                          << after.normal.y << ',' << after.normal.z << "]\n";
+            check(contained, "Steep corner approach retains finite floor containment without a hidden reset");
+            ++frames;
+        }
+        wall_cases += low_normal < .1;
+        ++cases;
+    };
+    for (const auto width : {.02, .1, .5, 2.})
+        for (const auto runup : {.5, 2., 5.})
+            for (const auto distance : {.05, .1, .2, .4, .5, .7})
+                for (const auto approach : {0., 2., 8., 18., 40.})
+                    for (const auto steer : {-1., -.5, .5, 1.})
+                        play(width, runup, distance, approach, steer, 1, 0, false);
+    for (const auto yaw : {0., pi * .5, pi, pi * 1.5})
+        for (const auto surface : {3, 4, 8})
+            for (const auto steer : {.5, 1.})
+                for (const auto jumping : {false, true})
+                    play(.02, 2, .05, 2, steer, surface, yaw, jumping);
+    check(wall_cases > 10, "Corner trials actually change support to near-vertical jump faces");
+    std::cout << "PASS: " << cases << " steep jump-side approaches; " << frames << " contained ticks; " << wall_cases
+              << " near-vertical support trials\n";
+}
 } // namespace
 
 int main(int argc, char** argv) {
     try {
-        if (argc == 3 && std::string(argv[1]) == "--owned")
+        if (argc == 2 && std::string(argv[1]) == "--corners")
+            jump_corners();
+        else if (argc == 3 && std::string(argv[1]) == "--owned")
             owned(argv[2]);
         else {
             regressions();
