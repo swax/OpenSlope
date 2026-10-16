@@ -3,6 +3,12 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.78 opens the desktop library at startup and lists ISO files beside the
+EXE. Queue course extractions, follow progress in each row, then choose Play
+when ready. Wheel scrolling and a draggable scrollbar replace desktop paging.
+The native reader supports SSX Tricky PS2; SSX 3 import is not implemented.
+See [desktop ISO setup](docs/desktop-iso-0.78.md).
+
 Build 0.76 adds desktop A/D strafing, left-drag look/turn and E to spawn and
 mount at the player's feet, including mid-air. See [desktop controls](docs/desktop-controls-0.76.md).
 
@@ -101,6 +107,11 @@ F/V switches first/chase camera, C looks down, and E dismounts or spawns and mou
 LMB drag looks around while riding and turns the character on foot; RMB carries/throws the board.
 P/Escape opens the pause menu; Escape first releases a held mouse drag.
 The wheel changes camera distance. The pause menu includes a map library and ride settings.
+Without `--map`, the desktop starts in the library. Place `.iso` files beside
+the EXE and choose **ISO Sources**, then **Extract <course>** to queue a course.
+Progress stays in its row, which becomes **Play <course>** when ready.
+Completed courses live in `Maps/<name>` beside the EXE; playing is a separate click.
+Existing/custom maps need no ISO; **Refresh** discovers newly added files.
 Use `--on-foot` to start beside the board; A/D strafe, W/S walk and Space jumps in that mode.
 Jump again in the air (or Jump + Boost) to fly; Shift/B boosts along the look/controller aim.
 Ctrl crouches or flies down. G retains the nearby boarding shortcut. See [on-foot flight](docs/foot-flight.md).

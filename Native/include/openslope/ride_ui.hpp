@@ -1,6 +1,7 @@
 #pragma once
 #include "avatar.hpp"
 #include "camera.hpp"
+#include "desktop_library.hpp"
 
 namespace openslope {
 enum class UiAction {
@@ -36,7 +37,12 @@ enum class UiAction {
     Riders,
     RiderDown,
     RiderUp,
-    Exit
+    Exit,
+    Sources,
+    SelectSource,
+    ImportMap,
+    CancelImport,
+    RefreshLibrary
 };
 
 struct UiFrame {
@@ -52,6 +58,7 @@ struct UiButton {
     UiAction action;
     std::filesystem::path map{};
     std::string value{};
+    std::string detail{};
 };
 
 struct UiResult {
@@ -75,11 +82,20 @@ public:
     std::vector<std::string> song_choices;
     std::size_t song_page = 0;
     std::vector<std::filesystem::path> map_paths;
+    bool iso_library = false, importing = false;
+    std::vector<std::filesystem::path> iso_paths;
+    std::filesystem::path iso_source;
+    std::vector<std::pair<std::string, bool>> iso_courses;
+    std::filesystem::path import_root;
+    std::map<std::string, CourseImportStatus> import_rows;
+    std::size_t library_scroll = 0;
+    std::string library_error;
     std::size_t page = 0;
     std::string notice;
     std::vector<UiButton> buttons() const;
     UiResult pointer(const EquipmentRay& ray, bool down);
     bool riders(UiAction action, Player& player);
+    bool scroll_library(double steps);
 
     void frame(UiFrame value) { frame_ = value; }
 
@@ -87,6 +103,7 @@ public:
 
     void release() {
         pressed_ = captured_ = false;
+        scroll_drag_ = false;
         hover_ = -1;
     }
 
@@ -99,6 +116,9 @@ private:
     UiFrame frame_;
     bool pressed_ = false, captured_ = false;
     int hover_ = -1;
+    bool scroll_drag_ = false;
+    double scroll_remainder_ = 0, scroll_grab_ = 0;
+    std::size_t library_count() const;
 };
 
 void equipment_outline(std::vector<Vertex>& vertices, const Player& player);

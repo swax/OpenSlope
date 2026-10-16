@@ -1,5 +1,10 @@
 # Desktop gameplay parity work
 
+Build 0.78 adds startup library selection, adjacent-EXE ISO discovery and
+queued extraction with row progress, cancellation and a separate Play action.
+Desktop lists use wheel/scrollbar navigation. See [desktop ISO setup](desktop-iso-0.78.md). Additional game formats are not
+claimed; the wider parity goal remains paused.
+
 Build 0.76 changes desktop input to A/D strafing on foot, left-drag camera look
 with on-foot turning, and E to dismount or spawn and mount at the current feet,
 including mid-air. See [desktop input validation](desktop-controls-0.76.md).

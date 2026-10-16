@@ -3,6 +3,7 @@
 #include "openslope/audio_preferences.hpp"
 #include "openslope/audio_scene.hpp"
 #include "openslope/avatar.hpp"
+#include "openslope/desktop_library.hpp"
 #include "openslope/graphics_preferences.hpp"
 #include "openslope/replay.hpp"
 #include "openslope/ride_ui.hpp"
@@ -13,11 +14,58 @@
 #include <chrono>
 #include <future>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <thread>
 
 namespace {
 using namespace openslope;
+
+std::filesystem::path executable_folder() {
+    std::vector<wchar_t> buffer(32768);
+    const auto length = GetModuleFileNameW(nullptr, buffer.data(), DWORD(buffer.size()));
+    if (!length || length >= buffer.size())
+        throw std::runtime_error("Cannot locate the application folder");
+    return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+}
+
+struct LibraryTask {
+    struct State {
+        std::atomic<bool> cancelled{false};
+        std::mutex mutex;
+        std::string message;
+    };
+
+    struct Result {
+        std::vector<DiscCourse> courses;
+    };
+
+    std::shared_ptr<State> state;
+    std::future<Result> future;
+
+    ~LibraryTask() { cancel(); }
+
+    void cancel() {
+        if (state)
+            state->cancelled = true;
+    }
+
+    std::string message() const {
+        std::lock_guard lock(state->mutex);
+        return state->message;
+    }
+
+    void start(DesktopLibrary library, std::filesystem::path image) {
+        state = std::make_shared<State>();
+        state->message = "FINDING SUPPORTED COURSES";
+        future = std::async(std::launch::async, [library, image, state = state] {
+            const auto cancelled = [state] { return state->cancelled.load(); };
+            Result result;
+            result.courses = library.courses(image, cancelled);
+            return result;
+        });
+    }
+};
 
 Vec3 camera_eye(const Player& player, bool first_person = false, const FollowCamera* camera = nullptr) {
     if (camera)
@@ -562,7 +610,7 @@ int main(int argc, char** argv) {
         unsigned ai_count = 0;
         RunMode run_option = RunMode::Freeride;
         bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_audio_option = false,
-             ui_smoke = false, ui_failure = false;
+             ui_smoke = false, ui_failure = false, library_smoke = false, library_empty = false, library_error = false;
         for (int i = 1; i < argc; ++i) {
             const std::string option = argv[i];
             if (option == "--xr")
@@ -571,7 +619,13 @@ int main(int argc, char** argv) {
                 head_steering = true;
             else if (option == "--mode" && i + 1 < argc)
                 run_option = run_mode(argv[++i]);
-            else if (option == "--ui-smoke" || option == "--ui-smoke-failure") {
+            else if (option == "--library-smoke" || option == "--library-empty-smoke" ||
+                     option == "--library-error-smoke") {
+                library_smoke = smoke_window = true;
+                library_empty = option == "--library-empty-smoke";
+                library_error = option == "--library-error-smoke";
+                seconds = 45;
+            } else if (option == "--ui-smoke" || option == "--ui-smoke-failure") {
                 ui_failure = option == "--ui-smoke-failure";
                 ui_smoke = true;
                 smoke_window = true;
@@ -740,17 +794,28 @@ int main(int argc, char** argv) {
         RAWINPUTDEVICE mouse{1, 2, 0, window.handle};
         if (!RegisterRawInputDevices(&mouse, 1, sizeof(mouse)))
             throw std::runtime_error("Cannot register relative mouse input");
-        {
+        DesktopLibrary library(executable_folder());
+        CourseImportQueue imports(library);
+        window.ui.import_root = library.maps_root();
+        const auto refresh_library = [&] {
             std::set<std::filesystem::path> available;
-            for (const auto& root : std::array<std::filesystem::path, 2>{
-                     std::filesystem::path("Maps"), map.empty() ? std::filesystem::path("Maps") : map.parent_path()}) {
-                std::error_code error;
-                for (std::filesystem::directory_iterator i(root, error), end; !error && i != end; i.increment(error))
-                    if (i->is_directory() && std::filesystem::exists(i->path() / "Patches.json"))
-                        available.insert(std::filesystem::weakly_canonical(i->path()));
+            for (const auto& root : std::array<std::filesystem::path, 3>{
+                     library.maps_root(), std::filesystem::path("Maps"), player->terrain().map_root().parent_path()}) {
+                if (root.empty())
+                    continue;
+                try {
+                    for (const auto& name : available_maps(root))
+                        available.insert(std::filesystem::weakly_canonical(root / name));
+                } catch (const std::exception& e) {
+                    std::cerr << "Map library: " << e.what() << '\n';
+                }
             }
             window.ui.map_paths.assign(available.begin(), available.end());
-        }
+            window.ui.iso_paths = library.images();
+            for (auto& [name, installed] : window.ui.iso_courses)
+                installed = std::filesystem::is_regular_file(library.maps_root() / name / "Patches.json");
+        };
+        refresh_library();
         window.camera.first_person = first_person_option;
         window.camera.step(*player, 0);
         const auto started = std::chrono::steady_clock::now();
@@ -766,6 +831,7 @@ int main(int argc, char** argv) {
         };
 
         std::future<PreparedCourse> loading;
+        LibraryTask library_task;
         auto load_stage = std::make_shared<std::atomic<unsigned>>(0);
         unsigned loading_frames = 0;
         const std::array<UiAction, 22> ui_script{
@@ -778,9 +844,15 @@ int main(int argc, char** argv) {
         std::size_t ui_step = 0;
         RunMode ui_expected_mode = RunMode::Freeride;
         unsigned ui_frame = 0;
+        bool library_done = false, library_requested_play = false;
         const auto original_map = player->terrain().map_root();
         if (ui_smoke) {
             window.ui.visible = true;
+            paused = true;
+        }
+        if ((map.empty() && !smoke_window) || library_smoke) {
+            window.ui.visible = window.ui.library = true;
+            window.ui.iso_library = window.ui.map_paths.empty() || (library_smoke && !window.ui.iso_paths.empty());
             paused = true;
         }
         while (window.events()) {
@@ -789,7 +861,34 @@ int main(int argc, char** argv) {
             previous = now;
             if (seconds > 0 && std::chrono::duration<double>(now - started).count() >= seconds)
                 break;
-            if (window.ui.loading) {
+            if (imports.update())
+                refresh_library();
+            window.ui.import_rows = imports.status();
+            if (window.ui.importing) {
+                window.ui.load_stage = library_task.message();
+                window.ui.load_progress = .5 + .5 * std::sin(std::chrono::duration<double>(now - started).count() * 3);
+                if (library_task.future.valid() &&
+                    library_task.future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                    window.ui.loading = window.ui.importing = false;
+                    try {
+                        auto result = library_task.future.get();
+                        window.ui.iso_courses.clear();
+                        for (const auto& course : result.courses)
+                            window.ui.iso_courses.emplace_back(course.name, false);
+                        refresh_library();
+                        window.ui.notice = "EXTRACT MAPS / CLICK PLAY WHEN READY";
+                    } catch (const std::exception& e) {
+                        window.ui.notice = library_task.state->cancelled ? "IMPORT CANCELLED / MAPS KEPT" : e.what();
+                        window.ui.library_error = e.what();
+                        std::cerr << "ISO library: " << e.what() << '\n';
+                    }
+                    window.ui.page = 0;
+                    window.ui.library_scroll = 0;
+                    dt = 0;
+                    previous = std::chrono::steady_clock::now();
+                }
+            }
+            if (window.ui.loading && !window.ui.importing) {
                 static constexpr std::array<const char*, 7> labels{
                     "READING TERRAIN",   "BUILDING COURSE", "TESSELLATING TERRAIN", "READING SCENE MODELS",
                     "DECODING TEXTURES", "PREPARING AUDIO", "READY TO UPLOAD"};
@@ -837,7 +936,7 @@ int main(int argc, char** argv) {
                         audio_service = std::move(next_service);
                         window.glare_visibility.reset();
                         window.camera.reset();
-                        window.ui.visible = window.ui.library = window.ui.loading = false;
+                        window.ui.visible = window.ui.library = window.ui.loading = window.ui.iso_library = false;
                         window.ui.notice.clear();
                         paused = false;
                         std::cout << "Course loaded with " << loading_frames << " loading frames\n";
@@ -853,9 +952,11 @@ int main(int argc, char** argv) {
             }
             const bool focused = GetForegroundWindow() == window.handle;
             const auto key = [&](int value) { return focused && (GetAsyncKeyState(value) & 0x8000) != 0; };
-            const bool escape = !window.ui.loading && key(VK_ESCAPE);
+            const bool escape = (!window.ui.loading || window.ui.importing) && key(VK_ESCAPE);
             if (escape && !last_escape) {
-                if (window.mouse_captured) {
+                if (window.ui.importing) {
+                    library_task.cancel();
+                } else if (window.mouse_captured) {
                     window.capture_mouse(false);
                     look_blocked = true;
                 } else {
@@ -909,6 +1010,51 @@ int main(int argc, char** argv) {
                 window.mouse_captured ? 0 : double(cursor.x) * 2 / std::max(1u, window.width) - 1,
                 window.mouse_captured ? 0 : 1 - double(cursor.y) * 2 / std::max(1u, window.height), aspect);
             bool pointer_down = key(VK_LBUTTON);
+            if (library_smoke && !window.ui.loading) {
+                if (!player->terrain().map_root().empty() && !library_requested_play)
+                    throw std::runtime_error("Extraction started a map without an explicit Play click");
+                if ((library_empty && window.ui.iso_paths.empty() && window.ui.map_paths.empty()) ||
+                    (library_error && !window.ui.library_error.empty()) ||
+                    (!library_empty && !library_error && !player->terrain().map_root().empty() && !window.ui.visible)) {
+                    library_done = true;
+                    std::cout << "Desktop library smoke: PASS; map " << player->terrain().map_root().string() << '\n';
+                } else {
+                    auto wanted = window.ui.iso_library && window.ui.iso_source.empty() ? UiAction::SelectSource
+                                                                                        : UiAction::LoadMap;
+                    std::string extract;
+                    if (window.ui.iso_library && !window.ui.iso_source.empty()) {
+                        for (std::size_t i = 0; i < window.ui.iso_courses.size(); ++i) {
+                            const auto& [name, installed] = window.ui.iso_courses[i];
+                            if (!installed && !window.ui.import_rows.contains(name)) {
+                                extract = name;
+                                while (i >= window.ui.library_scroll + 5)
+                                    window.ui.scroll_library(-1);
+                                wanted = UiAction::ImportMap;
+                                break;
+                            }
+                        }
+                        if (extract.empty() && imports.busy())
+                            wanted = UiAction::None;
+                    }
+                    const auto choices = window.ui.buttons();
+                    const auto choice = std::find_if(choices.begin(), choices.end(), [&](const auto& b) {
+                        return wanted != UiAction::None && b.action == wanted &&
+                               (wanted != UiAction::SelectSource || !b.map.empty()) &&
+                               (extract.empty() || b.value == extract);
+                    });
+                    if (wanted == UiAction::None) {
+                        pointer_down = false;
+                    } else if (choice == choices.end())
+                        throw std::runtime_error("Desktop library smoke action unavailable");
+                    else {
+                        const auto& f = window.ui.frame();
+                        const auto point =
+                            f.origin + f.right * (choice->x + choice->w / 2) + f.down * (choice->y + choice->h / 2);
+                        ray = {window.camera.pose().eye, normalized(point - window.camera.pose().eye), true};
+                        pointer_down = (ui_frame++ % 2) == 0;
+                    }
+                }
+            }
             if (ui_smoke && ui_step < ui_script.size()) {
                 const auto choices = window.ui.buttons();
                 auto choice = std::find_if(choices.begin(), choices.end(), [&](const UiButton& b) {
@@ -926,7 +1072,7 @@ int main(int argc, char** argv) {
                 ray = {window.camera.pose().eye, normalized(point - window.camera.pose().eye), true};
                 pointer_down = (ui_frame++ % 2) == 0;
             }
-            const auto click = window.ui.pointer(ray, pointer_down);
+            auto click = window.ui.pointer(ray, pointer_down);
             if (preferences.handle(click, window.ui, audio.get(), player->terrain().map_root().filename().string()) &&
                 !preferences_path.empty() && !preferences.save(preferences_path))
                 window.ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
@@ -963,16 +1109,86 @@ int main(int argc, char** argv) {
             case UiAction::Calibrate: window.camera.reset(); break;
             case UiAction::Recall: player->recall_board(window.camera.walk_forward()); break;
             case UiAction::Maps:
+                window.ui.library_scroll = 0;
                 window.ui.library = !window.ui.library;
+                window.ui.iso_library = false;
+                window.ui.iso_source.clear();
+                window.ui.iso_courses.clear();
+                window.ui.page = 0;
+                refresh_library();
+                window.ui.library_error.clear();
                 window.ui.controls = false;
                 window.ui.audio_options = window.ui.song_picker = window.ui.graphics_options = false;
+                break;
+            case UiAction::Sources:
+                window.ui.library_scroll = 0;
+                window.ui.iso_library = !window.ui.iso_library;
+                window.ui.iso_source.clear();
+                window.ui.iso_courses.clear();
+                window.ui.page = 0;
+                window.ui.notice.clear();
+                window.ui.library_error.clear();
+                refresh_library();
+                break;
+            case UiAction::RefreshLibrary:
+                window.ui.library_scroll = 0;
+                window.ui.page = 0;
+                window.ui.notice.clear();
+                window.ui.library_error.clear();
+                refresh_library();
+                if (!window.ui.iso_library || window.ui.iso_source.empty())
+                    break;
+                window.ui.iso_courses.clear();
+                [[fallthrough]];
+            case UiAction::SelectSource:
+                window.ui.library_scroll = 0;
+                if (click.action == UiAction::SelectSource) {
+                    window.ui.iso_source = click.map;
+                    window.ui.iso_courses.clear();
+                    window.ui.library_error.clear();
+                    window.ui.page = 0;
+                }
+                if (window.ui.iso_source.empty())
+                    break;
+                try {
+                    window.ui.library_error.clear();
+                    library_task.start(library, window.ui.iso_source);
+                    window.ui.importing = window.ui.loading = window.ui.visible = true;
+                    window.ui.load_name = window.ui.iso_source.filename().string();
+                    window.ui.load_stage = "READING ISO";
+                    window.ui.notice.clear();
+                    paused = true;
+                    player->release_inputs();
+                    window.capture_mouse(false);
+                } catch (const std::exception& e) {
+                    window.ui.notice = "COULD NOT START ISO IMPORT";
+                    std::cerr << e.what() << '\n';
+                }
+                break;
+            case UiAction::ImportMap:
+                try {
+                    imports.enqueue(click.map, click.value);
+                    window.ui.import_rows = imports.status();
+                    window.ui.notice.clear();
+                } catch (const std::exception& e) {
+                    window.ui.notice = e.what();
+                }
+                break;
+            case UiAction::CancelImport:
+                if (click.value.empty())
+                    library_task.cancel();
+                else
+                    imports.cancel(click.value);
                 break;
             case UiAction::Previous:
                 if (window.ui.page > 0)
                     --window.ui.page;
                 break;
             case UiAction::Next:
-                if ((window.ui.page + 1) * 5 < window.ui.map_paths.size())
+                if ((window.ui.page + 1) * 5 <
+                    (window.ui.iso_library
+                         ? (window.ui.iso_source.empty() ? window.ui.iso_paths.size() : window.ui.iso_courses.size())
+                         : window.ui.map_paths.size()))
                     ++window.ui.page;
                 break;
             case UiAction::Mode: {
@@ -998,6 +1214,8 @@ int main(int argc, char** argv) {
                 break;
             }
             case UiAction::LoadMap: {
+                if (library_smoke)
+                    library_requested_play = true;
                 const auto opponent_count = player->ai_field() ? player->ai_field()->size() : 0;
                 window.ui.loading = window.ui.visible = true;
                 window.ui.load_progress = .02;
@@ -1076,7 +1294,8 @@ int main(int argc, char** argv) {
             if (window.mouse_captured)
                 window.camera.orbit(window.mouse_dx, window.mouse_dy, player->on_foot());
             window.mouse_dx = window.mouse_dy = 0;
-            window.camera.zoom(window.wheel);
+            if (!window.ui.scroll_library(window.wheel) && !window.ui.visible)
+                window.camera.zoom(window.wheel);
             window.wheel = 0;
             if (focused && !paused) {
                 RideInput input{double(key('A') || key(VK_LEFT)) - double(key('D') || key(VK_RIGHT)),
@@ -1143,11 +1362,15 @@ int main(int argc, char** argv) {
                   << (preferences.volume == 0 ? L"unmute" : L"mute");
             SetWindowTextW(window.handle, title.str().c_str());
             window.draw(*player, first_person, key('C') || look_down_option, dt);
+            if (library_done)
+                window.quit = true;
             if (window.ui.loading)
                 ++loading_frames;
             if (IsIconic(window.handle))
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
+        if (library_smoke && !library_done)
+            throw std::runtime_error("Desktop library smoke did not complete");
         if (ui_smoke) {
             if (ui_step != ui_script.size())
                 throw std::runtime_error("UI smoke did not complete");

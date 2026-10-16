@@ -1,16 +1,22 @@
 OpenSlope Native - Windows portable preview
 
 1. Extract the entire ZIP into a writable folder, such as Documents/OpenSlope.
-2. Double-click "Play OpenSlope.cmd". The included procedural slope needs no ISO.
-3. Open Maps in the menu to select a course. See Maps/README.txt to add courses.
+2. Put any supported SSX Tricky PS2 ISO files beside OpenSlope.exe (optional).
+3. Double-click OpenSlope.exe or "Play OpenSlope.cmd". The app opens its library.
+   Choose an installed/custom map, or an ISO and queue courses with Extract.
+   Progress appears in each row. Completed rows become Play buttons.
+   Scroll with the wheel or scrollbar; X cancels a queued/active extraction.
+   Imported courses stay in Maps beside the program and play without the ISO.
+   Use Refresh after adding files while the app is open. See Maps/README.txt.
 
 Requires 64-bit Windows 10/11 and an up-to-date Vulkan graphics driver. The C++
 runtime is linked into the programs; Visual Studio and Python are not required.
 For PC VR, select your headset's active OpenXR runtime and use "Play in VR.cmd".
 PC VR device coverage is still limited; Quest standalone uses the separate APK.
 
-Controls: WASD move/steer, Space jump, Shift boost, left click mount/dismount,
-E recall board, right click carry/throw or drag to orbit, wheel zoom, F/V camera,
+Controls: A/D strafe on foot or steer riding, W/S move/tuck/brake, Space jump,
+Shift boost, E dismount or spawn and mount at your feet (also in mid-air),
+left-drag look/turn on foot, right click carry/throw, wheel zoom, F/V camera,
 R recover, T restart, Q exit rail, P/Escape menu. On foot, jump again in the air
 to fly. The menu includes controls, graphics, audio, map library and opponents.
 
@@ -25,3 +31,5 @@ This is an experimental player with incomplete gameplay parity. Only Quest 3
 has current device evidence. Share bugs at https://github.com/swax/OpenSlope/issues
 and include the version, course, platform and steps. Licenses are in licenses/.
 No game content is bundled. Imported disc content stays local to your machine.
+The native ISO reader currently supports SSX Tricky PS2 only. SSX 3 and other
+titles/platforms are not supported. Filename changes do not add format support.

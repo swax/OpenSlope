@@ -8,6 +8,7 @@ namespace openslope {
 namespace {
 using Colour = std::array<float, 3>;
 constexpr Colour ink{.88f, .94f, 1}, muted{.47f, .60f, .70f}, accent{.22f, .94f, .75f}, panel{.025f, .045f, .07f};
+constexpr double library_top = .30, library_height = .435;
 
 void quad(std::vector<Vertex>& out, Vec3 a, Vec3 b, Vec3 c, Vec3 d, Colour col) {
     for (const auto p : {a, b, c, a, c, d})
@@ -45,7 +46,8 @@ struct Canvas {
 
 std::vector<UiButton> RideUi::buttons() const {
     if (loading)
-        return {};
+        return importing ? std::vector<UiButton>{{.06, .85, .88, .085, "CANCEL", UiAction::CancelImport}}
+                         : std::vector<UiButton>{};
     if (graphics_options) {
         const auto y = immersive ? .36 : .55;
         std::vector<UiButton> list;
@@ -98,12 +100,50 @@ std::vector<UiButton> RideUi::buttons() const {
     }
     if (library) {
         std::vector<UiButton> list;
-        for (std::size_t i = page * 5; i < std::min(map_paths.size(), page * 5 + 5); ++i)
-            list.push_back({.06, .30 + double(i - page * 5) * .10, .88, .085, map_paths[i].filename().string(),
-                            UiAction::LoadMap, map_paths[i]});
-        list.push_back({.06, .85, .26, .085, "PREV", UiAction::Previous});
-        list.push_back({.37, .85, .26, .085, "BACK", UiAction::Maps});
-        list.push_back({.68, .85, .26, .085, "NEXT", UiAction::Next});
+        const auto count = library_count(),
+                   start = immersive ? page * 5 : std::min(library_scroll, count > 5 ? count - 5 : 0);
+        for (std::size_t i = start; i < std::min(count, start + 5); ++i) {
+            const auto y = .30 + double(i - start) * .09;
+            if (!iso_library)
+                list.push_back({.06, y, .88, .075, map_paths[i].filename().string(), UiAction::LoadMap, map_paths[i]});
+            else if (iso_source.empty())
+                list.push_back(
+                    {.06, y, .88, .075, iso_paths[i].filename().string(), UiAction::SelectSource, iso_paths[i]});
+            else {
+                const auto& [name, installed] = iso_courses[i];
+                const auto found = import_rows.find(name);
+                const auto* status = found == import_rows.end() ? nullptr : &found->second;
+                if (installed)
+                    list.push_back({.06, y, .88, .075, "PLAY " + name, UiAction::LoadMap, import_root / name});
+                else if (status && (status->phase == CourseImportPhase::Queued ||
+                                    status->phase == CourseImportPhase::Extracting)) {
+                    list.push_back({.06,
+                                    y,
+                                    .70,
+                                    .075,
+                                    (status->phase == CourseImportPhase::Queued ? "QUEUED " : "EXTRACTING ") + name,
+                                    UiAction::None,
+                                    {},
+                                    {},
+                                    status->progress});
+                    list.push_back({.78, y, .16, .075, "X", UiAction::CancelImport, {}, name});
+                } else
+                    list.push_back({.06, y, .88, .075, "EXTRACT " + name, UiAction::ImportMap, iso_source, name,
+                                    status && status->phase != CourseImportPhase::Ready ? status->progress : ""});
+            }
+        }
+        if (!immersive) {
+            list.push_back({.06, .75, .42, .075, "REFRESH", UiAction::RefreshLibrary});
+            list.push_back({.52, .75, .42, .075, iso_library ? "INSTALLED MAPS" : "ISO SOURCES", UiAction::Sources});
+        }
+        if (immersive)
+            list.push_back({.06, .85, .26, .085, "PREV", UiAction::Previous});
+        list.push_back(
+            {immersive ? .37 : .06, .85, immersive ? .26 : .88, .075,
+             iso_library && !iso_source.empty() ? "ISOS" : "BACK",
+             iso_library ? (iso_source.empty() ? UiAction::Sources : UiAction::SelectSource) : UiAction::Maps});
+        if (immersive)
+            list.push_back({.68, .85, .26, .085, "NEXT", UiAction::Next});
         return list;
     }
     if (rider_options)
@@ -151,6 +191,23 @@ bool RideUi::riders(UiAction action, Player& player) {
     return true;
 }
 
+std::size_t RideUi::library_count() const {
+    return iso_library ? (iso_source.empty() ? iso_paths.size() : iso_courses.size()) : map_paths.size();
+}
+
+bool RideUi::scroll_library(double steps) {
+    if (!visible || !library || immersive || loading)
+        return false;
+    if (!std::isfinite(steps))
+        throw std::invalid_argument("Invalid library scroll");
+    scroll_remainder_ += std::clamp(steps, -1000., 1000.);
+    const auto whole = std::trunc(scroll_remainder_);
+    scroll_remainder_ -= whole;
+    const auto count = library_count(), limit = count > 5 ? count - 5 : 0;
+    library_scroll = std::size_t(std::clamp(double(library_scroll) - whole, 0., double(limit)));
+    return true;
+}
+
 UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
     hover_ = -1;
     bool inside = false;
@@ -164,6 +221,22 @@ UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
                 const auto x = dot(delta, frame_.right) / dot(frame_.right, frame_.right),
                            y = dot(delta, frame_.down) / dot(frame_.down, frame_.down);
                 inside = x >= 0 && x <= 1 && y >= 0 && y <= 1;
+                const auto count = library_count();
+                if (library && !immersive && !loading && count > 5 && down &&
+                    (scroll_drag_ ||
+                     (!pressed_ && x >= .95 && x <= .985 && y >= library_top && y <= library_top + library_height))) {
+                    const auto thumb = std::max(.035, library_height * 5 / double(count)),
+                               travel = library_height - thumb;
+                    const auto top =
+                        library_top + travel * double(std::min(library_scroll, count - 5)) / double(count - 5);
+                    if (!scroll_drag_)
+                        scroll_grab_ = y >= top && y <= top + thumb ? y - top : thumb / 2;
+                    scroll_drag_ = captured_ = true;
+                    library_scroll = std::size_t(
+                        std::round(std::clamp((y - library_top - scroll_grab_) / travel, 0., 1.) * double(count - 5)));
+                    pressed_ = true;
+                    return {UiAction::None, true};
+                }
                 const auto list = buttons();
                 for (unsigned i = 0; i < list.size(); ++i) {
                     const auto& b = list[i];
@@ -185,8 +258,10 @@ UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
         }
     }
     result.consumed = captured_ || inside;
-    if (!down)
+    if (!down) {
         captured_ = false;
+        scroll_drag_ = false;
+    }
     pressed_ = down;
     return result;
 }
@@ -240,30 +315,50 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.rect(0, 0, 1, 1, panel);
         c.rect(0, 0, 1, .012, accent);
         c.text("OPEN SLOPE " + std::string(application_version()), .06, .045, .005, accent);
-        c.text(loading            ? "LOADING COURSE"
+        c.text(loading ? (importing ? (iso_courses.empty() ? "READING ISO" : "EXTRACTING COURSE") : "LOADING COURSE")
                : rider_options    ? "OPPONENTS"
                : graphics_options ? "GRAPHICS"
                : audio_options    ? (song_picker ? "CHOOSE SONG" : "AUDIO")
-               : library          ? "MAP LIBRARY"
+               : library          ? (iso_library ? (iso_source.empty() ? "ISO SOURCES" : "ISO COURSES") : "MAP LIBRARY")
                : controls         ? "CONTROLS"
                                   : "ON THE MOUNTAIN",
                .06, .13, .008);
         c.text(loading            ? load_name
                : graphics_options ? (immersive ? "SNOWFALL / DISPLAY STATS" : "SCENE QUALITY / WEATHER")
-               : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
-                                                    : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
-                                  : speed + " KM/H  /  " +
+               : library
+                   ? (iso_library ? (iso_source.empty() ? "SUPPORT: SSX TRICKY (PS2)" : iso_source.filename().string())
+                                  : "INSTALLED / CUSTOM MAPS")
+               : audio_options ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
+                                                 : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
+                               : speed + " KM/H  /  " +
                                      (p.carrying_board() ? "CARRYING"
                                       : p.on_foot()      ? "ON FOOT"
                                                          : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
-        if (!audio_options && !graphics_options && !rider_options && !loading)
+        if (!audio_options && !graphics_options && !rider_options && !loading && !library)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
         if (loading) {
             c.text(load_stage, .06, .38, .004, ink);
             c.rect(.06, .52, .88, .035, {.10f, .16f, .20f});
-            c.rect(.06, .52, .88 * std::clamp(load_progress, 0., 1.), .035, accent);
-            c.text("PREPARING YOUR COURSE", .06, .62, .0038, muted);
+            if (importing)
+                c.rect(.06 + .66 * std::clamp(load_progress, 0., 1.), .52, .22, .035, accent);
+            else
+                c.rect(.06, .52, .88 * std::clamp(load_progress, 0., 1.), .035, accent);
+            c.text(importing ? "EXTRACT ONCE / PLAY FROM MAPS" : "PREPARING YOUR COURSE", .06, .62, .0038, muted);
+        }
+        if (library && !loading) {
+            if (!library_error.empty() && iso_library && iso_courses.empty()) {
+                c.text("THIS COURSE SOURCE COULD NOT BE OPENED", .06, .34, .0037, ink);
+                c.text(library_error, .06, .43, .0032, muted);
+                c.text("SUPPORTED: SSX TRICKY (PS2)", .06, .52, .0037, muted);
+            } else if (iso_library && iso_source.empty() && iso_paths.empty()) {
+                c.text("PUT .ISO FILES BESIDE THE EXE", .06, .37, .004, ink);
+                c.text("THEN CHOOSE REFRESH", .06, .45, .0037, muted);
+                c.text("OR ADD CUSTOM COURSES TO MAPS", .06, .54, .0037, muted);
+            } else if (!iso_library && map_paths.empty() && !immersive) {
+                c.text("NO INSTALLED MAPS YET", .06, .37, .004, ink);
+                c.text("CHOOSE ISO SOURCES TO GET STARTED", .06, .45, .0037, muted);
+            }
         }
         if (graphics_options) {
             c.text(!graphics_readout.empty() && !immersive ? graphics_readout : "0 CLEAR / 3 AMBIENT / 10 BLIZZARD",
@@ -291,7 +386,28 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             for (unsigned i = 0; i < rows.size(); ++i)
                 c.text(rows[i], .06, .31 + i * .048, .0037, i == 4 || i == 5 ? accent : ink);
         }
-        if (library && map_paths.empty())
+        if (library && !immersive && !loading) {
+            const auto count = library_count();
+            if (count > 5) {
+                const auto thumb = std::max(.035, library_height * 5 / double(count));
+                c.rect(.958, library_top, .012, library_height, {.10f, .16f, .20f});
+                c.rect(.958,
+                       library_top +
+                           (library_height - thumb) * double(std::min(library_scroll, count - 5)) / double(count - 5),
+                       .012, thumb, accent);
+            }
+            const auto queued = std::count_if(import_rows.begin(), import_rows.end(), [](const auto& row) {
+                return row.second.phase == CourseImportPhase::Queued;
+            });
+            const auto active = std::count_if(import_rows.begin(), import_rows.end(), [](const auto& row) {
+                return row.second.phase == CourseImportPhase::Extracting;
+            });
+            c.text(active || queued ? std::to_string(active) + " EXTRACTING / " + std::to_string(queued) + " QUEUED"
+                   : count > 5      ? "SCROLL TO SEE MORE"
+                                    : "",
+                   .06, .943, .0024, muted);
+        }
+        if (library && map_paths.empty() && immersive && !loading)
             c.text("PLACE MAP FOLDERS IN MAPS", .06, .44, .005, muted);
         const auto list = buttons();
         for (unsigned i = 0; i < list.size(); ++i) {
@@ -299,7 +415,10 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             const bool selected = int(i) == hover_;
             c.rect(b.x, b.y, b.w, b.h, selected ? Colour{.06f, .25f, .25f} : Colour{.06f, .10f, .145f}, .0002);
             c.rect(b.x, b.y, .006, b.h, selected ? accent : Colour{.12f, .23f, .29f}, .0003);
-            c.text(b.text, b.x + .018, b.y + .035, .0036, selected ? accent : ink);
+            c.text(b.text, b.x + .018, b.y + (b.detail.empty() ? .035 : .012), b.detail.empty() ? .0036 : .0032,
+                   selected ? accent : ink);
+            if (!b.detail.empty())
+                c.text(b.detail, b.x + .018, b.y + .047, .0023, muted);
         }
         c.text(loading           ? "LOADING..."
                : !notice.empty() ? notice

@@ -1,4 +1,11 @@
-# Quest map library and ISO import
+# Map library and ISO import
+
+Desktop build 0.78 lists ISO files beside the EXE and queues selected course
+extractions with progress in each row. A completed row becomes Play; extraction
+does not start the game. Lists scroll with the wheel or scrollbar. Its Maps root
+follows the EXE rather than the launcher's working directory. Custom maps work
+without discs. See [desktop setup](desktop-iso-0.78.md).
+The native reader currently supports SSX Tricky PS2; SSX 3 import is not implemented.
 
 The library root is an ordinary Maps folder. Its immediate subdirectories are courses; a
 `Patches.json` in a course directory makes it available to select. This is the existing OpenSlope
