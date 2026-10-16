@@ -18,9 +18,19 @@ void main() {
     if(transform.options.x==8||transform.options.x==9||transform.options.x==10)alpha=effectAlpha;
     if(transform.options.x==12){
         vec2 q=textureUV*2.0-1.0;
-        float halo=exp(-5.0*dot(q,q))*(1.0-smoothstep(0.75,1.0,length(q)));
+        float r=length(q);
+        float halo=exp(-100.0*(r-0.88)*(r-0.88))*(1.0-smoothstep(0.95,1.0,r));
+        float core=exp(-5.0*dot(q,q))*(1.0-smoothstep(0.75,1.0,r));
         float spike=pow(max(0.0,1.0-abs(q.x)),1.5)*exp(-6.0*q.y*q.y)*(1.0-smoothstep(0.8,1.0,abs(q.y)));
-        alpha=effectAlpha*(lightmapTile.x>0.5?spike:halo);
+        alpha=effectAlpha*(lightmapTile.x>1.5?core:lightmapTile.x>0.5?spike:halo);
+        if(transform.options.z!=0){
+            // Owned lens art: ring upper-left, soft core upper-right, star lower-left.
+            vec2 tile=lightmapTile.x>1.5?vec2(0.5,0):lightmapTile.x>0.5?vec2(0,0.5):vec2(0);
+            vec2 inset=0.5/vec2(textureSize(diffuseImage,0));
+            vec4 lens=texture(diffuseImage,tile+mix(inset,vec2(0.5)-inset,textureUV));
+            displayColour*=lens.rgb;
+            alpha=effectAlpha*lens.a;
+        }
     }
     if(transform.options.x>0&&transform.options.x!=8&&transform.options.x!=9&&transform.options.x!=10&&transform.options.x!=12) {
         vec4 base=texture(diffuseImage,textureUV);

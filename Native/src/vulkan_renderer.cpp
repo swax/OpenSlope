@@ -1367,9 +1367,10 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdBindVertexBuffers(command_, 0, 1, &glint_vertices_.buffer, &offset);
         push.mvp = camera;
         push.options[0] = 12;
-        push.options[2] = push.options[3] = 0;
-        vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->board_set_, 0,
-                                nullptr);
+        push.options[2] = scene_->lamp_set_ ? 1 : 0;
+        push.options[3] = 0;
+        const auto set = scene_->lamp_set_ ? scene_->lamp_set_ : scene_->board_set_;
+        vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &set, 0, nullptr);
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         vkCmdDraw(command_, std::uint32_t(glints.size()), 1, 0, 0);
     }

@@ -183,7 +183,7 @@ std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std
         const auto bloom = std::pow(std::max(0., 1 - std::hypot(nx, ny)), 4);
         const auto gain = light.brightness * (1 + bloom) * std::min(1., 2 * (1 - lamp.distance / range));
         const auto radius = (light.size == 64 ? 2.5 : light.size == 32 ? 1. : .5) * (1 + bloom);
-        quad(light, right * radius * 2, up * radius * 2, gain * .25, 0);
+        quad(light, right * radius * 2, up * radius * 2, gain, 0);
         const auto angle = -pi * .5 * nx;
         const auto x = right * std::cos(angle) + up * std::sin(angle),
                    y = up * std::cos(angle) - right * std::sin(angle);
@@ -191,7 +191,7 @@ std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std
         quad(light, y * radius, x * radius * .15, gain, 1);
         const auto px = 2 * lamp.p[3] / (width * std::max(length(row_x), 1e-9));
         const auto py = 2 * lamp.p[3] / (height * std::max(length(row_y), 1e-9));
-        quad(light, right * px * 8, up * py * 4, gain, 0);
+        quad(light, right * px * 8, up * py * 4, gain, 2);
     }
     return result;
 }

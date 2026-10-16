@@ -221,6 +221,18 @@ int main(int argc, char** argv) {
         const auto edge = swept_triangle(a, b, c, {{0, 2, -2.2}, .25}, {{0, -2, -2.2}, .25});
         require(edge.has_value(), "Triangle edge cylinder contact");
         near(edge->t, .4625, "Edge contact is earlier than the plane");
+        for (const auto sign : {-1., 1.}) {
+            const auto resting = swept_triangle(a, b, c, {{0, sign * .1, 0}, .25}, {{0, sign * .1, 0}, .25});
+            require(resting.has_value(), "Stationary compound leaf retains its face penetration");
+            near(resting->t, 0, "Initial face overlap is the earliest possible hit");
+            near(resting->depth, .15, "Face penetration keeps the nearest surface depth");
+            near(resting->normal.y, sign, "Initial face overlap keeps the contacted side");
+            require(!swept_triangle(a, b, c, {{-3, sign * .3, 0}, .25}, {{3, sign * .3, 0}, .25}),
+                    "Parallel motion outside the plane slab cannot reach an edge or vertex");
+            const auto grazing = swept_triangle(a, b, c, {{-3, sign * .1, -2}, .25}, {{0, sign * .1, -2}, .25});
+            require(grazing.has_value() && grazing->t > 0 && grazing->t < 1,
+                    "Entering through a vertex while already inside the slab retains the feature sweep");
+        }
         const std::array<std::uint8_t, 9> raw{129, 0, 0, 0, 0, 0, 0, 0, 0};
         require(occupancy_masks(raw, 0, 2) == std::vector<std::uint8_t>(raw.begin(), raw.end()),
                 "Raw masks retain occupancy holes");

@@ -345,7 +345,7 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     layout.pBindings = bindings.data();
     vk_check(vkCreateDescriptorSetLayout(context_.device, &layout, nullptr, &descriptors_),
              "Create map descriptor layout");
-    const auto count = std::uint32_t(batches.size() + world_.sky.parts.size() + 3);
+    const auto count = std::uint32_t(batches.size() + world_.sky.parts.size() + 4);
     const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count * 2};
     VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     descriptor_pool.maxSets = count;
@@ -353,7 +353,7 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     descriptor_pool.pPoolSizes = &size;
     vk_check(vkCreateDescriptorPool(context_.device, &descriptor_pool, nullptr, &descriptor_pool_),
              "Create map descriptor pool");
-    const auto descriptor = [&](std::size_t diffuse, std::size_t lightmap, bool sky = false) {
+    const auto descriptor = [&](std::size_t diffuse, std::size_t lightmap, bool sky = false, bool clamped = false) {
         VkDescriptorSet set{};
         VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         allocate.descriptorPool = descriptor_pool_;
@@ -361,7 +361,10 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         allocate.pSetLayouts = &descriptors_;
         vk_check(vkAllocateDescriptorSets(context_.device, &allocate, &set), "Allocate map descriptor");
         const std::array<VkDescriptorImageInfo, 2> images{
-            {{sky ? sky_sampler_ : repeat_, images_[diffuse].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            {{clamped ? clamp_
+              : sky   ? sky_sampler_
+                      : repeat_,
+              images_[diffuse].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
              {clamp_, images_[lightmap].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}};
         std::array<VkWriteDescriptorSet, 2> writes{};
         for (unsigned i = 0; i < 2; ++i) {
@@ -389,6 +392,12 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     for (std::size_t i = 0; i < particles.size(); ++i)
         if (const auto found = names.find("Textures/" + particles[i]); !particles[i].empty() && found != names.end())
             particle_sets_[i] = descriptor(found->second, 1);
+    if (particles.size() > 28 && !particles[28].empty())
+        if (const auto found = names.find("Textures/" + particles[28]); found != names.end()) {
+            const auto& atlas = appearance.images.at(found->first);
+            if (atlas.width >= 2 && atlas.height >= 2 && atlas.width % 2 == 0 && atlas.height % 2 == 0)
+                lamp_set_ = descriptor(found->second, 1, false, true);
+        }
     for (const auto& batch : source.batches) {
         auto diffuse = names.find("Textures/" + batch.texture);
         std::ostringstream page;

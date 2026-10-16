@@ -393,6 +393,10 @@ std::vector<TerrainHit> Terrain::body_contacts(std::span<const ProbeSphere> star
                     Bounds quad;
                     for (const auto p : {a, b, c, d})
                         quad.add(p);
+                    // Reject the complete compound before visiting hundreds
+                    // of leaf spheres for a distant terrain cell.
+                    if (!overlaps(quad, swept))
+                        continue;
                     for (std::size_t sphere = 0; sphere < start.size(); ++sphere) {
                         if (!overlaps(quad, bounds[sphere]))
                             continue;

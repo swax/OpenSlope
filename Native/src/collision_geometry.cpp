@@ -129,9 +129,27 @@ std::optional<ShapeContact> swept_triangle(Vec3 a, Vec3 b, Vec3 c, ProbeSphere s
             best = ShapeContact{point, normalized(n, -normalized(delta)), t, depth};
     };
     const auto plane = dot(start.centre - a, normal), speed = dot(delta, normal);
+    const auto finish = plane + speed;
+    // Every triangle feature lies in this plane. Reject a swept sphere that
+    // never reaches its radius-wide slab before testing the edges and vertices.
+    if (std::min(plane, finish) > radius || std::max(plane, finish) < -radius)
+        return {};
     const auto projection = start.centre - normal * plane;
-    if (std::abs(plane) <= radius && in_triangle(projection, a, b, c))
+    if (std::abs(plane) <= radius && in_triangle(projection, a, b, c)) {
         accept(0, projection, normal * (plane < 0 ? -1. : 1.), radius - std::abs(plane));
+        return best;
+    }
+    if (std::abs(plane) > radius && std::abs(speed) > 1e-15) {
+        // Reaching the infinite face is a lower bound for every feature. An
+        // entry point inside the triangle therefore already is the first hit.
+        const auto sign = plane < 0 ? -1. : 1.;
+        const auto t = (sign * radius - plane) / speed;
+        const auto point = start.centre + delta * t - normal * (sign * radius);
+        if (t >= 0 && t <= 1 && in_triangle(point, a, b, c)) {
+            accept(t, point, normal * sign);
+            return best;
+        }
+    }
     for (const auto& edge : std::array<std::array<Vec3, 2>, 3>{{{a, b}, {b, c}, {c, a}}}) {
         const auto nearest = closest_segment(start.centre, edge[0], edge[1]), offset = start.centre - nearest;
         if (length(offset) <= radius)

@@ -193,3 +193,10 @@ remain authoritative. The whole-target damped translation, bounds, settling
 clock and visual-only motion marker are explicit first-party presentation
 choices, not recovered vertex weights or spring constants. See fence-reactions.md
 for all-course/mode, actual player, GPU and Quest CPU evidence and fidelity limits.
+
+Build 0.60 adds conservative compound terrain-cell rejection and triangle
+plane/earliest-face exits using standard geometry. It keeps all original bag
+leaves and retains every recorded replay matrix. Lamp presentation now uses
+the independently inspected owned lens ring/core/star atlas, while clean 160's
+hue, brightness, size, range and depth remain authoritative. The fallback ring
+profile is an application choice; see snowdream-playtest-0.60.md.

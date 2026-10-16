@@ -96,7 +96,7 @@ private:
     VkSampler repeat_{}, clamp_{}, sky_sampler_{};
     VkDeviceSize image_bytes_{};
     VkDescriptorSet effect_set_{}, wake_set_{}, sheet_set_{};
-    VkDescriptorSet corona_set_{};
+    VkDescriptorSet corona_set_{}, lamp_set_{};
     std::vector<VkDescriptorSet> particle_sets_;
     Image image(const struct RgbaImage& pixels, VkCommandPool pool, bool mipmapped = true);
     Buffer buffer(VkDeviceSize size, VkBufferUsageFlags usage, const void* data);

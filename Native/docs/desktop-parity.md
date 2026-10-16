@@ -179,3 +179,10 @@ knuckle-to-wrist hinge that swept sideways. Independent art landmarks verify
 both hands, all five digits, partial/full inputs and wrist rotations; GPU
 close-ups verify visible closure. See `finger-curl-0.59.md` for scope and remaining
 physical grip verification. In-world video screens are excluded by user request.
+
+Build 0.60 reduces compound terrain/triangle query work for Snowdream crash bags
+while retaining their 452 leaves and exact replay poses. It also uses the owned
+lens atlas for circular flare halos, with a ring fallback. See
+`snowdream-playtest-0.60.md` for CPU measurements and visual verification scope.
+Desktop graphics settings/supersampling and map-load progress are subsequent
+user-requested work; the full parity objective remains active.

@@ -309,6 +309,57 @@ void owned(const std::filesystem::path& maps) {
                   << " leaves; centre moved " << length(centre - original) << " m\n";
     }
 }
+
+void snowdream(const std::filesystem::path& maps) {
+    const auto root = maps / "SNOW";
+    auto world = CollisionWorld::load(root);
+    const auto terrain = Terrain::load(root);
+    auto logic = WorldLogic::load(root);
+    const auto rows = nlohmann::json::parse(std::ifstream(root / "Instances.json")).at("Instances");
+    unsigned count = 0;
+    double maximum = 0;
+    for (std::size_t host = 0; host < rows.size(); ++host) {
+        if (!rows[host].value("InstanceName", std::string{}).starts_with("Mdl_CrashBag_"))
+            continue;
+        const auto shape = world.body_shape(host);
+        check(shape && shape->probes.size() == 452, "Owned Snowdream bag retains all 452 collision leaves");
+        logic.restart(RunMode::Freeride);
+        world.instance_flags(logic.flags());
+        world.motion(logic.motions(), 1. / 60);
+        const auto centre = transform_point(shape->placement, shape->centre);
+        const std::array<Vec3, 1> observer{centre};
+        logic.tick(1. / 60, 12, observer);
+        logic.contact(host, 14, true, 100, {1, 0, 0});
+        logic.prepare_bodies(world);
+        WorldContact hit;
+        hit.instance = host;
+        hit.point = centre;
+        hit.normal = {-1, 0, 0};
+        check(logic.shove(hit, {14, 0, 0}, {0, 1, 0}).has_value(), "Owned Snowdream bag accepts a rider shove");
+        for (unsigned frame = 0; frame < 72; ++frame) {
+            logic.tick(1. / 60, 12, observer);
+            world.instance_flags(logic.flags());
+            world.motion(logic.motions(), 1. / 60);
+            const auto began = std::chrono::steady_clock::now();
+            logic.step_bodies(1. / 60, terrain, world);
+            maximum = std::max(
+                maximum, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count());
+        }
+        const auto motions = logic.motions();
+        const auto moved =
+            std::find_if(motions.begin(), motions.end(), [host](const auto& p) { return p.instance == host; });
+        check(moved != motions.end() && !moved->current.empty(), "Owned Snowdream bag keeps a live motion binding");
+        bool finite_pose = true;
+        for (const auto& pose : moved->current)
+            for (const auto value : pose)
+                finite_pose &= std::isfinite(value);
+        check(finite_pose, "Crowded Snowdream bag contacts remain finite");
+        ++count;
+    }
+    check(count == 33, "Exercise every owned Snowdream crash bag");
+    std::cout << "Owned SNOW: " << count << " crash bags; 452 leaves each; 72 ticks; maximum body step " << maximum
+              << " ms\n";
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -322,6 +373,7 @@ int main(int argc, char** argv) {
         if (argc > 2) {
             owned(argv[2]);
             merquer(argv[2]);
+            snowdream(argv[2]);
         }
         std::cout << "PASS: " << checks << " live body impulse, mass-centre, shape, sleep, rider and restart checks\n";
         return 0;

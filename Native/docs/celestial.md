@@ -82,6 +82,11 @@ Weather, point-light flares, original display-domain composition and the wider
 parity matrix remain active. Worn Quest confirmation of sun appearance, terrain
 fading and comfort remains separate from APK/device checks.
 
+Build 0.60 replaces the lamp soft-glow placeholder with the owned lens atlas's
+circular ring, core and star tiles, with a circular fallback for custom maps.
+Source-depth occlusion remains in place. See `snowdream-playtest-0.60.md` for
+fixture/owned-course checks and remaining visual calibration limits.
+
 ```powershell
 ./temp/native/Release/openslope_celestial_tests.exe
 ./temp/native/Release/openslope_celestial_tests.exe Maps
