@@ -57,6 +57,100 @@ void terrain_tests() {
     require(hit.has_value() && hit->refined, "Curved patch must refine");
     near(length(hit->point - expected), 0, 1e-7, "Curved hit must lie on the probe and surface");
     near(length(hit->normal - p.normal(.37, .61)), 0, 1e-7, "Curved normal must be analytic");
+    for (unsigned u = 0; u < 4; ++u)
+        for (unsigned v = 0; v < 4; ++v)
+            p.points[u * 4 + v] = {v * 100. / 3, -(u == 1 || u == 2 ? 20. : 0) - (v == 1 || v == 2 ? 10. : 0),
+                                   -double(u) * 100. / 3};
+    terrain = Terrain({p});
+    const auto bowl_point = p.evaluate(.37, .61);
+    require(!terrain.intersect(bowl_point + Vec3{0, .12, 0}, bowl_point + Vec3{0, .04, 0}),
+            "a coarse chord above a curved surface is not a landing");
+    for (double sign : {-1., 1.}) {
+        hit = terrain.intersect(bowl_point + Vec3{0, .002 * sign, 0}, bowl_point - Vec3{0, .002 * sign, 0});
+        require(hit && hit->refined, "short rays find the surface even when its mesh seed is outside the ray");
+        near(length(hit->point - bowl_point), 0, 1e-7, "short curved intersection satisfies the real surface");
+    }
+    hit = terrain.intersect(bowl_point + Vec3{0, .002, 0}, bowl_point);
+    require(hit && hit->refined, "analytic contact at the ray endpoint remains valid");
+    for (const auto uv : std::array<std::array<double, 2>, 5>{{{0, 0}, {0, .37}, {1, 1}, {.5, 1}, {.37, .61}}}) {
+        const auto point = p.evaluate(uv[0], uv[1]), normal = p.normal(uv[0], uv[1]);
+        hit = terrain.intersect(point + normal * .002, point - normal * .002);
+        require(hit && hit->refined, "short contact probes include curved patch boundaries");
+        near(length(hit->point - point), 0, 1e-7, "boundary contact remains on the analytic patch");
+    }
+    Player curved_rider(Terrain({p}));
+    const auto up = p.normal(.37, .61), down = normalized(project(Vec3{0, 0, -1}, up));
+    curved_rider.warp(bowl_point + Vec3{0, .1, 0}, down, down, up);
+    for (unsigned i = 0; i < 120; ++i)
+        curved_rider.tick({.posture = 1});
+    require(length(curved_rider.rider().position - bowl_point) > 2,
+            "a rider clears the chord and continues across the curved surface");
+    require(curved_rider.rider().landings < 10, "curved terrain does not repeatedly re-land a stationary rider");
+    const auto airborne_start = bowl_point + Vec3{0, .3, 0};
+    Patch wall;
+    wall.surface = 18;
+    for (unsigned u = 0; u < 4; ++u)
+        for (unsigned v = 0; v < 4; ++v) {
+            const auto y = airborne_start.y - 2 + 4. * u / 3;
+            wall.points[u * 4 + v] = {airborne_start.x + .001 * (airborne_start.y + .5 - y), y,
+                                      airborne_start.z - 20 + 40. * v / 3};
+        }
+    Player airborne(Terrain({p, wall}));
+    airborne.warp(airborne_start, {1, 0, 0}, {6, 0, 0}, {0, 1, 0});
+    require(!airborne.rider().grounded && airborne.rider().normal.x > .99 && airborne.rider().board_up.y > .99,
+            "the departing rider retains a wall probe normal while its body stays upright");
+    for (unsigned i = 0; i < 120; ++i)
+        airborne.tick({});
+    require(airborne.rider().landings > 0,
+            "the upright airborne guard lets the rider fall onto the floor after leaving a wall");
+    Patch bank, nearby_wall;
+    bank.surface = 3;
+    nearby_wall.surface = 18;
+    for (unsigned u = 0; u < 4; ++u)
+        for (unsigned v = 0; v < 4; ++v) {
+            const auto x = -20 + 40. * u / 3, z = -20 + 40. * v / 3, y = -10 + 20. * u / 3;
+            bank.points[u * 4 + v] = {x, -x - .1 * z, z};
+            nearby_wall.points[u * 4 + v] = {1 + .001 * y, y, z};
+        }
+    const auto bank_up = normalized(Vec3{1, 1, .1});
+    const auto along_bank = normalized(project(Vec3{0, 0, -1}, bank_up));
+    const Terrain junction_terrain({bank, nearby_wall});
+    const auto two_sided = junction_terrain.intersect(bank_up * 2, -bank_up);
+    const auto support = junction_terrain.intersect(bank_up * 2, -bank_up, true);
+    require(two_sided && two_sided->surface == 18 && support && support->surface == 3,
+            "the ground ray skips a reverse-facing wall and still finds its floor");
+    Player junction(Terrain({bank, nearby_wall}));
+    junction.warp({}, along_bank, along_bank * 6, bank_up);
+    const auto junction_serial = junction.placement_serial();
+    for (unsigned i = 0; i < 120; ++i)
+        junction.tick({.posture = 1});
+    require(length(junction.rider().position) > 2 && junction.rider().landings < 20,
+            "a landing at the start of a frame retains motion beside a steep probe overlap");
+    require(junction.placement_serial() == junction_serial,
+            "the terrain junction clears through ordinary motion without a reset");
+    auto ledge = plane(), lower = plane(-5);
+    for (auto& point : ledge.points) {
+        point.x = point.x * .04 - .2;
+        point.z = point.z * 4 + 20;
+    }
+    for (auto& point : lower.points) {
+        point.x = point.x * 20 - 100;
+        point.z = point.z * 20 + 100;
+    }
+    for (const int lead : {-1, 1})
+        for (const double slide : {-.45, .45}) {
+            Player edge(Terrain({ledge, lower}));
+            edge.warp({}, {0, 0, 1}, {0, -1, 6});
+            auto& pose = const_cast<Rider&>(edge.rider());
+            pose.lead = lead;
+            pose.slide = slide;
+            const auto serial = edge.placement_serial();
+            for (unsigned i = 0; i < 120; ++i)
+                edge.tick({.posture = 1});
+            require(pose.position.y < -4 && pose.landings < 5,
+                    "a carved deck beyond a ledge falls rather than repeatedly landing its unshifted root");
+            require(serial == edge.placement_serial(), "carve-edge motion needs no hidden placement");
+        }
     std::vector<Patch> layers;
     for (int i = 0; i < 20; ++i)
         layers.push_back(plane(i * .1));

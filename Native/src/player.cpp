@@ -62,6 +62,10 @@ double carried_cap(const RideContract& contract, double current, double amount) 
     const auto target = boost_cap(contract, amount);
     return std::max(target, approach(current, target, contract.value("speed", "capDecay") * contract.tick_seconds()));
 }
+
+Vec3 deck_slide(const Rider& pose) {
+    return normalized(cross(pose.normal, pose.forward * double(pose.lead)), {1, 0, 0}) * pose.slide;
+}
 } // namespace
 
 Player::Player(Terrain terrain, PlayTuning tuning)
@@ -152,6 +156,7 @@ void Player::mount_board(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up) {
     teleport_pending_.reset();
     recovery_target_.reset();
     reset_age_ = reset_fade_in_ = 0;
+    wedge_ = wedge_feed_ = 0;
     score_.release_grab();
     carry_.clear();
     holding_hand_ = {};
@@ -349,7 +354,9 @@ void Player::sample_input(const RideInput& input) {
 
 std::optional<Player::GroundContact> Player::trace_ground(Vec3 start, Vec3 end) const {
     std::optional<GroundContact> result;
-    if (const auto hit = terrain_.intersect(start, end))
+    // A reverse-facing wall crossing is not support beneath this probe.
+    // General terrain queries and the swept containment guard remain two-sided.
+    if (const auto hit = terrain_.intersect(start, end, true))
         result = GroundContact{hit->point, hit->normal, hit->t, hit->surface, {}};
     if (const auto hit = world_.ray(start, end, true); hit && (!result || hit->t < result->t))
         result = GroundContact{hit->point,  hit->normal,          hit->t, hit->surface, hit->instance,
@@ -358,8 +365,7 @@ std::optional<Player::GroundContact> Player::trace_ground(Vec3 start, Vec3 end) 
 }
 
 std::optional<Player::GroundContact> Player::probe(Vec3 position) const {
-    const auto lateral = normalized(cross(rider_.normal, rider_.forward * double(rider_.lead)), {1, 0, 0});
-    const auto base = position + lateral * rider_.slide;
+    const auto base = position + deck_slide(rider_);
     return trace_ground(base + rider_.normal * contract_.value("contact", "probeAbove"),
                         base - rider_.normal * contract_.value("contact", "probeBelow"));
 }
@@ -488,11 +494,11 @@ void Player::land(const GroundContact& hit) {
         rider_.lead = dot(travel, nose) < 0 ? -1 : 1;
     // [Trailmap: 340-landing-seed] A swept hit seats at contact with zero
     // response error and preserves incoming normal velocity for ground response.
-    rider_.position = hit.point;
     rider_.normal = hit.normal;
     rider_.surface = hit.surface;
     rider_.contact_error = 0;
     rider_.forward = nose;
+    rider_.position = hit.point - deck_slide(rider_);
     rider_.ground_instance = hit.instance;
     rider_.ground_object = hit.object;
     rider_.ground_velocity = hit.velocity;
@@ -666,6 +672,14 @@ void Player::finish_feedback(const Rider& before, bool placed, double dt) {
     if (score_.status().active &&
         (run_.status().phase == RunPhase::Finished || run_.status().phase == RunPhase::Expired))
         score_.finish();
+    // [Trailmap: 395-reset-arm] Only actual prop/rider shoves feed recovery.
+    // This native decay reaches the threshold after about five square-on frames.
+    if (!on_foot_ && !scripted_ascent_ && run_active() && run_.riding_allowed() && !reset_pending() && !recovering()) {
+        wedge_ = wedge_ * std::exp2(-dt / .1) + wedge_feed_;
+        if (wedge_ >= 4)
+            recover_course(false);
+    } else
+        wedge_ = 0;
     const bool board_active = !on_foot_ && !reset_pending() && !recovering() && run_.riding_allowed();
     const auto lateral = normalized(cross(rider_.normal, rider_.forward * double(rider_.lead)));
     const auto deck = rider_.position + rider_.smoothed_up * rider_.lift + lateral * rider_.slide +
@@ -936,6 +950,7 @@ void Player::tick(const RideInput& input) {
         field_->step(*this, input);
         return;
     }
+    wedge_feed_ = 0;
     weather_time_ += contract_.tick_seconds();
     interpolate_board_ = false;
     previous_board_forward_ = render_forward();
@@ -1512,22 +1527,36 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
                 solid = &contact;
                 break;
             }
-        auto floor = landing_allowed ? trace_ground(start.position, rider_.position) : std::nullopt;
+        const auto start_contact = start.position + deck_slide(start),
+                   end_contact = rider_.position + deck_slide(rider_);
+        auto floor = landing_allowed ? trace_ground(start_contact, end_contact) : std::nullopt;
         // Orientation grace never disables terrain collision. Ground travel also
         // has a small swept root guard beyond the ordinary spring's allowance.
-        if (!rider_.grounded)
-            if (const auto hit = terrain_.intersect(start.position, rider_.position);
-                hit && (!floor || hit->t < floor->t))
+        if (!rider_.grounded && !rail)
+            if (const auto hit = terrain_.intersect(start_contact, end_contact); hit && (!floor || hit->t < floor->t))
                 floor = GroundContact{hit->point, hit->normal, hit->t, hit->surface, {}};
         if (floor && dot(rider_.velocity - floor->velocity, floor->normal) >= 0)
             floor.reset();
         const auto allowance = std::max(.2, rider_.budget + .05);
-        const auto offset = normalized(rider_.normal) * (.2 + allowance);
-        const auto start_offset = normalized(start.normal) * (.2 + std::max(.2, start.budget + .05));
+        const auto offset =
+            deck_slide(rider_) + normalized(rider_.grounded ? rider_.normal : rider_.board_up) * (.2 + allowance);
+        const auto start_offset = deck_slide(start) + normalized(start.grounded ? start.normal : start.board_up) *
+                                                          (.2 + std::max(.2, start.budget + .05));
         const auto offset_delta = offset - start_offset;
         const auto guard_delta = rider_.position - start.position + offset_delta;
         const auto guard_start = start.position + start_offset, guard_end = rider_.position + offset;
         auto guard = rail ? std::optional<TerrainHit>{} : terrain_.sweep(guard_start, guard_end, .2);
+        if (guard && rider_.grounded && dot(guard->normal, rider_.normal) < -.5) {
+            const auto centre = guard_start + guard_delta * guard->t;
+            const auto support_hit = terrain_.intersect(centre + rider_.normal * 2, centre - rider_.normal, true);
+            if (support_hit && support_hit->patch == guard->patch && dot(support_hit->normal, rider_.normal) > .5) {
+                // A deeply seated sphere must leave through its known support
+                // side. A two-sided triangle otherwise pushes it farther under.
+                guard->normal = support_hit->normal;
+                guard->point = support_hit->point;
+                guard->depth = std::max(0., .2 - dot(centre - support_hit->point, support_hit->normal));
+            }
+        }
         if (guard && guard->depth <= 1e-7 && dot(guard_delta, guard->normal) >= -1e-9)
             guard.reset();
         const auto stop = std::min({solid ? solid->t : 1.0, floor ? floor->t : 1.0, guard ? guard->t : 1.0}),
@@ -1589,6 +1618,8 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         resolved.insert(solid->instance);
         rider_.position += response.position_delta;
         rider_.velocity = response.velocity;
+        if (response.impulse > 1e-8 || length(response.position_delta) > 1e-8)
+            note_shove(solid->normal);
         if (response.impulse > 0 && solid->surface < 0)
             ++rider_.bounces;
         if (response.hard) {
@@ -1614,6 +1645,10 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         }
     record_contacts(std::move(seen), responses);
     return true;
+}
+
+void Player::note_shove(Vec3 normal) {
+    wedge_feed_ = std::max(wedge_feed_, 1 - std::clamp(dot(render_up(), normalized(normal)), -1., 1.));
 }
 
 void Player::record_contacts(std::map<std::size_t, WorldContact> seen,

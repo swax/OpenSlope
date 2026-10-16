@@ -103,7 +103,8 @@ Vec3 AiNetwork::point(std::size_t path, double station) const {
 }
 
 std::optional<AiProjection> AiNetwork::choose(Vec3 position, double mood, std::optional<std::size_t> exclude,
-                                              bool respawnable) const {
+                                              bool respawnable,
+                                              const std::function<bool(const AiProjection&)>& acceptable) const {
     if (!finite(position) || !std::isfinite(mood) || mood < 0 || mood > 100)
         throw std::invalid_argument("Invalid AI path choice");
     std::vector<std::pair<double, std::size_t>> candidates;
@@ -148,7 +149,7 @@ std::optional<AiProjection> AiNetwork::choose(Vec3 position, double mood, std::o
     for (const auto& candidate : nearest) {
         const auto& projection = candidate.second;
         const auto path = projection.path;
-        if (projection.total - projection.station <= 2)
+        if (projection.total - projection.station <= 2 || (acceptable && !acceptable(projection)))
             continue;
         const auto near = projection.point - position, target = point(path, projection.station + 8) - position;
         // [Trailmap: 395-score] Squared centimetres become squared metres.
@@ -204,21 +205,20 @@ RideInput AiInput::step(const Rider& rider, const AiContext& context, double sec
         last_station_ = progress.station;
     auto target = network_->point(*path_, progress.station + 8);
     const auto forward = normalized(project(rider.forward * double(rider.lead), rider.board_up), {0, 0, -1});
-    const auto aim = project(target - rider.position, rider.board_up);
     const bool ended = progress.total - progress.station <= 2 ||
                        std::any_of(network_->paths().ai[*path_].events.begin(),
                                    network_->paths().ai[*path_].events.end(), [&](const auto& event) {
                                        return event.type == 300 && overlaps(event, last_station_, progress.station);
                                    });
-    const bool lost = rider.grounded && (progress.distance > 5 || dot(aim, forward) < 0);
+    const bool lost = rider.grounded && progress.distance > 5;
     if (ended || (lost && reselect_ <= 0)) {
         reselect_ = 1;
-        if (const auto choice = network_->choose(rider.position, status_.mood, ended ? path_ : std::nullopt)) {
-            if (choice->path != *path_) {
-                ++status_.path_changes;
-                charge_ = false;
-                last_station_ = choice->station;
-            }
+        // [Trailmap: 395-forward-only] An unchanged path keeps its forward cache.
+        if (const auto choice = network_->choose(rider.position, status_.mood, ended ? path_ : std::nullopt);
+            choice && choice->path != *path_) {
+            ++status_.path_changes;
+            charge_ = false;
+            last_station_ = choice->station;
             path_ = choice->path;
             progress = *choice;
             target = network_->point(*path_, progress.station + 8);

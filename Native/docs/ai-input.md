@@ -3,8 +3,8 @@
 `AiInput` synthesizes ordinary `RideInput` for the existing `Player`. It has no
 position setter, separate integrator or alternate collision model. An immutable
 `AiNetwork` shares the course's paths and precomputed horizontal rulers between
-input sources. This is preparation for the visible race field; it does not yet
-add opponents, standings or an AI setting to the desktop or Quest application.
+input sources. Build 0.66 connects this foundation to visible opponents,
+standings and desktop/wrist controls; see `ai-field.md` for the shared field.
 
 The implementation is independently authored from the sanitized clean body of
 Trailmap 395 and public Slopesmith ride documentation/behavioral tests. No other
@@ -25,16 +25,17 @@ contribution scope excluding retail characters, stats and named tricks remains.
   conservatively; folded paths are measured in three dimensions. Ordinary
   tracking may ride a non-respawnable route; a recovery query excludes it.
 - A gate stub hands off near its end. Grounded off-path re-choice runs at most
-  once per second. The first-party unreachable-target guard described in the
-  public Slopesmith manual also re-chooses when an overhead target projects
-  behind the board. This guard is an application choice, not an original rule.
+  once per second, using the clean five-metre perpendicular threshold. Build
+  0.67 retains the forward cache when the chooser returns its current path.
+  Facing away from the pursuit target keeps that otherwise valid path. A new
+  path or an explicit placement reseeds the tracker.
 - Along-course reference gaps produce a slewed 0.70--1.50 time-scale request.
-  Lateral distance does not affect it. The field manager still needs to apply
-  this request through the fixed-step rider clock and supply the standings
-  ladder; the input source cannot move a rider faster by itself.
+  Lateral distance does not affect it. The field manager applies this request
+  through its fixed-step rider clocks and supplies the standings ladder in
+  build 0.66; the input source cannot move a rider faster by itself.
 - Rival acquisition, hysteresis and a speed-gated clearance-disc aim change
   produce avoiding input without inventing persistent lanes. Physical body
-  separation and the actual competitor roster remain field-manager work.
+  separation and the actual competitor roster belong to the shared field manager.
 - Raw path event 100 requests an ollie only with its start still ahead, within
   1.531 m of the line and below 0.536 steering magnitude. The initial query looks
   three metres ahead; holding uses the half-metre window. Payload target speed
@@ -54,11 +55,10 @@ read that actor's speed rather than the local human's. Retiring a rider removes
 its speed context and clears rider ownership on pending work while world work
 can finish. The legacy single-rider interface defaults to actor zero.
 
-This is command plumbing. `Player` and the future field still need shared
-geometry/world lifetime, subject routing, a single world clock, multi-rider
-force service, private lap/recovery state and shared audio/mutation delivery.
-It would be incorrect to instantiate independent complete worlds and call that
-shared race play.
+Build 0.66 connects this command plumbing to shared geometry/world lifetime,
+subject routing, one world clock, multi-rider forces, private lap/recovery state
+and shared audio/mutation delivery. Each rider uses the same scene rather than
+an independent complete world; see `ai-field.md` for that integration.
 
 ## Validation and remaining integration
 

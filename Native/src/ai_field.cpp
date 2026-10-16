@@ -101,7 +101,38 @@ std::optional<RecoveryPose> AiField::recovery(const Player& actor) const {
         }
     const auto delta = count ? std::max(0., mean / count - progress(actor)) : 0;
     const auto ahead = network_->point(choice->path, current.station + delta);
-    const auto placed = network_->choose(ahead, 50, {}, true);
+    // Recovery also needs space for the raised spawn and the seated body.
+    // This is an application safety check; it does not alter route following.
+    const auto clear = [&](const AiProjection& candidate) {
+        const auto point = network_->point(candidate.path, candidate.station);
+        const auto floor = actor.trace_ground(point + Vec3{0, 2, 0}, point - Vec3{0, 3, 0});
+        if (!floor || floor->normal.y <= .2 || floor->surface == 0 || floor->surface == 6 || floor->surface == 10 ||
+            floor->surface == 17)
+            return false;
+        Rider pose;
+        pose.normal = pose.board_up = pose.smoothed_up = floor->normal;
+        const auto forward = project(network_->point(candidate.path, candidate.station + 8) - point, pose.normal);
+        if (length(forward) < 1e-8)
+            return false;
+        pose.forward = normalized(forward);
+        pose.surface = floor->surface;
+        const auto& surface = actor.contract().surface(floor->surface);
+        pose.bog = surface.bog;
+        pose.budget = surface.budget;
+        pose.lift = surface.lift;
+        for (const bool raised : {false, true}) {
+            pose.grounded = !raised;
+            pose.motion = raised ? Motion::Air : Motion::Ground;
+            pose.position = floor->point + (raised ? Vec3{0, 1, 0} : -floor->normal * surface.bog);
+            const auto probes = actor.volume(pose, raised);
+            for (const auto& hit : actor.world_.sweep(probes, probes))
+                if (hit.response && hit.depth > 1e-8 &&
+                    !(hit.surface >= 0 && hit.surface != 17 && dot(hit.normal, floor->normal) > .5))
+                    return false;
+        }
+        return true;
+    };
+    const auto placed = network_->choose(ahead, 50, {}, true, clear);
     if (!placed)
         return {};
     const auto point = network_->point(placed->path, placed->station);
@@ -176,6 +207,8 @@ void AiField::separate(std::span<Player* const> actors) {
                 } else {
                     const auto before = actor->rider_;
                     actor->move_world(before, before.position + offset, false);
+                    if (length(actor->rider_.position - before.position) > 1e-8)
+                        actor->note_shove(normalized(offset));
                 }
             }
         }

@@ -1,5 +1,6 @@
 #pragma once
 #include "player.hpp"
+#include <functional>
 #include <memory>
 #include <span>
 
@@ -21,7 +22,8 @@ public:
     AiProjection project(std::size_t path, Vec3 position, std::optional<std::size_t> segment = {}) const;
     Vec3 point(std::size_t path, double station) const;
     std::optional<AiProjection> choose(Vec3 position, double mood = 50, std::optional<std::size_t> exclude = {},
-                                       bool respawnable = false) const;
+                                       bool respawnable = false,
+                                       const std::function<bool(const AiProjection&)>& acceptable = {}) const;
 
 private:
     struct Line {

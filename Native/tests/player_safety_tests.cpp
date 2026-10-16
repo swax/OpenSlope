@@ -25,6 +25,17 @@ Terrain floor(double slope = 0, int surface = 1) {
 }
 
 void regressions() {
+    for (const double slope : {0., .5}) {
+        Player buried(floor(slope, 3));
+        const auto up = normalized(Vec3{-slope, 1, 0});
+        buried.warp(-up * .7, {0, 0, -1}, {0, 0, -4}, up);
+        const auto serial = buried.placement_serial();
+        for (unsigned i = 0; i < 60; ++i)
+            buried.tick({});
+        check(dot(buried.rider().position, up) > -buried.rider().budget - .05,
+              "a deeply seated snow guard returns toward its support instead of pushing farther under it");
+        check(buried.placement_serial() == serial, "deep contact recovery uses the spring and guard without a reset");
+    }
     for (const auto surface : {3, 4, 7, 8}) {
         Player soft(floor(0, surface));
         const auto sink = soft.contract().surface(surface).bog;
@@ -139,7 +150,7 @@ void owned(const std::filesystem::path& root) {
 void jump_corners() {
     unsigned cases = 0, wall_cases = 0, frames = 0;
     const auto play = [&](double width, double runup, double distance, double approach, double steer, int surface,
-                          double yaw, bool jumping) {
+                          double yaw, bool jumping, bool wall_start = false) {
         Patch wall, front, top;
         for (unsigned u = 0; u < 4; ++u)
             for (unsigned v = 0; v < 4; ++v) {
@@ -154,7 +165,12 @@ void jump_corners() {
                 point = turn(point);
         Player rider(Terrain(std::move(patches)));
         const auto sink = rider.contract().surface(surface).bog;
-        rider.warp(turn({-distance, -sink, -runup}), turn({0, 0, 1}), turn({approach, 0, 15}));
+        if (wall_start) {
+            rider.warp(turn({width * .02, .2, 19.5}), turn({0, 0, 1}), turn({approach, -1, 15}));
+            check(rider.rider().normal.y < .1 && rider.rider().grounded,
+                  "The staged corner departure begins with actual near-vertical support");
+        } else
+            rider.warp(turn({-distance, -sink, -runup}), turn({0, 0, 1}), turn({approach, 0, 15}));
         const auto serial = rider.placement_serial();
         double low_normal = 1;
         for (unsigned frame = 0; frame < 120; ++frame) {
@@ -177,6 +193,9 @@ void jump_corners() {
             ++frames;
         }
         wall_cases += low_normal < .1;
+        if (wall_start)
+            check(rider.rider().grounded && rider.rider().normal.y > .4,
+                  "The staged wall departure returns to the floor through a real support-frame change");
         ++cases;
     };
     for (const auto width : {.02, .1, .5, 2.})
@@ -188,9 +207,11 @@ void jump_corners() {
     for (const auto yaw : {0., pi * .5, pi, pi * 1.5})
         for (const auto surface : {3, 4, 8})
             for (const auto steer : {.5, 1.})
-                for (const auto jumping : {false, true})
+                for (const auto jumping : {false, true}) {
                     play(.02, 2, .05, 2, steer, surface, yaw, jumping);
-    check(wall_cases > 10, "Corner trials actually change support to near-vertical jump faces");
+                    play(.02, 2, .05, 2, steer, surface, yaw, jumping, true);
+                }
+    check(wall_cases > 10, "Corner trials include actual near-vertical support transitions");
     std::cout << "PASS: " << cases << " steep jump-side approaches; " << frames << " contained ticks; " << wall_cases
               << " near-vertical support trials\n";
 }

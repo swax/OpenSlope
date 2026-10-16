@@ -171,6 +171,104 @@ void write_map(const std::filesystem::path& root, int event = -1) {
                                                                          {"PathEvents", Json::array()}}})}};
 }
 
+void wedges(const std::filesystem::path& root) {
+    write_map(root);
+    std::ofstream(root / "Models.json") << Json{
+        {"Models",
+         Json::array(
+             {{{"ModelObjects", Json::array({{{"ParentID", -1},
+                                              {"CollisionBounds", {{"Min", {-100, -100, 0}}, {"Max", {100, 100, 400}}}},
+                                              {"MeshData", Json::array()}}})}}})}};
+    const auto box = [](double x, int surface = -1) {
+        return Json{{"ModelID", 0},
+                    {"Location", {x, -10000, 0}},
+                    {"Rotation", {0, 0, 0, 1}},
+                    {"Scale", {1, 1, 1}},
+                    {"Visable", true},
+                    {"PlayerCollision", true},
+                    {"PlayerBounce", true},
+                    {"PlayerBounceAmmount", 0},
+                    {"CollsionMode", 2},
+                    {"U0", 1},
+                    {"SurfaceType", surface}};
+    };
+    const auto instances = [&](Json rows) { std::ofstream(root / "Instances.json") << Json{{"Instances", rows}}; };
+    instances(Json::array({box(-120), box(120)}));
+    const auto race = [](Player& rider) {
+        rider.configure_run(RunMode::Race);
+        for (unsigned i = 0; i < 181; ++i)
+            rider.tick({});
+    };
+    const auto trapped = [](Player& rider) { rider.warp({0, -.005, 100}, {0, 0, 1}); };
+    Player rider(Terrain::load(root));
+    race(rider);
+    trapped(rider);
+    for (unsigned i = 0; i < 4; ++i) {
+        rider.tick({});
+        check(!rider.reset_pending(), "a single contact cannot immediately reset the rider");
+    }
+    check(!rider.contacts().empty(), "the authored narrow gap really contacts the rider");
+    rider.tick({});
+    check(rider.reset_pending() && rider.rider().control == Control::ResetWarp,
+          "five square-on prop shoves arm the shared course reset");
+    const auto clock = rider.course_run().status().clock;
+    complete(rider);
+    check(rider.last_course_recovery() && rider.rider().position.x > 5,
+          "prop recovery returns to the nearby safe course rather than the trap");
+    check(rider.course_run().status().clock > clock, "prop recovery preserves the live race clock");
+
+    Player interrupted(Terrain::load(root));
+    race(interrupted);
+    trapped(interrupted);
+    for (unsigned i = 0; i < 4; ++i)
+        interrupted.tick({});
+    interrupted.warp({6, -.005, 100}, {0, 0, 1});
+    for (unsigned i = 0; i < 60; ++i)
+        interrupted.tick({.posture = -1});
+    trapped(interrupted);
+    for (unsigned i = 0; i < 4; ++i)
+        interrupted.tick({});
+    check(!interrupted.reset_pending(), "placement clears contact history before another brief shove");
+
+    Player freeride(Terrain::load(root));
+    trapped(freeride);
+    for (unsigned i = 0; i < 120; ++i)
+        freeride.tick({});
+    check(!freeride.reset_pending() && !freeride.last_course_recovery(),
+          "freeride keeps control in the same prop trap");
+
+    Player walker(Terrain::load(root));
+    race(walker);
+    trapped(walker);
+    walker.start_on_foot();
+    bool foot_contact = false;
+    for (unsigned i = 0; i < 120; ++i) {
+        walker.tick({.posture = 1, .walk_forward = {0, 0, 1}});
+        foot_contact = foot_contact || !walker.contacts().empty();
+    }
+    check(foot_contact && walker.on_foot() && !walker.reset_pending() && !walker.last_course_recovery(),
+          "walking against the same props keeps control without board recovery");
+
+    instances(Json::array({box(0, 1)}));
+    Player supported(Terrain::load(root));
+    race(supported);
+    supported.warp({0, 4, 100}, {0, 0, 1});
+    for (unsigned i = 0; i < 120; ++i)
+        supported.tick({.posture = -1});
+    check(supported.rider().ground_instance.has_value() && !supported.reset_pending() &&
+              !supported.last_course_recovery(),
+          "riding a prop top is support rather than wedging");
+
+    instances(Json::array());
+    Player stationary(Terrain::load(root));
+    race(stationary);
+    stationary.warp({6, -.005, 100}, {0, 0, 1});
+    for (unsigned i = 0; i < 600; ++i)
+        stationary.tick({.posture = -1});
+    check(!stationary.reset_pending() && !stationary.last_course_recovery(),
+          "terrain contact and lack of progress never arm prop recovery");
+}
+
 void production(const std::filesystem::path& root) {
     write_map(root);
     Player rider(Terrain::load(root));
@@ -404,6 +502,9 @@ int main(int argc, char** argv) {
             }
         } cleanup{root};
 
+        const auto wedge_root = root / "wedges";
+        std::filesystem::create_directory(wedge_root);
+        wedges(wedge_root);
         production(root);
         if (argc == 2)
             local_courses(argv[1]);

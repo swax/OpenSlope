@@ -296,6 +296,8 @@ private:
     void finish_tick(ForceStep& step);
     void apply_driven(const BoostRider& driven);
     void finish_feedback(const Rider& before, bool placed, double dt);
+    void note_shove(Vec3 normal);
+    double wedge_ = 0, wedge_feed_ = 0;
     std::optional<unsigned> enter_lap();
     std::optional<std::pair<Vec3, Vec3>> teleport_pending_;
     void teleport(Vec3 position, Vec3 forward);

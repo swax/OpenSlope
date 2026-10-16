@@ -123,6 +123,24 @@ void inputs() {
     passing.step(rider, traffic);
     check(!passing.status().avoiding, "A slower rider cannot invent a passing lane");
 
+    Rider knocked = rider;
+    knocked.position = paths.ai[0].points[16];
+    AiInput retained(network, 0);
+    retained.step(knocked);
+    const auto segment = retained.status().progress->segment;
+    knocked.position = {10, -std::tan(12 * pi / 180) * 36, 36};
+    retained.step(knocked);
+    check(retained.status().progress->segment >= segment && retained.status().path_changes == 0,
+          "choosing the same path after a shove cannot rewind the forward tracker");
+    CoursePaths parallel;
+    parallel.ai = {line(0, 400), line(0, 400, 1)};
+    AiInput facing_back(std::make_shared<AiNetwork>(parallel), 0);
+    knocked.position = {1, -std::tan(12 * pi / 180) * 64, 64};
+    knocked.forward = -normalized(rider.forward);
+    facing_back.step(knocked);
+    check(facing_back.status().progress->path == 0,
+          "facing away from a nearby target does not replace an otherwise valid path");
+
     paths.ai[0].events.push_back({100, 80 * 4, 80, 88});
     const auto marked = std::make_shared<AiNetwork>(paths);
     rider.position = {0, -std::tan(12 * pi / 180) * 78, 78};

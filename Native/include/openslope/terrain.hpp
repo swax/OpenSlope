@@ -76,7 +76,7 @@ public:
     const std::filesystem::path& map_root() const { return map_root_; }
 
     Mesh mesh(unsigned subdivisions = 8) const;
-    std::optional<TerrainHit> intersect(Vec3 start, Vec3 end) const;
+    std::optional<TerrainHit> intersect(Vec3 start, Vec3 end, bool front_faces_only = false) const;
     std::optional<TerrainHit> sweep(Vec3 start, Vec3 end, double radius) const;
     std::optional<TerrainHit> sweep(std::span<const ProbeSphere> start, std::span<const ProbeSphere> end,
                                     bool skip_separating = true) const;
@@ -103,6 +103,7 @@ private:
     Bounds bounds_;
     std::filesystem::path map_root_;
     int build_node(std::size_t begin, std::size_t end);
-    void intersect_node(int node, Vec3 start, Vec3 direction, std::optional<TerrainHit>& hit) const;
+    void intersect_node(int node, Vec3 start, Vec3 direction, bool front_faces_only,
+                        std::optional<TerrainHit>& hit) const;
 };
 } // namespace openslope

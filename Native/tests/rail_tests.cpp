@@ -268,6 +268,30 @@ void profiles(const std::filesystem::path& root) {
     map(root, Json::array({segment}));
     rejects([&] { Rails::load(root); }, "Reject malformed rail geometry");
 }
+
+void terrain_crossing(const std::filesystem::path& root) {
+    map(root, Json::array({curve({0, 0, 0}, {0, 0, -500})}));
+    auto patches = Json::parse(std::ifstream(root / "Patches.json"));
+    for (auto& point : patches["Patches"][0]["Points"])
+        point[2] = point[1].get<double>() * .1;
+    write(root / "Patches.json", patches);
+    Player rider(Terrain::load(root));
+    rider.warp({0, .55, -5}, {0, 0, -1}, {0, 0, -12});
+    rider.tick({});
+    for (unsigned i = 0; i < 60; ++i) {
+        require(rider.rider().motion == Motion::Rail && rider.rider().control == Control::OnRail &&
+                    !rider.rider().grounded && rider.rider().surface == 13,
+                "terrain passing through the rail cannot replace its motion or contact state");
+        rider.tick({.steer = 1});
+    }
+    require(rider.rider().position.z < -16 && rider.rider().landings == 0,
+            "rail travel continues instead of re-landing at one terrain point");
+    near(rider.rider().rail_spin, 240, 1e-8, "surface overlap does not interrupt continuous rail tricks");
+    rider.tick({.rail_exit = true});
+    require(rider.rider().motion == Motion::Ground && rider.rider().control == Control::Cruise &&
+                !rider.rider().rail_spline,
+            "leaving the rail restores normal terrain contact and controls");
+}
 } // namespace
 
 int main() {
@@ -290,6 +314,7 @@ int main() {
         gameplay(root);
         contact_masks(root);
         profiles(root);
+        terrain_crossing(root);
         std::cout << "PASS: " << checks << " cubic query, candidacy, grind, spin, jump, slope, probe and exit checks\n";
         return 0;
     } catch (const std::exception& e) {

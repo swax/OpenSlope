@@ -31,7 +31,7 @@ struct TriangleHit {
     double t, a, b;
 };
 
-std::optional<TriangleHit> triangle(Vec3 origin, Vec3 direction, Vec3 a, Vec3 b, Vec3 c) {
+std::optional<TriangleHit> triangle_seed(Vec3 origin, Vec3 direction, Vec3 a, Vec3 b, Vec3 c) {
     const auto ab = b - a, ac = c - a, p = cross(direction, ac);
     const auto det = dot(ab, p);
     if (std::abs(det) < 1e-12)
@@ -45,44 +45,40 @@ std::optional<TriangleHit> triangle(Vec3 origin, Vec3 direction, Vec3 a, Vec3 b,
     if (v < -1e-8 || u + v > 1 + 1e-8)
         return {};
     const auto t = dot(ac, q) / det;
-    if (t < 0 || t > 1)
+    if (!std::isfinite(t))
         return {};
     return TriangleHit{t, u, v};
 }
 
-TerrainHit refine(const Patch& p, std::size_t index, Vec3 start, Vec3 direction, double u, double v, double t) {
-    const auto seed_u = u, seed_v = v, seed_t = t;
-    bool valid = true;
+std::optional<TerrainHit> refine(const Patch& p, std::size_t index, Vec3 start, Vec3 direction, double u, double v,
+                                 double t) {
     // [Trailmap: 110-analytic-normal, 320-probe] Solve the patch/ray equation,
     // including ray t; evaluating only the coarse u/v seed is not a contact.
-    for (unsigned i = 0; i < 4; ++i) {
+    // The mesh seeds the unbounded line. A short ray may cross the curved patch
+    // without reaching its chord, or cross the chord without reaching the patch.
+    for (unsigned i = 0; i < 8; ++i) {
         const auto residual = p.evaluate(u, v) - (start + direction * t);
         if (length(residual) < 1e-8)
             break;
         const auto tangents = p.tangents(u, v);
         const auto a = tangents[0], b = tangents[1], c = -direction;
         const auto det = dot(a, cross(b, c));
-        if (std::abs(det) < 1e-12) {
-            valid = false;
-            break;
-        }
+        if (!std::isfinite(det) || std::abs(det) < 1e-12)
+            return {};
         u -= dot(residual, cross(b, c)) / det;
         v -= dot(a, cross(residual, c)) / det;
         t -= dot(a, cross(b, residual)) / det;
-        if (u < -1e-8 || u > 1 + 1e-8 || v < -1e-8 || v > 1 + 1e-8 || t < 0 || t > 1) {
-            valid = false;
-            break;
-        }
+        if (!finite(Vec3{u, v, t}))
+            return {};
     }
-    valid = valid && length(p.evaluate(u, v) - (start + direction * t)) <= 0.001;
-    if (!valid) {
-        u = seed_u;
-        v = seed_v;
-        t = seed_t;
-    }
+    if (u < -1e-8 || u > 1 + 1e-8 || v < -1e-8 || v > 1 + 1e-8 || t < -1e-8 || t > 1 + 1e-8)
+        return {};
     u = std::clamp(u, 0.0, 1.0);
     v = std::clamp(v, 0.0, 1.0);
-    return {start + direction * t, p.normal(u, v), t, u, v, index, p.surface, valid};
+    t = std::clamp(t, 0.0, 1.0);
+    if (length(p.evaluate(u, v) - (start + direction * t)) > 1e-5)
+        return {};
+    return TerrainHit{start + direction * t, p.normal(u, v), t, u, v, index, p.surface, true};
 }
 } // namespace
 
@@ -239,13 +235,14 @@ int Terrain::build_node(std::size_t begin, std::size_t end) {
     return index;
 }
 
-void Terrain::intersect_node(int node, Vec3 start, Vec3 direction, std::optional<TerrainHit>& hit) const {
+void Terrain::intersect_node(int node, Vec3 start, Vec3 direction, bool front_faces_only,
+                             std::optional<TerrainHit>& hit) const {
     const auto& n = nodes_[node];
     if (!n.bounds.intersects(start, direction))
         return;
     if (n.left >= 0) {
-        intersect_node(n.left, start, direction, hit);
-        intersect_node(n.right, start, direction, hit);
+        intersect_node(n.left, start, direction, front_faces_only, hit);
+        intersect_node(n.right, start, direction, front_faces_only, hit);
         return;
     }
     for (auto i = n.begin; i < n.end; ++i) {
@@ -264,20 +261,21 @@ void Terrain::intersect_node(int node, Vec3 start, Vec3 direction, std::optional
                     const auto du = second ? coarse->a : coarse->a + coarse->b;
                     const auto dv = second ? coarse->a + coarse->b : coarse->b;
                     auto candidate = refine(p, index, start, direction, (u + du) / 8, (v + dv) / 8, coarse->t);
-                    if (!hit || candidate.t < hit->t)
-                        hit = candidate;
+                    if (candidate && (!front_faces_only || dot(direction, candidate->normal) < 0) &&
+                        (!hit || candidate->t < hit->t))
+                        hit = *candidate;
                 };
-                accept(triangle(start, direction, a, b, c), false);
-                accept(triangle(start, direction, a, c, d), true);
+                accept(triangle_seed(start, direction, a, b, c), false);
+                accept(triangle_seed(start, direction, a, c, d), true);
             }
     }
 }
 
-std::optional<TerrainHit> Terrain::intersect(Vec3 start, Vec3 end) const {
+std::optional<TerrainHit> Terrain::intersect(Vec3 start, Vec3 end, bool front_faces_only) const {
     if (!finite(start) || !finite(end) || length(end - start) < 1e-12)
         return {};
     std::optional<TerrainHit> hit;
-    intersect_node(0, start, end - start, hit);
+    intersect_node(0, start, end - start, front_faces_only, hit);
     return hit;
 }
 

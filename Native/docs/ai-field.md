@@ -40,6 +40,12 @@ forward toward the other riders' mean progress and chooses a respawnable AI
 line, retaining terrain safety checks and the existing recovery fallback. No
 stuck timer or path-position driving is added.
 
+Build 0.67 adds contact-driven wedge recovery and body-space checks for the
+raised and seated recovery poses, so forward bias can choose a clear nearby
+route instead of repeatedly placing inside a prop. It also preserves the AI's
+forward cache when its current route wins re-selection. Shared analytic terrain,
+support-frame and rail/floor corrections are recorded in `course-contact-0.67.md`.
+
 Figures use the shared avatar pose and mesh, without controllers or labels.
 The renderer submits extra board transforms against one uploaded snowboard.
 Both eyes use the same figures/effect snapshot. Nearby riding feedback is merged

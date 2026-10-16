@@ -57,11 +57,29 @@ refused. This terminal transition is an application policy that avoids revealing
 the old unsafe position after a partial fade. Positive score results survive
 zero-point terrain skips, resets and event expiry.
 
-Authored reset-node dispatch is connected in 0.24; see world-logic.md. The
-original world grid death plane, bounce/hard-impact accumulators,
-AI path-selection/rubber-banding and multi-rider forward bias remain outstanding.
+Authored reset-node dispatch is connected in 0.24; see world-logic.md. Build 0.66
+adds field path selection, rubber-banding and shared-rider forward bias; see
+ai-field.md. The original world-grid death plane and the higher-threshold contact
+integrator remain outstanding.
 On-foot falling retains its existing application recovery. Path selection here is
 an independently authored geometric player tracker, not the complete AI tracker.
+
+Build 0.67 adds the scored-run wedge accumulator from clean 395-reset-arm. An
+actual prop response or rider separation contributes `1 - dot(boardUp, normal)`;
+multiple solver contacts in one tick contribute their maximum. Terrain, passive
+triggers and rideable support do not feed it. The accumulator has a 0.1-second
+half-life and a threshold of four, independently chosen to reproduce about five
+consecutive square-on shoves at the fixed 60 Hz simulation rate. These decay and
+threshold values are explicit native application choices. Accepted recovery uses
+the existing hold, nearby path placement, field bias and clock preservation.
+Placement clears the accumulated contact history. Freeride, walking, scripted
+transport and terminal runs do not arm this accumulator; default play retains
+control after ordinary impacts.
+
+The shared field additionally checks responsive-prop clearance for both the
+raised spawn and seated avatar before choosing its recovery route. This native
+application safety policy filters the existing six nearest respawn-enabled
+candidates; it does not add a time-based stuck reset. See `course-contact-0.67.md`.
 
 Portable fixtures exercise horizontal station/height, the eight-metre criterion,
 respawn flags/end margins, window nudges/refusal, safe alternates, trail/start and

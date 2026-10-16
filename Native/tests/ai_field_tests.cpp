@@ -222,6 +222,30 @@ void commands(const std::filesystem::path& root) {
           "The opponent uses its six-slot destination placement rather than moving the human");
 }
 
+void recovery_clearance(const std::filesystem::path& root) {
+    fixture(root);
+    auto routes = Json::parse(std::ifstream(root / "AIP.json"));
+    routes["AIPaths"][0]["PathPos"][0] = 0;
+    write(root, "AIP.json", routes);
+    auto instances = Json::parse(std::ifstream(root / "Instances.json"));
+    instances["Instances"][0]["U0"] = 1;
+    instances["Instances"][0]["PlayerBounce"] = true;
+    instances["Instances"][0]["EffectSlotIndex"] = -1;
+    write(root, "Instances.json", instances);
+    Player player(Terrain::load(root));
+    seat(player, -20, 20);
+    player.ai_riders(2);
+    auto& field = *player.ai_field();
+    seat(field.rider(0), 0, 20, 0);
+    seat(field.rider(1), 10, 20, 0);
+    check(field.rider(0).recover_course(false), "the opponent accepts an ordinary automatic course reset");
+    for (unsigned i = 0; i < 120 && !field.rider(0).last_course_recovery(); ++i)
+        player.tick({.posture = -1});
+    const auto target = field.rider(0).last_course_recovery();
+    check(target && target->path == 1 && target->position.x > 9,
+          "opponent recovery ranks a clear nearby route ahead of a respawn point inside a prop");
+}
+
 void menu(const std::filesystem::path& root) {
     fixture(root);
     Player player(Terrain::load(root));
@@ -423,6 +447,9 @@ int main(int argc, char** argv) {
         standings_and_separation(root);
         pacing(root);
         boost_snapshot(root);
+        const auto clear_root = root / "recovery-clearance";
+        std::filesystem::create_directory(clear_root);
+        recovery_clearance(clear_root);
         if (argc == 2)
             owned(argv[1]);
         std::cout << "PASS: " << checks << " shared AI field checks\n";
