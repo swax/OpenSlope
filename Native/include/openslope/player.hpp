@@ -36,6 +36,7 @@ struct RideInput {
     EquipmentInput equipment{};
     bool crouch = false;
     Vec3 flight_direction{};
+    bool toggle_board = false, face_walk_forward = false;
 }; // Left steer; positive posture is tuck/forward flip.
 enum class Motion { Air = 1, Ground = 2, Rail = 3, Wipeout = 5, RecoverContact = 6, OnFoot = 100 };
 enum class Control {
@@ -355,6 +356,7 @@ private:
     bool run_active_ = false;
     bool jump_held_ = false, reset_held_ = false;
     bool restart_held_ = false, restart_pending_ = false, spawn_held_ = false, spawn_pending_ = false;
+    bool toggle_board_held_ = false, toggle_board_pending_ = false;
     double jump_cooldown_ = 0, air_grace_ = 0, rail_cooldown_ = 0;
     std::deque<bool> jump_edges_;
 
@@ -389,6 +391,7 @@ private:
     EquipmentInput equipment_frame(EquipmentInput input) const;
     void drop_board(bool motion);
     bool equip_held_board();
+    bool equip_board_at_feet(Vec3 facing);
     void mount_board(Vec3 position, Vec3 forward, Vec3 velocity, Vec3 up);
     bool dismount_board(bool preserve_score);
 

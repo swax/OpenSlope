@@ -10,7 +10,7 @@ struct CameraPose {
 class FollowCamera {
 public:
     bool first_person = false;
-    void orbit(double dx, double dy);
+    void orbit(double dx, double dy, bool turn_player = false);
     void zoom(double steps);
 
     void reset() { ready_ = false; }
@@ -21,6 +21,8 @@ public:
 
     EquipmentRay ray(double x, double y, double aspect) const;
     Vec3 walk_forward() const;
+
+    Vec3 facing() const { return heading_; }
 
     double scale() const { return zoom_; }
 

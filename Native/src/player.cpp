@@ -169,6 +169,7 @@ void Player::release_inputs() {
     restart_held_ = false;
     restart_pending_ = false;
     spawn_held_ = spawn_pending_ = false;
+    toggle_board_held_ = toggle_board_pending_ = false;
     if (rider_.control == Control::Charge) {
         rider_.charge = 0;
         rider_.control = rider_.motion == Motion::Rail ? Control::OnRail
@@ -388,6 +389,9 @@ void Player::sample_input(const RideInput& input) {
     if (input.spawn_board && !spawn_held_)
         spawn_pending_ = true;
     spawn_held_ = input.spawn_board;
+    if (input.toggle_board && !toggle_board_held_)
+        toggle_board_pending_ = true;
+    toggle_board_held_ = input.toggle_board;
     if (input.mount && !mount_held_)
         mount_pending_ = true;
     mount_held_ = input.mount;
@@ -1068,6 +1072,21 @@ void Player::tick(const RideInput& input) {
         return;
     }
     reset_held_ = input.reset;
+    if (toggle_board_pending_) {
+        toggle_board_pending_ = false;
+        const auto changed = on_foot_ ? equip_board_at_feet(input.walk_forward) : interact_board(input.room_offset);
+        toggle_board_held_ = input.toggle_board;
+        mount_held_ = input.mount;
+        spawn_held_ = input.spawn_board;
+        grip_held_ = input.equipment.grip;
+        trigger_held_ = input.equipment.trigger;
+        if (changed) {
+            jump_held_ = input.jump;
+            jump_edges_.clear();
+            notify_tick(before_pose);
+            return;
+        }
+    }
     if (spawn_pending_) {
         spawn_pending_ = false;
         if (!on_foot_)

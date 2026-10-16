@@ -329,7 +329,9 @@ void Player::tick_foot(const RideInput& input, const Rider& before) {
     rider_.motion = Motion::OnFoot;
     rider_.control = Control::OnFoot;
     rider_.board_up = rider_.smoothed_up = {0, 1, 0};
-    if (length(wish) > .05)
+    if (input.face_walk_forward)
+        rider_.forward = flight_heading_ = heading;
+    else if (length(wish) > .05)
         rider_.forward = normalized(wish);
     walk_phase_ += length(project(rider_.velocity, {0, 1, 0})) * dt * 5;
     contact_events_.clear();

@@ -32,6 +32,67 @@ RideInput hand_input(const Player& p) {
     return input;
 }
 
+void desktop_controls() {
+    for (const bool first_person : {false, true}) {
+        for (const double strafe : {-1., 1.}) {
+            Player p(floor());
+            p.warp({}, {0, 0, -1});
+            p.start_on_foot();
+            FollowCamera camera;
+            camera.first_person = first_person;
+            camera.step(p, 0);
+            const auto start = p.rider().position, facing = p.rider().forward;
+            for (unsigned i = 0; i < 120; ++i) {
+                RideInput input;
+                input.steer = strafe;
+                input.walk_forward = camera.facing();
+                input.face_walk_forward = true;
+                p.tick(input);
+                camera.step(p, 1. / 60);
+                close(p.rider().forward, facing, "Desktop strafe retains avatar facing in both camera views");
+            }
+            const auto delta = p.rider().position - start;
+            check(delta.x * strafe < -7 && std::abs(dot(delta, facing)) < 1e-6,
+                  "A/D walks sideways without curving or rotating its movement basis");
+            camera.orbit(100, -30, true);
+            const auto turned = rotate(facing, {0, 1, 0}, -.4);
+            for (unsigned i = 0; i < 60; ++i) {
+                RideInput input;
+                input.walk_forward = camera.facing();
+                input.face_walk_forward = true;
+                p.tick(input);
+                camera.step(p, 1. / 60, false, true);
+                close(p.rider().forward, turned, "Stationary look drag turns the avatar without camera yaw feedback");
+                close(p.camera_forward(), turned, "On-foot camera heading follows the turned avatar");
+            }
+            const auto after_turn = p.rider().position;
+            for (unsigned i = 0; i < 60; ++i) {
+                RideInput input;
+                input.posture = 1;
+                input.walk_forward = camera.facing();
+                input.face_walk_forward = true;
+                p.tick(input);
+                camera.step(p, 1. / 60);
+            }
+            check(dot(normalized(p.rider().position - after_turn), turned) > .999,
+                  "Walking after a drag uses the newly turned facing");
+            close(p.rider().forward, turned, "Releasing look keeps the on-foot facing");
+        }
+    }
+    Player p(floor());
+    p.warp({}, {0, 0, -1});
+    RideInput mouse;
+    mouse.equipment = desktop_equipment(p, {{0, 2, 0}, {0, -1, 0}, true}, false);
+    for (unsigned i = 0; i < 60; ++i)
+        p.tick(mouse);
+    check(!p.on_foot(), "Desktop pointer look does not synthesize a dismount trigger");
+    p.start_on_foot();
+    mouse.equipment = desktop_equipment(p, {p.render_board_position() + Vec3{0, 2, 0}, {0, -1, 0}, true}, false);
+    for (unsigned i = 0; i < 60; ++i)
+        p.tick(mouse);
+    check(p.on_foot(), "Looking at a loose board does not mount it");
+}
+
 void math() {
     EquipmentPose pose;
     close(equipment_nearest(pose, {2, 1, 2}),
@@ -330,6 +391,7 @@ int main() {
     try {
         math();
         lifecycle();
+        desktop_controls();
         camera_ui();
         std::cout << checks << " equipment/camera/UI checks passed\n";
         return 0;

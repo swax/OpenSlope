@@ -31,9 +31,11 @@ These values were read through the public first-party walker API. Portable tests
 compare measured acceleration, climb, slow-arc and braking traces without
 reading or copying its runtime implementation.
 
-Desktop E now spawns/recalls the board one metre ahead, leaving the player on
-foot; it does not automatically mount. A held E cannot drag the board. LMB is
-state-aware ride/re-equip/dismount; G retains the nearby legacy board shortcut.
+As of build 0.76, desktop E spawns and mounts at the player's current feet,
+including mid-air, or steps off while riding. It preserves full velocity and
+does not teleport to a parked board. Holding E toggles once. Left-drag looks
+around while riding and turns the on-foot character; A/D strafe without turning.
+RMB carries/throws; G retains the nearby legacy board shortcut.
 The executable defaults to third person, as do the 0.36 test launchers. Escape
 first releases captured mouse look, then opens the menu. The smaller desktop
 menu leaves more of the course visible.

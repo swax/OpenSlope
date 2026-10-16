@@ -1,5 +1,9 @@
 # Desktop gameplay parity work
 
+Build 0.76 changes desktop input to A/D strafing on foot, left-drag camera look
+with on-foot turning, and E to dismount or spawn and mount at the current feet,
+including mid-air. See [desktop input validation](desktop-controls-0.76.md).
+
 Build 0.75 restores ground controls when the terrain guard is touching the front
 of a surface while the deck is already sunk into it. A paused Snowdream rider
 state reproduces the lock in 0.74 and recovers in two ticks with the correction.

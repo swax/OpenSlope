@@ -102,5 +102,5 @@ private:
 };
 
 void equipment_outline(std::vector<Vertex>& vertices, const Player& player);
-EquipmentInput desktop_equipment(const Player& player, const EquipmentRay& ray, bool grip, bool trigger);
+EquipmentInput desktop_equipment(const Player& player, const EquipmentRay& ray, bool grip);
 } // namespace openslope

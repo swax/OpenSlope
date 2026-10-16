@@ -10,12 +10,14 @@ speed bands, braking, tuck pose state and pause/focus handling. The broader
 Desktop input follows Slopesmith's control vocabulary: A/D or horizontal arrows
 carve on the ground and spin in the air; W/S or vertical arrows tuck/brake on the
 ground and flip in the air; Space holds a jump charge; Shift boosts; R resets;
-F/V changes camera; C looks down; E spawns a board ahead; LMB/G mounts/dismounts;
+F/V changes camera; C looks down; E spawns and mounts at the feet or dismounts;
+G retains nearby mounting. Left-drag looks around while riding and turns the
+character on foot. A/D strafe on foot without changing facing;
 P/Escape opens the pause menu. Build 0.36 adds double-jump flight and Ctrl crouch;
 see foot-flight.md for the current on-foot profile and equipment.
 The title reports speed, charge, ground/air/switch or on-foot state and visible
-prop/draw counts. The stick figure depicts stance and crouch. Mouse look,
-gamepad and the complete HUD remain outstanding. See boarding.md for walking,
+prop/draw counts. The stick figure depicts stance and crouch. Mouse look and the
+desktop/wrist menus are implemented; gamepad support remains outstanding. See boarding.md for walking,
 running, foot jumps and the optional desktop on-foot start.
 
 Motion and jump control are separate (`300-two-machines`, `300-decoupled`). Only

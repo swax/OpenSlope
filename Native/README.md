@@ -3,6 +3,9 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.76 adds desktop A/D strafing, left-drag look/turn and E to spawn and
+mount at the player's feet, including mid-air. See [desktop controls](docs/desktop-controls-0.76.md).
+
 Build 0.75 fixes an embedded-deck air-state lock reproduced from a paused
 Snowdream playtest. See [captured contact validation](docs/embedded-contact-0.75.md).
 
@@ -94,10 +97,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 ```
 
 A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
-F/V switches first/chase camera, C looks down, E spawns a board ahead, and P/Escape opens the pause menu.
-LMB rides a highlighted board or dismounts; RMB carries/throws it, or drags the camera when no board is targeted.
+F/V switches first/chase camera, C looks down, and E dismounts or spawns and mounts at your feet.
+LMB drag looks around while riding and turns the character on foot; RMB carries/throws the board.
+P/Escape opens the pause menu; Escape first releases a held mouse drag.
 The wheel changes camera distance. The pause menu includes a map library and ride settings.
-Use `--on-foot` to start beside the board; A/D/W/S move and Space jumps in that mode.
+Use `--on-foot` to start beside the board; A/D strafe, W/S walk and Space jumps in that mode.
 Jump again in the air (or Jump + Boost) to fly; Shift/B boosts along the look/controller aim.
 Ctrl crouches or flies down. G retains the nearby boarding shortcut. See [on-foot flight](docs/foot-flight.md).
 See [walking and boarding](docs/boarding.md). Input pauses when the preview loses

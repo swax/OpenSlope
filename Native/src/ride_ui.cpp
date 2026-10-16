@@ -253,9 +253,9 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
                                                     : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
                                   : speed + " KM/H  /  " +
-                                        (p.carrying_board() ? "CARRYING"
-                                         : p.on_foot()      ? "ON FOOT"
-                                                            : "RIDING"),
+                                     (p.carrying_board() ? "CARRYING"
+                                      : p.on_foot()      ? "ON FOOT"
+                                                         : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
         if (!audio_options && !graphics_options && !rider_options && !loading)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
@@ -282,11 +282,12 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                                                   "TRIGGER   POINT TO RIDE",         "GRIP   PICK UP / PASS / THROW",
                                                   "GRIP BEHIND HEAD   SUMMON",       "AIR GRIP   TAKE BOARD OFF",
                                                   "HELD TRIGGER   RE-EQUIP",         "Y   SHOW / HIDE WRIST"}
-                    : std::array<std::string, 10>{"W A S D   WALK / FLY / CARVE",      "SPACE   JUMP / DOUBLE JUMP FLY",
-                                                  "SHIFT   BOOST / HELD BOARD THRUST", "LMB   POINT TO RIDE",
-                                                  "RMB ON BOARD   CARRY / THROW",      "RMB DRAG   ORBIT CHARACTER",
-                                                  "CTRL   CROUCH / FLY DOWN",          "E   SPAWN BOARD   WHEEL   ZOOM",
-                                                  "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
+                    : std::array<std::string, 10>{
+                          "W S WALK / A D STRAFE OR CARVE",    "SPACE   JUMP / DOUBLE JUMP FLY",
+                          "SHIFT   BOOST / HELD BOARD THRUST", "LMB DRAG   LOOK / TURN ON FOOT",
+                          "RMB ON BOARD   CARRY / THROW",      "E   SPAWN AND RIDE / STEP OFF",
+                          "CTRL   CROUCH / FLY DOWN",          "WHEEL   ZOOM   G   NEARBY BOARD",
+                          "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
             for (unsigned i = 0; i < rows.size(); ++i)
                 c.text(rows[i], .06, .31 + i * .048, .0037, i == 4 || i == 5 ? accent : ink);
         }
@@ -333,11 +334,11 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                                                                            : "BANKED ";
             c.text(prefix + std::to_string(display.points) + "  " + display.detail, .014, .976, .0017, colour);
         } else
-            c.text(p.carrying_board()    ? "RELEASE RMB THROW / LMB RIDE"
+            c.text(p.carrying_board()    ? "RELEASE RMB THROW / E RIDE"
                    : p.flying()          ? "WASD THRUST / SPACE UP / CTRL DOWN"
-                   : p.board_highlight() ? "LMB RIDE / HOLD RMB CARRY"
+                   : p.board_highlight() ? "E RIDE / HOLD RMB CARRY"
                    : p.on_foot()         ? "SPACE TWICE FLY / E BOARD / ESC MENU"
-                                         : "LMB OFF BOARD / E SPAWN / SPACE JUMP",
+                                         : "E OFF BOARD / LMB DRAG LOOK / SPACE JUMP",
                    .014, .976, .0017, p.board_highlight() ? accent : ink);
         const auto run_message = run_notice(run);
         if (!run_message.empty())
@@ -383,7 +384,7 @@ void equipment_outline(std::vector<Vertex>& out, const Player& p) {
         quad(out, at(-width, z), at(width, z), at(width, z + .01), at(-width, z + .01), col);
 }
 
-EquipmentInput desktop_equipment(const Player& p, const EquipmentRay& ray, bool grip, bool trigger) {
+EquipmentInput desktop_equipment(const Player& p, const EquipmentRay& ray, bool grip) {
     EquipmentInput e;
     e.relative = true;
     e.head = {0, 1.65, 0};
@@ -391,7 +392,6 @@ EquipmentInput desktop_equipment(const Player& p, const EquipmentRay& ray, bool 
     e.rays[1] = ray;
     e.rays[1].origin -= p.rider().position;
     e.grip[1] = grip;
-    e.trigger[1] = trigger;
     const auto facing = normalized(project(e.facing, {0, 1, 0}), p.camera_forward()),
                right = normalized(cross(facing, {0, 1, 0}));
     const auto shoulder = p.rider().position + Vec3{0, 1.35, 0} + right * .165;

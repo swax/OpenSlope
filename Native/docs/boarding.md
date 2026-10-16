@@ -8,8 +8,10 @@ Left stick moves relative to the current head direction; right A jumps and B
 boosts airborne/held-board thrust. The interactive wrist controls page describes
 the current mode. Riding retains carve, boost and charged-jump controls.
 
-Desktop keeps its riding start. E spawns a board ahead; LMB or G mounts/dismounts; `--on-foot` starts beside the
-board. A/D and W/S move, Shift boosts flight and Space jumps while on foot. F/V selects
+Desktop keeps its riding start. E dismounts or spawns and mounts at the player's
+feet, including mid-air; G retains nearby mounting. `--on-foot` starts beside the
+board. A/D strafe without turning; W/S move forward/back. Left-drag turns the
+walker and looks around while riding. Shift boosts flight and Space jumps while on foot. F/V selects
 first person and C looks down. The stick figure stands upright, with procedural
 walking legs when runtime body joints are unavailable. The board remains visible
 at its own location when the player walks away. Optional tracked legs continue
@@ -45,7 +47,9 @@ The board falls at 18 m/s², retains horizontal momentum with light air drag and
 loses ground speed at 3.5 m/s² until parked. A stationary board stays parked.
 This is provisional coasting: it does not yet accelerate down a slope or implement
 the full riding response on its own. Mounting transfers the board's position,
-heading, orientation, stance and velocity back into riding. Recovering riders
+heading, orientation, stance and velocity back into riding through proximity or
+Quest aim interaction. Desktop E instead uses the player's current position,
+facing and velocity, so it can mount without fetching a distant board. Recovering riders
 cannot toggle. Invalid or far-below-course positions use the existing safety
 reset; normal play does not automatically recall a distant board.
 

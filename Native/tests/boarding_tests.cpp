@@ -28,6 +28,61 @@ Terrain floor() {
 
 void write(const std::filesystem::path& path, const Json& value) { std::ofstream(path) << value; }
 
+void desktop_toggle() {
+    for (const unsigned fps : {60u, 72u, 90u, 120u, 144u}) {
+        Player p(floor());
+        p.warp({}, {0, 0, -1});
+        p.start_on_foot();
+        RideInput walk;
+        walk.posture = 1;
+        walk.walk_forward = {0, 0, -1};
+        walk.face_walk_forward = true;
+        for (unsigned i = 0; i < fps * 2; ++i)
+            p.advance(1. / fps, walk);
+        check(p.board_distance() > 10, "Desktop toggle fixture leaves the parked board behind");
+        const auto feet = p.rider().position, velocity = p.rider().velocity;
+        RideInput toggle;
+        toggle.toggle_board = true;
+        toggle.walk_forward = {1, 0, 0};
+        p.advance(1. / 240, toggle);
+        p.advance(1. / 60 - 1. / 240, {});
+        check(!p.on_foot(), "Short E press survives a frame without a fixed tick");
+        near(p.rider().position, feet, "E equips at the current feet rather than teleporting to the distant board");
+        near(p.rider().velocity, velocity, "E keeps walking momentum when equipping");
+        near(p.rider().forward, {0, 0, -1}, "Released short E press uses retained on-foot facing");
+        p.advance(1. / 60, toggle);
+        check(p.on_foot(), "Fresh E dismounts while riding");
+        for (unsigned i = 0; i < fps; ++i)
+            p.advance(1. / fps, toggle);
+        check(p.on_foot(), "Held E does not remount after dismounting");
+        p.advance(1. / 60, {});
+        p.advance(1. / 60, toggle);
+        check(!p.on_foot(), "Released and repressed E mounts again");
+        for (unsigned i = 0; i < fps; ++i)
+            p.advance(1. / fps, toggle);
+        check(!p.on_foot(), "Held E does not dismount after mounting");
+    }
+    for (const double height : {.02, 8.}) {
+        Player air(floor());
+        air.warp({0, height, 0}, {0, 0, -1}, {3, 5, -12});
+        check(air.interact_board() && !air.rider().grounded, "Air mount fixture starts on foot with upward momentum");
+        const auto feet = air.rider().position, velocity = air.rider().velocity;
+        RideInput toggle;
+        toggle.toggle_board = true;
+        toggle.walk_forward = {1, 0, 0};
+        air.tick(toggle);
+        check(!air.on_foot() && !air.rider().grounded && air.rider().control == Control::Air,
+              "E equips in mid-air even within the ground probe range");
+        near(air.rider().position, feet, "Air equip does not snap down to the floor or a loose deck");
+        near(air.rider().velocity, velocity, "Air equip preserves the complete flight velocity");
+        near(air.rider().forward, {1, 0, 0}, "Air equip uses the current desktop look heading");
+        check(air.rider().speed_cap >= length(velocity), "Air equip preserves an inherited flight speed cap");
+        air.tick(toggle);
+        check(!air.on_foot() && !air.rider().grounded && air.rider().position.y > feet.y,
+              "Held air equip keeps flying instead of toggling or sticking to the floor");
+    }
+}
+
 void geometry(const std::filesystem::path& root, Vec3 low, Vec3 high, int mass = 1) {
     Json points = Json::array();
     for (unsigned u = 0; u < 4; ++u)
@@ -67,6 +122,7 @@ void geometry(const std::filesystem::path& root, Vec3 low, Vec3 high, int mass =
 
 int main() {
     try {
+        desktop_toggle();
         Player p(floor());
         Player drift(floor());
         drift.warp({0, -.005, 0}, {0, 0, -1}, {.02, 0, 0});

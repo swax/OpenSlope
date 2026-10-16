@@ -649,10 +649,10 @@ int main(int argc, char** argv) {
                        "[--msaa 1|2|4|8] [--render-scale 100|125|150|200] [--snow 0..10] [--graphics-preferences "
                        "<file>] [--ui-graphics] [--no-terrain-culling] [--audio-preferences <file>] "
                        "[--ui-audio] [--ai-riders 0..16]\nDesktop: "
-                       "A/D steer/spin, W/S tuck/brake/flip, Space "
+                       "A/D strafe on foot or steer/spin riding, W/S walk or tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
-                       "spawn board, G "
-                       "mount/dismount, T restart run, RMB carry/throw or drag to orbit, wheel zoom, LMB aimed ride, "
+                       "spawn and mount/dismount, G "
+                       "nearby mount/dismount, T restart run, RMB carry/throw, wheel zoom, LMB drag look/turn on foot, "
                        "Escape release cursor/menu.\n";
                 return 0;
             } else
@@ -757,7 +757,7 @@ int main(int argc, char** argv) {
         auto previous = started;
         bool first_person = first_person_option, last_camera = false, paused = false, last_pause = false,
              last_focus = false, last_mute = false;
-        bool last_escape = false, last_right = false, mouse_carry = false, first_released = false;
+        bool last_escape = false, last_right = false, mouse_carry = false, look_blocked = false;
 
         struct PreparedCourse {
             std::unique_ptr<Player> player;
@@ -857,7 +857,7 @@ int main(int argc, char** argv) {
             if (escape && !last_escape) {
                 if (window.mouse_captured) {
                     window.capture_mouse(false);
-                    first_released = true;
+                    look_blocked = true;
                 } else {
                     window.ui.visible = !window.ui.visible;
                     paused = window.ui.visible;
@@ -868,7 +868,6 @@ int main(int argc, char** argv) {
             const auto camera = key('F') || key('V');
             if (camera && !last_camera) {
                 first_person = !first_person;
-                first_released = false;
             }
             last_camera = camera;
             const auto pause = !window.ui.loading && key('P');
@@ -894,6 +893,8 @@ int main(int argc, char** argv) {
             }
             if (!focused && last_focus)
                 player->release_inputs();
+            if (focused && !last_focus)
+                look_blocked = key(VK_LBUTTON);
             last_focus = focused;
             const double aspect = double(std::max(1u, window.width)) / std::max(1u, window.height);
             window.camera.first_person = first_person;
@@ -956,10 +957,7 @@ int main(int argc, char** argv) {
                 window.ui.visible = false;
                 paused = false;
                 break;
-            case UiAction::View:
-                first_person = !first_person;
-                first_released = false;
-                break;
+            case UiAction::View: first_person = !first_person; break;
             case UiAction::Controls: window.ui.controls = !window.ui.controls; break;
             case UiAction::Stats: window.ui.stats = !window.ui.stats; break;
             case UiAction::Calibrate: window.camera.reset(); break;
@@ -1068,15 +1066,15 @@ int main(int argc, char** argv) {
             const bool right = key(VK_RBUTTON);
             if (right && !last_right)
                 mouse_carry = player->carrying_board() || (!window.ui.visible && player->aim_board(ray, true));
-            const bool looking = right && !mouse_carry && !window.ui.visible;
-            const bool recapture = first_person && first_released && key(VK_LBUTTON) && !click.consumed &&
-                                   !player->aim_board(ray, true) && !player->carrying_board();
-            if (recapture)
-                first_released = false;
-            window.capture_mouse(focused && !paused && !window.ui.visible &&
-                                 (looking || (first_person && !first_released)));
+            const bool left = key(VK_LBUTTON);
+            if (!left)
+                look_blocked = false;
+            if (click.consumed)
+                look_blocked = true;
+            const bool looking = left && !look_blocked && focused && !paused && !window.ui.visible;
+            window.capture_mouse(looking);
             if (window.mouse_captured)
-                window.camera.orbit(window.mouse_dx, window.mouse_dy);
+                window.camera.orbit(window.mouse_dx, window.mouse_dy, player->on_foot());
             window.mouse_dx = window.mouse_dy = 0;
             window.camera.zoom(window.wheel);
             window.wheel = 0;
@@ -1088,14 +1086,14 @@ int main(int argc, char** argv) {
                                 double(key('W') || key(VK_UP)) - double(key('S') || key(VK_DOWN)),
                                 key('Q'),
                                 key('G'),
-                                window.camera.walk_forward(),
+                                player->on_foot() ? window.camera.facing() : window.camera.walk_forward(),
                                 {},
                                 key('T')};
-                input.equipment = desktop_equipment(*player, ray, right && mouse_carry,
-                                                    !recapture && !click.consumed && key(VK_LBUTTON));
+                input.equipment = desktop_equipment(*player, ray, right && mouse_carry);
                 input.crouch = key(VK_CONTROL);
                 input.flight_direction = window.camera.pose().forward;
-                input.spawn_board = key('E');
+                input.toggle_board = key('E');
+                input.face_walk_forward = true;
                 player->advance(dt, input);
             }
             last_right = right;
@@ -1121,7 +1119,7 @@ int main(int argc, char** argv) {
                     title << int(std::ceil(run.countdown)) << L" | ";
             }
             if (player->on_foot())
-                title << L"On foot | E spawn / LMB ride (" << int(player->board_distance() * 100) << L" cm) | ";
+                title << L"On foot | A/D strafe | E spawn and ride | LMB drag turn | ";
             if (paused)
                 title << L"PAUSED";
             else if (rider.control == Control::ResetWarp)
@@ -1139,7 +1137,8 @@ int main(int argc, char** argv) {
             else
                 title << (rider.grounded ? (rider.lead < 0 ? L"Switch" : L"Riding") : L"Air");
             title << L" | " << stats.visible_props << L" props / " << stats.prop_draws
-                  << L" draws | A/D steer | W/S tuck/brake | Space jump | Shift boost | P pause | F/V camera | C look "
+                  << L" draws | E board | LMB drag look | W/S tuck/brake | Space jump | Shift boost | P pause | F/V "
+                     L"camera | C look "
                      L"down | M "
                   << (preferences.volume == 0 ? L"unmute" : L"mute");
             SetWindowTextW(window.handle, title.str().c_str());

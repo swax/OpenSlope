@@ -59,6 +59,8 @@ Replay Replay::load(const std::filesystem::path& path) {
             throw std::runtime_error("Invalid replay control range");
         step.input.run_restart = row.value("RunRestart", false);
         step.input.spawn_board = row.value("SpawnBoard", false);
+        step.input.toggle_board = row.value("ToggleBoard", false);
+        step.input.face_walk_forward = row.value("FaceWalkForward", false);
         step.input.crouch = row.value("Crouch", false);
         if (row.contains("FlightDirection"))
             step.input.flight_direction = vector(row.at("FlightDirection"));

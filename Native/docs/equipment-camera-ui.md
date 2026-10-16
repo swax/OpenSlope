@@ -7,13 +7,14 @@ and exponential-response identities. No other component's runtime implementation
 
 ## Carry and throw
 
-On desktop, point at the loose board and use LMB to ride it, or hold RMB to carry it.
-Release RMB to throw. RMB away from a target captures relative mouse movement and
-orbits the character. The mouse wheel changes follow distance; V/F changes view.
+On desktop, hold RMB while pointing at the loose board to carry it and release
+RMB to throw. E spawns and mounts at the player's feet or dismounts while riding.
+It preserves airborne momentum. Left-drag captures relative mouse movement to
+look around while riding or turn the on-foot character. The mouse wheel changes follow distance; V/F changes view.
 The pointer remains visible in third person when neither carrying nor looking.
-First person captures the cursor; Escape releases it, and clicking empty space captures
-it again. Escape with an already visible cursor opens/closes the pause menu. P also
-opens/closes that menu. Build 0.36 changes E to spawn/recall ahead; G retains nearby
+Both camera views use left-drag. Escape releases a held drag until the button is
+released. Escape with an already visible cursor opens/closes the pause menu. P also
+opens/closes that menu. G retains nearby
 mount/dismount. See foot-flight.md for current movement and stock snowboard art.
 
 Quest uses either trigger to ride/dismount and either squeeze to carry. A loose deck

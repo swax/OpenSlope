@@ -3,11 +3,16 @@
 #include <stdexcept>
 
 namespace openslope {
-void FollowCamera::orbit(double dx, double dy) {
+void FollowCamera::orbit(double dx, double dy, bool turn_player) {
     if (!std::isfinite(dx) || !std::isfinite(dy))
         throw std::invalid_argument("Invalid camera drag");
     orbit_yaw_ = std::remainder(orbit_yaw_ - dx * .004, 2 * pi);
     orbit_pitch_ = std::clamp(orbit_pitch_ - dy * .004, -1.25, 1.25);
+    if (turn_player) {
+        heading_ = normalized(rotate(heading_, {0, 1, 0}, orbit_yaw_));
+        walk_reference_ = heading_;
+        orbit_yaw_ = 0;
+    }
 }
 
 void FollowCamera::zoom(double steps) {

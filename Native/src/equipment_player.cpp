@@ -46,8 +46,14 @@ void Player::drop_board(bool motion) {
 bool Player::equip_held_board() {
     if (!carry_.held() || !on_foot_)
         return false;
+    return equip_board_at_feet(carry_.pose().forward);
+}
+
+bool Player::equip_board_at_feet(Vec3 facing) {
+    if (!on_foot_ || reset_pending() || recovering())
+        return false;
     const auto position = rider_.position, velocity = rider_.velocity;
-    const auto heading = normalized(project(carry_.pose().forward, {0, 1, 0}), camera_forward());
+    const auto heading = normalized(project(facing, {0, 1, 0}), camera_forward());
     const bool airborne = !rider_.grounded;
     const auto serial = placement_serial_;
     mount_board(position, heading, velocity, rider_.normal);
