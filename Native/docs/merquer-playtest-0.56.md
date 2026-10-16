@@ -80,6 +80,10 @@ as does confirmation that the reported windows are resolved on the headset.
 Quest train visibility, fence flex, in-world screen video and the rest of the
 play-parity goal remain active.
 
+The subsequent 0.57 rendered comparison identifies and corrects the prop-light
+staging and saturation differences; see prop-lighting-0.57.md. The original
+data checks and 0.56 measurements above remain historical evidence.
+
 ## Saved build and device validation
 
 The final repository gate passes in 249 seconds, including all 49 Native suites

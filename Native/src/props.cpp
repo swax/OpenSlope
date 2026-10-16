@@ -683,6 +683,8 @@ bool prop_visible(const Bounds& b, std::span<const float, 16> camera, Vec3 eye, 
 }
 
 std::array<double, 3> prop_light(Vec3 normal, const PropPose& pose) {
+    const auto magnitude = length(normal);
+    normal = magnitude > .00001 ? normal / magnitude : Vec3{};
     std::array<double, 3> result{pose.ambient[0], pose.ambient[1], pose.ambient[2]};
     for (unsigned key = 0; key < 3; ++key) {
         const auto& d = pose.direction[key];
@@ -691,7 +693,7 @@ std::array<double, 3> prop_light(Vec3 normal, const PropPose& pose) {
             result[c] += amount * pose.colour[key][c];
     }
     for (auto& c : result)
-        c = std::clamp(c, 0.0, 255. / 128);
+        c = std::clamp(c, 0.0, 1.0);
     return result;
 }
 

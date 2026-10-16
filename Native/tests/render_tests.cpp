@@ -140,6 +140,10 @@ int main(int argc, char** argv) {
                                     "lighting",
                                     "repeat",
                                     "props",
+                                    "props_light_range",
+                                    "props_light_normals",
+                                    "props_light_grazing",
+                                    "props_untextured",
                                     "props_uv",
                                     "props_flag",
                                     "props_crowd",
@@ -845,7 +849,7 @@ int main(int argc, char** argv) {
                     ++checks;
                     if (moved == a)
                         throw std::runtime_error("Current animated placement does not move pixels");
-                    pixel(moved, .75, .5, {255, 160, 60});
+                    pixel(moved, .75, .5, {200, 160, 60});
                     auto opposite = identity;
                     opposite[12] = -.6;
                     const PropMotion other{0, {identity}, {opposite}};
@@ -961,9 +965,9 @@ int main(int argc, char** argv) {
                     };
                     const auto private_a = framed(first, frame_first), private_b = framed(second, frame_second);
                     pixel(private_a, .25, .5, {60, 60, 50});
-                    pixel(private_a, .75, .5, {255, 160, 60});
+                    pixel(private_a, .75, .5, {200, 160, 60});
                     pixel(private_b, .25, .5, {150, 80, 30});
-                    pixel(private_b, .75, .5, {120, 120, 100});
+                    pixel(private_b, .75, .5, {80, 120, 100});
                     ++checks;
                     if (framed(first, frame_zero) != a)
                         throw std::runtime_error("Explicit material frame zero differs from base image");
@@ -1056,9 +1060,29 @@ int main(int argc, char** argv) {
                         pixel(*pixels, .1, .35, {30, 220, 50});
                         pixel(*pixels, .35, .35, {230, 210, 190});
                         pixel(*pixels, .6, .6, {240, 20, 40});
+                    } else if (std::string(name) == "props_light_range" || std::string(name) == "props_untextured") {
+                        const auto base = std::string(name) == "props_untextured" ? std::array<int, 3>{194, 187, 170}
+                                                                                  : std::array<int, 3>{200, 160, 120};
+                        for (unsigned i = 0; i < 5; ++i) {
+                            const auto factor = i == 0 ? .25 : i == 1 ? .5 : 1.;
+                            pixel(*pixels, .1 + .2 * i, .5,
+                                  {int(std::round(base[0] * factor)), int(std::round(base[1] * factor)),
+                                   int(std::round(base[2] * factor))});
+                        }
+                    } else if (std::string(name) == "props_light_grazing") {
+                        for (const auto u : {.1, .3, .5, .7, .9})
+                            for (const auto v : {.2, .5, .8})
+                                pixel(*pixels, u, v, {75, 60, 45});
+                    } else if (std::string(name) == "props_light_normals") {
+                        for (const auto u : {.05, .2, .4, .48})
+                            for (const auto v : {.2, .5, .8})
+                                pixel(*pixels, u, v, {0, 0, 0});
+                        for (const auto u : {.52, .6, .8, .95})
+                            for (const auto v : {.2, .5, .8})
+                                pixel(*pixels, u, v, {200, 160, 120});
                     } else if (std::string(name) == "props") {
                         pixel(*pixels, .25, .5, {150, 80, 30});
-                        pixel(*pixels, .75, .5, {255, 160, 60});
+                        pixel(*pixels, .75, .5, {200, 160, 60});
                         pixel(*pixels, .5, .5, {40, 80, 120});
                         if (first.stats().visible_props != 2 || first.stats().prop_draws != 1 ||
                             second.stats().prop_draws != 1)

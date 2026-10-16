@@ -160,3 +160,10 @@ can-contact CPU stalls, and adds reversed floating-point depth plus supported
 4x diffuse filtering. All 88 can chains and crowded mounted approaches have
 tracked coverage. See `merquer-playtest-0.56.md` for device timings, GPU checks,
 the lighting-data comparison and remaining worn-appearance verification.
+
+Build 0.57 corrects the shared prop-lighting profile using independently authored
+black-box rendered calibration: normalized fragment normals, texture-true final
+light saturation and warm neutral fallback. Matched Merquer gate captures
+substantially close the reported brightness difference without changing exported
+textures or HDR instance records. See `prop-lighting-0.57.md` for the explicit
+Trailmap staging choice, pixel checks and remaining worn-VR limits.

@@ -64,9 +64,21 @@ int main(int argc, char** argv) {
         near(props.instances[0].bounds.min.x, -.61, "Placement scale and centimetres");
         near(props.instances[1].bounds.max.x, .61, "Rotated placement bounds");
         const auto light = prop_light({1, 0, 0}, props.instances[1].pose);
-        near(light[0], 1.5, "Lighting keeps overbright headroom");
+        near(light[0], 1, "Preview modulation saturates at texture-true white");
         near(light[1], 1, "Lighting is model-local under rotated placement");
         near(light[2], .5, "Independent key colour channels");
+        near(props.instances[1].pose.colour[0][0], 1.5, "Retain HDR light records before the dot product");
+        const auto grazing = prop_light({.25, std::sqrt(15.) / 4, 0}, props.instances[1].pose);
+        near(grazing[0], .375, "HDR keys still light grazing normals proportionally");
+        const auto short_normal = prop_light({.025, std::sqrt(15.) / 40, 0}, props.instances[1].pose);
+        for (unsigned c = 0; c < 3; ++c)
+            near(short_normal[c], grazing[c], "Normalize the interpolated normal before lighting");
+        const auto dark = prop_light({-1, 0, 0}, props.instances[1].pose);
+        const auto zero = prop_light({}, props.instances[1].pose);
+        for (unsigned c = 0; c < 3; ++c) {
+            near(dark[c], 0, "Opposite keys do not illuminate the stored normal");
+            near(zero[c], 0, "Zero normals stay finite and contribute no key light");
+        }
         const auto files = prop_files(root);
         require(files == std::vector<std::string>({"Meshes/quad.obj", "Textures/prop-state.png", "Textures/prop.png"}),
                 "Unique metadata references for document providers");

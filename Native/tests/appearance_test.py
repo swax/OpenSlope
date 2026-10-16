@@ -156,6 +156,35 @@ def fixtures(root):
             instances = [dict(ModelID=0, Location=[0, -25, 0], Visable=True)]
         for filename, key, rows in (("Models.json", "Models", models), ("Materials.json", "Materials", materials), ("Instances.json", "Instances", instances)):
             (folder / filename).write_text(json.dumps({key: rows}), encoding="utf-8")
+    for name in ('props_light_range', 'props_light_normals', 'props_light_grazing', 'props_untextured'):
+        folder = course(root, name, 'background.png')
+        (folder / 'Textures/background.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+        (folder / 'Textures/prop.png').write_bytes(rgba(1, 1, [200, 160, 120, 255]))
+        (folder / 'Meshes').mkdir()
+        if name in ('props_light_normals', 'props_light_grazing'):
+            # Opposed stored normals interpolate through zero at the centre.
+            # Vertex lighting makes a ramp; normalized fragment lighting makes
+            # a dark left half and texture-true right half, as the preview draws.
+            obj = ('v -80 0 -80\nv 80 0 -80\nv 80 0 80\nv -80 0 80\n'
+                   'vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn -1 0 0\nvn 1 0 0\n'
+                   'f 1/1/1 2/2/2 3/3/2 4/4/1\n')
+            rows = [dict(ModelID=0, Location=[0,-25,0], Visable=True,
+                         AmbentLightColour=[0,0,0], LightVector1=[1,0,0,0], LightColour1=[1024]*3)]
+            if name == 'props_light_grazing':
+                obj = obj.replace('vn -1 0 0\nvn 1 0 0', 'vn .025 .09682458366 0\nvn .025 .09682458366 0')
+                rows[0]['LightColour1'] = [384]*3
+        else:
+            obj = ('v -12 0 -60\nv 12 0 -60\nv 12 0 60\nv -12 0 60\n'
+                   'vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 0 -1 0\n'
+                   'f 1/1/1 2/2/1 3/3/1 4/4/1\n')
+            rows = [dict(ModelID=0, Location=[-64+32*i,-25,0], Visable=True,
+                         AmbentLightColour=[value]*3) for i,value in enumerate((64,128,256,512,4096))]
+        (folder / 'Meshes/quad.obj').write_text(obj)
+        models = [dict(ModelObjects=[dict(ParentID=-1, MeshData=[dict(MeshPath='quad.obj', MaterialID=0)])])]
+        materials = [dict(TexturePath='' if name == 'props_untextured' else 'prop.png')]
+        for filename,key,data in [('Models.json','Models',models), ('Instances.json','Instances',rows),
+                                  ('Materials.json','Materials',materials)]:
+            (folder / filename).write_text(json.dumps({key:data}))
     folder = course(root, 'props_depth_precision', 'background.png')
     (folder / 'Textures/background.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
     (folder / 'Textures/near.png').write_bytes(rgba(1, 1, [20, 40, 220, 255]))

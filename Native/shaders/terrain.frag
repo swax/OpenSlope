@@ -5,6 +5,9 @@ layout(location=2) in vec2 lightmapUV;
 layout(location=3) flat in vec4 lightmapTile;
 layout(location=4) in float effectAlpha;
 layout(location=5) in vec3 worldPosition;
+layout(location=6) in vec3 propNormal;
+layout(location=7) flat in mat3 propDirections;
+layout(location=10) flat in mat3 propColours;
 layout(set=0,binding=0) uniform sampler2D diffuseImage;
 layout(set=0,binding=1) uniform sampler2D lightmapImage;
 layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; vec4 presentation; } transform;
@@ -30,7 +33,15 @@ void main() {
         if(transform.options.x==5)alpha=base.a*effectAlpha;
         if(transform.options.x==6){displayColour=base.rgb*vertexColour;alpha=base.a*effectAlpha;}
         if(transform.options.x==11){displayColour=base.rgb*vertexColour;alpha=base.a;}
-        if(transform.options.x==3)displayColour=clamp(base.rgb*vertexColour,0.0,1.0);
+        if(transform.options.x==3){
+            // [Trailmap: 160-instance-frame, 400-lighting] Model-local light records.
+            // First-party preview profile: normalize interpolated normals and cap
+            // modulation at texture-true white, as the rendered calibration shows.
+            vec3 normal=length(propNormal)>0.00001?normalize(propNormal):vec3(0);
+            vec3 light=vertexColour;
+            for(int i=0;i<3;++i)light+=max(0.0,dot(normal,propDirections[i]))*propColours[i];
+            displayColour=base.rgb*clamp(light,0.0,1.0);
+        }
         if(transform.options.x==2) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]
             // Keep bilinear sampling inside this patch's gutterless tile.

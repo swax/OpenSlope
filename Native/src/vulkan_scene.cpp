@@ -296,9 +296,11 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
     pool.queueFamilyIndex = context_.family;
     pool.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     vk_check(vkCreateCommandPool(context_.device, &pool, nullptr, &upload.pool), "Create map upload pool");
-    images_.reserve(appearance.images.size() + 2);
+    images_.reserve(appearance.images.size() + 3);
     images_.push_back(image({1, 1, {255, 255, 255, 255}}, upload.pool));
     images_.push_back(image({1, 1, {0, 0, 0, 255}}, upload.pool));
+    // First-party textured-view fallback, independent of the white effect tile.
+    images_.push_back(image({1, 1, {194, 187, 170, 255}}, upload.pool));
     std::map<std::string, std::size_t> names;
     std::map<std::string, bool> fractional;
     for (auto& [name, pixels] : appearance.images) {
@@ -405,7 +407,7 @@ void VulkanScene::upload(const Mesh& source, std::span<const std::size_t> flag_m
         const auto bind = [&](const std::string& texture) {
             const auto name = "Textures/" + texture;
             const auto found = names.find(name);
-            return PropFrame{descriptor(found == names.end() ? 0 : found->second, 1),
+            return PropFrame{descriptor(found == names.end() ? 2 : found->second, 1),
                              // Priority overlays also carry pixel alpha (scanlines, for example).
                              // [Slopesmith public texture-array tests: priority partial alpha]
                              (part.flags & ((1u << 18) | (1u << 17))) ? (fractional[name] ? 2 : 1) : 0};

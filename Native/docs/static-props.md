@@ -5,7 +5,7 @@ The independent C++ importer emits the existing `Models.json`, `Instances.json`,
 players consume those same contracts from any selected course. Custom terrain-only
 maps remain valid. If any prop JSON is present, all three tables are required;
 missing meshes, invalid transforms, corrupt JSON and unsafe paths reject playback.
-Missing optional textures use white diffuse pixels with the instance lighting.
+Missing optional textures use a warm neutral diffuse fallback with the instance lighting.
 An empty or null texture reference is accepted as an untextured material.
 
 ## Specification authority and format boundaries
@@ -52,11 +52,22 @@ logic, animation clocks and scripted mesh swaps are deferred.
 
 Instance lighting uses authored model-local normals and directions:
 `ambient + sum(max(0, dot(normal, direction)) * keyColour)`. Stored colours divide
-by 256, with headroom up to `255/128` before diffuse multiplication. Instance
-rotation affects placement, not the baked lighting dot product. Texture PNGs
+by 256 without clipping the input records. The first-party play profile normalizes
+the interpolated stored normal per fragment and clamps the final light factor to
+`[0,1]` before diffuse multiplication. Instance rotation affects placement, not
+the baked lighting dot product. Texture PNGs
 already carry their import brightening; the shader does not brighten them again
 or apply terrain lightmaps to props. Texture sampling remains RGBA8 UNORM and the
 final colour is converted only when an sRGB attachment requires it.
+
+This staging deliberately matches Slopesmith's visible textured preview. Clean
+400 describes vertex-stage lighting and interpolation for the original renderer;
+Native does not claim to reproduce that Gouraud stage. A black-box calibration
+with independently authored geometry/textures distinguishes these paths, verifies
+texture-true saturation even for HDR ambient input, and supplies pixel regression
+cases. See prop-lighting-0.57.md for the evidence and boundary. The fallback colour
+is the first-party neutral clay `(194,187,170)`; white effect/board tiles remain
+separate.
 
 Flag bit 18 explicitly selects the alpha pass; alpha bytes cannot turn an opaque
 material transparent. An alpha-pass image with only binary alpha uses a 0.5

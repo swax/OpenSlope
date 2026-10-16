@@ -177,3 +177,12 @@ riding state machine. Clean 300/340 jump and motion authority is unchanged.
 OpenXR grip conventions, not model/camera compensation, now drive generic
 controllers and full hand bind frames. See quest-controls.md for primary frame
 references, lifecycle evidence and pending physical/device checks.
+
+Prop lighting retains clean 160's model-local frame, stored normals, HDR input
+records and `/256` colour scale, plus clean 400's ambient and positive-key sum.
+The first-party play profile uses normalized interpolated normals and a
+texture-true fragment clamp to match Slopesmith's rendered preview. This is an
+explicit application choice in place of clean 400's original vertex-stage
+Gouraud interpolation. Black-box authored calibration and matched owned-course
+captures establish the preview comparison; prop-lighting-0.57.md records the
+evidence without using another runtime's implementation as Native guidance.
