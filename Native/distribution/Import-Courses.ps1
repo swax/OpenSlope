@@ -30,7 +30,7 @@ try {
         & $taskImporter extract $taskIso $taskCourse $taskMaps
         if ($LASTEXITCODE -ne 0) { throw "Import failed for $taskCourse. See the messages above." }
     }
-    Write-Host 'Ready. Start or restart OpenSlope, open Maps, and choose a course.'
+    Write-Host 'Ready. Open the map library in OpenSlope, click Refresh, then choose a course.'
     Read-Host 'Press Enter to close' | Out-Null
 } catch {
     Write-Error $_

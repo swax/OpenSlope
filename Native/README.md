@@ -3,6 +3,10 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.79 hides the opponent menu and removes control hints from the desktop
+window title. The Windows package has shorter setup instructions; full controls
+remain in the in-game menu. See [release notes](releases/0.79.0.md).
+
 Build 0.78 opens the desktop library at startup and lists ISO files beside the
 EXE. Queue course extractions, follow progress in each row, then choose Play
 when ready. Wheel scrolling and a draggable scrollbar replace desktop paging.

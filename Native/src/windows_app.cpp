@@ -7,6 +7,7 @@
 #include "openslope/graphics_preferences.hpp"
 #include "openslope/replay.hpp"
 #include "openslope/ride_ui.hpp"
+#include "openslope/version.hpp"
 #include "openxr_app.hpp"
 #include "vulkan_renderer.hpp"
 #include <windows.h>
@@ -1319,10 +1320,11 @@ int main(int argc, char** argv) {
             window.camera.first_person = first_person;
             window.camera.step(*player, dt, key(VK_SHIFT), looking);
             window.fps = dt > 0 ? 1 / dt : 0;
-            const auto& stats = window.renderer.stats();
             const auto& rider = player->rider();
+            const auto version = application_version();
             std::wostringstream title;
-            title << L"OpenSlope Native | " << int(length(rider.velocity) * 3.6) << L" km/h | ";
+            title << L"OpenSlope Native " << std::wstring(version.begin(), version.end()) << L" | "
+                  << int(length(rider.velocity) * 3.6) << L" km/h | ";
             if (player->course_run().status().mode != RunMode::Freeride) {
                 const auto readout = score_readout(player->scoring());
                 title << std::wstring(readout.begin(), readout.end()) << L" | BOOST "
@@ -1332,13 +1334,10 @@ int main(int argc, char** argv) {
             if (run.mode != RunMode::Freeride) {
                 const auto clock = run_clock(run.clock), phase = std::string(run_name(run.phase));
                 title << std::wstring(clock.begin(), clock.end()) << L" | " << std::wstring(phase.begin(), phase.end())
-                      << L" | CP " << run.checkpoints << L" | Lap " << run.lap << L"/" << run.passes
-                      << L" | T restart | ";
+                      << L" | CP " << run.checkpoints << L" | Lap " << run.lap << L"/" << run.passes << L" | ";
                 if (run.phase == RunPhase::Countdown)
                     title << int(std::ceil(run.countdown)) << L" | ";
             }
-            if (player->on_foot())
-                title << L"On foot | A/D strafe | E spawn and ride | LMB drag turn | ";
             if (paused)
                 title << L"PAUSED";
             else if (rider.control == Control::ResetWarp)
@@ -1346,20 +1345,15 @@ int main(int argc, char** argv) {
             else if (rider.control == Control::RecoverWait)
                 title << L"Getting up " << int(rider.recovery_standing * 100) << L"%";
             else if (rider.motion == Motion::Wipeout)
-                title << L"Wipeout - recovering | R to reset";
+                title << L"Wipeout - recovering";
             else if (rider.control == Control::Charge)
                 title << L"Charge " << int(rider.charge * 100) << L"%";
             else if (rider.motion == Motion::Rail)
-                title << L"Grinding | Spin " << int(rider.rail_spin) << L" deg | Q exit";
+                title << L"Grinding | Spin " << int(rider.rail_spin) << L" deg";
             else if (player->on_foot())
                 title << L"Walking";
             else
                 title << (rider.grounded ? (rider.lead < 0 ? L"Switch" : L"Riding") : L"Air");
-            title << L" | " << stats.visible_props << L" props / " << stats.prop_draws
-                  << L" draws | E board | LMB drag look | W/S tuck/brake | Space jump | Shift boost | P pause | F/V "
-                     L"camera | C look "
-                     L"down | M "
-                  << (preferences.volume == 0 ? L"unmute" : L"mute");
             SetWindowTextW(window.handle, title.str().c_str());
             window.draw(*player, first_person, key('C') || look_down_option, dt);
             if (library_done)

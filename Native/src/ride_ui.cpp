@@ -167,9 +167,8 @@ std::vector<UiButton> RideUi::buttons() const {
          immersive ? UiAction::HeadSteer : UiAction::Recall},
         {.52, .78, .42, .095, immersive && map_picker ? "MAP LIBRARY" : "EXIT",
          immersive && map_picker ? UiAction::Maps : UiAction::Exit}};
-    list.push_back({.06, .895, immersive && map_picker ? .42 : .88, .065, "OPPONENTS", UiAction::Riders});
     if (immersive && map_picker)
-        list.push_back({.52, .895, .42, .065, "EXIT APP", UiAction::Exit});
+        list.push_back({.06, .895, .88, .065, "EXIT APP", UiAction::Exit});
     return list;
 }
 

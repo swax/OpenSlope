@@ -562,7 +562,11 @@ void menu(const std::filesystem::path& root) {
               "The actual menu ray selects and consumes the opponent action");
         return ui.riders(selected.action, player);
     };
-    check(press(UiAction::Riders) && ui.rider_options, "The desktop and wrist menu share the same opponent controls");
+    const auto solo_menu = ui.buttons();
+    check(std::none_of(solo_menu.begin(), solo_menu.end(),
+                       [](const auto& row) { return row.action == UiAction::Riders; }),
+          "The desktop menu keeps opponents hidden");
+    check(ui.riders(UiAction::Riders, player) && ui.rider_options, "Internal opponent settings remain available");
     for (unsigned i = 0; i < 18; ++i)
         press(UiAction::RiderUp);
     check(player.ai_field() && player.ai_field()->size() == 16, "The menu caps opponents at sixteen");
@@ -575,11 +579,15 @@ void menu(const std::filesystem::path& root) {
     for (unsigned i = 0; i < 18; ++i)
         press(UiAction::RiderDown);
     check(!player.ai_field(), "The menu returns to a zero-allocation solo field");
-    press(UiAction::Riders);
+    ui.riders(UiAction::Riders, player);
     ui.immersive = ui.map_picker = true;
-    press(UiAction::Riders);
+    const auto solo_wrist = ui.buttons();
+    check(std::none_of(solo_wrist.begin(), solo_wrist.end(),
+                       [](const auto& row) { return row.action == UiAction::Riders; }),
+          "The wrist menu keeps opponents hidden");
+    ui.riders(UiAction::Riders, player);
     press(UiAction::RiderUp);
-    check(player.ai_field() && player.ai_field()->size() == 1, "The actual Quest wrist menu can add a rider");
+    check(player.ai_field() && player.ai_field()->size() == 1, "Internal immersive settings can still add a rider");
     press(UiAction::RiderDown);
     Player no_routes(Terrain::demo());
     ui.riders(UiAction::RiderUp, no_routes);
