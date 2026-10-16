@@ -29,6 +29,7 @@ struct WorldAction {
     std::size_t target = 0;
     Vec3 position;
     bool rider = false;
+    std::uint64_t actor = 0;
 };
 
 // Runtime flags are separate from immutable authored properties and geometry.
@@ -51,7 +52,9 @@ public:
     std::span<const std::size_t> reset_volumes() const;
     std::optional<std::pair<Vec3, Vec3>> teleport_destination(std::size_t instance, unsigned rider_slot = 0) const;
     void contact(std::size_t instance, double speed, bool human = true, double force = 1, Vec3 direction = {},
-                 std::optional<ParticleContact> particle_contact = {});
+                 std::optional<ParticleContact> particle_contact = {}, std::uint64_t actor = 0);
+    void rider_speed(std::uint64_t actor, double speed);
+    void retire_rider(std::uint64_t actor);
     std::vector<ParticleSprite> particles(double alpha, Vec3 eye) const;
     std::size_t emitters() const;
     void prepare_bodies(const CollisionWorld& world);

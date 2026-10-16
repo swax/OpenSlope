@@ -172,9 +172,11 @@ struct WorldLogic::Data {
         Vec3 impact{};
         std::optional<ParticleContact> contact{};
         std::size_t interaction = none;
+        std::uint64_t actor = 0;
     };
 
     std::vector<Chain> chains;
+    std::map<std::uint64_t, double> rider_speeds;
     std::vector<Slot> slots;
     std::vector<Host> hosts;
     std::vector<Property> properties;
@@ -246,13 +248,13 @@ struct WorldLogic::Data {
 
     void enqueue(std::size_t chain, std::size_t instance, bool rider, bool human, bool collision = false,
                  std::vector<std::pair<std::size_t, std::size_t>> ancestry = {}, bool setup = false, Vec3 impact = {},
-                 std::optional<ParticleContact> contact = {}, std::size_t interaction = none) {
+                 std::optional<ParticleContact> contact = {}, std::size_t interaction = none, std::uint64_t actor = 0) {
         if (chain >= chains.size() || ready.size() + waiting.size() >= 1024 || ancestry.size() >= 32 ||
             std::find(ancestry.begin(), ancestry.end(), std::pair{chain, instance}) != ancestry.end())
             return;
         ancestry.push_back({chain, instance});
-        ready.push_back(
-            {chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry), impact, contact, interaction});
+        ready.push_back({chain, instance, 0, 0, rider, human, collision, setup, std::move(ancestry), impact, contact,
+                         interaction, actor});
         if (collision)
             busy.at(instance) = true;
     }
@@ -1042,10 +1044,14 @@ struct WorldLogic::Data {
         if (actions.size() >= 4096)
             return;
         actions.push_back({kind, value, target,
-                           thread.instance < hosts.size() ? hosts[thread.instance].position : Vec3{}, thread.rider});
+                           thread.instance < hosts.size() ? hosts[thread.instance].position : Vec3{}, thread.rider,
+                           thread.actor});
     }
 
     bool gate(const Node& node, const Thread& thread, double speed) {
+        if (thread.rider)
+            if (const auto found = rider_speeds.find(thread.actor); found != rider_speeds.end())
+                speed = found->second;
         const auto& p = node.payload.at("type5");
         const auto test = p.value("U0", 0);
         if (test == 2)
@@ -1091,7 +1097,8 @@ struct WorldLogic::Data {
                         break;
                 } else if (node.main == 21 || node.main == 26)
                     enqueue(ref(node.refs, "function", functions), host, node.main == 21 && thread.rider, thread.human,
-                            false, thread.ancestry, thread.setup, thread.impact, thread.contact, thread.interaction);
+                            false, thread.ancestry, thread.setup, thread.impact, thread.contact, thread.interaction,
+                            thread.actor);
                 else if (node.main == 7) {
                     const auto target = ref(node.refs, "instance", instance_ids),
                                graph = ref(node.refs, "effectGraph", graphs);
@@ -1100,7 +1107,7 @@ struct WorldLogic::Data {
                         continue;
                     if (graph < chains.size())
                         enqueue(graph, target, thread.rider, thread.human, false, thread.ancestry, thread.setup,
-                                thread.impact, thread.contact, thread.interaction);
+                                thread.impact, thread.contact, thread.interaction, thread.actor);
                     else if (p.contains("Instance") && p.at("Instance").contains("Effect")) {
                         if (p.at("Instance").at("Effect").get<int>() == 0) {
                             destroy(target);
@@ -1560,6 +1567,7 @@ void WorldLogic::tick(double seconds, double speed, std::span<const Vec3> observ
             throw std::invalid_argument("Invalid crowd rider activity");
     auto& d = *data_;
     d.budget = 4096;
+    d.rider_speeds[0] = speed;
     d.clock += seconds;
     d.reset_interactions();
     d.particles.step(seconds);
@@ -1722,12 +1730,13 @@ std::optional<std::pair<Vec3, Vec3>> WorldLogic::teleport_destination(std::size_
 }
 
 void WorldLogic::contact(std::size_t instance, double speed, bool human, double force, Vec3 direction,
-                         std::optional<ParticleContact> particle_contact) {
+                         std::optional<ParticleContact> particle_contact, std::uint64_t actor) {
     auto& d = *data_;
     if (!std::isfinite(speed) || speed < 0 || !std::isfinite(force) || force < 0 || force > 1e9 || !finite(direction))
         throw std::invalid_argument("Invalid world contact");
     if (particle_contact && (!finite(particle_contact->position) || !finite(particle_contact->normal)))
         throw std::invalid_argument("Invalid world particle contact");
+    d.rider_speeds[actor] = speed;
     if (instance >= d.hosts.size() || !(d.flags[instance] & WorldCollide))
         return;
     d.hosts[instance].impact = normalized(direction, {});
@@ -1746,7 +1755,7 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
     if (d.force_wait_exit.contains(instance))
         return;
     if (d.properties[instance].force) {
-        d.properties[instance].force->contact();
+        d.properties[instance].force->contact(actor);
         return;
     }
     if (d.busy[instance] || d.properties[instance].kind == 2 || d.cooldowns[instance] > 1e-9)
@@ -1756,7 +1765,7 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
         const auto interaction = d.arm_interaction(instance, d.slots[slot].chains[1]) ? instance : none;
         d.cooldowns[instance] = d.properties[instance].debounce;
         d.enqueue(d.slots[slot].chains[1], instance, true, human, true, {}, false, d.hosts[instance].impact,
-                  d.hosts[instance].contact, interaction);
+                  d.hosts[instance].contact, interaction, actor);
         d.drain(speed);
         d.cooldowns[instance] = std::max(d.cooldowns[instance], d.properties[instance].debounce);
         if (d.properties[instance].fragile) {
@@ -1834,6 +1843,25 @@ std::size_t WorldLogic::sleeping_bodies() const {
         if (const auto& body = data_->properties[host].body; body && body->sleeping())
             ++result;
     return result;
+}
+
+void WorldLogic::rider_speed(std::uint64_t actor, double speed) {
+    if (!std::isfinite(speed) || speed < 0)
+        throw std::invalid_argument("Invalid rider speed context");
+    data_->rider_speeds[actor] = speed;
+}
+
+void WorldLogic::retire_rider(std::uint64_t actor) {
+    data_->rider_speeds.erase(actor);
+    for (auto& action : data_->actions)
+        if (action.rider && action.actor == actor)
+            action.rider = false;
+    for (auto& thread : data_->ready)
+        if (thread.actor == actor)
+            thread.rider = thread.human = false;
+    for (auto& thread : data_->waiting)
+        if (thread.actor == actor)
+            thread.rider = thread.human = false;
 }
 
 std::vector<WorldAction> WorldLogic::take_actions() {

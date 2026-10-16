@@ -492,6 +492,40 @@ void production(const std::filesystem::path& root) {
           "pickup MAIN chime reaches actual PCM output");
 }
 
+void actor_ownership(const std::filesystem::path& root) {
+    fixture(root);
+    const auto speed_gate =
+        node(5, {{"type5", {{"U0", 0}, {"U1", std::bit_cast<float>(1u)}, {"U2", std::bit_cast<std::uint32_t>(50.f)}}}});
+    auto doc = document(Json::array({node(4, {{"WaitTime", .05}}), speed_gate, node(13)}));
+    write(root, "Effects.json", doc);
+    auto logic = WorldLogic::load(root);
+    logic.contact(1, 20, false, 1, {}, {}, 11);
+    for (unsigned i = 0; i < 3; ++i)
+        logic.tick(h, 1);
+    const auto fast = logic.take_actions();
+    check(fast.size() == 1 && fast[0].rider && fast[0].actor == 11,
+          "A delayed speed-gated command retains the triggering AI and its own speed");
+    logic.contact(1, 3, false, 1, {}, {}, 22);
+    for (unsigned i = 0; i < 3; ++i)
+        logic.tick(h, 60);
+    check(logic.take_actions().empty(), "The human's faster speed cannot pass an AI rider's delayed gate");
+    logic.contact(1, 20, false, 1, {}, {}, 33);
+    logic.retire_rider(33);
+    for (unsigned i = 0; i < 3; ++i)
+        logic.tick(h, 20);
+    const auto retired = logic.take_actions();
+    check(std::none_of(retired.begin(), retired.end(), [](const auto& action) { return action.rider; }),
+          "A retired rider's pending graph cannot command a replacement rider");
+    doc = document(Json::array({node(21, Json::object(), {{"function", "child"}})}));
+    doc["functions"] = {{{"id", "child"}, {"name", "Child"}, {"nodes", Json::array({node(13)})}}};
+    write(root, "Effects.json", doc);
+    auto function = WorldLogic::load(root);
+    function.contact(1, 20, false, 1, {}, {}, 44);
+    const auto called = function.take_actions();
+    check(called.size() == 1 && called[0].rider && called[0].actor == 44,
+          "Function calls carry the same rider identity as the collision that called them");
+}
+
 void owned_resets(const std::filesystem::path& maps) {
     const auto root = maps / "MESA";
     const auto rows = Json::parse(std::ifstream(root / "Instances.json")).at("Instances");
@@ -579,6 +613,7 @@ int main(int argc, char** argv) {
         modes(root);
         interaction_resets(root);
         production(root);
+        actor_ownership(root);
         if (argc == 2) {
             courses(argv[1]);
             owned_resets(argv[1]);

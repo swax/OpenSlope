@@ -235,3 +235,10 @@ lens stars, a same-hue aura, class-proportional sizing, bounded camera pull and
 shared stereo bloom, calibrated from a matched rendered Snowdream view and
 public behavior tests. Original source-depth/world-size differences are explicit
 in `lamp-profile-0.65.md`; no other port's runtime is implementation guidance.
+
+The AI input foundation consumes clean 395's ground-plane ruler, cached
+projection, pursuit/control quantization, network choice, rating, jump windows,
+rivals and catch-up request. It drives the existing Player in physical tests.
+Nominal profile choices and the public Slopesmith unreachable-target guard are
+explicit in `ai-input.md`. Visible field, world ownership, standings and clock
+integration remain required; this foundation does not establish AI parity.
