@@ -73,3 +73,7 @@ cloth-contact behavior, mirrored custom-scale semantics, material fidelity and
 worn-headset appearance/performance still need validation. Fence springs,
 particles, debris, movies and the other outstanding world effects remain part
 of the full parity goal.
+
+Build 0.58 now supplies the whole-target fence reaction profile in
+fence-reactions.md. Exact vertex-weighted springs remain a separate fidelity
+question from that visible collision rattle.

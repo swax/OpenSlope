@@ -8,7 +8,8 @@ Follow-up: build 0.53 implements the ordinary breakable/movable restoration gap,
 including related tree rails, while preserving mode hides, collected rewards and
 the clean permanent latch recipe. See `interaction-resets.md` for current evidence
 and the explicit public-Play permanence discrepancy. The table below records the
-original audit; ambient voice selection, fence flex and video remain open.
+original audit with subsequent family updates. Build 0.55 adds ambient voice
+selection and 0.58 adds whole-target fence reactions; screen video remains open.
 
 Authority: clean Trailmap 180, 230, 370 and 420; shared contracts; Slopesmith
 public documentation and tests; independently inspected local map exports.
@@ -24,7 +25,7 @@ No other runtime or separately licensed decoder implementation was used.
 | Ambient sound emitters | Native reads point, oriented ellipsoid and directional regions, six radial curves, optional one-entry voices, extracted/shared/custom WAV routes and loop regions. Events 16/28/57 arm on contact with their owning instance, including a silent impact row. Build 0.55 ranks by audible gain with stable named-source ties, bounded voice allocation and preserved playback phase; CPU/PCM and Quest ARM64 checks cover the field. | Spatial gathering, transition fades and wider listening/fidelity work remain; see ambient-field.md for the application budget and validation scope. |
 | Fireworks and other particles | Timer and collision emitters, layered bursts, streams, contact position/normal, sprite registration, alpha/additive/darkening blends and run/region cleanup are implemented. Current production replays verify visible particles and timed sound while walking and riding. | This audit does not establish every emitter's visual match or weather/snow presentation. |
 | Other graph-driven world effects | Handlers exist for material scrolling/flipbooks, flags, crowd cells, model animation, spline movers, counters, gates/waits/calls, pickups, boosts, resets, teleports and rail switches. Current graph suites load all eleven imported courses. | Having a handler does not establish complete behavior or visual parity for every authored recipe. |
-| Fence flex | Imported effect node `0/12` exists in GARI, MEGAPLE, MERQUER and SNOW (four graph/function nodes total). | No runtime handler: collision-triggered damped fence flex is missing. |
+| Fence flex | Build 0.58 handles `0/12` with per-instance damped reactions, interpolation and ordinary pause/end/region/reset ownership. All 1,788 imported fence placements are covered across freeride/race/showoff, alongside real walking/riding and Vulkan/Quest ARM64 checks. See fence-reactions.md. | Exact spring timing, vertex-weighted bending and worn appearance remain unverified. The whole-target profile preserves authored collision proxies. |
 | In-world video screens | Effect node `0/23` occurs fourteen times across seven imported courses. | No runtime playback handler: these screen surfaces do not play their course video. Ordinary flipbooks and breaking a screen are separate supported paths. |
 
 ## Current verification
@@ -68,5 +69,6 @@ glints/halos, pressure-button cues and Tokyo vent/shaft entry; see
 selection, fence flex and screen video remained open at that milestone.
 Build 0.55 completes loudest-first ambient selection with stable named-source
 ties and a bounded application voice budget; see `ambient-field.md` for current
-evidence and limits. Fence flex and screen video remain open, alongside broader
-parity and the latest Merquer rendering/performance reports.
+evidence and limits. Builds 0.56/0.57 address Merquer contacts, depth and prop
+lighting. Build 0.58 adds the fence reaction profile in `fence-reactions.md`.
+Screen video and broader play parity remain open.

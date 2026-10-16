@@ -1,3 +1,4 @@
+#include "openslope/world_logic.hpp"
 #include "vulkan_renderer.hpp"
 #include <cmath>
 #include <fstream>
@@ -143,6 +144,7 @@ int main(int argc, char** argv) {
                                     "props_light_range",
                                     "props_light_normals",
                                     "props_light_grazing",
+                                    "props_fence",
                                     "props_untextured",
                                     "props_uv",
                                     "props_flag",
@@ -591,6 +593,39 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("Culled pixels differ from complete terrain submission");
                 first.cull_terrain(true);
                 second.cull_terrain(true);
+                if (std::string(name) == "props_fence") {
+                    auto reaction = WorldLogic::load(root / name);
+                    reaction.contact(0, 12, true, 1, {1, 0, 0});
+                    reaction.tick(1. / 18);
+                    for (auto* renderer : {&first, &second}) {
+                        const auto moved = capture(*renderer, root / "fence-hit.ppm", camera, {}, {}, {}, {}, 0, {},
+                                                   reaction.motions());
+                        pixel(moved, .14, .5, {40, 80, 120});
+                        pixel(moved, .4, .5, {200, 160, 120});
+                        pixel(moved, .75, .5, {200, 160, 120});
+                        const auto original = renderer == &first ? a : b;
+                        const auto before = capture(*renderer, root / "fence-before.ppm", camera, {}, {}, {}, {}, 0, {},
+                                                    reaction.motions(), 0);
+                        ++checks;
+                        if (before != original)
+                            throw std::runtime_error("Fence interpolation does not begin at its prior pose");
+                        const auto midway = capture(*renderer, root / "fence-interpolated.ppm", camera, {}, {}, {}, {},
+                                                    0, {}, reaction.motions(), .5);
+                        ++checks;
+                        if (midway == before || midway == moved)
+                            throw std::runtime_error("Fence interpolation jumps between fixed ticks");
+                    }
+                    for (unsigned tick = 0; tick < 96; ++tick)
+                        reaction.tick(1. / 60);
+                    checks += 3;
+                    if (!reaction.motions().empty() ||
+                        capture(first, root / "fence-restored.ppm", camera, {}, {}, {}, {}, 0, {},
+                                reaction.motions()) != a ||
+                        capture(second, root / "fence-restored-srgb.ppm", camera, {}, {}, {}, {}, 0, {},
+                                reaction.motions()) != b)
+                        throw std::runtime_error("Fence reaction does not restore exact resting pixels");
+                    continue;
+                }
                 if (std::string(name) == "props_crowd") {
                     const PropTextureFrame left{0, PropTextureFrame::resting, {}, {{0, 3}}, true},
                         right{1, PropTextureFrame::resting, {}, {{0, 9}}, true};

@@ -1,6 +1,7 @@
 #include "openslope/world_logic.hpp"
 #include "import_internal.hpp"
 #include "openslope/collision.hpp"
+#include "openslope/fence.hpp"
 #include "openslope/material_animation.hpp"
 #include "openslope/mesh_throw.hpp"
 #include "openslope/props.hpp"
@@ -154,6 +155,7 @@ struct WorldLogic::Data {
         std::unique_ptr<RigidProp> body{};
         std::optional<ScrollPlayback> scroll{};
         std::optional<FlagPlayback> flag{};
+        std::optional<FencePlayback> fence{};
         std::unique_ptr<TexturePlayback> flip{};
         std::unique_ptr<ScriptedBoost> force{};
         std::optional<std::array<unsigned, 2>> crowd{};
@@ -272,18 +274,29 @@ struct WorldLogic::Data {
     }
 
     void update_motion(std::size_t host, bool snap = false) {
-        if (!properties[host].animation && !properties[host].pieces && !properties[host].body)
+        const auto& property = properties[host];
+        if (!property.animation && !property.pieces && !property.body && !property.fence)
             return;
-        auto current = properties[host].body
-                           ? std::vector<Transform>(clips.objects(hosts[host].model),
-                                                    multiply(hosts[host].inverse, properties[host].body->pose()))
-                       : properties[host].pieces ? properties[host].pieces->pose()
-                                                 : clips.delta(hosts[host].model, properties[host].animation->frame(),
-                                                               properties[host].animation->basis());
+        auto current = property.body     ? std::vector<Transform>(clips.objects(hosts[host].model),
+                                                                  multiply(hosts[host].inverse, property.body->pose()))
+                       : property.pieces ? property.pieces->pose()
+                       : property.fence
+                           ? std::vector<Transform>(clips.objects(hosts[host].model), identity_transform())
+                           : clips.delta(hosts[host].model, property.animation->frame(), property.animation->basis());
+        if (property.fence) {
+            const auto& source = hosts[host];
+            const auto offset = transform_point(source.inverse, source.position + property.fence->offset()) -
+                                transform_point(source.inverse, source.position);
+            for (auto& matrix : current) {
+                matrix[12] = offset.x;
+                matrix[13] = offset.y;
+                matrix[14] = offset.z;
+            }
+        }
         const auto index = motion_ids[host];
         if (index == none) {
             motion_ids[host] = motions.size();
-            motions.push_back({host, current, std::move(current)});
+            motions.push_back({host, current, std::move(current), property.fence.has_value()});
         } else {
             motions[index].current = std::move(current);
             if (snap)
@@ -701,6 +714,16 @@ struct WorldLogic::Data {
         property.flag.emplace(law, std::generate_canonical<double, 32>(random));
         flags[host] |= WorldDraw;
         update_material(host);
+    }
+
+    void install_fence(std::size_t host, const Json& payload, Vec3 impact) {
+        if (hosts[host].mode_hidden || hosts[host].model >= clips.models())
+            return;
+        FencePlayback reaction(number(payload.at("Fence"), "FlexAmmount"), impact);
+        destroy(host, false);
+        properties[host].kind = 12;
+        properties[host].fence = std::move(reaction);
+        update_motion(host, true);
     }
 
     void install_crowd(std::size_t host, const Json& payload) {
@@ -1153,6 +1176,8 @@ struct WorldLogic::Data {
                         install_crowd(host, property);
                     else if (sub == 13)
                         install_flag(host, property);
+                    else if (sub == 12)
+                        install_fence(host, property, thread.impact);
                     else if (sub == 256 || sub == 257 || sub == 258)
                         animate(host, property, sub);
                     else if (sub == 5) {
@@ -1555,7 +1580,12 @@ void WorldLogic::tick(double seconds, double speed, std::span<const Vec3> observ
         auto& p = d.properties[i];
         if (p.paused)
             continue;
-        if (p.flag) {
+        if (p.fence) {
+            p.fence->step(seconds);
+            d.update_motion(i);
+            if (p.fence->settled())
+                d.finish(i);
+        } else if (p.flag) {
             p.flag->step(seconds);
             d.update_material(i);
             if (p.flag->expired())
@@ -1703,7 +1733,7 @@ void WorldLogic::contact(std::size_t instance, double speed, bool human, double 
     d.hosts[instance].impact = normalized(direction, {});
     d.hosts[instance].contact =
         particle_contact.value_or(ParticleContact{d.hosts[instance].position, normalized(-direction, {0, 1, 0})});
-    if (d.properties[instance].roller)
+    if (d.properties[instance].roller || d.properties[instance].fence)
         return;
     if (d.properties[instance].fragile) {
         d.properties[instance].fragile->hit(force);

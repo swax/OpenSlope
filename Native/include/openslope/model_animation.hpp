@@ -44,6 +44,8 @@ struct PropMotion {
     std::size_t instance = 0;
     // Each entry maps the baked time-zero model frame to the current pose.
     std::vector<Transform> previous, current;
+    // Cosmetic reactions retain the authored collision proxy, like flag waves.
+    bool visual_only = false;
 };
 
 struct PropPlayLaw {

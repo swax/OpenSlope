@@ -209,6 +209,18 @@ def fixtures(root):
         row['AmbentLightColour']=[256,256,256]
         for key in ['LightVector1','LightColour1']: row.pop(key,None)
     (folder/'Instances.json').write_text(json.dumps(rows))
+    folder=root/'props_fence'
+    shutil.copytree(root/'props_uv',folder)
+    (folder/'Materials.json').write_text(json.dumps(dict(Materials=[dict(TexturePath='prop.png')])))
+    rows=json.loads((folder/'Instances.json').read_text())
+    for i,row in enumerate(rows['Instances']):
+        row['PlayerCollision']=i<2
+        row['EffectSlotIndex']=0 if i==0 else -1
+    (folder/'Instances.json').write_text(json.dumps(rows))
+    reaction=dict(mainType=0,payload=dict(type0=dict(SubType=12,Fence=dict(U0=0,FlexAmmount=.5))),references={})
+    (folder/'Effects.json').write_text(json.dumps(dict(kind='openslope-effects',version=1,
+        graphs=[dict(id='hit',nodes=[reaction])],functions=[],
+        slots=[dict(id='fence',originalIndex=0,circumstances=dict(collision='hit'))])))
     folder=root/'props_flag'
     shutil.copytree(root/'props_uv',folder)
     (folder/'Meshes/quad.obj').write_text('v 0 -30 30\nv 0 30 30\nv 0 -30 -30\nv 0 30 -30\nvt 0 0\nvt 0 1\nvt 1 0\nvt 1 1\nvn 1 0 0\nf 1/1/1 2/2/1 3/3/1\nf 3/3/1 2/2/1 4/4/1\n')

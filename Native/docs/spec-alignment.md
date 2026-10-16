@@ -186,3 +186,10 @@ explicit application choice in place of clean 400's original vertex-stage
 Gouraud interpolation. Black-box authored calibration and matched owned-course
 captures establish the preview comparison; prop-lighting-0.57.md records the
 evidence without using another runtime's implementation as Native guidance.
+
+Fence reactions consume clean 230's subtype-12 record and clean 150's ordinary
+collision, pause, end and region ownership. Clean 370 contact flags and response
+remain authoritative. The whole-target damped translation, bounds, settling
+clock and visual-only motion marker are explicit first-party presentation
+choices, not recovered vertex weights or spring constants. See fence-reactions.md
+for all-course/mode, actual player, GPU and Quest CPU evidence and fidelity limits.

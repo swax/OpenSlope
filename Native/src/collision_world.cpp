@@ -1124,14 +1124,15 @@ void CollisionWorld::motion(std::span<const PropMotion> poses, double seconds) {
         for (const auto index : data_->instance_objects[pose.instance]) {
             if (data_->objects[index].model_object >= pose.current.size())
                 throw std::invalid_argument("Collision motion misses objects");
-            changed.insert(index);
+            if (!pose.visual_only)
+                changed.insert(index);
         }
     }
     data_->dynamic.clear();
     for (const auto index : changed) {
         auto& object = data_->objects[index];
         const auto found = moving.find(object.instance);
-        if (found == moving.end()) {
+        if (found == moving.end() || found->second->visual_only) {
             object.world = multiply(object.placement, object.rest);
             object.previous = object.world;
             object.moving = false;
