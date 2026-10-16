@@ -233,3 +233,8 @@ recovery, with body clearance checked for opponent reset positions. See
 Build 0.68 corrects opponent recovery anchors, authored window handling,
 post-reset route tracking and horizontal drop-in velocity. See
 `opponent-recovery-0.68.md` for complete-course evidence and outstanding scope.
+
+Build 0.69 addresses landing-frame overlap and opposing terrain corrections
+at narrow corners. The authored ledge matrix covers 72 cases across headings,
+surface depths and a third wall; see `landing-frame-0.69.md` for evidence and
+the continuing full parity scope.

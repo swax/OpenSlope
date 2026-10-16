@@ -25,7 +25,106 @@ Terrain floor(double slope = 0, int surface = 1) {
 }
 
 void regressions() {
+    unsigned landing_cases = 0, side_landings = 0;
+    for (const auto surface : {1, 3, 18})
+        for (const auto yaw : {0., pi * .5, pi, pi * 1.5})
+            for (const auto gap : {.15, .35, .65})
+                for (const bool boxed : {false, true}) {
+                    const auto turn = [&](Vec3 point) { return rotate(point, {0, 1, 0}, yaw); };
+                    Patch upper, wall, lower, side;
+                    upper.surface = wall.surface = lower.surface = side.surface = surface;
+                    for (unsigned u = 0; u < 4; ++u)
+                        for (unsigned v = 0; v < 4; ++v) {
+                            const auto x = -20. + 40. * u / 3;
+                            upper.points[u * 4 + v] = turn({x, 0, 20. * v / 3});
+                            wall.points[u * 4 + v] = turn({x, -5. + 5. * v / 3, -gap});
+                            lower.points[u * 4 + v] = turn({x, -5, -20. + 40. * v / 3});
+                            side.points[u * 4 + v] = turn({.35, -5. + 5. * v / 3, x});
+                        }
+                    auto patches = std::vector<Patch>{upper, wall, lower};
+                    if (boxed)
+                        patches.push_back(side);
+                    Player edge(Terrain(std::move(patches)));
+                    edge.warp(turn({0, -edge.contract().surface(surface).bog, .2}), turn({0, 0, -1}), turn({3, 0, -8}));
+                    const auto serial = edge.placement_serial();
+                    bool side_landing = false;
+                    for (unsigned frame = 0; frame < 120; ++frame) {
+                        const auto before = edge.rider();
+                        edge.tick({.posture = 1});
+                        const auto& pose = edge.rider();
+                        side_landing = side_landing || (pose.grounded && pose.normal.y < .1);
+                        const auto allowance = std::max(.2, pose.budget + .05);
+                        const auto lateral = normalized(cross(pose.normal, pose.forward * double(pose.lead)));
+                        const auto centre = pose.position + lateral * pose.slide +
+                                            normalized(pose.grounded ? pose.normal : pose.board_up) * (.2 + allowance);
+                        const auto penetration = edge.terrain().sweep(centre, centre, .2);
+                        if (penetration && penetration->depth > .004)
+                            std::cerr << "landing frame surface " << surface << " yaw " << yaw << " gap " << gap
+                                      << " boxed " << boxed << " tick " << frame << " normal [" << pose.normal.x << ','
+                                      << pose.normal.y << ',' << pose.normal.z << "] centre [" << centre.x << ','
+                                      << centre.y << ',' << centre.z << "] depth " << penetration->depth << '\n';
+                        check(
+                            !penetration || penetration->depth <= .004,
+                            "A landing support-frame change cannot place the terrain guard inside a neighboring floor");
+                        check(finite(pose.position) && finite(pose.velocity) && edge.placement_serial() == serial,
+                              "The ledge landing retains finite movement without hiding the contact behind a reset");
+                        if (length(pose.position - before.position) > 2)
+                            std::cerr << "large corner step surface " << surface << " yaw " << yaw << " gap " << gap
+                                      << " boxed " << boxed << " tick " << frame << " distance "
+                                      << length(pose.position - before.position) << '\n';
+                        check(length(pose.position - before.position) <= 2,
+                              "Corner clearance cannot turn a small authored step into a distant placement");
+                    }
+                    side_landings += side_landing;
+                    ++landing_cases;
+                }
+    check(side_landings > 0, "The ledge matrix includes actual near-vertical landing frame changes");
+    std::cout << "PASS: " << landing_cases << " ledge cases; " << side_landings << " near-vertical landing cases\n";
+    for (const auto yaw : {0., pi * .5, pi, pi * 1.5})
+        for (const auto behind : {.05, .3, .8}) {
+            const auto turn = [&](Vec3 point) { return rotate(point, {0, 1, 0}, yaw); };
+            Patch wall, lower;
+            wall.surface = 18;
+            for (unsigned u = 0; u < 4; ++u)
+                for (unsigned v = 0; v < 4; ++v) {
+                    const auto x = -20. + 40. * u / 3;
+                    wall.points[u * 4 + v] = turn({x, -5. + 10. * v / 3, 0});
+                    lower.points[u * 4 + v] = turn({x, -10, -20. + 40. * v / 3});
+                }
+            const auto normal = wall.normal(.5, .5);
+            Player departed(Terrain({wall, lower}));
+            departed.warp(turn({0, 2, 0}) - normal * behind, turn({1, 0, 0}), turn({5, -1, 0}) - normal * 2);
+            auto& cached = const_cast<Rider&>(departed.rider());
+            cached.normal = normal;
+            cached.grounded = false;
+            cached.motion = Motion::Air;
+            cached.control = Control::Air;
+            const auto serial = departed.placement_serial();
+            for (unsigned frame = 0; frame < 12; ++frame) {
+                departed.tick({});
+                check(!departed.rider().grounded && departed.rider().landings == 0,
+                      "An airborne cached probe cannot land on a wall already behind the rider's travel");
+                check(dot(departed.rider().position, normal) < -behind && departed.placement_serial() == serial,
+                      "A departing rider continues away from the wall without a probe snap or reset");
+            }
+            const auto forward = departed.rider().forward;
+            departed.tick({.steer = .5, .boost = true});
+            check(!departed.rider().grounded && departed.board_boosting() &&
+                      length(cross(forward, departed.rider().forward)) > 1e-4,
+                  "Steering and boost remain available after the rider leaves the cached wall");
+        }
     for (const double slope : {0., .5}) {
+        for (const auto surface : {1, 3, 5, 18}) {
+            Player leaving(floor(slope, surface));
+            const auto up = normalized(Vec3{-slope, 1, 0});
+            const auto allowance = std::max(.2, leaving.contract().surface(surface).budget + .05);
+            const auto start = -up * (allowance + .0005);
+            leaving.warp(start, {0, 0, -1}, Vec3{0, 0, -4} + up * .05, up);
+            check(leaving.rider().grounded, "The guard-clearance fixture starts in grounded depth recovery");
+            leaving.tick({.posture = 1});
+            check(dot(leaving.rider().position - start, up) > .02,
+                  "A shallow guard overlap preserves outward budget pushout instead of clipping it away");
+        }
         Player buried(floor(slope, 3));
         const auto up = normalized(Vec3{-slope, 1, 0});
         buried.warp(-up * .7, {0, 0, -1}, {0, 0, -4}, up);

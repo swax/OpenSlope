@@ -251,3 +251,12 @@ uses its tracked route for placement/refusal, resumes the selected reset route
 and seeds clean 390's horizontal drop-in velocity. Placement serials distinguish
 that reset from a subsequent independent warp. See `opponent-recovery-0.68.md`;
 the 390/395 forward-bias discrepancy and full parity remain outstanding.
+
+Build 0.69 sweeps terrain containment again after a landing changes the support
+frame. Its bounded contact-plane projection and verified clear-centre fallback
+are independently authored collision safety policies; clean 320/340's contact
+and landing rules remain. See `landing-frame-0.69.md` for authored coverage,
+course evidence and remaining fidelity limits.
+Ordinary airborne landings require a swept crossing; moving supports and aligned
+rail exits retain explicit handoffs. The opt-in legacy recovery profile retains
+its original tangent-only guard remainder.

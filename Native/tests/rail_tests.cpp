@@ -269,7 +269,7 @@ void profiles(const std::filesystem::path& root) {
     rejects([&] { Rails::load(root); }, "Reject malformed rail geometry");
 }
 
-void terrain_crossing(const std::filesystem::path& root) {
+void terrain_crossing(const std::filesystem::path& root, bool clear_floor = false) {
     map(root, Json::array({curve({0, 0, 0}, {0, 0, -500})}));
     auto patches = Json::parse(std::ifstream(root / "Patches.json"));
     for (auto& point : patches["Patches"][0]["Points"])
@@ -291,6 +291,19 @@ void terrain_crossing(const std::filesystem::path& root) {
     require(rider.rider().motion == Motion::Ground && rider.rider().control == Control::Cruise &&
                 !rider.rider().rail_spline,
             "leaving the rail restores normal terrain contact and controls");
+    if (!clear_floor)
+        return;
+    for (unsigned i = 0; i < 20; ++i) {
+        rider.tick({.rail_exit = true});
+    }
+    const auto floor =
+        rider.terrain().intersect(rider.rider().position + Vec3{0, 2, 0}, rider.rider().position - Vec3{0, 2, 0}, true);
+    if (!floor || dot(rider.rider().position - floor->point, floor->normal) < -rider.rider().budget - .05)
+        std::cerr << "rail handoff position " << rider.rider().position.x << ',' << rider.rider().position.y << ','
+                  << rider.rider().position.z << " normal " << rider.rider().normal.x << ',' << rider.rider().normal.y
+                  << ',' << rider.rider().normal.z << " floor " << (floor ? floor->point.y : -9999.) << '\n';
+    require(floor && dot(rider.rider().position - floor->point, floor->normal) >= -rider.rider().budget - .05,
+            "the rail handoff returns above its floor budget instead of continuing beneath the course");
 }
 } // namespace
 
@@ -315,6 +328,9 @@ int main() {
         contact_masks(root);
         profiles(root);
         terrain_crossing(root);
+        const auto clear_floor = root / "clear-floor";
+        std::filesystem::create_directory(clear_floor);
+        terrain_crossing(clear_floor, true);
         std::cout << "PASS: " << checks << " cubic query, candidacy, grind, spin, jump, slope, probe and exit checks\n";
         return 0;
     } catch (const std::exception& e) {

@@ -66,6 +66,52 @@ double carried_cap(const RideContract& contract, double current, double amount) 
 Vec3 deck_slide(const Rider& pose) {
     return normalized(cross(pose.normal, pose.forward * double(pose.lead)), {1, 0, 0}) * pose.slide;
 }
+
+struct GuardPlane {
+    Vec3 normal;
+    double offset;
+};
+
+std::optional<Vec3> clear_guard(Vec3 point, std::span<const GuardPlane> planes) {
+    std::optional<Vec3> best;
+    double cost = 0;
+    const auto accept = [&](Vec3 candidate) {
+        if (!finite(candidate) || std::any_of(planes.begin(), planes.end(), [&](const auto& plane) {
+                return dot(plane.normal, candidate) < plane.offset - 1e-8;
+            }))
+            return;
+        const auto delta = candidate - point;
+        const auto distance = dot(delta, delta);
+        if (!best || distance < cost) {
+            best = candidate;
+            cost = distance;
+        }
+    };
+    accept(point);
+    if (best)
+        return best;
+    // The nearest point in three dimensions has at most three independent
+    // active planes. Enumerating those sets avoids alternating corner pushes.
+    for (std::size_t i = 0; i < planes.size(); ++i) {
+        const auto a = planes[i].normal;
+        const auto da = planes[i].offset - dot(a, point);
+        accept(point + a * da);
+        for (std::size_t j = 0; j < i; ++j) {
+            const auto b = planes[j].normal;
+            const auto db = planes[j].offset - dot(b, point);
+            const auto cosine = dot(a, b), determinant = 1 - cosine * cosine;
+            if (determinant > 1e-10)
+                accept(point + a * ((da - cosine * db) / determinant) + b * ((db - cosine * da) / determinant));
+            for (std::size_t k = 0; k < j; ++k) {
+                const auto c = planes[k].normal;
+                const auto dc = planes[k].offset - dot(c, point), volume = dot(a, cross(b, c));
+                if (std::abs(volume) > 1e-10)
+                    accept(point + (cross(b, c) * da + cross(c, a) * db + cross(a, b) * dc) / volume);
+            }
+        }
+    }
+    return best;
+}
 } // namespace
 
 Player::Player(Terrain terrain, PlayTuning tuning)
@@ -1192,6 +1238,12 @@ void Player::tick(const RideInput& input) {
         }
         const auto lateral = normalized(cross(rider_.normal, rider_.forward * double(rider_.lead)));
         const auto error = dot(rider_.position + lateral * rider_.slide - hit->point, hit->normal);
+        const auto closing = dot(rider_.velocity - hit->velocity, hit->normal);
+        const bool rail_support = before_pose.motion == Motion::Rail && dot(before_pose.board_up, hit->normal) > .5 &&
+                                  closing <= contract_.value("contact", "separationSpeed");
+        const bool moving_support =
+            hit->instance && dot(hit->velocity, hit->normal) > 1e-8 && closing < 0 &&
+            dot(before_pose.position + deck_slide(before_pose) - hit->point + hit->velocity * dt, hit->normal) > 0;
         rider_.normal = hit->normal;
         rider_.surface = hit->surface;
         rider_.ground_instance = hit->instance;
@@ -1207,7 +1259,9 @@ void Player::tick(const RideInput& input) {
                 rider_.velocity = hit->velocity + contract_.redirect(relative, hit->normal, hit->surface);
             if (error > contract_.surface(hit->surface).threshold)
                 enter_air();
-        } else if (air_grace_ <= 0 && error <= 0 && dot(rider_.velocity - hit->velocity, hit->normal) < 0) {
+        } else if (air_grace_ <= 0 && error <= 0 && (rail_support || moving_support)) {
+            // Explicit rail handoffs retain aligned support. A moving support
+            // can cross the rider; ordinary air needs a swept hit.
             if (dispatch_fragile_ground(*hit)) {
                 land(*hit);
                 just_landed = true;
@@ -1502,6 +1556,10 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
     if (teleport_pending_)
         return false;
     const bool airborne = !rider_.grounded;
+    bool landed = false;
+    std::array<GuardPlane, 8> guard_planes;
+    std::size_t guard_plane_count = 0;
+    Vec3 guard_origin;
     Rider start = before;
     double remaining = contract_.tick_seconds(), elapsed = 0;
     std::map<std::size_t, WorldContact> seen;
@@ -1516,7 +1574,8 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         dispatch_world_contact(contact, length(before.velocity));
     };
     rider_.position = destination;
-    for (unsigned pass = 0; pass < 8; ++pass) {
+    constexpr unsigned contact_passes = 8;
+    for (unsigned pass = 0; pass < contact_passes; ++pass) {
         const bool rail = rider_.motion == Motion::Rail;
         const auto initial = volume(start, airborne, rail), final = volume(rider_, airborne, rail);
         const auto hits = world_.sweep(initial, final, trigger_margin);
@@ -1532,10 +1591,10 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             }
         const auto start_contact = start.position + deck_slide(start),
                    end_contact = rider_.position + deck_slide(rider_);
-        auto floor = landing_allowed ? trace_ground(start_contact, end_contact) : std::nullopt;
+        auto floor = landing_allowed && !landed ? trace_ground(start_contact, end_contact) : std::nullopt;
         // Orientation grace never disables terrain collision. Ground travel also
         // has a small swept root guard beyond the ordinary spring's allowance.
-        if (!rider_.grounded && !rail)
+        if (!rider_.grounded && !rail && !landed)
             if (const auto hit = terrain_.intersect(start_contact, end_contact); hit && (!floor || hit->t < floor->t))
                 floor = GroundContact{hit->point, hit->normal, hit->t, hit->surface, {}};
         if (floor && dot(rider_.velocity - floor->velocity, floor->normal) >= 0)
@@ -1589,7 +1648,10 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             if (floor->surface == 0 && run_active() && recover_course(false))
                 return false;
             land(*floor);
-            break;
+            // Landing changes the support normal and lateral deck offset.
+            // Sweep that new frame before accepting the final pose.
+            landed = true;
+            continue;
         }
         if (guard && (!solid || guard->t <= solid->t)) {
             if (guard->surface == 0 && run_active() && recover_course(false))
@@ -1598,15 +1660,32 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
             // Map its contact back using the final offset; changing the normal
             // must not teleport the guard beneath an adjacent floor.
             const auto delta = guard_delta;
-            rider_.position = start.position + delta * std::max(0., guard->t - .001) - offset_delta +
-                              guard->normal * (guard->depth + .002);
+            if (!guard_plane_count)
+                guard_origin = guard_start;
+            const auto centre =
+                guard_start + delta * std::max(0., guard->t - .001) + guard->normal * (guard->depth + .002);
+            guard_planes[guard_plane_count++] = {
+                guard->normal, dot(guard_start + delta * guard->t - guard_origin, guard->normal) + guard->depth + .002};
+            const auto local = centre - guard_origin;
+            auto clear = clear_guard(local, {guard_planes.data(), guard_plane_count});
+            if (!clear || dot(*clear - local, *clear - local) > dot(local, local)) {
+                // Tangent planes at finite edges can overconstrain a corner.
+                // A clear starting centre bounds the correction without a warp.
+                const auto previous = terrain_.sweep(guard_origin, guard_origin, .2);
+                if (!previous || previous->depth <= 1e-7)
+                    clear = Vec3{};
+            }
+            rider_.position = guard_origin + clear.value_or(centre - guard_origin) - offset;
             rider_.velocity -= guard->normal * std::min(0., dot(rider_.velocity, guard->normal));
             elapsed += guard->t * portion;
             remaining *= 1 - guard->t;
             start = rider_;
-            if (pass == 7 || remaining < 1e-10)
+            if (pass + 1 == contact_passes || remaining < 1e-10)
                 break;
-            rider_.position += project(delta * (1 - guard->t), guard->normal);
+            const auto travel = delta * (1 - guard->t);
+            // Preserve the legacy tangent-only tumble/get-up contact slice.
+            rider_.position += recovering() ? project(travel, guard->normal)
+                                            : travel - guard->normal * std::min(0., dot(travel, guard->normal));
             continue;
         }
         if (!solid)
@@ -1631,7 +1710,7 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         }
         elapsed += solid->t * portion;
         remaining *= 1 - solid->t;
-        if (pass == 7 || remaining < 1e-10)
+        if (pass + 1 == contact_passes || remaining < 1e-10)
             break;
         start = rider_;
         rider_.position += rider_.velocity * remaining;

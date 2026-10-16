@@ -201,6 +201,25 @@ void rider_motion(const std::filesystem::path& root) {
     check(moving.rider().velocity.x > .9, "launch retains inherited platform momentum");
 }
 
+void rising_support(const std::filesystem::path& root) {
+    fixture(root, 256, true, true);
+    auto models = Json::parse(std::ifstream(root / "Models.json"));
+    auto& animation = models["Models"][0]["ModelObjects"][1]["Animation"];
+    animation["AnimationAction"] = 4;
+    animation["AnimationEntries"][0]["AnimationMaths"][0]["Value3"] = 6000;
+    write(root, "Models.json", models);
+    Player rising(Terrain::load(root));
+    rising.tick({});
+    const auto floor = rising.world().ray({0, 10, 0}, {0, -1, 0}, true);
+    check(floor && floor->instance == 0, "The rising support starts beneath the authored rider");
+    rising.warp({0, floor->point.y + .25, 0}, {0, 0, -1});
+    check(!rising.rider().grounded, "The rising-platform fixture begins airborne above its deck");
+    rising.tick({});
+    check(rising.rider().grounded && rising.rider().ground_instance == 0 && rising.rider().landings == 1,
+          "A platform that crosses the rider between world ticks still produces a real landing");
+    near(rising.rider().ground_velocity.y, 60, "The moving-support landing retains its authored surface velocity");
+}
+
 void foot_launch(const std::filesystem::path& root) {
     fixture(root, 256, true, true);
     Player moving(Terrain::load(root)), fixed(Terrain::load(root));
@@ -266,6 +285,7 @@ int main() {
         lifecycle(root);
         collision(root);
         rider_motion(root);
+        rising_support(root);
         foot_launch(root);
         walker(root);
         std::cout << "PASS: " << checks
