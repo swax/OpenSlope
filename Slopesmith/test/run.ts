@@ -117,11 +117,13 @@ const EXCLUSIVE_GROUP = new Map([
 ]);
 
 /**
- * This real-socket check has deadlines wide enough for an ordinary machine but is known to fail when unrelated
+ * These real-socket checks have deadlines wide enough for an ordinary machine but can fail when unrelated
  * CPU-heavy checks saturate the event loop. The rebuild benchmark also needs the pool while measuring its
  * relative operation costs. Isolating these checks retains their deadlines, ratios and complete coverage.
  */
-const RUN_ALONE = new Set(['sessions.test.ts', 'sync.test.ts', 'public-home.test.ts', 'rebuild.test.ts']);
+const RUN_ALONE = new Set([
+  'sessions.test.ts', 'sync.test.ts', 'public-home.test.ts', 'rebuild.test.ts', 'access-tokens.test.ts',
+]);
 
 /** A check spawned through the TypeScript loader, without paying for an `npx` resolution to find it. */
 const tsx = (file: string, ...args: string[]): { command: string; args: string[] } =>

@@ -1,5 +1,11 @@
 # Native prototype specification alignment
 
+Build 0.71 follows clean `390-race-score` and `395-standings` for earned
+checkpoint authority and the six-frame reference ladder. Completion is captured
+on the common world clock so late joiners cannot reverse finish order with
+shorter personal clocks. Stable checkpoint/completion ties are an explicit
+Native policy. See [standings](race-standings-0.71.md) for evidence and limits.
+
 Build 0.70 follows detailed clean `390-reset-bias` for the adjacent competitor's
 speed and solo/mode/course/finish exclusions, shared by the local player and
 opponents. It replaces the previous mean-progress interpretation from 395's

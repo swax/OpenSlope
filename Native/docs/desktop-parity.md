@@ -1,5 +1,11 @@
 # Desktop gameplay parity work
 
+Build 0.71 ranks unfinished Race riders by earned checkpoints and records
+completion on a shared field clock, including late entrants. It preserves
+continuous distance separately and retains previous order on equal counts.
+See [standings validation](race-standings-0.71.md); wider terrain and racing
+parity remains open.
+
 Build 0.70 shares the detailed clean 390 forward-reset rule between the human
 and opponents, with mode/course/finish exclusions. Full standings authority,
 terrain junctions and broader racing parity remain open; see

@@ -9,6 +9,7 @@ struct AiField::Member {
     RideInput controls;
     std::uint64_t placement = 0;
     unsigned due = 0;
+    std::optional<double> finish_time;
 
     Member(std::unique_ptr<Player> actor, std::shared_ptr<const AiNetwork> network, std::size_t start)
         : rider(std::move(actor)), input(std::move(network), start), placement(rider->placement_serial()) {}
@@ -24,6 +25,9 @@ AiField::AiField(Player& primary, unsigned count, std::shared_ptr<const AiNetwor
         throw std::runtime_error("This course has no usable AI routes.");
     for (const auto& path : network_->paths().race)
         total_ = std::max(total_, path.distance_to_finish);
+    elapsed_ = primary.run_.status().elapsed;
+    if (primary.run_.status().phase == RunPhase::Finished)
+        primary_finish_time_ = elapsed_;
     resize(primary, count);
     serial_ = primary.run_serial();
 }
@@ -169,7 +173,8 @@ void AiField::restart(Player& primary) {
     const auto count = size();
     members_.clear();
     next_start_ = 0;
-    elapsed_ = 0;
+    elapsed_ = primary.run_.status().elapsed;
+    primary_finish_time_ = primary.run_.status().phase == RunPhase::Finished ? std::optional(elapsed_) : std::nullopt;
     serial_ = primary.run_serial();
     resize(primary, count);
 }
@@ -177,26 +182,33 @@ void AiField::restart(Player& primary) {
 void AiField::rank(Player& primary) {
     auto previous = std::move(standings_);
     standings_.clear();
-    const auto append = [&](const Player& actor) {
+    const auto append = [&](const Player& actor, std::optional<double> completion) {
         const auto progress = actor.course_run().locate(actor.rider().position);
         const auto& run = actor.course_run().status();
         const auto distance = progress ? total_ - progress->distance_to_finish : 0;
-        AiStanding row{actor.actor_, &actor, (run.lap - 1) * total_ + distance,
-                       run.elapsed,  0,      run.phase == RunPhase::Finished};
+        AiStanding row{actor.actor_, &actor, (run.lap - 1) * total_ + distance, run.elapsed};
+        row.checkpoints = run.checkpoints;
+        row.finished = run.phase == RunPhase::Finished;
         if (row.finished)
-            for (const auto& old : previous)
-                if (old.actor == row.actor && old.finished)
-                    row.finish_time = old.finish_time;
+            row.finish_time = completion.value_or(elapsed_);
+        const auto old =
+            std::find_if(previous.begin(), previous.end(), [&](const auto& entry) { return entry.actor == row.actor; });
+        row.place = old != previous.end() ? old->place : unsigned(previous.size() + standings_.size());
         standings_.push_back(row);
     };
-    append(primary);
+    append(primary, primary_finish_time_);
     for (const auto& member : members_)
-        append(*member->rider);
-    std::stable_sort(standings_.begin(), standings_.end(), [](const auto& a, const auto& b) {
+        append(*member->rider, member->finish_time);
+    const bool race = primary.run_.status().mode == RunMode::Race;
+    std::stable_sort(standings_.begin(), standings_.end(), [race](const auto& a, const auto& b) {
         if (a.finished != b.finished)
             return a.finished;
-        if (a.finished && a.finish_time != b.finish_time)
-            return a.finish_time < b.finish_time;
+        if (a.finished)
+            return a.finish_time == b.finish_time ? a.place < b.place : a.finish_time < b.finish_time;
+        // [Trailmap: 390-race-score, 395-standings] Course distance remains a
+        // separate metric. Stable ties retain the incumbent checkpoint order.
+        if (race)
+            return a.checkpoints == b.checkpoints ? a.place < b.place : a.checkpoints > b.checkpoints;
         return a.progress == b.progress ? a.actor < b.actor : a.progress > b.progress;
     });
     for (unsigned i = 0; i < standings_.size(); ++i) {
@@ -289,7 +301,6 @@ void AiField::step(Player& primary, const RideInput& input) {
     if (serial_ != primary.run_serial())
         restart(primary);
     const auto dt = primary.contract().tick_seconds();
-    elapsed_ += dt;
     ++frames_;
     for (const auto& member : members_)
         primary.logic_.rider_speed(member->rider->actor_, length(member->rider->rider().velocity));
@@ -313,6 +324,8 @@ void AiField::step(Player& primary, const RideInput& input) {
     const auto primary_before = primary.deferred_before_.value_or(primary.rider());
     if (serial_ != primary.run_serial())
         restart(primary);
+    if (primary.run_.riding_allowed())
+        elapsed_ += dt;
     std::vector<Player*> actors{&primary};
     std::vector<AiPeer> peers{{primary.actor_, primary.rider().position, primary.rider().velocity}};
     for (const auto& member : members_) {
@@ -370,6 +383,18 @@ void AiField::step(Player& primary, const RideInput& input) {
         separate(actors);
         force_step(primary, actors, 0);
     }
+    // Record completion on the shared world clock, before the next standings
+    // pass. A late joiner's shorter personal clock cannot reverse finish order.
+    const auto completed = [&](const Player& actor, std::optional<double>& stamp) {
+        if (actor.run_.status().phase == RunPhase::Finished) {
+            if (!stamp)
+                stamp = elapsed_;
+        } else
+            stamp.reset();
+    };
+    completed(primary, primary_finish_time_);
+    for (auto& member : members_)
+        completed(*member->rider, member->finish_time);
     for (auto& member : members_) {
         auto& actor = *member->rider;
         actor.defer_tick_ = false;

@@ -5,8 +5,9 @@ namespace openslope {
 struct AiStanding {
     std::uint64_t actor = 0;
     const Player* rider = nullptr;
+    // Continuous course metres; a finished entry's time is on the shared field clock.
     double progress = 0, finish_time = 0;
-    unsigned place = 0;
+    unsigned place = 0, checkpoints = 0;
     bool finished = false;
 };
 
@@ -36,6 +37,7 @@ private:
     std::uint64_t serial_ = 0, frames_ = 0;
     unsigned next_start_ = 0, primary_place_ = 0;
     double elapsed_ = 0, total_ = 0;
+    std::optional<double> primary_finish_time_;
     void add(Player& primary);
     void rank(Player& primary);
     void separate(std::span<Player* const> actors);

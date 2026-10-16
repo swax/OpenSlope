@@ -92,6 +92,131 @@ void seat(Player& rider, double x, double station, double speed = 12) {
     rider.warp({x, -.005, -station}, {0, 0, -1}, {0, 0, -speed});
 }
 
+void checkpoint_fixture(const std::filesystem::path& root) {
+    fixture(root);
+    write(root, "Instances.json", {{"Instances", Json::array()}});
+    auto routes = Json::parse(std::ifstream(root / "AIP.json"));
+    for (auto& path : routes["RaceLines"])
+        path["PathEvents"] = Json::array({
+            {{"EventType", 11}, {"EventValue", 0}, {"EventStart", 5000}, {"EventEnd", 5000}},
+            {{"EventType", 11}, {"EventValue", 0}, {"EventStart", 10000}, {"EventEnd", 10000}},
+        });
+    write(root, "AIP.json", routes);
+}
+
+void seed_checkpoints(Player& player, std::span<const unsigned> counts) {
+    std::vector<Player*> actors{&player};
+    for (unsigned i = 0; i < player.ai_field()->size(); ++i)
+        actors.push_back(&player.ai_field()->rider(i));
+    check(counts.size() == actors.size(), "Checkpoint seeding names each actual field rider");
+    const auto maximum = *std::max_element(counts.begin(), counts.end());
+    check(maximum <= 2, "The authored seed course has two checkpoints");
+    for (unsigned round = 0; round < maximum; ++round) {
+        for (unsigned i = 0; i < actors.size(); ++i)
+            if (counts[i] > round)
+                seat(*actors[i], -30. + i * 20., 49. + round * 50., 12);
+            else if (!round)
+                seat(*actors[i], -30. + i * 20., 0, 0);
+        for (unsigned tick = 0; tick < 12; ++tick)
+            player.tick({});
+        for (unsigned i = 0; i < actors.size(); ++i)
+            check(actors[i]->course_run().status().checkpoints == std::min(counts[i], round + 1),
+                  "Shared fixed-step riding crosses the authored checkpoints without writing progress counters");
+    }
+}
+
+void race_standings(const std::filesystem::path& root) {
+    checkpoint_fixture(root);
+    Player player(Terrain::load(root));
+    player.configure_run(RunMode::Race);
+    for (unsigned tick = 0; tick < 181; ++tick)
+        player.tick({.posture = -1});
+    player.ai_riders(2);
+    seed_checkpoints(player, std::array<unsigned, 3>{0, 1, 0});
+    auto& field = *player.ai_field();
+    auto& first = field.rider(0);
+    auto& last = field.rider(1);
+    const auto advance = [&] {
+        for (unsigned tick = 0; tick < 12; ++tick)
+            player.tick({});
+    };
+    seat(first, -10, 20, 0);
+    seat(player, -30, 150, 0);
+    seat(last, 10, 300, 0);
+    advance();
+    check(first.course_run().status().checkpoints == 1 && player.course_run().status().checkpoints == 0 &&
+              last.course_run().status().checkpoints == 0,
+          "Displacing riders along the course cannot manufacture checkpoint progress");
+    check(field.standings().front().rider == &first && field.standings().front().checkpoints == 1,
+          "A rider with an actual checkpoint leads riders farther down-course without one");
+    seat(player, -30, 49, 12);
+    advance();
+    check(player.course_run().status().checkpoints == 1, "The human earns its first checkpoint by riding across it");
+    check(field.standings().front().rider == &first && field.place() == 1,
+          "Equal checkpoint progress retains the incumbent leader rather than comparing distance or actor ID");
+    seat(player, -30, 99, 12);
+    advance();
+    check(player.course_run().status().checkpoints == 2 && field.standings().front().rider == &player &&
+              field.place() == 0,
+          "Strictly greater checkpoint progress advances the rider and the local HUD placement");
+    seat(last, 10, 399, 12);
+    advance();
+    check(last.course_run().status().phase == RunPhase::Finished && field.standings().front().rider == &last,
+          "An actual finish ranks ahead of unfinished riders regardless of their checkpoint counts");
+    const auto finish = field.standings().front().finish_time;
+    advance();
+    near(field.standings().front().finish_time, finish, "Continued riding cannot change a recorded finish time");
+    seat(first, -10, 399, 12);
+    advance();
+    check(first.course_run().status().phase == RunPhase::Finished && field.standings()[0].rider == &last &&
+              field.standings()[1].rider == &first && field.standings()[1].finish_time > finish,
+          "Finish order follows the actual completion clocks rather than actor order or ongoing distance");
+    player.restart_run();
+    player.tick({});
+    check(field.place() == 0 && std::all_of(field.standings().begin(), field.standings().end(),
+                                            [](const auto& row) {
+                                                return !row.finished &&
+                                                       row.rider->course_run().status().checkpoints == 0;
+                                            }),
+          "Restart clears the previous checkpoint and finish order for the complete field");
+}
+
+void finish_clock(const std::filesystem::path& root) {
+    fixture(root);
+    write(root, "Instances.json", {{"Instances", Json::array()}});
+    Player player(Terrain::load(root));
+    player.configure_run(RunMode::Race);
+    for (unsigned tick = 0; tick < 181; ++tick)
+        player.tick({.posture = -1});
+    player.ai_riders(1);
+    auto& field = *player.ai_field();
+    auto& early = field.rider(0);
+    seat(player, -30, 10, 0);
+    seat(early, -10, 10, 0);
+    for (unsigned tick = 0; tick < 120; ++tick)
+        player.tick({.posture = -1});
+    seat(early, -10, 399, 12);
+    for (unsigned tick = 0; tick < 12; ++tick)
+        player.tick({.posture = -1});
+    check(early.course_run().status().phase == RunPhase::Finished && field.standings().front().rider == &early,
+          "The original opponent completes the real finish after a nonzero race interval");
+    const auto first_time = field.standings().front().finish_time;
+    player.start_on_foot();
+    player.ai_riders(2);
+    auto& late = field.rider(1);
+    seat(late, 10, 399, 12);
+    for (unsigned tick = 0; tick < 12; ++tick)
+        player.tick({});
+    check(late.course_run().status().phase == RunPhase::Finished &&
+              late.course_run().status().elapsed < early.course_run().status().elapsed,
+          "The later finisher genuinely has a shorter personal clock after joining the existing field");
+    check(field.standings()[0].rider == &early && field.standings()[1].rider == &late &&
+              field.standings()[1].finish_time > first_time,
+          "A late joiner cannot outrank an earlier finisher with its shorter personal elapsed time");
+    near(field.standings()[0].finish_time, first_time,
+         "Dismount and adding another rider retain the earlier completion timestamp");
+}
+
 void ownership(const std::filesystem::path& root) {
     fixture(root,
             Json::array({node(4, {{"WaitTime", .05}}), node(17, {{"type17", 5}}), node(18, {{"type18", 8}}),
@@ -344,11 +469,11 @@ void recovery_paths(const std::filesystem::path& root) {
 
 void reset_bias(const std::filesystem::path& root) {
     const auto scenario = [&](const char* name, RunMode mode, unsigned subject, unsigned reference,
-                              std::array<double, 3> stations, bool biased, bool megaplex = false, unsigned laps = 1) {
+                              std::array<unsigned, 3> earned, std::array<double, 3> stations, bool biased,
+                              bool megaplex = false, unsigned laps = 1) {
         const auto map = root / name;
         std::filesystem::create_directory(map);
-        fixture(map);
-        write(map, "Instances.json", {{"Instances", Json::array()}});
+        checkpoint_fixture(map);
         write(map, "Slopesmith.json", {{"schema", 1}, {"kind", "slopesmith-export"}, {"laps", laps}});
         if (megaplex)
             write(map, "Origin.json", {{"Schema", "openslope-origin/v1"}, {"Course", "MEGAPLE"}});
@@ -357,6 +482,8 @@ void reset_bias(const std::filesystem::path& root) {
         for (unsigned tick = 0; tick < 181; ++tick)
             player.tick({.posture = -1});
         player.ai_riders(2);
+        if (mode == RunMode::Race)
+            seed_checkpoints(player, earned);
         std::array<Player*, 3> actors{&player, &player.ai_field()->rider(0), &player.ai_field()->rider(1)};
         for (unsigned i = 0; i < actors.size(); ++i)
             seat(*actors[i], i == 1 ? 10 : -10, stations[i], 7 + i * 6);
@@ -382,22 +509,23 @@ void reset_bias(const std::filesystem::path& root) {
         near(recovered->station, expected,
              "Race reset advances by the adjacent competitor's speed with the authored exclusions");
     };
-    scenario("leader", RunMode::Race, 2, 0, {180, 40, 260}, true);
-    scenario("middle-opponent", RunMode::Race, 1, 0, {40, 180, 260}, true);
-    scenario("middle-human", RunMode::Race, 0, 1, {180, 40, 260}, true);
-    scenario("leader-human", RunMode::Race, 0, 2, {260, 40, 180}, true);
-    scenario("last-human", RunMode::Race, 0, 1, {40, 180, 260}, true);
-    scenario("last", RunMode::Race, 1, 0, {180, 40, 260}, true);
-    scenario("different-gaps", RunMode::Race, 1, 0, {260, 40, 280}, true);
-    scenario("near-finish", RunMode::Race, 2, 0, {180, 40, 310}, false);
-    scenario("near-finish-human", RunMode::Race, 0, 2, {310, 40, 180}, false);
-    scenario("freeride", RunMode::Freeride, 1, 0, {180, 40, 260}, false);
-    scenario("freeride-human", RunMode::Freeride, 0, 1, {180, 40, 260}, false);
-    scenario("showoff", RunMode::Showoff, 1, 0, {180, 40, 260}, false);
-    scenario("showoff-human", RunMode::Showoff, 0, 1, {180, 40, 260}, false);
-    scenario("megaplex", RunMode::Race, 1, 0, {180, 40, 260}, false, true);
-    scenario("megaplex-human", RunMode::Race, 0, 1, {180, 40, 260}, false, true);
-    scenario("custom-laps", RunMode::Race, 1, 0, {180, 40, 260}, true, false, 4);
+    constexpr std::array<unsigned, 3> human_middle{1, 0, 2}, human_last{0, 1, 2}, human_first{2, 0, 1};
+    scenario("leader", RunMode::Race, 2, 0, human_middle, {180, 40, 260}, true);
+    scenario("middle-opponent", RunMode::Race, 1, 0, human_last, {40, 180, 260}, true);
+    scenario("middle-human", RunMode::Race, 0, 1, human_middle, {180, 40, 260}, true);
+    scenario("leader-human", RunMode::Race, 0, 2, human_first, {260, 40, 180}, true);
+    scenario("last-human", RunMode::Race, 0, 1, human_last, {40, 180, 260}, true);
+    scenario("last", RunMode::Race, 1, 0, human_middle, {180, 40, 260}, true);
+    scenario("different-gaps", RunMode::Race, 1, 0, human_middle, {260, 40, 280}, true);
+    scenario("near-finish", RunMode::Race, 2, 0, human_middle, {180, 40, 310}, false);
+    scenario("near-finish-human", RunMode::Race, 0, 2, human_first, {310, 40, 180}, false);
+    scenario("freeride", RunMode::Freeride, 1, 0, human_middle, {180, 40, 260}, false);
+    scenario("freeride-human", RunMode::Freeride, 0, 1, human_middle, {180, 40, 260}, false);
+    scenario("showoff", RunMode::Showoff, 1, 0, human_middle, {180, 40, 260}, false);
+    scenario("showoff-human", RunMode::Showoff, 0, 1, human_middle, {180, 40, 260}, false);
+    scenario("megaplex", RunMode::Race, 1, 0, human_middle, {180, 40, 260}, false, true);
+    scenario("megaplex-human", RunMode::Race, 0, 1, human_middle, {180, 40, 260}, false, true);
+    scenario("custom-laps", RunMode::Race, 1, 0, human_middle, {180, 40, 260}, true, false, 4);
 
     const auto solo = root / "solo";
     std::filesystem::create_directory(solo);
@@ -623,6 +751,12 @@ int main(int argc, char** argv) {
         const auto reset_root = root / "recovery-paths";
         std::filesystem::create_directory(reset_root);
         recovery_paths(reset_root);
+        const auto finish_root = root / "finish-clock";
+        std::filesystem::create_directory(finish_root);
+        finish_clock(finish_root);
+        const auto standings_root = root / "race-standings";
+        std::filesystem::create_directory(standings_root);
+        race_standings(standings_root);
         const auto bias_root = root / "reset-bias";
         std::filesystem::create_directory(bias_root);
         reset_bias(bias_root);
