@@ -73,20 +73,21 @@ never share a history stack.
 
 ## The open mountain is the URL
 
-`slopesmith.example.com/MOUNTAIN01` is the map this tab has open (`app/state/map-url.ts`). It is a link worth
+`slopesmith.example.com/editor/MOUNTAIN01` is the map this tab has open (`app/state/map-url.ts`). It is a link worth
 bookmarking, an address bar that says what is being worked on, and — the part `session.json` alone cannot give —
 a deterministic load: the page opens the map its URL names rather than whichever one this tab last activated.
-Opening it activates it too, so the plain address afterwards returns to the same mountain.
+Opening it activates it too, so `/editor` afterwards returns to the same mountain. Signed-out visitors see
+the sign-in form at that address, then open the requested mountain once accepted.
 
 The name is the map's own, and `project.json` is the authority on it: a rename moves the URL with it, and the
-address is blank while no project is open, so a browser-recovery document is never advertised as a map this
+address is `/editor` while no project is open, so a browser-recovery document is never advertised as a map this
 server holds. A name the server does not have is reported and ignored — a link to a renamed, deleted or
 somebody else's mountain opens the editor rather than failing.
 
-Two consequences. A map name shares the root namespace with the paths the host serves, so `api`, `assets`,
-`characters`, `src` and `node_modules` are refused by the name prompt; nothing with a dot can collide, because
-a map name is `safeDataName`. And reaching these addresses needs the SPA fallback the editor is already served
-with — `try_files {path} /index.html` in `deploy/Caddyfile.example`, and Vite's own in development.
+Map names sit below `/editor`, so names such as `maps` and `assets` cannot collide with root pages or static
+files. Reaching these addresses needs the SPA fallback the editor is already served with —
+`try_files {path} /index.html` in `deploy/Caddyfile.example`, and Vite's own in development.
+Public riding uses `/play/<mapname>`, the catalogue uses `/maps`, and local disc management uses `/isos`.
 
 The URL is written with `replaceState`, so Back leaves the editor as it always has rather than swapping the
 document out from under an author mid-edit.

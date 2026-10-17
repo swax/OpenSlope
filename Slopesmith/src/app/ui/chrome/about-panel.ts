@@ -18,13 +18,9 @@
 import slopesmithNotice from '../../../../NOTICE?raw';
 import lucideLicense from '../../../../ThirdPartyNotices/Lucide-LICENSE.txt?raw';
 import dependencyNotices from 'virtual:slopesmith-dependency-notices';
+import { PROJECT_LINKS } from '../../project-links';
 
 const RIGHTSHOLDER_CONTACT = 'contact@transparentsource.org';
-/** The same two links the repository README gives. */
-const PROJECT_LINKS = [
-  { label: 'GitHub', href: 'https://github.com/swax/OpenSlope', note: 'source, issues and releases' },
-  { label: 'Discord', href: 'https://discord.gg/QFnt2x9vZ9', note: 'meet other course creators and get help' },
-] as const;
 
 export const aboutPanelCss = `
 .sp-settings .about { display: flex; flex-direction: column; gap: 14px; }

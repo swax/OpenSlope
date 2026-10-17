@@ -96,7 +96,7 @@ optional retopology strategy and is not bundled; install the locally patched che
 installed, the Retopology panel marks that strategy unavailable and requires an explicit choice of
 the built-in **Elevation loops — contour flow** strategy instead.
 
-Jukebox playback is on by default and can be turned off per browser. **Users → Jukebox** joins the server-wide
+Jukebox playback starts off and its panel starts collapsed. Turn it on in **Users → Jukebox** to join the server-wide
 video queue and plays through YouTube's official embedded player, which needs no setup. Public URLs, queue
 order, play/pause, seeking, and playback time are synchronized so members watch together; volume and mute
 remain local to each browser. Putting the movie onto authored course screens instead of the panel needs a
@@ -105,24 +105,53 @@ frame Three.js is allowed to sample, which YouTube's iframe does not provide; th
 
 ### Public homepage and guest riding
 
-**File → Public courses…** publishes the current editable mountain for guest riding. Its owner or a
+**Users → Map permissions → share publicly** publishes the current editable mountain for guest riding.
+The same switch is available in **File → Public courses…**. Its owner or a
 moderator can change publication; moderators can also publish reference maps. Everything starts private.
-Visitors who are signed out land on the course homepage, and members can open the same view at `/?play`.
-Enter a rider name, choose a course, load it, then choose **Ride** or **Play in VR**. The right-hand lodge
-chat remains available while riding; Enter focuses it and Escape returns control to the mountain.
+**Copy public link**, beside the sharing checkbox, opens that mountain directly in the guest player using
+its name, for example `/play/MyMountain`.
+Shared maps load immediately for visitors and members. No rider name or sign-in
+is required. Private or deleted links show an unavailable message. The sign-in page includes **Back to homepage**.
+The map catalogue is `/maps`, ISO management is `/isos`, and the editor uses `/editor/<mapname>`.
+Opening an editor link while signed out asks for credentials and then opens that mountain.
+Its header uses the editor's logo and signed-in account menu. **File → Exit editor** and
+**Account menu → Exit editor** save pending changes and return home without signing out.
+GitHub, Discord and About live at the right of the ISO, Maps and player toolbar. About describes using your
+own assets and links to the source and server setup guide; narrow player headers keep those links inside About.
+Each map card has **Open**, plus **Load ISO maps** when assets are missing. Choose
+**Open** on a card to open that mountain. **Play**, **Play in VR**, and **View map** appear over the map preview.
+Click the map to choose a local start point; **Reset start** restores its default. **View map** shows the mouse
+movement legend for start placement, orbit, pan, and zoom. Hold **Alt + WASD** to move the camera.
+There is no separate map selection panel.
+Chat appears only in the player. Riding stays local until you enter a nickname and choose **Join chat**
+(members choose **Join as** their account name). Account names are reserved and cannot be chosen as guest nicknames.
+Joining connects chat and multiplayer without restarting the ride.
+**Leave chat** disconnects and gives the mountain the full viewport; **Show chat** offers joining again.
+Enter focuses connected chat and Escape returns control to the mountain. The compact player header keeps
+the selected map-name tab and chat controls together, with a labeled **Exit** button at the far right while playing.
+Public play hides editor bounds and fullscreen controls, with the score just below the header. **ISO** stays available
+alongside **Maps**, which returns to the catalogue. ISO availability and its load link live in the **Assets** menu.
+The lower-left ride legend follows board/on-foot and first/third-person changes; on narrow screens
+it folds into an expandable **Ride controls** tab.
 
-Retail courses and authored mountains that borrow game assets require the visitor's own SSX Tricky PS2
-ISO. The existing Native importer runs as WebAssembly in a browser worker, reads the ISO locally, and saves
-the extracted courses in IndexedDB. Choosing the ISO immediately lists its courses as **From your ISO**,
-including courses the server has not imported or published. The scan does not extract assets; **Load
-course** extracts only the selected course and its required donors. A matching published reference has
-one card. The ISO and extracted retail files are never uploaded. Subsequent visits list cached courses
-without choosing the ISO again; **Clear local assets** removes them. Browser storage must be available, and the
-browser may evict cached data when space is scarce.
+Retail courses require the visitor's own SSX Tricky PS2 ISO. Authored mountains that borrow game assets
+are labelled **ISO optional** and remain playable without it: missing game textures render as plain
+surfaces and missing props are omitted. Custom textures and models remain available. Supplying an ISO
+restores its assets locally. The existing Native importer runs as WebAssembly in a browser worker, reads the ISO locally, and saves
+the extracted maps in IndexedDB. The homepage has separate **Public maps** and **From your ISO**
+sections. Only maps already loaded on this device appear in the latter, including maps the server
+has never imported or published.
 
-The ISO section lists cached courses with an **Unload** button for each one. Return to **Courses** if
-you are riding, unload the course to remove its local extracted files, then load it again with your ISO
-selected to extract a fresh copy. Other cached courses and server maps are preserved.
+The **ISO** and **Maps** tabs at the top switch between ISO management and the map browser. Both pages use
+compact map tiles. Under **ISO**, choose a disc to discover its maps, then use **Load**
+or **Unload** beside each map. Shared map pages show the required donor maps with green **Loaded** and red
+**Not loaded** badges, derived from their prop, texture and other game-asset references. Their ISO management
+link retains that map's name, lists its requirements, and offers **Load required maps** and a return link.
+You can load several maps: each tile shows its progress or **Queued** state, and imports run one at a time.
+Tiles reserve space for progress and messages, and update in place so loading never reshuffles the grid.
+Cancel a loading or queued map from its tile; other queued maps continue.
+Selecting an ISO scans it without loading every map. **Clear** removes loaded ISO maps;
+browser storage may also evict them. Your ISO and extracted retail files are never uploaded.
 
 Collision sounds use the event lookup recovered from that ISO's boot executable. For courses cached by
 an older importer, choose the ISO once more when prompted: the scan repairs only the sound metadata and
@@ -137,8 +166,8 @@ Unpublishing removes the server listing and closes guest sessions for unpublishe
 it does not remove a visitor's own local disc courses or their retail riding rooms.
 Reference exports that mix authored and retail files must be published through their editable mountain;
 their flattened model files cannot be safely separated back into authored and ISO content.
-Editable mountains containing imported retail effect graphs also stay private; publish the reference
-course or replace the imported graph with authored effects before publishing the mountain.
+Editable mountains containing imported retail effect graphs can be published; the public document omits
+those graphs so their terrain remains playable without distributing imported effect data.
 
 The checked-in browser importer runtime keeps ordinary builds independent of native tools. After changing
 the Native import code, install and activate Emscripten **6.0.12**, set `EMSDK`, and run

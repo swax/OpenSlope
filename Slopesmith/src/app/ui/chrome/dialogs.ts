@@ -24,7 +24,6 @@ import {
   type ProjectConflict, type RevertOutcome, type RevertRequest,
 } from '../../state/project-sync';
 import type { ProjectBundle } from '../../../core/project/transfer';
-import { isReservedMapName } from '../../state/map-url';
 import { clientFetch } from '../../net/client';
 
 /**
@@ -425,9 +424,6 @@ export function createDialogs(deps: DialogDeps) {
       validate: candidate => {
         if (safeDataName(candidate) !== candidate) return 'Use only letters, numbers, hyphens, and underscores.';
         if (taken.has(candidate.toLowerCase())) return 'A workspace mountain already uses that name.';
-        // A map's name is also its web address (state/map-url.ts). One of these would be answered by the file
-        // server instead, so the mountain would work everywhere except at its own URL.
-        if (isReservedMapName(candidate)) return 'That name is reserved by the editor’s own web addresses.';
         return null;
       },
     });

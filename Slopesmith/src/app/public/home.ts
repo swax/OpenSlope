@@ -1,146 +1,197 @@
 import './home.css';
 import type { PublicCourse } from '../../core/session/public-courses';
 import { referenceRoom } from '../../core/session/public-courses';
-import { discCourseName, isDiscCourse } from '../../core/reference/disc-courses';
+import { isDiscCourse } from '../../core/reference/disc-courses';
 import { currentAccount } from '../net/account';
 import { clientId } from '../net/client';
 import { createSessionChannel, type PresenceEntry, type SessionMember } from '../net/session-channel';
 import { createChatBox } from '../ui/chrome/chat-box';
 import type { PeerMarks } from '../viewport/scene/peers';
-import { cachedIsoCourses, clearIsoCache, importIso, needsCollisionSoundUpdate, scanIso, unloadIsoCourse } from './iso-cache';
-import { coursesWithIso } from './course-list';
+import { cachedIsoCourses, needsCollisionSoundUpdate } from './iso-cache';
+import { publicCourseGroups } from './course-list';
+import { element, publicJson } from './dom';
+import { publicHeader } from './header';
+import { isoRequirements, isoStatusBadges } from './iso-status';
+import { isoManagementUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
 import type { PublicPlayer } from './player';
-
-function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ''): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag); node.className = className; node.textContent = text; return node;
-}
-async function request<T>(url: string, body?: unknown): Promise<T> {
-  const response = await fetch(url, body === undefined ? undefined : {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-  });
-  const data = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(data.error ?? `Request failed (${response.status}).`);
-  return data;
-}
+import { mapHeading, publicGlyph } from './presentation';
+import { publicMapControls } from './map-controls';
 
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
   document.getElementById('load-status')?.classList.remove('show');
   const account = await currentAccount();
-  let me: SessionMember | null = 'user' in account ? account.user : account.accounts === 'open'
+  const member: SessionMember | null = 'user' in account ? account.user : account.accounts === 'open'
     ? { id: 'owner', username: 'owner', role: 'admin' } : null;
+  let me: SessionMember | null = null;
+  let joined = false;
+  let chatVisible = false;
+  let joinAttempt = 0;
   let player: PublicPlayer | null = null;
   let selected: PublicCourse | null = null;
+  const linked = publicCourseRequest(new URL(location.href));
+  if (!linked) document.body.classList.add('sp-page-background');
   let room: string | null = null;
-  let file: File | null = null;
   let preparing = false;
-  let scanning = false;
-  let discovered: string[] = [];
   let published: PublicCourse[] = [];
-  let cached = await cachedIsoCourses().catch(() => [] as string[]);
+  const cardMessages = new Map<string, string>();
+  const cached = await cachedIsoCourses().catch(() => [] as string[]);
   const peers = new Map<string, PeerMarks>();
   let presence: Record<string, PresenceEntry[]> = {};
 
-  const header = element('header', 'public-header');
-  const brand = element('a', 'public-brand', 'SLOPESMITH'); brand.href = '/?play';
-  const home = element('a', 'public-back', '← Courses'); home.href = '/?play';
-  const signIn = element('a', 'public-sign-in', me ? 'Open editor ↗' : 'Member sign in ↗');
-  signIn.href = me ? '/' : '/?sign-in=1#sign-in';
-  header.append(brand, home, signIn);
+  const { header, iso: manage, setMap } = publicHeader('maps', account);
+  document.title = 'Maps · Slopesmith';
   const main = element('main', 'public-home');
-  const eyebrow = element('p', 'public-eyebrow', 'DROP IN. FIND YOUR LINE.');
-  const title = element('h1', '', 'The mountain is open.');
-  const intro = element('p', 'public-intro', 'Pick a course. Ride together in your browser or step into VR.');
-  const identity = element('form', 'public-identity');
-  const nameLabel = element('label', '', 'Your rider name');
-  const name = element('input', ''); name.name = 'name'; name.maxLength = 24; name.setAttribute('autocomplete', 'nickname');
-  name.placeholder = 'How should we call you?'; nameLabel.append(name);
-  const join = element('button', '', 'Join the lodge'); join.type = 'submit';
-  const who = element('p', 'public-who', me ? `Riding as ${me.username}` : 'No account needed. Enter a name to join multiplayer and chat.');
-  identity.append(nameLabel, join, who);
-  if (me) { nameLabel.hidden = true; join.hidden = true; }
-  const iso = element('section', 'public-iso');
-  const isoTitle = element('h2', '', 'Your disc. Your browser.');
-  const isoText = element('p', '', 'Choose your SSX Tricky PS2 ISO to list its courses. Assets are extracted when you load a course and stay on this device. Your ISO is never uploaded.');
-  const isoInput = element('input', ''); isoInput.type = 'file'; isoInput.accept = '.iso'; isoInput.id = 'public-iso';
-  const isoLabel = element('label', 'public-iso-button', 'Choose game ISO'); isoLabel.htmlFor = isoInput.id;
-  const cacheState = element('span', 'public-cache');
-  const clear = element('button', 'public-clear', 'Clear local assets'); clear.type = 'button';
-  const isoActions = element('div', 'public-iso-actions'); isoActions.append(isoLabel, isoInput, cacheState, clear);
-  const cachedList = element('ul', 'public-cached-courses'); cachedList.setAttribute('aria-label', 'Cached courses');
-  const updateCache = () => {
-    cacheState.textContent = cached.length ? `${cached.length} course${cached.length === 1 ? '' : 's'} cached on this device` : 'No courses cached yet';
-    clear.hidden = !cached.length; clear.disabled = preparing || scanning;
-    cachedList.replaceChildren(); cachedList.hidden = !cached.length;
-    for (const [index, course] of cached.entries()) {
-      const row = element('li', '');
-      const label = element('span', '', discCourseName(course)); label.id = `public-cached-course-${index}`;
-      const unload = element('button', '', 'Unload'); unload.type = 'button'; unload.disabled = preparing || scanning;
-      unload.setAttribute('aria-describedby', label.id);
-      unload.addEventListener('click', () => { void changeCache(() => unloadIsoCourse(course),
-        `${discCourseName(course)} unloaded. Load it again to extract a fresh copy from your ISO.`); });
-      row.append(label, unload); cachedList.append(row);
-    }
-  };
-  updateCache();
-  const isoStatus = element('p', 'public-iso-status'); isoStatus.setAttribute('role', 'status'); isoStatus.hidden = true;
-  iso.append(isoTitle, isoText, isoActions, cachedList, isoStatus);
-  const courseTitle = element('h2', 'public-course-title', 'Choose your next run');
-  const grid = element('div', 'public-courses'); grid.setAttribute('aria-label', 'Playable courses');
-  const status = element('p', 'public-status', 'Loading public courses…'); status.setAttribute('role', 'status');
-  const actions = element('div', 'public-actions');
-  const prepare = element('button', 'public-primary', 'Load course'); prepare.type = 'button'; prepare.disabled = true;
-  const cancel = element('button', '', 'Cancel import'); cancel.type = 'button'; cancel.hidden = true;
-  const ride = element('button', 'public-primary', 'Ride'); ride.type = 'button'; ride.hidden = true;
-  const vr = element('button', '', 'Play in VR'); vr.type = 'button'; vr.hidden = true;
-  const stop = element('button', '', 'Stop riding'); stop.type = 'button'; stop.hidden = true;
-  actions.append(prepare, cancel, ride, vr, stop);
-  main.append(eyebrow, title, intro, identity, iso, courseTitle, grid, status, actions);
-  document.body.append(header, main);
-
-  function renderCourses() {
-    const available = new Set([...discovered, ...cached]);
-    const courses = coursesWithIso(published, [...available]);
-    selected = courses.find(course => course.kind === selected?.kind && course.id === selected.id) ?? null;
-    grid.replaceChildren();
-    for (const [index, course] of courses.entries()) {
-      const fromIso = course.kind === 'reference' && course.retailData && course.isoCourses.some(slot => available.has(slot));
-      const ready = course.isoCourses.length > 0 && course.isoCourses.every(slot => cached.includes(slot));
-      const card = element('button', `public-course public-course-${index % 4}`); card.type = 'button';
-      card.disabled = preparing || scanning;
-      const art = element('div', 'public-course-art'); art.setAttribute('aria-hidden', 'true');
-      const badge = element('span', 'public-course-kind', fromIso ? 'FROM YOUR ISO'
-        : course.kind === 'project' ? 'COMMUNITY MOUNTAIN' : 'REFERENCE COURSE');
-      const courseName = element('h3', '', course.name.replace(/[_-]/g, ' '));
-      const requirements = element('span', 'public-requirements', ready ? 'Cached on this device'
-        : course.retailData ? fromIso ? 'Extracted when you load this course' : 'Your ISO required' : 'Ready in your browser');
-      card.append(art, badge, courseName, requirements);
-      card.setAttribute('aria-pressed', String(selected === course));
-      card.addEventListener('click', () => {
-        selected = course;
-        grid.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button === card)));
-        prepare.disabled = false;
-        status.textContent = ready ? `${course.name} is cached and ready to load.`
-          : course.retailData ? `${course.name} uses game assets from your local ISO.` : `${course.name} is ready to load.`;
-        prepare.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      });
-      grid.append(card);
-    }
-    prepare.disabled = !selected || preparing || scanning;
-    return courses.length;
+  const title = element('h1', 'public-visually-hidden', 'Maps');
+  const serverSection = element('section', 'public-server-maps'); serverSection.setAttribute('aria-label', 'Public server maps');
+  const serverTitle = element('h2', 'public-course-title', 'Public maps');
+  const serverGrid = element('div', 'public-courses'); serverGrid.setAttribute('aria-label', 'Public server maps');
+  const serverEmpty = element('p', 'public-empty', 'No public maps yet.');
+  serverSection.append(serverTitle, serverGrid, serverEmpty);
+  const localSection = element('section', 'public-local-maps'); localSection.setAttribute('aria-label', 'Loaded ISO maps');
+  const localTitle = element('h2', 'public-course-title', 'From your ISO');
+  const localGrid = element('div', 'public-courses'); localGrid.setAttribute('aria-label', 'Loaded ISO maps');
+  const localEmpty = element('p', 'public-empty', 'No maps loaded.');
+  localSection.append(localTitle, localGrid, localEmpty);
+  const requirements = element('details', 'public-requirements-host'); requirements.hidden = true;
+  const status = element('p', 'public-status', 'Loading public maps…'); status.setAttribute('role', 'status');
+  const actions = element('div', 'public-actions'); actions.hidden = true;
+  const stop = element('button', 'public-stop', ''); stop.type = 'button'; stop.hidden = true;
+  stop.setAttribute('aria-label', 'Exit play'); stop.title = 'Exit play';
+  stop.append(publicGlyph('stop'), element('span', 'public-stop-label', 'Exit'));
+  header.append(stop);
+  const toggleChat = element('button', 'public-chat-toggle'); toggleChat.type = 'button';
+  toggleChat.setAttribute('aria-controls', 'public-chat');
+  actions.append(toggleChat);
+  const mapControls = publicMapControls({
+    play: () => { void player?.play().catch(showPlayerError); },
+    vr: () => { void player?.vr().catch(showPlayerError); },
+    view: () => player?.view(),
+    resetStart: () => player?.resetStart(),
+  });
+  function showPlayerError(error: unknown) {
+    mapControls.error(error instanceof Error ? error.message : String(error));
   }
-  function coursePrompt() {
-    return grid.childElementCount ? 'Select a course to get started.'
-      : 'Choose your ISO to discover playable courses. Members can also publish mountains from the editor.';
+  main.append(title, serverSection, localSection, requirements, status, actions);
+  document.body.append(header, main, mapControls.el);
+
+  function showRequirements() {
+    manage.href = isoManagementUrl(selected ?? undefined);
+    requirements.replaceChildren();
+    requirements.hidden = !selected?.isoCourses.length;
+    document.body.classList.toggle('public-map-assets', !!selected?.isoCourses.length);
+    if (selected) {
+      const loaded = selected.isoCourses.filter(slot => cached.includes(slot)).length;
+      const total = selected.isoCourses.length;
+      const summary = element('summary', 'public-assets-summary');
+      summary.setAttribute('aria-label', `ISO assets: ${loaded} of ${total} maps loaded`);
+      summary.title = `${loaded} of ${total} ISO maps loaded`;
+      summary.dataset.complete = String(loaded === total);
+      summary.append(element('span', 'public-assets-label', 'Assets'), element('span', 'public-assets-count', `${loaded}/${total}`));
+      const assets = isoRequirements(selected, cached);
+      if (loaded < total && selected.kind === 'project') assets.querySelector('p')!.textContent = 'ISO textures/props omitted for unloaded maps.';
+      requirements.append(summary, assets);
+    }
+  }
+  document.addEventListener('pointerdown', event => {
+    if (!requirements.contains(event.target as Node)) requirements.open = false;
+  });
+  requirements.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.stopPropagation(); requirements.open = false; requirements.querySelector('summary')?.focus(); }
+  });
+  function renderCourses() {
+    const groups = publicCourseGroups(published, cached);
+    for (const [heading, label, count] of [[serverTitle, 'Public maps', groups.server.length],
+      [localTitle, 'From your ISO', groups.local.length]] as const) {
+      const total = element('span', 'public-section-count', String(count)); total.setAttribute('aria-hidden', 'true');
+      heading.replaceChildren(document.createTextNode(label), total);
+    }
+    serverGrid.replaceChildren(); localGrid.replaceChildren();
+    serverEmpty.hidden = !!groups.server.length; localEmpty.hidden = !!groups.local.length;
+    for (const [courses, grid] of [
+      [groups.server, serverGrid], [groups.local, localGrid],
+    ] as const) {
+      for (const course of courses) {
+        const missing = course.isoCourses.some(slot => !cached.includes(slot));
+        const displayName = course.name.replace(/[_-]/g, ' ');
+        const card = element('article', 'public-course public-map-tile'); card.setAttribute('aria-label', displayName);
+        card.dataset.kind = course.kind;
+        card.append(mapHeading(displayName, course.kind === 'project' ? 'mountain' : 'disc'));
+        if (missing) card.append(element('span', 'public-requirements',
+          course.kind === 'project' ? 'ISO optional' : 'ISO needed'));
+        if (course.isoCourses.length) card.append(isoStatusBadges(course.isoCourses, cached));
+        const message = cardMessages.get(`${course.kind}:${course.id}`);
+        if (message) {
+          const feedback = element('p', 'public-card-status', message); feedback.setAttribute('role', 'status'); card.append(feedback);
+        }
+        const controls = element('div', 'public-card-actions');
+        const open = element('button', 'public-primary', 'Open'); open.type = 'button';
+        open.prepend(publicGlyph('view'));
+        open.setAttribute('aria-label', `Open ${displayName}`);
+        open.disabled = preparing || (course.kind === 'reference' && missing);
+        open.addEventListener('click', () => {
+          if (preparing) return;
+          selected = course;
+          void load();
+        });
+        controls.append(open);
+        if (missing || message) {
+          const manageIso = element('a', '', 'Load ISO maps'); manageIso.href = isoManagementUrl(course);
+          manageIso.prepend(publicGlyph('load'));
+          controls.append(manageIso);
+        }
+        card.append(controls);
+        grid.append(card);
+      }
+    }
   }
   renderCourses();
 
-  const chat = createChatBox({ docked: true, say: text => session.say(text), me: () => me });
-  const chatInput = chat.el.querySelector('input')!;
+  const chat = createChatBox({ docked: true, say: text => session.say(text), me: () => me,
+    suspended: () => !joined || !chatVisible || !player });
+  chat.el.id = 'public-chat'; chat.el.hidden = true;
+  const chatEntry = chat.el.querySelector<HTMLElement>('.sp-chat-entry')!;
+  const chatLog = chat.el.querySelector<HTMLElement>('.sp-chat-log')!;
+  const chatInput = chatEntry.querySelector('input')!;
   chatInput.enterKeyHint = 'send';
-  chatInput.placeholder = me ? 'Say something…' : 'Enter a rider name to chat'; chatInput.disabled = !me;
-  const chatStatus = element('p', 'public-chat-status', 'Join the lodge to chat with other riders.');
+  chatInput.placeholder = 'Say something…'; chatInput.disabled = true;
+  const chatStatus = element('p', 'public-chat-status');
   chat.el.insertBefore(chatStatus, chat.el.children[1]);
+  const identity = element('form', 'public-chat-join');
+  const invite = element('p', '', 'Play locally, or join chat and other riders.');
+  const nameLabel = element('label', '');
+  nameLabel.append(element('span', 'public-visually-hidden', 'Your rider name'));
+  const name = element('input', ''); name.name = 'name'; name.maxLength = 24; name.required = true;
+  name.setAttribute('autocomplete', 'nickname'); name.placeholder = 'Rider name'; nameLabel.append(name);
+  nameLabel.hidden = !!member; name.disabled = !!member;
+  const join = element('button', 'public-iso-button', member ? `Join as ${member.username}` : 'Join chat'); join.type = 'submit';
+  const who = element('p', 'public-who'); who.setAttribute('role', 'status');
+  identity.append(invite, nameLabel, join, who);
+  chat.el.insertBefore(identity, chatLog);
+  chatEntry.hidden = chatLog.hidden = true;
+  function showChat(visible: boolean) {
+    chatVisible = visible;
+    chat.el.hidden = !visible;
+    document.body.classList.toggle('public-chat-visible', visible);
+    const label = visible ? 'Leave chat' : 'Show chat';
+    toggleChat.replaceChildren(publicGlyph(visible ? 'leaveChat' : 'chat'), element('span', 'public-chat-toggle-label', label));
+    toggleChat.setAttribute('aria-label', label); toggleChat.title = label;
+    toggleChat.setAttribute('aria-expanded', String(visible));
+    window.dispatchEvent(new Event('resize'));
+  }
+  function leaveChat() {
+    joinAttempt++;
+    joined = false; me = null;
+    session.close(); chat.close(); chat.replay([]);
+    presence = {}; peers.clear(); refreshPeers();
+    chatInput.value = ''; chatInput.disabled = true;
+    chatEntry.hidden = chatLog.hidden = true; identity.hidden = false;
+    chatStatus.textContent = ''; who.textContent = ''; join.disabled = false;
+  }
+  toggleChat.addEventListener('click', () => {
+    if (chatVisible) leaveChat();
+    showChat(!chatVisible);
+  });
   function refreshPeers() {
     if (!selected || !player) return;
     const entries = selected.kind === 'project' ? presence[selected.id] ?? []
@@ -152,114 +203,106 @@ export async function showPublicHome(): Promise<void> {
   const session = createSessionChannel({
     clientId, deviceLabel: 'public rider', publicPlay: true,
     url: () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/public/session?client=${encodeURIComponent(clientId)}`,
-    onWelcome(welcome) { me = welcome.member; session.watch(room); },
-    onPresence(maps) { presence = maps; refreshPeers(); },
-    onAware(peer) {
-      peers.set(peer.sessionId, { ...peer, ...peer.aware }); refreshPeers();
+    onWelcome(welcome) {
+      if (!joined) return;
+      me = welcome.member; session.watch(room);
+      chatInput.disabled = false;
+      chatStatus.textContent = `Connected as ${me.username}`;
     },
-    onChat: line => chat.push(line), onChatHistory: lines => chat.replay(lines),
-    onRideEvent: event => player?.rideEvent(event),
+    onPresence(maps) { if (joined) { presence = maps; refreshPeers(); } },
+    onAware(peer) { if (joined) { peers.set(peer.sessionId, { ...peer, ...peer.aware }); refreshPeers(); } },
+    onChat: line => { if (joined) chat.push(line); }, onChatHistory: lines => { if (joined) chat.replay(lines); },
+    onRideEvent: event => { if (joined) player?.rideEvent(event); },
     onCapacityRefused: message => { chatStatus.textContent = message; },
-    onStatus: state => { chatStatus.textContent = state === 'open' ? 'Connected · server chat' : 'Connecting to the lodge…'; },
+    onStatus: state => {
+      if (!joined) return;
+      chatInput.disabled = true;
+      chatStatus.dataset.state = state; chatStatus.textContent = 'Connecting…';
+      if (state !== 'open') { presence = {}; peers.clear(); refreshPeers(); }
+    },
+    onAccessChanged: reason => { leaveChat(); who.textContent = reason; },
   });
-  async function connect() {
-    if (!me) return;
-    chatInput.disabled = false; chatInput.placeholder = 'Say something…'; session.start();
-  }
   identity.addEventListener('submit', event => {
+    if (!player || !chatVisible || joined) { event.preventDefault(); return; }
     event.preventDefault(); join.disabled = true;
-    void request<{ member: SessionMember }>('/api/public/guest', { name: name.value }).then(async result => {
-      me = result.member; who.textContent = `Riding as ${me.username}`; nameLabel.hidden = true; join.hidden = true;
-      await connect();
-    }).catch(error => { who.textContent = String(error instanceof Error ? error.message : error); })
-      .finally(() => { join.disabled = false; });
+    const attempt = ++joinAttempt;
+    const identityRequest = member ? Promise.resolve({ member })
+      : publicJson<{ member: SessionMember }>('/api/public/guest', { name: name.value });
+    void identityRequest.then(result => {
+      if (attempt !== joinAttempt || !chatVisible) return;
+      me = result.member; joined = true;
+      identity.hidden = true; chatEntry.hidden = chatLog.hidden = false;
+      session.start();
+    }).catch(error => {
+      if (attempt === joinAttempt) who.textContent = error instanceof Error ? error.message : String(error);
+    }).finally(() => { if (attempt === joinAttempt) join.disabled = false; });
   });
-  isoInput.addEventListener('change', () => { void discoverIso(); });
-  async function discoverIso() {
-    file = isoInput.files?.[0] ?? null;
-    discovered = [];
-    if (!file) { renderCourses(); return; }
-    scanning = true; isoInput.disabled = clear.disabled = true;
-    updateCache();
-    abort = new AbortController(); cancel.hidden = false;
-    isoStatus.hidden = false; isoStatus.textContent = `Reading courses from ${file.name}…`;
-    renderCourses();
-    try {
-      discovered = await scanIso(file, abort.signal);
-      isoStatus.textContent = `${file.name} · ${discovered.length} course${discovered.length === 1 ? '' : 's'} found. Select one below to extract and ride.`;
-    } catch (error) {
-      file = null; isoInput.value = '';
-      isoStatus.textContent = error instanceof Error ? error.message : String(error);
-    } finally {
-      scanning = false; isoInput.disabled = clear.disabled = false; cancel.hidden = true; abort = null;
-      updateCache(); renderCourses(); status.textContent = coursePrompt();
-    }
-  }
-  async function changeCache(change: () => Promise<void>, message: string) {
-    if (preparing || scanning || player) return;
-    preparing = true; isoInput.disabled = true; updateCache(); renderCourses();
-    try { await change(); cached = await cachedIsoCourses(); status.textContent = message; }
-    catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
-    finally { preparing = false; isoInput.disabled = false; updateCache(); renderCourses(); }
-  }
-  clear.addEventListener('click', () => { void changeCache(clearIsoCache, 'Local course assets cleared. Choose a course to load again.'); });
-  let abort: AbortController | null = null;
-  cancel.addEventListener('click', () => abort?.abort());
-  prepare.addEventListener('click', () => { void load(); });
   async function load() {
-    if (!selected || preparing || scanning) return;
-    if (!me) { who.textContent = 'Enter a rider name before loading a course.'; name.focus(); return; }
+    if (!selected || preparing) return;
     const course = selected;
-    preparing = true; prepare.disabled = true; clear.disabled = true; isoInput.disabled = true;
-    updateCache();
-    grid.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    const missing = course.isoCourses.some(slot => !cached.includes(slot));
+    if (course.kind === 'reference' && missing) { location.href = isoManagementUrl(course); return; }
+    preparing = true; renderCourses();
     try {
-      const needed = course.isoCourses.filter(course => !cached.includes(course));
-      if (needed.length) {
-        if (!file) throw new Error('Choose your game ISO above to prepare this course.');
-        abort = new AbortController(); cancel.hidden = false;
-        await importIso(file, needed, text => { status.textContent = text; }, abort.signal);
-        cached = await cachedIsoCourses(); updateCache();
+      if (course.kind === 'reference' && await needsCollisionSoundUpdate(course.isoCourses)) {
+        const message = 'Choose your ISO once more to restore collision sounds.';
+        cardMessages.set(`${course.kind}:${course.id}`, message);
+        if (linked) status.textContent = message;
+        return;
       }
-      if (await needsCollisionSoundUpdate(course.isoCourses))
-        throw new Error('Choose your ISO once more to restore collision sounds. Your cached course assets will be kept.');
-      cancel.hidden = true;
+      showRequirements();
+      document.body.classList.remove('sp-page-background');
       document.body.classList.add('public-preparing');
+      setMap(course.name.replace(/[_-]/g, ' '), publicCourseUrl(course));
+      history.replaceState(history.state, '', publicCourseUrl(course));
+      document.title = `${course.name} · Slopesmith`;
       main.classList.add('public-in-world');
+      header.insertBefore(status, header.children[2]);
+      header.insertBefore(actions, header.children[3]);
+      header.insertBefore(requirements, actions);
       const { preparePublicPlayer } = await import('./player');
-      player = await preparePublicPlayer(course, document.getElementById('viewport')!, session,
-        text => { status.textContent = text; }, playing => { ride.hidden = vr.hidden = playing; stop.hidden = !playing; });
+      player = await preparePublicPlayer(course, document.getElementById('viewport')!, session, {
+        progress: text => { status.textContent = text; },
+        onPlaying: playing => { mapControls.setPlaying(playing); stop.hidden = !playing; },
+        onRideControls: help => mapControls.setRideControls(help),
+        onStartChanged: custom => mapControls.setCustomStart(custom),
+      });
       const known = published.some(entry => entry.kind === course.kind && entry.id === course.id);
       room = course.kind === 'project' ? course.id : known || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
       session.watch(room);
-      prepare.hidden = true; ride.hidden = vr.hidden = false;
-      status.textContent = `${course.name} · Ready to ride. Enter chats. Esc releases the mouse.`;
+      actions.hidden = false; mapControls.setPlaying(false);
+      status.textContent = '';
       document.body.classList.add('public-ready');
+      showChat(true);
       refreshPeers();
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error);
-      prepare.disabled = false;
       if (main.classList.contains('public-in-world')) {
-        prepare.hidden = true; document.body.classList.add('public-ready');
-        status.textContent += ' Return to Courses to try again.';
+        main.append(status);
+        document.body.classList.add('public-ready');
+        status.textContent += ' Return to Maps to try again.';
       }
-    } finally {
-      preparing = false; cancel.hidden = true; abort = null; clear.disabled = false; isoInput.disabled = false;
-      updateCache();
-      grid.querySelectorAll('button').forEach(button => { button.disabled = false; });
-    }
+    } finally { preparing = false; renderCourses(); }
   }
-  ride.addEventListener('click', () => { void player?.play(); });
-  vr.addEventListener('click', () => { void player?.vr().catch(error => {
-    status.textContent = error instanceof Error ? error.message : String(error);
-  }); });
   stop.addEventListener('click', () => player?.stop());
   try {
-    const data = await request<{ courses: PublicCourse[]; guest: SessionMember | null }>('/api/public/courses');
-    if (!me && data.guest) { me = data.guest; who.textContent = `Riding as ${me.username}`; nameLabel.hidden = join.hidden = true; }
+    const data = await publicJson<{ courses: PublicCourse[]; guest: SessionMember | null }>('/api/public/courses');
+    if (data.guest && !member) name.value = data.guest.username.replace(/ \(guest\)$/, '');
     published = data.courses;
+    if (linked) selected = resolvePublicCourse(linked, published, cached);
     renderCourses();
-    if (!scanning) status.textContent = coursePrompt();
-    await connect();
+    if (linked) showRequirements();
+    if (linked && !selected) {
+      title.classList.remove('public-visually-hidden'); title.textContent = 'Map unavailable';
+      status.textContent = 'This map is private or deleted. Choose another map.';
+    } else if (linked && selected) {
+      history.replaceState(null, '', publicCourseUrl(selected));
+      document.title = `${selected.name} · Slopesmith`;
+      title.classList.remove('public-visually-hidden');
+      title.textContent = selected.name.replace(/[_-]/g, ' ');
+      serverSection.hidden = localSection.hidden = true;
+      status.textContent = 'Loading map…';
+    } else status.textContent = '';
+    if (linked && selected) await load();
   } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
 }

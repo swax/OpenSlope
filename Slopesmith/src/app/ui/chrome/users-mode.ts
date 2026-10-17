@@ -8,6 +8,8 @@ import { tooltip } from '../components/tooltip';
 import { contextMenu, type MenuItem } from '../components/controls';
 import { MEDIA_ICON, SCREEN_ICON_BODY, USERS_ICON, WATCHING_ICON, svg } from '../components/icons';
 import { fetchJson, postJson } from '../../net/fetch-json';
+import { coursePublication, publicProjectUrl } from '../../net/publication';
+import { EDITOR_PATH } from '../../navigation';
 import type { MemberRole } from '../../net/session-channel';
 import type { ClientProject } from '../../state/project-sync';
 import { youtubeVideoId } from '../../net/video-bridge';
@@ -40,6 +42,16 @@ import { MIN_PASSWORD_LENGTH } from '../../../core/accounts/password-policy';
  */
 
 const CSS = `
+.sp-public-sharing { display: flex; align-items: center; gap: 8px; padding: 4px 8px; }
+.sp-public-sharing label { display: flex; align-items: center; justify-content: space-between; flex: 1;
+  gap: 8px; min-width: 0; cursor: pointer; }
+.sp-public-sharing input { margin: 0; }
+.sp-copy-public-link { flex: 0 0 auto; width: auto !important; padding: 3px 7px !important;
+  color: #dbe7f2; background: #14283a; border: 1px solid #315574 !important; border-radius: 4px;
+  font: 10.5px/1.4 system-ui, sans-serif; cursor: pointer; }
+.sp-copy-public-link:hover:not(:disabled) { color: #fff; background: #1b3a53; }
+.sp-copy-public-link:focus-visible, .sp-public-sharing input:focus-visible { outline: 2px solid #78bce8; outline-offset: 2px; }
+.sp-copy-public-link:disabled { opacity: .45; cursor: default; }
 .sp-users-comms { display: flex; flex-direction: column; gap: 6px; padding: 7px 8px;
   border-bottom: 1px solid #1c3043; }
 .sp-users-comms .sp-voice { width: 100%; box-sizing: border-box; flex-wrap: wrap; }
@@ -307,7 +319,7 @@ export interface UsersMode {
 function showInviteLink(token: string, role: MemberRole, days: number): void {
   const { host, close } = modal();
   const gui = new GUI({ container: host, title: 'Invite link' });
-  const link = `${location.origin}/#invite=${encodeURIComponent(token)}`;
+  const link = `${location.origin}${EDITOR_PATH}#invite=${encodeURIComponent(token)}`;
   note(gui, `One ${role} account, expiring in ${days} `
     + `day${days === 1 ? '' : 's'}. The link is the credential until it is redeemed and worthless afterwards, `
     + 'so send it the way you would send a password. This is the only time it is shown.');
@@ -384,6 +396,10 @@ export function createUsersMode(deps: {
   let active = false;
   let roster: Roster | null = null;
   let loading = false;
+  let refreshVersion = 0;
+  let publication: { id: string; published: boolean } | null = null;
+  let jukeboxOpen = false;
+  let mapPermissionsOpen = false;
   let jukeboxUrl = '';
   let jukebox = emptyJukeboxState();
   let jukeboxMessage = 'The queue and transport are shared; playback and mute are local to this browser.';
@@ -918,6 +934,8 @@ export function createUsersMode(deps: {
   function buildJukebox(): void {
     let playbackEnabled = deps.videoEnabled();
     const folder = gui.addFolder(`Jukebox · ${playbackEnabled ? 'On' : 'Off'}`);
+    folder.open(jukeboxOpen);
+    folder.onOpenClose(() => { jukeboxOpen = !folder._closed; });
     const body = document.createElement('div');
     body.className = 'sp-gui-custom sp-jukebox';
 
@@ -1190,12 +1208,67 @@ export function createUsersMode(deps: {
     if (!project || !roster) return;
     const policy = { restricted: project.editorIds !== undefined };
     const folder = gui.addFolder(`Map permissions · ${policy.restricted ? 'Restricted' : 'Open'}`);
-    folder.close();
+    folder.open(mapPermissionsOpen);
+    folder.onOpenClose(() => { mapPermissionsOpen = !folder._closed; });
     const owner = roster.members.find(member => member.id === project.ownerId);
     const manager = project.ownerId === roster.me.id || roster.me.role === 'moderator' || roster.me.role === 'admin';
     note(folder, owner
       ? `${owner.username} owns this map. ${manager ? 'Owners and moderators can change this policy.' : ''}`
       : 'This map predates ownership. A moderator can manage it.');
+
+    const sharing = document.createElement('div');
+    sharing.className = 'sp-gui-custom sp-public-sharing';
+    const label = document.createElement('label');
+    label.textContent = 'share publicly';
+    const share = document.createElement('input');
+    share.type = 'checkbox';
+    share.checked = publication?.id === project.id && publication.published;
+    share.disabled = !manager || publication?.id !== project.id;
+    label.append(share);
+    tooltip(label, 'List this map on the Slopesmith homepage for anyone to play. Visitors without a game ISO '
+      + 'can still ride; missing game textures and props are omitted.');
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'sp-copy-public-link';
+    copy.textContent = 'Copy public link';
+    copy.disabled = !share.checked;
+    tooltip(copy, 'Copy a link that opens this map in the guest player. Turn on public sharing first.');
+    copy.onclick = () => {
+      const link = publicProjectUrl(project.name);
+      void (async () => {
+        try {
+          await navigator.clipboard.writeText(link);
+          toast('Public link copied.', 'ok');
+        } catch {
+          const { host, close } = modal();
+          host.setAttribute('role', 'dialog');
+          host.setAttribute('aria-label', 'Copy public link');
+          const title = document.createElement('h3'); title.textContent = 'Copy public link';
+          const field = document.createElement('input');
+          field.className = 'sp-users-link'; field.readOnly = true; field.value = link;
+          field.setAttribute('aria-label', 'Public play link');
+          const done = document.createElement('button'); done.type = 'button'; done.textContent = 'Done'; done.onclick = close;
+          host.append(title, field, done);
+          field.focus(); field.select();
+        }
+      })();
+    };
+    sharing.append(label, copy);
+    folder.$children.append(sharing);
+    share.onchange = () => {
+      const published = share.checked;
+      share.disabled = copy.disabled = true;
+      void act('Changing public sharing', async () => {
+        try {
+          const saved = await coursePublication('project', project.id, published);
+          publication = { id: project.id, published: saved };
+        } catch (error) {
+          share.checked = !published;
+          throw error;
+        } finally { share.disabled = !manager; copy.disabled = !share.checked; }
+      });
+    };
+    if (publication?.id !== project.id) detail(folder, 'Public sharing status is unavailable. Reopen Users to retry.', 'sharing');
 
     const restrict = folder.add(policy, 'restricted').name('restrict editing');
     tip(restrict, 'Off: every editor may edit. On: only selected editors, the owner, and moderators/admins may edit.');
@@ -1324,10 +1397,24 @@ export function createUsersMode(deps: {
   function refresh(): void {
     if (!active) return;
     loading = true;
-    void fetchJson<Roster>('/api/members')
-      .then(answer => { roster = answer; })
-      .catch(() => { roster = null; })
-      .finally(() => { loading = false; if (active) render(); });
+    const version = ++refreshVersion;
+    const projectId = deps.currentProject()?.id;
+    void Promise.all([
+      fetchJson<Roster>('/api/members'),
+      projectId ? coursePublication('project', projectId).then(published => ({ id: projectId, published })).catch(() => null)
+        : Promise.resolve(null),
+    ])
+      .then(([answer, shared]) => {
+        if (version !== refreshVersion) return;
+        roster = answer;
+        if (deps.currentProject()?.id === projectId) publication = shared;
+      })
+      .catch(() => { if (version === refreshVersion) roster = null; })
+      .finally(() => {
+        if (version !== refreshVersion) return;
+        loading = false;
+        if (active) render();
+      });
     render();
   }
 

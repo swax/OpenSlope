@@ -1115,7 +1115,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
       refuseUpgrade(socket, decision.status, String(decision.body.error ?? 'Refused.'));
       return;
     }
-    const member = memberOf(decision.identity) ?? (publicPlay ? guestMember(req) : null);
+    const member = memberOf(decision.identity) ?? (publicPlay ? await guestMember(req) : null);
     if (!member) { refuseUpgrade(socket, 401, 'Sign in to use this server.'); return; }
 
     const peer = acceptWebSocket(req, socket, head);

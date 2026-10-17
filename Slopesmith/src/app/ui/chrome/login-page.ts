@@ -1,9 +1,11 @@
+import '../../styles/page-background.css';
 import GUI from 'lil-gui';
 import { installStyles } from '../components/styles';
 import { banner, errorLine, focusField, named, secret, submitOnEnter } from '../components/credential-fields';
 import { postJson } from '../../net/fetch-json';
 import { adoptAccount, type Gate, type Member } from '../../net/account';
 import { enterEditor } from '../../enter-editor';
+import { MAPS_PATH } from '../../navigation';
 
 /**
  * The page a server with accounts answers somebody it does not know yet (docs/038).
@@ -35,6 +37,10 @@ const CSS = `
 .sp-login-head span { display: block; margin-top: 2px; color: #7f9cb4;
   font: 11px/1.4 ui-sans-serif, system-ui, sans-serif; }
 .sp-login-card .lil-gui.lil-root { width: 100%; }
+.sp-login-home { display: block; margin: 18px 4px 0; color: #9ec6e5; text-align: center;
+  font: 12px/1.5 ui-sans-serif, system-ui, sans-serif; text-decoration: none; }
+.sp-login-home:hover { color: #eef7ff; text-decoration: underline; }
+.sp-login-home:focus-visible { outline: 2px solid #9ec6e5; outline-offset: 4px; }
 .sp-login-foot { margin: 11px 4px 0; color: #5f7b93; text-align: center;
   font: 10.5px/1.5 ui-sans-serif, system-ui, sans-serif; }
 .sp-login-done { padding: 11px 12px; color: #d5eee0; background: #14301f; border: 1px solid #2f6142;
@@ -67,7 +73,11 @@ function card(page: HTMLElement, tab: string, subtitle: string): { host: HTMLEle
   text.append(name, line);
   head.append(mark, text);
   const body = document.createElement('div');
-  host.append(head, body);
+  const home = document.createElement('a');
+  home.className = 'sp-login-home';
+  home.href = MAPS_PATH;
+  home.textContent = '← Back to homepage';
+  host.append(head, body, home);
   page.append(host);
   return { host, body };
 }
@@ -190,7 +200,7 @@ export function showLoginPage(gate: Gate): void {
   installStyles('login', CSS);
   document.getElementById('load-status')?.classList.remove('show');
   const page = document.createElement('div');
-  page.className = 'sp-login';
+  page.className = 'sp-login sp-page-background';
   document.body.append(page);
   if (gate.show === 'enrol') enrolForm(page);
   else if (gate.show === 'redeem') redeemForm(page, gate.invite);

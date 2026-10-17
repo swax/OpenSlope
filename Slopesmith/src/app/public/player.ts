@@ -8,6 +8,7 @@ import { Viewport } from '../viewport/viewport';
 import type { ViewportCallbacks } from '../viewport/types';
 import { createStore } from '../state/store';
 import { createPlay } from '../ride/play';
+import { rideControlHelp, type RideControlHelp } from '../ride/control-help';
 import { customSkyUrl, setAssetUrlResolver } from '../net/asset-paths';
 import { setClientProjectId } from '../net/client';
 import type { SessionChannel } from '../net/session-channel';
@@ -21,6 +22,9 @@ import { IMPORTED_PROP_LEVEL } from '../../core/props/imported';
 import { DEFAULT_CHARACTER_MODEL_ID } from '../../core/characters/builtins';
 import { lightPublicReference } from './lighting';
 import { installLocalSky } from './sky';
+import { cachedIsoCourses } from './iso-cache';
+import { publicMountainDocument, publicPropPayload } from './course-assets';
+import type { V3 } from '../../core/doc/types';
 
 const yieldFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 async function json<T>(url: string): Promise<T> {
@@ -31,26 +35,41 @@ async function json<T>(url: string): Promise<T> {
 
 /** Public play composes the existing viewport and ride controller without starting the editor or autosave. */
 export async function preparePublicPlayer(course: PublicCourse, container: HTMLElement, session: SessionChannel,
-  progress: (text: string) => void, onPlaying: (playing: boolean) => void) {
+  ui: { progress: (text: string) => void; onPlaying: (playing: boolean) => void;
+    onRideControls: (help: RideControlHelp | null) => void; onStartChanged: (custom: boolean) => void }) {
+  const { progress, onPlaying, onRideControls, onStartChanged } = ui;
   progress('Preparing the mountain…');
   const aliases = { ...course.isoAliases,
     ...(course.kind === 'reference' && course.isoCourses[0] ? { [course.id]: course.isoCourses[0] } : {}) };
-  const local = await localMapData(course.isoCourses, aliases);
+  const cached = await cachedIsoCourses().catch(() => [] as string[]);
+  const availableCourses = course.isoCourses.filter(slot => cached.includes(slot));
+  const availableLevels = [...availableCourses, ...Object.keys(aliases).filter(level => availableCourses.includes(aliases[level]))];
+  const local = await localMapData(availableCourses, aliases);
   setAssetUrlResolver(local.resolveAsset);
   setClientProjectId(course.kind === 'project' ? course.id : null);
   const store = createStore({ mdoc: defaultMountain(), currentMode: 'play', storedUi: {} });
   const noop = () => {};
+  let updateRideControls = noop;
+  let setStart: (world: V3) => void = noop;
   const callbacks: ViewportCallbacks = {
     onSelectKnot: noop, onMoveKnot: noop, onPaintCell: noop, onPick: noop, onSculpt: noop,
     onBeginSculpt: noop, onEndSculpt: noop, onBeginSculptGrab: noop, onSculptGrab: noop, onEndSculptGrab: noop,
     onStepBrushRadius: () => 1, isGrabBrush: () => false, onSelectCorner: noop, onMoveCorner: noop, onMoveHandle: noop, onSelectCorners: noop,
     onRideEvent: event => session.rideEvent(event),
+    onRideControlContextChange: () => updateRideControls(),
+    onPlayClick: world => setStart(world),
   };
   const viewport = new Viewport(container, callbacks, store);
+  updateRideControls = () => onRideControls(viewport.riding && !viewport.xrPlaying
+    ? rideControlHelp(viewport.rideWalking, viewport.rideFirstPerson) : null);
   viewport.mode = 'play';
   viewport.setReferenceOffset([0, 0, 0]);
   viewport.shadeMode = 'textured';
   viewport.cage = false;
+  viewport.showOwnBox(false);
+  viewport.showRefBox(false);
+  // Public play already fills the available screen; there is no editor chrome to expand past.
+  viewport.setRideFullscreenControl(false);
   // The editor's optional Effects view starts off; public riding always presents the live course.
   store.worldEffectsVisible = true;
   viewport.showWorldEffects(true);
@@ -106,12 +125,13 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     viewport.showReferenceTricks(true);
     session.reference(level);
   } else {
-    const { document } = await json<{ document: EditDoc }>(`/api/public/project?id=${encodeURIComponent(course.id)}`);
+    const snapshot = await json<{ document: EditDoc }>(`/api/public/project?id=${encodeURIComponent(course.id)}`);
+    const document = publicMountainDocument(snapshot.document, availableLevels);
     store.mdoc = document;
     await viewport.setMountainProgressive(document, null, [], noop, yieldFrame);
     viewport.syncLiveModels(authoredModelLevelProps(document));
-    const donors = new Set([...Object.keys(course.isoAliases ?? {}),
-      ...(document.props ?? []).map(prop => prop.level)].filter(level => !level.startsWith('@')));
+    const donors = new Set((document.props ?? []).map(prop => prop.level)
+      .filter(level => !level.startsWith('@') && availableLevels.some(available => available.toLowerCase() === level.toLowerCase())));
     const installed = new Set<string>();
     const installDonor = async (level: string) => {
       if (installed.has(level)) return;
@@ -120,9 +140,10 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     };
     for (const level of donors) await installDonor(level);
     if (document.props?.some(prop => prop.level === IMPORTED_PROP_LEVEL)) {
-      viewport.syncLiveModels(decodeProps(await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`)));
+      const props = await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`);
+      viewport.syncLiveModels(decodeProps(publicPropPayload(props, availableLevels)));
     }
-    if (course.isoCourses.length) {
+    if (availableCourses.length) {
       const art = await nativeArtSource(local.source);
       for (const donor of new Set([art.gemLevel].filter(Boolean))) {
         await installDonor(donor);
@@ -148,15 +169,25 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
   const play = createPlay({
     store, viewport, persistUi: noop, rebuildTools: noop, updateCmdSheet: noop,
     syncSkyVisibility: noop, ensureReferenceEffects: async () => {},
-    onPlayingChanged: playing => { session.setPlaying(playing); onPlaying(!!playing); },
+    onPlayingChanged: playing => { session.setPlaying(playing); onPlaying(!!playing); updateRideControls(); },
   });
   play.enterPlaySetup(target);
+  setStart = world => {
+    if (viewport.riding || viewport.xrPlaying) return;
+    play.setPlaySpawn(world); onStartChanged(true);
+  };
   const avatar = DEFAULT_CHARACTER_MODEL_ID;
   const publish = window.setInterval(() => {
     if (session.isOpen()) session.aware({ player: viewport.playerPose(avatar, session.serverNow()), vertices: [], quads: [], dragging: [] });
   }, 100);
   return {
     play: () => play.startPlay(), vr: () => play.startVr(), stop: () => { if (viewport.xrPlaying) play.stopVr(); else play.exitRide(); },
+    view: () => viewport.showRideSpawn(null),
+    resetStart() {
+      const spawn = play.defaultPlaySpawn();
+      if (!spawn) return;
+      play.setPlaySpawn(spawn.pos); onStartChanged(false);
+    },
     peers(peers: PeerMarks[]) { viewport.setPeers(peers, session.serverNow()); },
     rideEvent: viewport.applyRideEvent.bind(viewport),
     dispose() { clearInterval(publish); local.dispose(); },

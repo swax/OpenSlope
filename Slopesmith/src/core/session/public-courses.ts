@@ -4,7 +4,7 @@ export interface PublicCourse {
   kind: PublicCourseKind;
   name: string;
   retailData: boolean;
-  /** Local ISO course slots required by this course's asset references. */
+  /** Local ISO slots supplying game assets. Optional for authored mountains; required for retail terrain. */
   isoCourses: string[];
   /** Map-library names may differ from the source disc slot. */
   isoAliases?: Record<string, string>;

@@ -405,7 +405,7 @@ For a label named `label:canyon`, a view can be opened with the following templa
 the project ID:
 
 ```text
-http://localhost:5179/?project=<id>#view=1&label=label%3Acanyon&az=-35&el=35&preset=clean&size=1600,1000&ui=1
+http://localhost:5179/editor/<mapname>?project=<id>#view=1&label=label%3Acanyon&az=-35&el=35&preset=clean&size=1600,1000&ui=1
 ```
 
 Use Scene → Camera to read the current position, apply a view, restore it, or copy a view link.

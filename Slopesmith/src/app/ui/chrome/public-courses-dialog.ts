@@ -2,6 +2,8 @@ import { modal } from '../components/modal';
 import { currentAccount } from '../../net/account';
 import type { PublicCourse, PublicCourseKind } from '../../../core/session/public-courses';
 import type { MapOriginSummary } from '../../../core/export/origin';
+import { coursePublication } from '../../net/publication';
+import { MAPS_PATH } from '../../navigation';
 
 /** Publication controls stay with the member's File menu; public visitors receive only the play surface. */
 export async function openPublicCoursesDialog(projectId: string | null, projectName: string, manages: boolean): Promise<void> {
@@ -9,8 +11,8 @@ export async function openPublicCoursesDialog(projectId: string | null, projectN
   host.setAttribute('role', 'dialog'); host.setAttribute('aria-label', 'Public courses');
   const title = document.createElement('h2'); title.textContent = 'Public courses';
   const explanation = document.createElement('p');
-  explanation.textContent = 'Public courses appear on the homepage. Visitors can ride and chat under a guest name. Game assets come from each visitor’s own ISO.';
-  const homepage = document.createElement('a'); homepage.href = '/?play'; homepage.textContent = 'Open the public homepage ↗';
+  explanation.textContent = 'Public courses appear on the homepage. Visitors can ride and chat under a guest name. Community mountains also work without an ISO, with missing game textures and props omitted.';
+  const homepage = document.createElement('a'); homepage.href = MAPS_PATH; homepage.textContent = 'Open public maps ↗';
   const status = document.createElement('p'); status.setAttribute('role', 'status');
   const done = document.createElement('button'); done.type = 'button'; done.textContent = 'Done'; done.onclick = close;
   host.append(title, explanation, homepage, status, done);
@@ -28,11 +30,7 @@ export async function openPublicCoursesDialog(projectId: string | null, projectN
       label.append(check, document.createTextNode(name)); host.insertBefore(label, status);
       check.onchange = () => {
         const was = !check.checked; check.disabled = true; status.textContent = 'Saving…';
-        void fetch(`/api/publication?kind=${kind}&id=${encodeURIComponent(id)}`, {
-          method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ published: check.checked }),
-        }).then(async response => {
-          const result = await response.json() as { error?: string };
-          if (!response.ok) throw new Error(result.error ?? 'Publishing failed.');
+        void coursePublication(kind, id, check.checked).then(() => {
           status.textContent = check.checked ? `${name} is public.` : `${name} is private.`;
         }).catch(error => { check.checked = was; status.textContent = String(error instanceof Error ? error.message : error); })
           .finally(() => { check.disabled = false; });

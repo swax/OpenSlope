@@ -1,3 +1,5 @@
+import { EDITOR_PATH, pageInPath } from './navigation';
+
 /**
  * Load the editor and let it boot, which is the last thing either way into the app does.
  *
@@ -38,6 +40,11 @@ function failed(error: unknown): void {
 /** Start the editor. Resolves once its module has been evaluated, which is when the editor has taken over
  *  the page; a failure is reported here rather than thrown, because there is nobody above this to catch it. */
 export async function enterEditor(): Promise<void> {
+  if (pageInPath(location.pathname) !== 'editor') {
+    const url = new URL(location.href);
+    url.pathname = EDITOR_PATH;
+    history.replaceState(history.state, '', url);
+  }
   splash()?.classList.add('show');
   try { await import('./main'); } catch (error) { failed(error); }
 }

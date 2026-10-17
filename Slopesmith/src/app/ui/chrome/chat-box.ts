@@ -325,7 +325,7 @@ export function createChatBox(deps: {
     focused: (): boolean => holding,
   };
   window.addEventListener('keydown', event => {
-    if (!docked || event.key !== 'Enter'
+    if (!docked || deps.suspended?.() || event.key !== 'Enter'
       || (event.target as HTMLElement | null)?.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
     event.preventDefault(); event.stopPropagation(); document.exitPointerLock?.(); api.open();
   }, true);

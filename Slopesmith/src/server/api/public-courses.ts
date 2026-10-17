@@ -12,18 +12,20 @@ export const publicCourseRoutes: Record<string, ApiHandler> = {
     const path = url.pathname.replace(/\/+$/, '') || '/';
     try {
       if (path === '/courses' && req.method === 'GET') {
-        jsonResponse(res, 200, { courses: await publicCourses(), guest: guestMember(req) }); return;
+        const [courses, guest] = await Promise.all([publicCourses(), guestMember(req)]);
+        jsonResponse(res, 200, { courses, guest }); return;
       }
       if (path === '/guest' && req.method === 'POST') {
         const body = await readJsonBody(req, 1024) as { name?: unknown };
-        jsonResponse(res, 200, { member: createGuest(req, res, body.name) }); return;
+        jsonResponse(res, 200, { member: await createGuest(req, res, body.name) }); return;
       }
       if (path === '/project' && req.method === 'GET') {
         const id = url.searchParams.get('id') ?? '';
         if (!await isPublished('project', id)) { jsonResponse(res, 404, { error: 'Course not found.' }); return; }
         const { document, project } = await openProject(id);
-        if (document.effects?.source) { jsonResponse(res, 409, { error: 'This mountain contains an imported retail effect graph and cannot be streamed publicly.' }); return; }
-        jsonResponse(res, 200, { document, project: { id: project.id, name: project.name, revision: project.revision } }); return;
+        // Imported effect graphs contain disc data. Their absence must not prevent riding authored terrain.
+        const publicDocument = document.effects?.source ? { ...document, effects: undefined } : document;
+        jsonResponse(res, 200, { document: publicDocument, project: { id: project.id, name: project.name, revision: project.revision } }); return;
       }
       jsonResponse(res, 404, { error: 'Public route not found.' });
     } catch (error) { jsonResponse(res, 400, { error: String(error instanceof Error ? error.message : error) }); }

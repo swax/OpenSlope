@@ -27,8 +27,8 @@ export const BROWSER_VIEW_SCHEMA = {
   },
 };
 
-export function browserProjectLinks(id: string, revision?: number): HateoasEnvelope {
-  const page = `/?project=${encodeURIComponent(id)}#view=1`;
+export function browserProjectLinks(id: string, name: string, revision?: number): HateoasEnvelope {
+  const page = `/editor/${encodeURIComponent(name)}?project=${encodeURIComponent(id)}#view=1`;
   const check = revision === undefined ? '' : `&revision=${revision}`;
   return {
     _links: [

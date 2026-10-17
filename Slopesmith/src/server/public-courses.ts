@@ -9,6 +9,9 @@ import { referenceInRoom, type PublicCourse, type PublicCourseKind } from '../co
 import type { EditDoc } from '../core/doc/doc-edit';
 import { behaviourRecords } from '../core/props/defaults';
 import { isDiscCourse } from '../core/reference/disc-courses';
+import { IMPORTED_PROP_LEVEL } from '../core/props/imported';
+import { withProjectAssets } from './project-assets';
+import { listImportedProps } from './routes/imported-props';
 
 interface Publication { kind: PublicCourseKind; id: string }
 const file = async () => join((await ensureWorkspace()).workspaceRoot, 'public-courses.json');
@@ -32,13 +35,14 @@ async function publications(): Promise<Publication[]> {
 }
 
 /** Asset levels are explicit refs; internal/generated and mountain-local banks never need a disc. */
-export function projectIsoCourses(doc: EditDoc): string[] {
+export function projectIsoCourses(doc: EditDoc, assetTextures: readonly string[] = []): string[] {
   const levels = new Set<string>();
   const level = (value: string | undefined) => {
     if (value && !value.startsWith('@') && value.toLowerCase() !== 'custom') levels.add(value.toUpperCase());
   };
   const texture = (value: string | undefined | null) => { if (value?.includes('/')) level(value.split('/')[0]); };
   for (const ref of Object.values(doc.quadTex ?? {})) texture(ref);
+  for (const ref of assetTextures) texture(ref);
   for (const model of doc.models ?? []) { texture(model.texture); for (const frame of model.frames ?? []) texture(frame); }
   for (const prop of doc.props ?? []) {
     level(prop.level);
@@ -64,8 +68,12 @@ export async function publicCourses(): Promise<PublicCourse[]> {
   for (const project of projects) {
     if (!wanted.has(key('project', project.id))) continue;
     const snapshot = await openProject(project.id);
-    if (snapshot.document.effects?.source) continue;
-    const isoAliases: Record<string, string> = Object.fromEntries(projectIsoCourses(snapshot.document).map(name => {
+    const imported = new Set(snapshot.document.props?.filter(prop => prop.level === IMPORTED_PROP_LEVEL).map(prop => prop.model));
+    const assetTextures = imported.size ? (await withProjectAssets(snapshot, listImportedProps))
+      .filter(entry => imported.has(entry.record.id))
+      .flatMap(entry => (entry.record.materials ?? []).flatMap(material => [material.tex, ...(material.frames ?? [])]))
+      .filter((ref): ref is string => !!ref) : [];
+    const isoAliases: Record<string, string> = Object.fromEntries(projectIsoCourses(snapshot.document, assetTextures).map(name => {
       const origin = maps.find(map => map.name.toUpperCase() === name);
       return [name, origin?.course ?? name] as const;
     }));
@@ -89,9 +97,6 @@ export async function setPublished(kind: PublicCourseKind, id: string, published
   actor: ProjectActor): Promise<void> {
   if (kind === 'project') {
     await requireProjectManager(id, actor);
-    if (published && (await openProject(id)).document.effects?.source) {
-      throw new Error('This mountain contains an imported retail effect graph. Publish the reference course or replace the imported graph with authored effects first.');
-    }
   }
   else {
     if (actor.role !== 'admin' && actor.role !== 'moderator') throw new Error('Only moderators can publish reference maps.');
@@ -120,14 +125,26 @@ const PROJECT_READS = new Set(['/api/texture', '/api/custom-props', '/api/custom
 /** Only original assets of an explicitly published course pass anonymously. Never grants a retail route. */
 export async function publicAssetRequest(mount: string, mounted: string, method: string): Promise<boolean> {
   if (method !== 'GET' && method !== 'HEAD') return false;
-  const query = new URL(mounted, 'http://localhost').searchParams;
+  const url = new URL(mounted, 'http://localhost');
+  // Byte-route exceptions apply only to the leaf route, never its catalogues or future sub-routes.
+  if (url.pathname !== '/') return false;
+  const query = url.searchParams;
   const project = query.get('project');
   const level = query.get('level');
-  if (project && PROJECT_READS.has(mount) && (!level || level.toLowerCase() === 'custom')) {
+  const custom = mount === '/api/texture' ? level?.toLowerCase() === 'custom'
+    : mount === '/api/skypano' || mount === '/api/skyground' ? !level && !!query.get('sky') : !level;
+  if (project && PROJECT_READS.has(mount) && custom) {
     return isPublished('project', project);
   }
   const name = mount === '/api/level' ? query.get('name') : level;
   if (!name || !LEVEL_READS.has(mount) || !await isPublished('reference', name)) return false;
+  // Reference texture reads can fall back to the bank named inside a qualified texture ref. The public
+  // exception must cover that donor too, otherwise an original reference becomes a proxy for retail art.
+  if (mount === '/api/texture') {
+    const ref = (query.get('name') ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const slash = ref.indexOf('/');
+    if (slash >= 0 && ref.slice(0, slash).toLowerCase() !== name.toLowerCase()) return false;
+  }
   const map = (await listLevelOrigins()).find(map => map.name.toLowerCase() === name.toLowerCase());
   return !!map && !map.retailData;
 }

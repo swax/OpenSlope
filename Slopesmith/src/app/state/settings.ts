@@ -66,7 +66,7 @@ const DEFAULTS: EditorSettings = {
   texGen: { model: DEFAULT_FAL_MODEL, inpaintModel: DEFAULT_FAL_INPAINT_MODEL, genSize: 512, storeSize: 128, seamless: true, vwrapPass: true, transVertical: false },
   skyGen: { model: DEFAULT_FAL_MODEL, pano: false },
   propGen: { imageModel: DEFAULT_FAL_MODEL, meshModel: DEFAULT_FAL_3D_MODEL, meshDetail: '', sizeM: 3 },
-  videoBridge: { enabled: true, serverUrl: DEFAULT_VIDEO_BRIDGE_SERVER, username: '', password: '' },
+  videoBridge: { enabled: false, serverUrl: DEFAULT_VIDEO_BRIDGE_SERVER, username: '', password: '' },
 };
 
 export const SETTINGS_CHANGED_EVENT = 'slopesmith:settings-changed';

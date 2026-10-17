@@ -1481,6 +1481,8 @@ export class Viewport {
   }
   /** Local player's carved wake + snow-contact particles. AI fields intentionally have no equivalent setter. */
   setRideBoardFx(on: boolean) { this.rideCtl.setBoardFxEnabled(on); }
+  /** Public play fills its viewport already, so it has no editor fullscreen toggle. */
+  setRideFullscreenControl(on: boolean) { this.rideCtl.setFullscreenControlEnabled(on); }
   /** Test audio master for the off-board environment bed and on-board race track. */
   setRideMusic(on: boolean) {
     this.rideMusicChecked = on;

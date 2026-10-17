@@ -396,7 +396,7 @@ export function createProjectSync(deps: {
     if (!project) return;
     if (!writable) { dirty = false; return; }
     if (blocked) throw new Error('Resolve the mountain conflict (File ▸ Resolve conflict…) before switching mountains.');
-    if (dirty) await flush();
+    if (dirty || inFlight) await flush();
     if (dirty) throw new Error('The current mountain could not be saved, so the mountain switch was cancelled.');
   }
 
@@ -738,6 +738,7 @@ export function createProjectSync(deps: {
 
   return {
     initialize, create, list, open, exportMountain, importMountain, duplicateMountain, deleteMountain, schedule, flush,
+    prepareToLeave: flushBeforeSwitch,
     keepMine, takeTheirs, saveMineAsNewProject,
     checkpoints, readCheckpoint, exportCheckpoint, checkpointNow, nameCheckpoint, restoreCheckpoint,
     checkpointChanges, revertCheckpoint, beginPreview, endPreview,

@@ -95,6 +95,8 @@ export interface RideStartOpts {
   pointerTarget?: HTMLElement;
   /** Whether the flat ride may reveal direct-touch controls. False for a headset browser's controller-ray view. */
   touchControls?: boolean;
+  /** False when the host already fills its play viewport and needs no fullscreen toggle. */
+  fullscreen?: boolean;
   surfaceOf: (faceIndex: number) => number | null;
   /** The authored terrain's analytic Bezier contact; absent for a baked reference world. */
   patchContact?: PatchContact;
@@ -323,7 +325,7 @@ export class TestRide {
       exit: () => this.o.onExit(),
       touchControls: this.o.touchControls,
       persistentExit: !this.inVr,
-      fullscreen: !this.inVr,
+      fullscreen: !this.inVr && this.o.fullscreen !== false,
     });
     this.gamepad = createRideGamepad({
       ...actions, setHold: this.input.setHold, setWalkHold: this.input.setWalkHold, setOllie: this.input.setOllie,

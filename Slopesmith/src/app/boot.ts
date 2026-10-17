@@ -1,10 +1,11 @@
 import { currentAccount, gateFor } from './net/account';
 import { enterEditor } from './enter-editor';
+import { MAPS_PATH, pageInPath } from './navigation';
 
 /**
  * Ask who this browser is before loading the editor. Visitors get the public course homepage; members get
- * the editor, and /?play opens the homepage for members too. Explicit sign-in, invitations and first-run
- * enrolment retain their account forms (docs/038).
+ * the editor. /maps, /isos and /play/<name> are public for everyone; /editor/<name> requires member access.
+ * Invitations and first-run enrolment retain their account forms (docs/038).
  *
  * The gate is here, in a module of its own, because of what `main.ts` is: importing it IS booting the editor.
  * It builds the store, constructs the viewport and starts reading libraries while it is being evaluated, so
@@ -24,7 +25,19 @@ import { enterEditor } from './enter-editor';
  */
 async function boot(): Promise<void> {
   const gate = gateFor(await currentAccount(), location.hash);
-  if (new URLSearchParams(location.search).has('play') || (gate.show === 'sign-in' && location.hash !== '#sign-in')) {
+  const url = new URL(location.href);
+  const page = pageInPath(url.pathname);
+  if (page === 'isos') {
+    const { showIsoPage } = await import('./public/iso-page');
+    await showIsoPage();
+    return;
+  }
+  const guestHome = url.pathname === '/' && gate.show === 'sign-in';
+  if (page === 'maps' || page === 'play' || guestHome || (!page && url.pathname !== '/')) {
+    if (page !== 'play') {
+      url.pathname = MAPS_PATH;
+      history.replaceState(history.state, '', url);
+    }
     const { showPublicHome } = await import('./public/home');
     await showPublicHome();
     return;

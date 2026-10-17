@@ -339,7 +339,7 @@ try {
   const labelView = links(one.body).get('browser-view');
   const labelUrl = new URL(labelView.href, 'http://localhost');
   const fragment = new URLSearchParams(labelUrl.hash.slice(1));
-  check(labelView.execution === 'browser' && labelUrl.searchParams.get('project') === mine
+  check(labelView.execution === 'browser' && labelUrl.pathname.startsWith('/editor/') && labelUrl.searchParams.get('project') === mine
     && fragment.get('label') === 'label:0000' && fragment.get('revision') === String(one.body.revision),
     'one label offers a concrete browser view bound to its project and observed revision');
   const noLabel = await call('GET', `/api/projects/${mine}/labels/label:9999`, { key });

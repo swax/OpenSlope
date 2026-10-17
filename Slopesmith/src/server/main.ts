@@ -332,7 +332,7 @@ async function runCommand(command: string, argv: readonly string[]): Promise<num
       print(`Invite minted for ${invite.handle}: ${invite.role}, expires `
         + new Date(invite.expiresAt).toLocaleString());
       print('');
-      print(base ? `  ${base}/#invite=${token}` : `  #invite=${token}`);
+      print(base ? `  ${base}/editor#invite=${token}` : `  /editor#invite=${token}`);
       print('');
       print('The link is the credential until it is redeemed, and worthless afterwards. It is shown'
         + ' once — the server keeps only its digest.');

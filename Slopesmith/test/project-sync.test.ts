@@ -18,6 +18,7 @@ let active: { project: ClientProject; document: typeof doc } | null = null;
 let listedProjects: ClientProject[] | null = null;
 let projects = 0;
 let writes = 0;
+let writeGate: Promise<void> | null = null;
 let lastServerDocumentName = '';
 const states: ProjectSaveState[] = [];
 const conflicts: ProjectConflict[] = [];
@@ -79,6 +80,7 @@ globalThis.fetch = async (input: string | URL | Request, init?: RequestInit): Pr
     return Response.json(active);
   }
   if (/\/api\/projects\/[^/]+\/document$/.test(url) && init?.method === 'PUT' && active) {
+    if (writeGate) await writeGate;
     const body = JSON.parse(String(init.body)) as { baseRevision: number; document: typeof doc };
     if (body.baseRevision !== active.project.revision) return Response.json(active, { status: 409 });
     writes++;
@@ -223,6 +225,9 @@ try {
   check(conflicts.length === 1 && sync.conflict()?.project.revision === active!.project.revision,
     'a refused save raises the conflict carrying the revision the project is now at');
   check(writes === 2, 'a refused save writes nothing');
+  let leaveConflictError = '';
+  try { await sync.prepareToLeave(); } catch (error) { leaveConflictError = String(error); }
+  check(/Resolve the mountain conflict/.test(leaveConflictError), 'exiting the editor refuses to abandon a conflicted mountain');
   let before = writes;
   await sync.keepMine();
   check(!sync.conflict() && writes === before + 1 && lastServerDocumentName === doc.name,
@@ -383,6 +388,20 @@ try {
   await sync.flush();
   check(writes === before + 1 && lastServerDocumentName === 'Mine Again',
     'and autosave resumes on top of the revision that was pushed, never on the document it was following from');
+
+  doc.name = 'Saved Before Exit'; sync.schedule();
+  await sync.prepareToLeave();
+  check(lastServerDocumentName === 'Saved Before Exit', 'exit flushes pending edits before navigation');
+  let releaseWrite!: () => void;
+  writeGate = new Promise(resolve => { releaseWrite = resolve; });
+  doc.name = 'In Flight Before Exit'; sync.schedule();
+  const savingAtExit = sync.flush();
+  let left = false;
+  const leaving = sync.prepareToLeave().then(() => { left = true; });
+  await Promise.resolve(); await Promise.resolve();
+  check(!left, 'exit waits for an already-started save even after its dirty flag was cleared');
+  releaseWrite(); await Promise.all([savingAtExit, leaving]); writeGate = null;
+  check(left && lastServerDocumentName === 'In Flight Before Exit', 'exit can continue once that save is durable');
 
   const deleting = sync.current()!;
   const deleted = await sync.deleteMountain(deleting.id);

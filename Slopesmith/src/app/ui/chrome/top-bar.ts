@@ -66,6 +66,7 @@ export type TopBarDeps = {
   importMountain: () => void;
   exportDialog: () => void;
   settingsDialog: () => void;
+  exitEditor: () => void;
 };
 
 export function createTopBar(deps: TopBarDeps) {
@@ -78,7 +79,7 @@ export function createTopBar(deps: TopBarDeps) {
     toggleFOverlay, getFOverlayOn, toggleSpeedShade, getSpeedShadeOn, focusActive, newMountainDialog, canCreateMountains, canManageMountain,
     openProjectDialog, historyDialog, renameMountain,
     closePreview, isPreviewing, conflictDialog, hasConflict, duplicateMountain, deleteMountain,
-    exportMountain, importMountain, exportDialog, settingsDialog } = deps;
+    exportMountain, importMountain, exportDialog, settingsDialog, exitEditor } = deps;
 
   const bar = document.getElementById('dock-top')!;
   // The bar opens with the app identity — mark + wordmark — and File beside it. The open mountain's name is
@@ -221,6 +222,7 @@ export function createTopBar(deps: TopBarDeps) {
       { group: currentMountain, label: 'Delete mountain…', desc: canManageMountain()
         ? `Permanently delete ${currentMountain}, its history, and its mountain-local assets.`
         : 'Only its owner or a moderator can delete this mountain.', disabled: !canManageMountain(), onClick: deleteMountain },
+      { group: 'Application', label: 'Exit editor', desc: 'Save pending changes and return to the homepage.', onClick: exitEditor },
     ];
   }, { collapseIcon: MENU_ICON });
   // Narrow bars drop the word for the hamburger (CSS owns the breakpoint), so the button keeps a spoken name

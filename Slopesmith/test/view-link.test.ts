@@ -24,10 +24,11 @@ for (const [fragment, message] of [
   ['space=reference', /reference level/], ['label=x&pos=0,0,0&look=1,1,1', /not both/],
 ] as const) assert.throws(() => parseViewLink(`#view=1&${fragment}`), message, fragment);
 assert.deepEqual(Object.keys(BROWSER_VIEW_SCHEMA.properties).filter(k => k in VIEW_FLAGS).sort(), Object.keys(VIEW_FLAGS).sort());
-const envelope = browserProjectLinks('map/id', 27);
+const envelope = browserProjectLinks('map/id', 'MY_MAP', 27);
 for (const template of envelope._linkTemplates!) {
   const values: Record<string, string> = { pos: '100,270,80', look: '184,187,-25', fov: '65', size: '1600,900', label: 'Snow & rock', az: '45', el: '35', preset: 'topology' };
   const url = new URL(template.hrefTemplate.replace(/\{(\w+)\}/g, (_, key: string) => encodeURIComponent(values[key])), 'http://localhost');
+  assert.equal(url.pathname, '/editor/MY_MAP', 'browser capture templates enter the named editor route');
   assert.equal(url.searchParams.get('project'), 'map/id');
   assert.equal(parseViewLink(url.hash)!.revision, 27, 'API templates expand into accepted view links');
   assert.equal(template.execution, 'browser');

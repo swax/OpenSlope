@@ -1,4 +1,4 @@
-import { button, group, menu } from '../components/controls';
+import { button, group, menu, type MenuItem } from '../components/controls';
 import { tooltip } from '../components/tooltip';
 import { postJson } from '../../net/fetch-json';
 import { currentAccount, onAccountChanged, type Member } from '../../net/account';
@@ -31,9 +31,7 @@ async function signOut(url: string): Promise<void> {
 /**
  * Put the account within reach without spending a mode, a shortcut or a slot in the mode row.
  */
-function installAccountMenu(user: Member, deps: AccountMenuDeps): void {
-  const bar = document.getElementById('dock-top');
-  if (!bar) return;
+export function createAccountMenu(user: Member, deps: AccountMenuDeps): HTMLButtonElement {
   let current = user;
   const account = menu('', () => [
     {
@@ -46,6 +44,7 @@ function installAccountMenu(user: Member, deps: AccountMenuDeps): void {
       desc: 'Edit your account and device, or open application and server settings.',
       onClick: deps.openSettings,
     },
+    ...(deps.editorAction ? [deps.editorAction] : []),
     {
       label: 'Sign out',
       desc: 'End this browser session and return to sign in.',
@@ -65,12 +64,13 @@ function installAccountMenu(user: Member, deps: AccountMenuDeps): void {
   };
   paint();
   onAccountChanged(changed => { current = changed; paint(); });
-  bar.append(group(account.el));
+  return account.el;
 }
 
 export interface AccountMenuDeps {
   openMyProfile: () => void;
   openSettings: () => void;
+  editorAction?: MenuItem;
 }
 
 /**
@@ -94,7 +94,7 @@ export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
     })));
     return;
   }
-  installAccountMenu(account.user, deps);
+  document.getElementById('dock-top')?.append(group(createAccountMenu(account.user, deps)));
   // An open editor may otherwise cross the browser cookie's Max-Age using only WebSocket traffic, which
   // cannot renew a cookie. One ordinary authenticated request keeps an actively used login sliding — and a
   // session that ended anyway reloads into the login page rather than sitting in an editor being refused.

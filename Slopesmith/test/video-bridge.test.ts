@@ -34,11 +34,11 @@ const expectBridgeError = async (work: Promise<unknown>, code: VideoBridgeError[
 storage.clear();
 const defaults = loadSettings();
 assert.deepEqual(defaults.videoBridge, {
-  enabled: true,
+  enabled: false,
   serverUrl: DEFAULT_VIDEO_BRIDGE_SERVER,
   username: '',
   password: '',
-}, 'Jukebox playback defaults on and points at the fork’s Windows bridge default');
+}, 'Jukebox playback defaults off and retains the Windows bridge default');
 
 saveSettings({ videoBridge: { ...defaults.videoBridge, enabled: false } });
 assert.equal(loadSettings().videoBridge.enabled, false,

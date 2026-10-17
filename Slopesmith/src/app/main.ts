@@ -74,6 +74,7 @@ import {
 } from './state/project-sync';
 import { createSessionChannel, membersOn, type PresenceEntry } from './net/session-channel';
 import { currentAccount, onAccountChanged, type Member } from './net/account';
+import { MAPS_PATH } from './navigation';
 import { createRegisterSync } from './net/register-sync';
 import { createAwareness } from './net/awareness';
 import { createSyncStatus } from './state/sync-status';
@@ -1789,6 +1790,14 @@ const play = createPlay({
 });
 
 // ================= top dock: context + view + file =================
+async function exitEditor(): Promise<void> {
+  try {
+    persistView(); persistUi();
+    await projectSync.prepareToLeave();
+    location.assign(MAPS_PATH);
+  } catch (error) { toast(error instanceof Error ? error.message : String(error), 'err'); }
+}
+
 // The top dock's buttons + layout live in ui/top-bar.ts; the toggle behaviour they invoke stays here (below,
 // and across the edit / lighting subsystems). We hand it the actions + active/enabled reads and keep back the
 // bar objects the host repaints programmatically (mode segment, history bar, show + lighting pills, and view pills).
@@ -1828,6 +1837,7 @@ const {
   conflictDialog, hasConflict: () => !!projectSync.conflict(),
   duplicateMountain, deleteMountain, exportMountain, importMountain, exportDialog,
   settingsDialog: openSettingsDialog,
+  exitEditor: () => { void exitEditor(); },
 });
 // (Test ride lives in Test mode — see the mode segment + buildPlayTools, docs/016.)
 
@@ -2662,7 +2672,16 @@ async function boot() {
   // The terrain now exists, so restored sun/reference lighting can safely target its live materials.
   requestAnimationFrame(() => { applySunLight(); applyReferenceLighting(); });
 }
-void boot().then(() => browserViews.booted(), error => {
+void boot().then(() => {
+  browserViews.booted();
+  const url = new URL(location.href);
+  const panel = url.searchParams.get('account');
+  if (panel === 'profile' || panel === 'settings') {
+    url.searchParams.delete('account'); window.history.replaceState(window.history.state, '', url);
+    if (panel === 'profile') usersMode.showMyProfile();
+    else openSettingsDialog('account');
+  }
+}, error => {
   captureBuildError = String(error); browserViews.booted();
 });
 // The account menu, for a member (docs/038). Who this browser is was settled before this module was fetched —
@@ -2671,6 +2690,7 @@ void boot().then(() => browserViews.booted(), error => {
 void installAccounts({
   openMyProfile: usersMode.showMyProfile,
   openSettings: () => openSettingsDialog('account'),
+  editorAction: { label: 'Exit editor', desc: 'Save pending changes and return to the homepage.', onClick: () => { void exitEditor(); } },
 });
 const applyMemberEquipment = (member: Member) => {
   viewport.equipmentAppearance = {

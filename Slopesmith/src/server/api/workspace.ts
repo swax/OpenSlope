@@ -269,7 +269,7 @@ function projectEnvelope(project: projects.ProjectManifest, identity: Identity |
       schema: '/api/schemas/ImportedPropRecord',
     },
   ];
-  const browser = browserProjectLinks(project.id, project.revision);
+  const browser = browserProjectLinks(project.id, project.name, project.revision);
   return { _links: [...links, ...browser._links!], _linkTemplates: browser._linkTemplates,
     _actions: actions, _actionTemplates: templates };
 }
@@ -1059,14 +1059,15 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           quadCount: membership.get(label.id)?.quadIds.length ?? 0,
           propCount: membership.get(label.id)?.propIds.length ?? 0,
         });
-        const revision = (await projects.projectManifest(parts[0])).revision;
+        const manifest = await projects.projectManifest(parts[0]);
+        const revision = manifest.revision;
         if (parts.length === 2) {
           jsonResponse(res, 200, {
             projectId: parts[0], revision, labels: (document.labels ?? []).map(row),
             _links: [link('self', `${base}/labels`), link('project', base), { rel: 'browser-workflows', href: '/api/browser' }],
             _linkTemplates: [{ rel: 'item', hrefTemplate: `${base}/labels/{labelId}`,
               title: 'One label with the quad and prop ids it holds, ready to address as registers' },
-              ...browserProjectLinks(parts[0], revision)._linkTemplates!.filter(link => link.rel === 'frame-label')],
+              ...browserProjectLinks(parts[0], manifest.name, revision)._linkTemplates!.filter(link => link.rel === 'frame-label')],
           });
           return;
         }
@@ -1083,7 +1084,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           quadIds: membership.get(label.id)?.quadIds ?? [], propIds: membership.get(label.id)?.propIds ?? [],
           _links: [
             link('self', `${base}/labels/${encodeURIComponent(label.id)}`),
-            { rel: 'browser-view', href: `/?project=${encodeURIComponent(parts[0])}#view=1&revision=${revision}&label=${encodeURIComponent(label.id)}&preset=clean`,
+            { rel: 'browser-view', href: `/editor/${encodeURIComponent(manifest.name)}?project=${encodeURIComponent(parts[0])}#view=1&revision=${revision}&label=${encodeURIComponent(label.id)}&preset=clean`,
               title: 'Frame this label in the browser', execution: 'browser' },
             link('collection', `${base}/labels`),
             link('project', base),

@@ -150,6 +150,7 @@ export interface RideDeps {
 const EMPTY_KEYS: ReadonlySet<string> = new Set();
 
 export function createRideLayer(stage: Stage, deps: RideDeps) {
+  let fullscreenControlEnabled = true;
   const music = new RideMusicRuntime();
   let musicEnabled = true;
   const announcer = new RideAnnouncerRuntime();
@@ -861,6 +862,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       terrain: rideMesh, scene: stage.scene, camera: stage.perspCam, container: stage.container,
       pointerTarget: view === 'chase' ? stage.renderer.domElement : undefined,
       touchControls: view === 'chase' && touchControls,
+      fullscreen: fullscreenControlEnabled,
       surfaceOf: t.surfaceOf, oobFloorY: t.oobFloorY, patchContact: t.patchContact, rails: t.rails,
       obstacles: t.obstacles, onObstacleHit: hit => deps.onPropCollision?.(hit, null),
       boostVolumes: t.boostVolumes,
@@ -1256,6 +1258,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     step, recordFramePerf, referenceSpawn, setPlayActive, showRideSpawn, pickPlaySurface,
     startRide, stopRide, startWatch, stopWatch, dropAiRider, setAiMax, setRiderModel, setRiderStyle,
     setRideGear, setSnowboardStance, setEquipmentAppearance, setBoardFxEnabled,
+    setFullscreenControlEnabled(on: boolean) { fullscreenControlEnabled = on; },
     startXrPlay, stopXrPlay, beginXrFrame, endXrFrame,
     applyEffect, retireObstacle, restoreObstacle, teleportPlayer,
     /** Test mode's collider overlay toggle — world collision shapes plus the rider's own probe volume. */

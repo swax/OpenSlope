@@ -50,10 +50,12 @@ assert.match(mainSource, /actionLabel: 'Open bridge settings'[\s\S]*openSettings
   'the fallback diagnosis links directly to the relevant Settings tab');
 const jukeboxStart = source.indexOf('function buildJukebox(): void');
 const jukeboxEnd = source.indexOf('function buildManagement(): void', jukeboxStart);
-assert.doesNotMatch(source.slice(jukeboxStart, jukeboxEnd), /folder\.close\(\)/,
-  'the Jukebox starts expanded');
+assert.match(source, /let jukeboxOpen = false/,
+  'the Jukebox starts collapsed');
+assert.match(source.slice(jukeboxStart, jukeboxEnd), /folder\.open\(jukeboxOpen\)/,
+  'the Jukebox preserves its local expanded state during roster refreshes');
 assert.match(source,
-  /gui\.addFolder\(`Map permissions · \$\{policy\.restricted \? 'Restricted' : 'Open'\}`\);\s*folder\.close\(\)/,
-  'the bottom, collapsed map-permissions heading summarizes its open or restricted policy');
+  /gui\.addFolder\(`Map permissions · \$\{policy\.restricted \? 'Restricted' : 'Open'\}`\);\s*folder\.open\(mapPermissionsOpen\)/,
+  'the bottom map-permissions heading summarizes its open or restricted policy and keeps its expansion');
 
 console.log('USERS MODE LAYOUT: PASS');

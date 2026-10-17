@@ -156,7 +156,8 @@ from the iframe is proxied through Slopesmith's Node service.
 The feature has these owners:
 
 - `src/app/state/settings.ts` owns `VideoBridgePrefs`, safe defaults, validation on load, persistence, and the
-  `slopesmith:settings-changed` event. The default is enabled; an explicit browser-local opt-out persists.
+  `slopesmith:settings-changed` event. Playback defaults off; an explicit browser-local choice persists.
+  The Users panel starts with Jukebox collapsed and preserves expansion while refreshing the roster.
 - `src/app/net/video-bridge.ts` is the Yattee protocol boundary. It canonicalizes origins, emits UTF-8 Basic
   Auth, tests `/info`, resolves `/api/v1/videos/{id}?proxy=true&proxy_mode=relay&invidious=false`, and chooses a
   browser-decodable muxed stream with 720p as the proof surface's useful ceiling.
