@@ -17,6 +17,7 @@ import { migrateLegacyWorkspaceAssets } from './project-assets';
 import { characterLibraryDir } from './routes/characters';
 import { deleteProject, listProjects, watchProjectWrites } from './projects';
 import { attachSessionChannel } from './session/channel';
+import { attachPlayControl } from './play';
 import { observeApiRequest, startServerTelemetry } from './telemetry';
 import { configuredUpdateRoot } from './update';
 import { attachVoiceProxy, proxyVoiceRequest } from './voice-proxy';
@@ -150,6 +151,7 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
   // rather than in a Vite plugin: this process outlives Vite's restarts and hot updates, so a table held in
   // it is not reset at a moment nobody chose.
   const stopSessionChannel = attachSessionChannel(server);
+  const stopPlayControl = attachPlayControl();
   const stopVoiceProxy = attachVoiceProxy(server);
 
   try {
@@ -163,6 +165,7 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
   } catch (error) {
     telemetry.stop();
     stopVoiceProxy();
+    stopPlayControl();
     await stopSessionChannel();
     stopWatchingMaps();
     stopWatchingProjects();
@@ -195,6 +198,7 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
       stopWatchingMaps();
       stopWatchingProjects();
       stopVoiceProxy();
+      stopPlayControl();
       // Sessions end before the sockets carrying them do, so a map whose last client is going still gets the
       // checkpoint that closing it owes, and that write finishes before the process is told it may stop.
       await stopSessionChannel();

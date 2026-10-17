@@ -7,6 +7,7 @@
 *.sh text eol=lf
 # Extensionless deployment entry points are shell scripts too.
 Slopesmith/deploy/deploy-slopesmith text eol=lf
+Slopesmith/deploy/run-api text eol=lf
 Slopesmith/deploy/slopesmith-update-runner text eol=lf
 # Git runs hooks through sh, which rejects a CRLF shebang line.
 .githooks/* text eol=lf

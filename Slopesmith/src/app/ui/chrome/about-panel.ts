@@ -17,6 +17,7 @@
 
 import slopesmithNotice from '../../../../NOTICE?raw';
 import lucideLicense from '../../../../ThirdPartyNotices/Lucide-LICENSE.txt?raw';
+import ajvLicense from '../../../../ThirdPartyNotices/Ajv-LICENSE.txt?raw';
 import dependencyNotices from 'virtual:slopesmith-dependency-notices';
 import { PROJECT_LINKS } from '../../project-links';
 
@@ -140,6 +141,7 @@ export function buildAboutPanel(panel: HTMLDivElement): void {
   notices.append(verbatim('Slopesmith NOTICE — scope, third-party components, generated assets', slopesmithNotice));
   notices.append(verbatim('Lucide (icon artwork) — ISC, with Feather-derived icons MIT', lucideLicense));
   notices.append(verbatim('Bundled npm dependencies and runtime closure — generated legal text', dependencyNotices));
+  notices.append(verbatim('AJV standalone validators — MIT License', ajvLicense));
   notices.append(
     paragraph(
       '<strong>Deploying this?</strong> Keep <code>ThirdPartyNotices/npm-browser-dependencies.txt</code> ' +

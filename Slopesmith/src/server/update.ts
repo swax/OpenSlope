@@ -26,6 +26,17 @@ export function configuredUpdateRoot(): string | undefined {
   return value ? resolve(value) : undefined;
 }
 
+/** The selected package can advance while an identical API process stays running during a relay-only update. */
+export async function readActiveReleaseRevision(root = configuredUpdateRoot()): Promise<string | undefined> {
+  if (!root) return undefined;
+  try {
+    const active = JSON.parse(await readFile(join(root, 'active.json'), 'utf8')) as { revision?: unknown };
+    return validUpdateRevision(active.revision) ? active.revision : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The root runner publishes only the repository identifier, separately from its credentials and build
  * identity. This file is readable by the service but reaches browsers only through the admin-only route. */
 export async function readUpdateRepository(root = configuredUpdateRoot()): Promise<string | undefined> {

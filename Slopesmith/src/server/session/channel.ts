@@ -90,6 +90,8 @@ import { acceptWebSocket, isWebSocketUpgrade, prepareWebSocketText, refuseUpgrad
 import { createJukebox, type ServerJukebox } from './jukebox';
 import type { JukeboxState } from '../../core/session/jukebox';
 import { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
+import { playConfig } from '../play';
+import type { PlayConfig } from '../../core/session/play-protocol.generated';
 import { broadcastRegisters, legacyAssignments, olderCore } from './register-messages';
 import {
   sanitizeSharedScreenState,
@@ -201,6 +203,7 @@ export type ServerMessage =
       color: string;
       serverTime: number;
       versions: { doc: number; core: string };
+      play?: PlayConfig;
     }
   | { t: 'presence'; maps: Record<string, PresenceEntry[]> }
   /** One participant joined, left or moved. Absolute upserts make repeated or coalesced delivery harmless. */
@@ -944,7 +947,7 @@ function onAware(sessionId: string, message: Extract<ClientMessage, { t: 'aware'
     vertices: strings(said.vertices).slice(0, 512),
     quads: strings(said.quads).slice(0, 512),
     dragging: strings(said.dragging).slice(0, 512),
-    player: sanitizePlayerPose(said.player, Date.now()),
+    player: playConfig().enabled ? null : sanitizePlayerPose(said.player, Date.now()),
   });
   if (!aware) return;
   const peer: AwarenessPeer = {
@@ -1095,6 +1098,7 @@ function handleMessage(
       onJukebox(sessionId, parsed, jukebox);
       return;
     case 'ride-event':
+      if (playConfig().enabled) return;
       onRideEvent(parsed);
       return;
     case 'chat':
@@ -1333,6 +1337,10 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   async function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const publicPlay = url.pathname.replace(/\/+$/, '') === '/api/public/session';
+    if (publicPlay && playConfig().enabled) {
+      refuseUpgrade(socket, 403, 'Multiplayer uses /api/play/session. Refresh this page.');
+      return;
+    }
     if (!publicPlay && url.pathname.replace(/\/+$/, '') !== SESSION_PATH) return;
     if (!isWebSocketUpgrade(req)) {
       refuseUpgrade(socket, 400, 'This endpoint speaks WebSocket.');
@@ -1482,6 +1490,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
       serverTime: Date.now(),
       accounts: requiresAccounts() ? 'required' : 'open',
       versions: { doc: DOCUMENT_VERSION, core: CORE_VERSION },
+      ...(playConfig().enabled ? { play: playConfig() } : {}),
     };
     peer.send(JSON.stringify(welcome));
     // What this member missed, before they are told anything new — so the box they open already reads as a

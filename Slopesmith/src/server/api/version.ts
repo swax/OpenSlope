@@ -6,7 +6,7 @@ import {
   type CheckoutVersion,
   type RemoteVersion,
 } from '../version';
-import { configuredUpdateRoot, resolveLatestRevision } from '../update';
+import { configuredUpdateRoot, readActiveReleaseRevision, resolveLatestRevision } from '../update';
 import { createLogger } from '../log';
 import { jsonResponse, type ApiHandler } from './common';
 
@@ -19,7 +19,7 @@ const log = createLogger('version');
 const startupCheckout = inspectCheckout(APP_ROOT);
 let lastRemote: (Partial<RemoteVersion> & { checkError?: string }) | undefined;
 let checkInFlight: Promise<Partial<RemoteVersion> & { checkError?: string }> | undefined;
-const branchLabel = (): string => (configuredUpdateRoot() ? 'configured repository/main' : updateBranchLabel());
+const branchLabel = (): string => (configuredUpdateRoot() ? 'configured release channel' : updateBranchLabel());
 
 /** One shared check prevents several open browsers from launching duplicate fetches at the same moment. */
 async function checkRemote(checkout: CheckoutVersion): Promise<Partial<RemoteVersion> & { checkError?: string }> {
@@ -40,8 +40,8 @@ async function checkRemote(checkout: CheckoutVersion): Promise<Partial<RemoteVer
       log.error('update repository check failed', { error });
       return {
         checkError:
-          'Could not reach the configured update repository’s main branch. ' +
-          'Check this server’s network access, update configuration, and Git credentials.',
+          'Could not verify the configured release channel. ' +
+          'Check this server’s network access, release feed, and publisher key.',
       };
     })
     .then(result => (lastRemote = result))
@@ -53,7 +53,9 @@ async function checkRemote(checkout: CheckoutVersion): Promise<Partial<RemoteVer
 
 /** Shared with the update route so “latest” is resolved by the server at the moment it is requested. */
 export async function appVersionInfo(refresh = false): Promise<AppVersionInfo> {
-  const checkout = await startupCheckout;
+  let checkout = await startupCheckout;
+  const active = checkout.branch === 'release' ? await readActiveReleaseRevision() : undefined;
+  if (active) checkout = { ...checkout, current: { hash: active } };
   const remote = refresh ? await checkRemote(checkout) : lastRemote;
   return { ...checkout, latestBranch: branchLabel(), ...remote };
 }

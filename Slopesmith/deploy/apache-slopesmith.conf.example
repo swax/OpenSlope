@@ -26,6 +26,9 @@
     # Drop any X-Forwarded-For the client sent, so the entry mod_proxy appends is the client address the API's
     # login rate limiter counts (it reads the last entry) rather than one the client chose.
     RequestHeader unset X-Forwarded-For
+    # Optional Rust relay; enable before the general /api/ mapping, together with Node's configuration.
+    # ProxyPass /api/play/session http://127.0.0.1:5181/api/play/session upgrade=websocket retry=0
+    # ProxyPassReverse /api/play/session http://127.0.0.1:5181/api/play/session
     ProxyPass /api/ http://127.0.0.1:5180/api/ upgrade=websocket retry=0
     ProxyPassReverse /api/ http://127.0.0.1:5180/api/
 

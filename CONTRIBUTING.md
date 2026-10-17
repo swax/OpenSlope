@@ -76,7 +76,7 @@ terms, and that it contains none of the material this section excludes. No sign-
 
 ## Repository quality gate
 
-The gate requires the .NET 10 SDK, Node 24, Python 3 (CI uses Python 3.13), CMake 3.24+,
+The gate requires Rust 1.99+ (Cargo), the .NET 10 SDK, Node 24, Python 3 (CI uses Python 3.13), CMake 3.24+,
 and a C++20 compiler. On Windows the native runner also discovers Visual Studio 2022 C++
 Build Tools and its bundled CMake without requiring them on `PATH`.
 

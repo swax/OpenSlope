@@ -1,81 +1,28 @@
 import { builtinCharacter } from '../characters/builtins';
-
-/** Disposable world-space state used to draw one participant on another browser. */
-export type PlayerMode = 'edit' | 'walk' | 'ride';
-/** What a participant is riding on — the wire spelling of `app/ride/gear.ts`'s `RideGear`, which is defined
- *  from this so a peer can never be drawn on kit its owner is not on. */
-export type PlayerGear = 'snowboard' | 'skis';
-export type PlayerSnowboardStance = 'standard' | 'goofy';
-export type PlayerVec3 = [number, number, number];
-export type PlayerQuat = [number, number, number, number];
-
-export interface PlayerTransform {
-  p: PlayerVec3;
-  q: PlayerQuat;
-}
-
-export type PlayerEquipmentState = 'mounted' | 'loose' | 'held';
-
-/** The owner's board or skis as an independently moving world object. Unlike the rider root, loose equipment
- * may keep coasting after its owner has stopped, and held equipment follows a tracked hand rather than the body. */
-export interface PlayerEquipmentPose {
-  state: PlayerEquipmentState;
-  transform: PlayerTransform;
-  velocity: PlayerVec3;
-  /** Owner-local discontinuity epoch, separate from a rider teleport because the equipment can relocate alone. */
-  teleport: number;
-}
-
-/** Before the publisher converts a session's local lifecycle counter into the wire teleport epoch. */
+import type {
+  PlayerPose,
+  PlayerEquipmentPose,
+  PlayerPointGesture,
+  PlayerTransform,
+  PlayerVec3,
+  PlayerQuat,
+} from './play-protocol.generated';
+export type {
+  PlayerMode,
+  PlayerGear,
+  PlayerSnowboardStance,
+  PlayerVec3,
+  PlayerQuat,
+  PlayerTransform,
+  PlayerEquipmentState,
+  PlayerEquipmentPose,
+  PlayerPointGesture,
+  PlayerPose,
+} from './play-protocol.generated';
+export type PlayerPointGestures = PlayerPointGesture[];
+/** Local equipment uses a lifecycle counter; the publisher converts it into a wire teleport epoch. */
 export interface LocalPlayerEquipmentPose extends Omit<PlayerEquipmentPose, 'teleport'> {
   epoch: number;
-}
-
-export interface PlayerPointGesture {
-  kind: 'point';
-  hand: 'left' | 'right';
-  /** Captured world-space ray. It does not continue following the owner's head after the press. */
-  direction: PlayerVec3;
-  /** Exact world-space surface point under the click. Ray-only points may omit this and replay `direction`. */
-  target?: PlayerVec3;
-  /** Owner-local hold-generation id, retained for the legacy one-shot field. */
-  id: number;
-}
-
-/** At most one held point per anatomical hand. */
-export type PlayerPointGestures = PlayerPointGesture[];
-
-/**
- * A pose is an owner-authoritative sample, not durable project data. `sampleAt` uses the session server clock,
- * which lets a receiver dead-reckon through both halves of the network trip instead of only the time since the
- * packet happened to arrive locally.
- */
-export interface PlayerPose {
-  version: 2;
-  seq: number;
-  sampleAt: number;
-  teleport: number;
-  mode: PlayerMode;
-  vr: boolean;
-  avatar: string;
-  /** Absent selects the default snowboard appearance; nobody on foot is implied to be mounted on it. */
-  gear?: PlayerGear;
-  /** The snowboard foot order. Irrelevant while skiing or walking, but carried so mounted peers mirror the body. */
-  stance?: PlayerSnowboardStance;
-  body: PlayerTransform;
-  velocity: PlayerVec3;
-  /** Production rider-solver inputs that make crouch, carve and airborne body motion match the owner. */
-  animation?: { grounded: boolean; crouch: number; lean: number; bank: number; lead?: 1 | -1; flying?: boolean };
-  /** The headset/camera when it is meaningful. A desktop rider leaves this absent: the chase camera is not them. */
-  head?: PlayerTransform;
-  /** Canonical wrist transforms (+Y fingers, +Z palm). Slots remain unnamed; IK assigns them by shoulder. */
-  hands?: [PlayerTransform | null, PlayerTransform | null];
-  /** Primary point, retained beside `gestures` for renderers that need only one arm. */
-  gesture?: PlayerPointGesture;
-  /** Desktop mouse-button holds. Current peers use this plural field so both hands can be up together. */
-  gestures?: PlayerPointGestures;
-  /** Present throughout Play: mounted under the rider, loose on the mountain, or carried in a VR hand. */
-  equipment?: PlayerEquipmentPose;
 }
 
 /** A local pose before the publisher adds transport identity and timing. */

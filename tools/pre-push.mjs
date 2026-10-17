@@ -35,6 +35,7 @@ const steps = [
   ['Repository hygiene gate', `"${pythonCommand()}" tools/hygiene.py`],
   ...(suites.snowknife ? [['Snowknife fast suite', 'node tools/snowknife-tests.mjs']] : []),
   ...(suites.slopesmith ? [
+    ['Rust multiplayer unit tests and generated contracts', 'npm --prefix Slopesmith run multiplayer:unit'],
     ['Slopesmith type-check', 'npm --prefix Slopesmith run typecheck'],
     ['Slopesmith lint', 'npm --prefix Slopesmith run lint'],
     ['Slopesmith fast tier', 'npm --prefix Slopesmith run test:fast'],

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   queueUpdate,
   readUpdateRepository,
+  readActiveReleaseRevision,
   readUpdateStatus,
   resolveLatestRevision,
   UpdateAlreadyQueuedError,
@@ -21,6 +22,16 @@ mkdirSync(inbox);
 const revision = '1234567890abcdef1234567890abcdef12345678';
 
 try {
+  writeFileSync(join(root, 'active.json'), JSON.stringify({ revision }));
+  check(
+    (await readActiveReleaseRevision(root)) === revision,
+    'a relay-only activation publishes the selected package without restarting an identical API',
+  );
+  writeFileSync(join(root, 'active.json'), JSON.stringify({ revision: 'untrusted; command' }));
+  check(
+    (await readActiveReleaseRevision(root)) === undefined,
+    'active package metadata accepts only an exact source commit',
+  );
   writeFileSync(join(root, 'repository'), 'git@github.com:example/private-fork.git\n');
   check(
     (await readUpdateRepository(root)) === 'git@github.com:example/private-fork.git',

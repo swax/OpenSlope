@@ -56,6 +56,8 @@ for _stream in (sys.stdout, sys.stderr):
 
 
 TEXT_EXTENSIONS = {
+    ".rs",
+    ".lock",
     ".c",
     ".cmake",
     ".cpp",
@@ -87,10 +89,12 @@ TEXT_EXTENSIONS = {
     ".ps1",
     ".py",
     ".service",
+    ".slice",
     ".sh",
     ".shader",
     ".svg",
     ".toml",
+    ".target",
     ".gradle",
     ".ts",
     ".tsx",
@@ -114,6 +118,7 @@ BINARY_PROVENANCE_PATH = ROOT / "tools" / "binary-provenance.json"
 EXTENSIONLESS_SOURCE = {
     ".githooks/pre-push",
     "Slopesmith/deploy/deploy-slopesmith",
+    "Slopesmith/deploy/run-api",
     "Slopesmith/deploy/slopesmith-update-runner",
 }
 

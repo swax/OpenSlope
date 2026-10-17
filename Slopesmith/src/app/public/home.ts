@@ -36,6 +36,13 @@ export async function showPublicHome(): Promise<void> {
   let player: PublicPlayer | null = null;
   let selected: PublicCourse | null = null;
   const linked = publicCourseRequest(new URL(location.href));
+  let friendRoom = new URL(location.href).searchParams.get('room');
+  if (friendRoom && !/^[a-zA-Z0-9_-]{1,64}$/.test(friendRoom)) friendRoom = null;
+  const playUrl = (course: PublicCourse) => {
+    const url = new URL(publicCourseUrl(course));
+    if (friendRoom) url.searchParams.set('room', friendRoom);
+    return url.href;
+  };
   if (!linked) document.body.classList.add('sp-page-background');
   let room: string | null = null;
   let preparing = false;
@@ -273,6 +280,20 @@ export async function showPublicHome(): Promise<void> {
   const join = element('button', 'public-iso-button', member ? `Join as ${member.username}` : 'Join chat'); join.type = 'submit';
   const who = element('p', 'public-who'); who.setAttribute('role', 'status');
   identity.append(invite, nameLabel, join, who);
+  const inviteFriends = element('button', 'public-iso-button', 'Invite friends');
+  inviteFriends.hidden = true;
+  inviteFriends.type = 'button';
+  inviteFriends.addEventListener('click', () => {
+    if (!selected) return;
+    friendRoom ??= crypto.randomUUID().replaceAll('-', '');
+    const link = playUrl(selected);
+    history.replaceState(history.state, '', link);
+    session.setPlayRoom(friendRoom);
+    const copied = navigator.clipboard?.writeText(link) ?? Promise.reject(new Error('Clipboard unavailable'));
+    void copied.then(() => { inviteFriends.textContent = 'Link copied'; })
+      .catch(() => { chatStatus.textContent = 'Share the link in your address bar to invite friends.'; });
+  });
+  chat.el.append(inviteFriends);
   chat.el.insertBefore(identity, chatLog);
   chatEntry.hidden = chatLog.hidden = true;
   function showChat(visible: boolean) {
@@ -311,6 +332,7 @@ export async function showPublicHome(): Promise<void> {
     url: () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/public/session?client=${encodeURIComponent(clientId)}`,
     onWelcome(welcome) {
       if (!joined) return;
+      inviteFriends.hidden = !session.usesPlayRelay();
       me = welcome.member; session.watch(room);
       chatInput.disabled = false;
       chatStatus.textContent = `Connected as ${me.username}`;
@@ -359,8 +381,8 @@ export async function showPublicHome(): Promise<void> {
       showRequirements();
       document.body.classList.remove('sp-page-background');
       document.body.classList.add('public-preparing');
-      setMap(course.name.replace(/[_-]/g, ' '), publicCourseUrl(course));
-      history.replaceState(history.state, '', publicCourseUrl(course));
+      setMap(course.name.replace(/[_-]/g, ' '), playUrl(course));
+      history.replaceState(history.state, '', playUrl(course));
       document.title = `${course.name} · Slopesmith`;
       main.classList.add('public-in-world');
       header.insertBefore(status, header.children[2]);
@@ -410,7 +432,7 @@ export async function showPublicHome(): Promise<void> {
       title.classList.remove('public-visually-hidden'); title.textContent = 'Map unavailable';
       status.textContent = 'This map is private or deleted. Choose another map.';
     } else if (linked && selected) {
-      history.replaceState(null, '', publicCourseUrl(selected));
+      history.replaceState(null, '', playUrl(selected));
       document.title = `${selected.name} · Slopesmith`;
       title.classList.remove('public-visually-hidden');
       title.textContent = selected.name.replace(/[_-]/g, ' ');

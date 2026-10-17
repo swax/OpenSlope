@@ -1,12 +1,14 @@
 # 041 — Production deployment
 
 Slopesmith is a stateful, single-process collaboration service. A small Linux VM is the intended production
-shape: Apache or Caddy serves the static editor and terminates TLS, one Node process owns `/api` and every
-WebSocket, and the workspace and reference map library live on persistent local SSD storage.
+shape: Apache or Caddy serves the static editor and terminates TLS, one Node process owns the editor/API,
+a separate Rust process relays play sockets, and workspace and reference data live on persistent local SSD.
 
 This guide follows an audited production deployment as of 2026-08-21: a DigitalOcean Droplet running Ubuntu
 22.04 LTS, Apache, Node 24, LiveKit and systemd. Ubuntu 24.04 and Caddy remain supported choices; their
-differences are called out instead of being mixed into the reference commands.
+differences are called out instead of being mixed into the reference commands. New installations and
+updates use [060 - Packaged deployment](060-packaged-deployment.md). The existing Apache host has not yet
+been migrated to packaged services or Caddy.
 
 ## Reference deployment
 
@@ -69,57 +71,28 @@ Create the Droplet with SSH keys, monitoring and IPv6 enabled. Point an `A`/`AAA
 
 - TCP 80 and 443 from everywhere;
 - the chosen SSH port only from administrator addresses;
-- no public access to 5179, 5180 or LiveKit's loopback signaling port 7880;
+- no public access to 5179, 5180, 5181 or LiveKit's loopback signaling port 7880;
 - when voice is installed, the media ports listed in [048 — Voice Chat](048-voice-chat.md).
 
-Install Node 24 LTS from an official distribution. Avoid an interactive `nvm` installation for a system
-service: the unit and deploy helpers need the same stable absolute path. The reference host keeps a versioned
-installation behind `/opt/node24`:
-
-```sh
-/opt/node24/bin/node --version
-/opt/node24/bin/npm --version
-readlink -f /opt/node24
-```
-
-The supplied service and deployment helpers use `/opt/node24/bin`. If Node lives elsewhere, change
-`deploy/slopesmith.service`, `deploy/deploy-slopesmith` and `deploy/slopesmith-update-runner` together.
-
-Use immutable application files and a separate mutable state tree. This is the live layout:
+Use the installer in [060 - Packaged deployment](060-packaged-deployment.md) to create the application
+identity, immutable release tree and separate persistent storage. Packages contain the exact Node runtime
+and production dependencies; updates need no build tools on the shared host.
 
 ```text
-/opt/node24 -> <versioned Node 24 installation>
-/opt/slopesmith/
-  current -> releases/<commit>/  atomic active-release link
-  releases/
-    <commit>/
-      dist/                      built browser editor
-      dist-server/               bundled Node entry and workers
-      node_modules/              production dependencies
-/srv/slopesmith/
-  workspace/                     accounts, projects, checkpoints, libraries, cache and logs
-  maps/                          extracted and exported reference maps
-/var/lib/slopesmith-update/
-  inbox/                         only update state writable by the web service
-  logs/                          root-owned deployment logs
-  repository                     configured source shown only to administrators
-/etc/slopesmith.env              non-voice machine paths and tuning
-/etc/slopesmith-update.env       root-owned update repository and unprivileged build identity
-/etc/livekit/                    optional voice config and private environment
+/opt/slopesmith/current -> releases/<commit>/
+/opt/slopesmith/releases/<commit>/  frontend, API, Node runtime, Rust relay, notices
+/srv/slopesmith/workspace/         accounts, projects, checkpoints, libraries, cache and logs
+/srv/slopesmith/maps/              extracted and exported reference maps
+/etc/slopesmith.env                API paths, public hostname and tuning
+/etc/slopesmith-multiplayer.env    persistent admission secret and loopback relay URL
+/etc/slopesmith-update.json        root-owned signed release policy
+/etc/slopesmith/                   publisher public key and prepared proxy snippet
+/var/lib/slopesmith-update/        root state and API-writable inbox
+/etc/livekit/                     optional voice configuration
 ```
 
-Create the service identity and state directories:
-
-```sh
-sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin slopesmith
-sudo install -d -o root -g root -m 0755 /opt/slopesmith /opt/slopesmith/releases
-sudo install -d -o slopesmith -g slopesmith -m 0750 \
-  /srv/slopesmith /srv/slopesmith/workspace /srv/slopesmith/maps
-sudo chown -R slopesmith:slopesmith /srv/slopesmith
-```
-
-Copy the extracted reference library into `/srv/slopesmith/maps`. It must already exist when the API starts;
-Slopesmith refuses a misspelled map path rather than silently presenting an empty library.
+Copy the separately obtained reference library into `/srv/slopesmith/maps`. The installer creates the
+folder but does not distribute retail data. Keep workspace and map data outside every release.
 
 The service watches the maps library and the workspace's projects folder with one inotify watch per
 **directory**, never per file (`src/server/watch-tree.ts`), so a library of about 58,000 files costs about 500
@@ -134,73 +107,20 @@ sudo sysctl --system
 sudo systemctl restart slopesmith
 ```
 
-## Bootstrap the first immutable release
+## Bootstrap and systemd
 
-The repository pins Node 24 in `.nvmrc` and `package.json`. The build produces two independent artifacts:
+Follow [060 - Packaged deployment](060-packaged-deployment.md) to verify the publisher identity, prepare the
+host, review routing and activate a published commit. Existing source-built hosts need a consistent backup
+and the explicit `--adopt-existing` installer option. Never run `npm run dev` or expose Vite in production.
 
-- `dist/`: the Vite browser application;
-- `dist-server/`: bundled ESM for the API and its workers.
+`slopesmith.target` groups `slopesmith.service` (Node, loopback 5180) and
+`slopesmith-multiplayer.service` (Rust, loopback 5181). They have separate restart policies and share resource
+accounting under `slopesmith.slice`. LiveKit remains an independently managed service. Run exactly one
+instance of each application process. Each relay owns its rooms in memory; replicas require room routing.
 
-Build a reviewed commit in a temporary unprivileged checkout, stamp its exact revision, and only then copy the
-finished application into the root-owned release tree. The following is for the first installation, before
-`/opt/slopesmith/current` exists; replace the clone URL here and in the updater configuration below when the
-deployment follows a fork:
-
-```sh
-git clone https://github.com/swax/OpenSlope.git /var/tmp/OpenSlope-bootstrap
-cd /var/tmp/OpenSlope-bootstrap/Slopesmith
-revision=$(git rev-parse HEAD)
-
-/opt/node24/bin/npm ci --no-audit
-/opt/node24/bin/npm run typecheck
-/opt/node24/bin/npm run test:full
-/opt/node24/bin/npm run build
-/opt/node24/bin/npm prune --omit=dev --no-audit
-printf '%s\n' "$revision" > .slopesmith-revision
-
-release="/opt/slopesmith/releases/$revision"
-sudo install -d -o root -g root -m 0755 "$release"
-sudo cp -a -- . "$release/"
-sudo chown -R root:root "$release"
-sudo chmod -R go-w "$release"
-sudo ln -s "$release" /opt/slopesmith/current
-```
-
-`npm prune` is safe after the build: the server bundle externalizes only production dependencies, while `tsx`,
-Vite, TypeScript and esbuild are build-time dependencies. Validate the packaged entry before starting the
-service:
-
-```sh
-NODE_ENV=production \
-SLOPESMITH_APP_ROOT=/opt/slopesmith/current \
-SLOPESMITH_WORKSPACE_ROOT=/srv/slopesmith/workspace \
-SLOPESMITH_MAPS_ROOT=/srv/slopesmith/maps \
-/opt/node24/bin/node --preserve-symlinks-main --enable-source-maps \
-  /opt/slopesmith/current/dist-server/main.js help
-```
-
-Never run `npm run dev` or expose Vite's port in production.
-
-## Environment and systemd
-
-Install the supplied environment and unit after the `current` link exists. Review `/etc/slopesmith.env`; in the
-release layout its application root must be `/opt/slopesmith/current`, never the parent release directory:
-
-```sh
-sudo cp deploy/slopesmith.env.example /etc/slopesmith.env
-sudo editor /etc/slopesmith.env
-sudo chmod 0640 /etc/slopesmith.env
-sudo chown root:slopesmith /etc/slopesmith.env
-sudo install -o root -g root -m 0644 deploy/slopesmith.service \
-  /etc/systemd/system/slopesmith.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now slopesmith
-```
-
-The unit matches the reference host: it starts `/opt/node24/bin/node` from the `current` release, binds the API
-to `127.0.0.1:5180`, requires accounts and trusts forwarded TLS only because Apache or Caddy is the sole caller.
-It emits a health line every minute and logs individual requests when they take at least one second.
-`--behind-proxy` must never be paired with a publicly reachable API port.
+The API launcher resolves the selected immutable release and starts its bundled runtime with `--accounts`
+and `--behind-proxy`. Trust forwarded TLS only when Apache or Caddy is the sole public caller. Node emits a
+health line every minute and logs requests taking at least one second.
 
 Set `SLOPESMITH_ALLOWED_HOSTS` in `/etc/slopesmith.env` to the exact public editor hostname (comma-separated
 when the same service deliberately has more than one). This list is an API authority boundary as well as a
@@ -241,12 +161,13 @@ ss -lnt | grep ':5180'
 ```
 
 The listener must be `127.0.0.1:5180`, `Restart` must be `on-failure`, and the working directory and executable
-must point through `/opt/slopesmith/current` and `/opt/node24` respectively.
+must select `/opt/slopesmith/current` and `/usr/local/lib/slopesmith/run-api` respectively. The launcher
+resolves the current release once, including paths used by later worker creation.
 
 ## HTTPS, static files and `/api`
 
-The public server owns only static files and TLS. It must proxy `/api/*`—including WebSocket upgrades—to
-`127.0.0.1:5180`, serve `current/dist`, fall back to `index.html` for browser routes, revalidate the HTML shell,
+The public server owns static files and TLS. Route `/api/play/session` to Rust at `127.0.0.1:5181`
+before the general `/api/*` route to Node at `127.0.0.1:5180`, with WebSocket upgrades on both. Serve `current/dist`, fall back to `index.html` for browser routes, revalidate the HTML shell,
 cache Vite's fingerprinted `/assets/*` and revisioned `/characters/*` indefinitely, and negotiate HTTP/2 at
 the public TLS edge. Immutable uploaded texture, sky, model and audio responses under `/api` set their own
 one-year policy. Replaceable reference tiles and skies carry content digests in their URLs and receive the
@@ -277,19 +198,22 @@ a signaling query string is not retained. Preserve that path-only logging rule w
 existing Apache site. Apache must be able to traverse the root-owned release directories, but it never receives
 write access to them.
 
-### Caddy alternative
+### Shared Caddy
 
-Copy `deploy/Caddyfile.example` to `/etc/caddy/Caddyfile`, replace `slopesmith.example.com`, validate and reload:
+Keep one Caddy instance for the shared host, with one imported configuration per application. The packaged
+installer prepares Slopesmith's snippet for review; `--proxy caddy` writes it under
+`/etc/caddy/sites.d/`. Import that directory from the host's Caddyfile. Validate the complete configuration
+before a separate reload:
 
 ```sh
-sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile
-sudo editor /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Caddy obtains and renews the certificate and implements the same static/cache/proxy contract. Node remains on
-loopback with either public server.
+Caddy obtains and renews certificates. The example uses `stream_close_delay` to spread WebSocket reconnects
+when configuration changes. Normal Slopesmith releases keep stable ports and do not reload the proxy.
+Migrate the existing Apache host separately, including its other sites, PHP-FPM, protected paths, certificate
+renewals and log-dependent Fail2Ban rules. The application installer does not perform that host-wide cutover.
 
 ### Verify the public edge
 
@@ -387,8 +311,8 @@ Generate a long random Restic repository password. Put one copy in `/etc/restic/
 unrecoverable. Never commit the environment, password or R2 credentials.
 
 Initialize the repository once, then schedule this backup every six hours with a root-owned systemd timer.
-Omit `/etc/livekit` when voice is not installed and `/etc/slopesmith-update.env` when automatic updates are not
-installed:
+Omit `/etc/livekit` when voice is not installed. Retain the publisher key and multiplayer secret through
+restores, alongside the workspace and machine configuration:
 
 ```sh
 set -a
@@ -400,7 +324,9 @@ restic backup \
   /srv/slopesmith/workspace \
   /srv/slopesmith/maps \
   /etc/slopesmith.env \
-  /etc/slopesmith-update.env \
+  /etc/slopesmith-update.json \
+  /etc/slopesmith-multiplayer.env \
+  /etc/slopesmith/ \
   /etc/livekit \
   --exclude=/srv/slopesmith/workspace/cache
 ```
@@ -417,7 +343,9 @@ Those paths contain the durable data:
 /srv/slopesmith/workspace/
 /srv/slopesmith/maps/
 /etc/slopesmith.env
-/etc/slopesmith-update.env
+/etc/slopesmith-update.json
+/etc/slopesmith-multiplayer.env
+/etc/slopesmith/
 /etc/livekit/                    when voice is installed
 ```
 
@@ -453,126 +381,29 @@ Alert when the backup timer fails or when no new Restic snapshot has appeared in
 
 ## Updates and rollback
 
-Use a maintenance window: active collaboration state belongs to the running process even though accepted work
-is snapshotted frequently.
-
-The live host does not pull or build inside `/opt/slopesmith/current`. Its root-owned
-`/usr/local/sbin/deploy-slopesmith` accepts only a full commit reachable from the configured repository's
-`main` branch, clones into a temporary directory as the unprivileged build account, runs the release gates,
-installs a root-owned immutable release, and atomically switches `current`.
-
-The source is machine configuration, not an update-request field. Install the example once and point it at
-your fork before installing the helpers; leave the default to follow OpenSlope itself:
+Use the signed artifact updater in [060 - Packaged deployment](060-packaged-deployment.md). It replaces the
+previous host-side Git/build helpers. Settings retains its guarded inbox contract; root configuration pins
+the HTTPS release feed and publisher public key. No build account, Git credentials or compiler is needed
+on the production host. The privileged tooling is installed separately from reviewed source and is never
+automatically replaced by an application release.
 
 ```sh
-sudo install -o root -g root -m 0600 deploy/slopesmith-update.env.example /etc/slopesmith-update.env
-sudo editor /etc/slopesmith-update.env
-```
-
-`SLOPESMITH_UPDATE_REPOSITORY` may be an HTTPS or SSH Git remote. Do not embed credentials in its URL. The
-unprivileged build account's protected Git credential store or SSH configuration supplies private access.
-The updater intentionally fixes the branch at `main`; an administrator can ask for latest or a full commit,
-but no browser request can change the repository or ref that root trusts.
-
-Install helper changes separately from an application release:
-
-```sh
-sudo install -o root -g root -m 0755 deploy/deploy-slopesmith /usr/local/sbin/deploy-slopesmith
-```
-
-The example and both privileged helpers default to a `slopesmith-build` account with a home directory at
-`/home/slopesmith-build`. Create it, or set `SLOPESMITH_BUILD_USER` and `SLOPESMITH_BUILD_HOME` in
-`/etc/slopesmith-update.env` to an existing unprivileged account; both helpers read that same root-owned file.
-
-```sh
-sudo useradd --system --create-home --shell /usr/sbin/nologin slopesmith-build
-```
-
-That account owns Git/network credentials and the temporary build—not the installed release or service state.
-
-An operator can deploy an exact reviewed revision directly:
-
-```sh
-revision=<40-character-commit-on-the-configured-main-branch>
-sudo deploy-slopesmith "$revision"
+sudo deploy-slopesmith <40-character-published-commit>
 readlink -f /opt/slopesmith/current
-systemctl is-active slopesmith
-curl --include http://127.0.0.1:5180/api/auth/session
+systemctl is-active slopesmith slopesmith-multiplayer
+sudo journalctl -u slopesmith-update -n 100 --no-pager
 ```
 
-The final request may answer `401`; that is a healthy unauthenticated API response. The helper rolls back the
-`current` link automatically when activation or the loopback readiness check fails.
+The updater verifies metadata and payloads before stopping services, selects the release atomically, checks
+readiness and restores the previous release if activation fails. Only changed components restart. Node
+updates close editor sockets after checkpointing so browsers can reconnect; compatible relay-only updates
+leave the editor running. LiveKit and the shared proxy remain running. Select an older signed release with
+the same command to roll back within the same data-format generation. Software rollback does not undo
+changes to user data; keep tested backups.
 
-To let a signed-in Slopesmith administrator request the same guarded deployment from **Settings → Server**, install
-the root-owned update runner once from a reviewed release:
-
-```sh
-sudo deploy/install-updater.sh
-```
-
-Run the same installer again after a release changes `install-updater.sh`, `slopesmith-update-runner`, or the
-updater's systemd units. It preserves `/etc/slopesmith-update.env` while refreshing the root-owned helpers and
-the administrator-visible repository record.
-
-The installer preserves an existing `/etc/slopesmith-update.env`, or installs the OpenSlope defaults when the
-file is absent. It keeps the web service under `NoNewPrivileges` and gives Slopesmith write access only to
-`/var/lib/slopesmith-update/inbox`; a systemd path unit claims the exact 40-character commit and hands it to the
-root-owned deploy helper. Branch names, command arguments and commits outside the configured repository's
-`main` history are refused. The current service remains available while the candidate is cloned, tested and
-built, then restarts during the atomic symlink switch. Deployment status is retained in
-`/var/lib/slopesmith-update/status.json`, and detailed root-owned logs are kept under
-`/var/lib/slopesmith-update/logs/`. The runner publishes only the configured repository identifier into a
-group-readable state record so **Settings → Server** can show administrators which source it follows; the
-root-owned update configuration and the build account's Git credentials remain unreadable to the web service.
-At the switch, established editor sockets receive WebSocket code 1012 (service restart), allowing systemd to
-stop promptly while browsers reconnect to the activated release.
-
-For a private repository, the same runner resolves the fixed `main` ref with the deployment account's Git
-credentials. It returns only the resulting commit hash in a root-owned record; the web service cannot read the
-credentials, choose another repository or ref, or run Git with arbitrary arguments.
-
-To change sources later, edit `/etc/slopesmith-update.env` as root. The root runner and deploy helper read the
-file afresh for each request; neither the updater nor Slopesmith needs a restart:
-
-```sh
-sudo editor /etc/slopesmith-update.env
-```
-
-The same installation enables **Restart server** in **Settings → Server**. That action does not install a
-release: it gracefully closes collaboration sessions and exits with a failure status so the existing systemd
-`Restart=on-failure` policy constructs a fresh service. Startup then re-reads the storage paths and recreates
-the maps watcher and derived-response caches, which is useful after placing newly extracted data in the maps
-folder. An unsupervised production process does not offer the button because it cannot promise to return.
-
-Downgrading to a revision from before this Settings control existed is supported, but that older browser/API
-cannot request the return trip. Restore a newer release with `sudo deploy-slopesmith <revision>` in that case;
-the root-owned runner remains installed throughout.
-
-Inspect the updater and its retained result without reading private Git credentials:
-
-```sh
-systemctl is-enabled slopesmith-update.path
-systemctl status slopesmith-update.path slopesmith-update.service --no-pager
-sudo journalctl -u slopesmith-update.service -n 100 --no-pager
-sudo ls -l /var/lib/slopesmith-update/logs
-```
-
-For rollback, pass a previously installed commit that is still reachable from the configured repository's
-`main` branch to the same deploy helper. It reuses the root-owned release directory, switches `current`, and
-runs the same readiness check. Never rewrite `/opt/slopesmith/current` by hand while the service is running.
-`/srv/slopesmith` remains outside every release, so changing code does not replace projects, accounts or
-reference maps.
-
-Before making a commit available to production, CI or local review should run at minimum:
-
-```sh
-npm run typecheck
-npm run test:full # the whole gate, which includes the cache, accounts and session checks
-npm run build
-```
-
-The deploy helper repeats the production-critical server tests and build in its isolated checkout before
-activation. The API must remain a single systemd instance after an update.
+The existing Settings server restart control still gracefully closes editor sessions and exits so systemd's
+`Restart=on-failure` policy starts a fresh Node process. This reloads storage paths, map watchers and derived
+caches. An unsupervised process cannot offer the same restart guarantee.
 
 ## Optional voice chat
 

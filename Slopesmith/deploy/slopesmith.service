@@ -3,6 +3,7 @@
 Description=Slopesmith API and collaboration service
 Wants=network-online.target
 After=network-online.target
+PartOf=slopesmith.target
 
 [Service]
 Type=simple
@@ -11,7 +12,9 @@ Group=slopesmith
 WorkingDirectory=/opt/slopesmith/current
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/slopesmith.env
-ExecStart=/opt/node24/bin/node --preserve-symlinks-main --enable-source-maps /opt/slopesmith/current/dist-server/main.js serve --accounts --behind-proxy
+EnvironmentFile=-/etc/slopesmith-multiplayer.env
+ExecStart=/usr/local/lib/slopesmith/run-api
+Slice=slopesmith.slice
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=90s

@@ -149,6 +149,26 @@ jobs:
         timeout-minutes: 5
         run: npm ci --prefix Slopesmith
 
+      - name: Set up Rust 1.99
+        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt,clippy && rustup default 1.99.0
+
+      - name: Install multiplayer test browser
+        working-directory: Slopesmith
+        run: |
+          npx playwright-core install --with-deps chromium
+          node --input-type=module -e "import {chromium} from 'playwright-core'; import {appendFileSync} from 'node:fs'; appendFileSync(process.env.GITHUB_ENV, 'SLOPESMITH_CHROMIUM=' + chromium.executablePath() + '\n');"
+
+      - name: Check Rust formatting and lint
+        run: |
+          cargo fmt --manifest-path Slopesmith/multiplayer/Cargo.toml --check
+          cargo clippy --manifest-path Slopesmith/multiplayer/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Verify multiplayer contracts and browser integration
+        run: npm --prefix Slopesmith run multiplayer:test
+
+      - name: Build multiplayer release and dependency notices
+        run: npm --prefix Slopesmith run multiplayer:build
+
       - name: Type-check Slopesmith
         run: npm --prefix Slopesmith run typecheck
 

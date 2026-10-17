@@ -53,6 +53,14 @@ jobs:
         timeout-minutes: 5
         run: npm ci --prefix Slopesmith
 
+      - name: Set up Rust 1.99
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup default 1.99.0
+
+      - name: Verify Rust multiplayer unit tests and generated contracts
+        run: npm --prefix Slopesmith run multiplayer:unit
+
       # Snowknife's test project references the CLI project, so the preceding test step leaves the Debug
       # executable that Slopesmith's integration tests and smoke test consume. No second dotnet build is needed.
       - name: Type-check Slopesmith

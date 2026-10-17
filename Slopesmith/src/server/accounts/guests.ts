@@ -7,7 +7,13 @@ import { readAccounts } from './store';
 const secret = randomBytes(32);
 const COOKIE = 'slopesmith_guest';
 const LIFETIME = 24 * 60 * 60;
-const sign = (payload: string) => createHmac('sha256', secret).update(payload).digest('base64url');
+// A configured relay survives editor-process restarts. Derive a separate cookie key from its persistent
+// shared secret so a restart does not invalidate every guest's next admission renewal.
+const signingKey = () =>
+  process.env.SLOPESMITH_MULTIPLAYER_SECRET
+    ? createHmac('sha256', process.env.SLOPESMITH_MULTIPLAYER_SECRET).update('slopesmith-guest-cookie-v1').digest()
+    : secret;
+const sign = (payload: string) => createHmac('sha256', signingKey()).update(payload).digest('base64url');
 
 const belongsToAccount = async (name: string): Promise<boolean> =>
   (await readAccounts()).users.some(user => user.username === name.normalize('NFKC').trim().toLowerCase());

@@ -7,4 +7,9 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/slopesmith-update-runner
-TimeoutStartSec=45min
+TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/slopesmith /var/lib/slopesmith-update

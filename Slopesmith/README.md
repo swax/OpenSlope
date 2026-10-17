@@ -51,19 +51,19 @@ in a browser for the interactive reference over that same surface, and
 
 ### Production shape
 
-The intended production shape is deliberately small: a Linux VM, Apache (with Caddy as a supported
-alternative) for HTTPS and static files, one Node.js API process, and persistent workspace storage. The
-[production deployment guide](docs/041-production-deployment.md) is kept aligned with the running reference
-host: Apache serves the browser build and proxies `/api`, systemd owns one loopback-only Node 24 service, and
-immutable `/opt/slopesmith/releases/<commit>` directories are selected through an atomic
-`/opt/slopesmith/current` link. Durable projects and maps stay under `/srv/slopesmith`, outside every
-release. The repository includes Apache, Caddy, systemd, and environment examples under
-[`deploy/`](deploy/). Run exactly one API process; live rooms are coordinated in process and are not designed
-for load-balanced replicas.
+The production package contains the frontend, Node API and Rust multiplayer relay, including their runtime
+dependencies. systemd supervises Node and Rust separately; a shared host Caddy serves HTTPS and static files
+and routes each socket to its service. Existing Apache deployments can retain their proxy during migration.
+The [packaged deployment guide](docs/060-packaged-deployment.md) covers signed releases, installation and
+automatic rollback. Immutable `/opt/slopesmith/releases/<commit>` directories are selected through an atomic
+`/opt/slopesmith/current` link; durable projects and maps stay under `/srv/slopesmith`. The
+[host operations guide](docs/041-production-deployment.md) covers capacity, backups and the existing Apache
+installation. Run exactly one API and one relay process; their in-memory rooms require additional
+coordination before either can use load-balanced replicas.
 
 Once the first administrator enrols, server management stays in the browser: invite members, assign roles,
 limit who may edit each mountain, inspect connected users, and install a guarded revision from the update
-repository configured by the host operator—including a fork—or restart the supervised service from
+signed release channel configured by the host operator—including a fork—or restart the supervised service from
 **Settings → Server**. The project files remain on storage you control.
 Voice is an optional, separate self-hosted LiveKit service; the Jukebox shares only public video identity,
 queue state, and timing through Slopesmith while each member keeps their video-bridge credentials in their
@@ -154,6 +154,10 @@ There is no separate map selection panel.
 Chat appears only in the player. Riding stays local until you enter a nickname and choose **Join chat**
 (members choose **Join as** their account name). Account names are reserved and cannot be chosen as guest nicknames.
 Joining connects chat and multiplayer without restarting the ride.
+
+For an isolated Rust multiplayer service, run `npm run dev:multiplayer` with Rust 1.99+ installed.
+Guests use separate play connections and can invite friends into a room without occupying editor seats.
+See [the multiplayer setup guide](multiplayer/README.md) for contracts, tests, deployment, and current limits.
 **Leave chat** disconnects and gives the mountain the full viewport; **Show chat** offers joining again.
 Enter focuses connected chat and Escape returns control to the mountain. The compact player header keeps
 the selected map-name tab and chat controls together, with a labeled **Exit** button at the far right while playing.

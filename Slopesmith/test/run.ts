@@ -124,6 +124,7 @@ const EXCLUSIVE_GROUP = new Map([
  * relative operation costs. Isolating these checks retains their deadlines, ratios and complete coverage.
  */
 const RUN_ALONE = new Set([
+  'multiplayer.test.ts',
   'sessions.test.ts',
   'sync.test.ts',
   'public-home.test.ts',
@@ -151,6 +152,12 @@ const WITH_ARGUMENTS: {
   tier: Exclude<Tier, 'full'>;
   localOnly?: boolean;
 }[] = [
+  {
+    label: 'release package integrity and rollback',
+    command: 'python',
+    tier: 'fast',
+    args: ['deploy/test_release_manager.py'],
+  },
   // Bank/file identifiers remain available offline, but live in one reviewed catalog rather than three copies.
   {
     label: 'external-sound banks (generated views)',

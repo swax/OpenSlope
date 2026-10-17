@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -42,6 +42,7 @@ assertPolicyCategory('NOTICE server-external dependencies', external, policy.ser
 
 const thirdPartyDir = resolve(outdir, 'ThirdPartyNotices');
 await mkdir(thirdPartyDir, { recursive: true });
+await copyFile(resolve(appRoot, 'ThirdPartyNotices/Ajv-LICENSE.txt'), resolve(thirdPartyDir, 'Ajv-LICENSE.txt'));
 const closure = await installedDependencyClosure(appRoot, external);
 const notices = await renderInstalledNotices(
   closure,

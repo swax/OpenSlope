@@ -29,6 +29,17 @@ class RepoHygieneTests(unittest.TestCase):
         findings = self.scan({"Native/src/player.cpp": "// sub_00123456\n"})
         self.assertEqual(["native-symbol"], [finding.rule for finding in findings])
 
+    def test_rust_sources_and_lockfiles_are_scanned(self):
+        for path in ("Slopesmith/multiplayer/src/main.rs", "Slopesmith/multiplayer/Cargo.lock"):
+            self.assertEqual("source", repo_hygiene.classify(path), path)
+
+    def test_deployment_units_and_launcher_are_scanned(self):
+        for path in ("Slopesmith/deploy/slopesmith.slice", "Slopesmith/deploy/slopesmith.target",
+                     "Slopesmith/deploy/run-api"):
+            self.assertEqual("source", repo_hygiene.classify(path), path)
+        findings = self.scan({"Slopesmith/multiplayer/src/main.rs": "// sub_00123456\n"})
+        self.assertEqual(["native-symbol"], [finding.rule for finding in findings])
+
     def test_dirty_and_spec_zones_are_owned_by_their_specialized_checks(self):
         findings = self.scan(
             {

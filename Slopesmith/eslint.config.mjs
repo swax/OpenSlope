@@ -13,6 +13,7 @@ export default defineConfig(
   // deploy tree, and the parts of the tree that are not this project's TypeScript: Blender-side Python under
   // blender/, browser fixtures. Declaration files are the compiler's business, not the linter's.
   globalIgnores([
+    'src/core/session/*.generated.js',
     'node_modules/**',
     'dist/**',
     'dist-server/**',

@@ -19,3 +19,6 @@ demos/
 # Vendored browser importer and upstream patch context are not authored sources.
 public/
 tools/retopology/quadwild-patches/
+# Rust owns the byte-for-byte output of these contracts and validators.
+src/core/session/play-protocol.generated.ts
+src/core/session/play-validators.generated.*

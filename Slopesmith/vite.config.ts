@@ -91,7 +91,14 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5179,
       allowedHosts,
-      proxy: { '/api': { target: `http://127.0.0.1:${API_PORT}`, ws: true } },
+      proxy: {
+        ...(process.env.SLOPESMITH_MULTIPLAYER_URL
+          ? {
+              '/api/play/session': { target: process.env.SLOPESMITH_MULTIPLAYER_URL, ws: true },
+            }
+          : {}),
+        '/api': { target: `http://127.0.0.1:${API_PORT}`, ws: true },
+      },
     },
   };
 });

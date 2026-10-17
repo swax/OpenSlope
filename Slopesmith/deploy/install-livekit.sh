@@ -141,6 +141,7 @@ Wants=network-online.target
 Type=simple
 User=livekit
 Group=livekit
+Slice=slopesmith.slice
 ExecStart=/usr/local/bin/livekit-server --config /etc/livekit/livekit.yaml
 Restart=on-failure
 RestartSec=5s

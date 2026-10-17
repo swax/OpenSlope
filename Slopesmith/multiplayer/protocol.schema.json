@@ -1,0 +1,1638 @@
+{
+  "PlayClientMessage": {
+    "$defs": {
+      "Hand": {
+        "enum": [
+          "left",
+          "right"
+        ],
+        "type": "string"
+      },
+      "PlayerAnimation": {
+        "properties": {
+          "bank": {
+            "format": "double",
+            "type": "number"
+          },
+          "crouch": {
+            "format": "double",
+            "type": "number"
+          },
+          "flying": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "grounded": {
+            "type": "boolean"
+          },
+          "lead": {
+            "format": "int8",
+            "maximum": 127,
+            "minimum": -128,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lean": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "grounded",
+          "crouch",
+          "lean",
+          "bank"
+        ],
+        "type": "object"
+      },
+      "PlayerEquipmentPose": {
+        "properties": {
+          "state": {
+            "$ref": "#/$defs/PlayerEquipmentState"
+          },
+          "teleport": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transform": {
+            "$ref": "#/$defs/PlayerTransform"
+          },
+          "velocity": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          }
+        },
+        "required": [
+          "state",
+          "transform",
+          "velocity",
+          "teleport"
+        ],
+        "type": "object"
+      },
+      "PlayerEquipmentState": {
+        "enum": [
+          "mounted",
+          "loose",
+          "held"
+        ],
+        "type": "string"
+      },
+      "PlayerGear": {
+        "enum": [
+          "snowboard",
+          "skis"
+        ],
+        "type": "string"
+      },
+      "PlayerMode": {
+        "enum": [
+          "edit",
+          "walk",
+          "ride"
+        ],
+        "type": "string"
+      },
+      "PlayerPointGesture": {
+        "properties": {
+          "direction": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "hand": {
+            "$ref": "#/$defs/Hand"
+          },
+          "id": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/$defs/PointKind"
+          },
+          "target": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "hand",
+          "direction",
+          "id"
+        ],
+        "type": "object"
+      },
+      "PlayerPose": {
+        "properties": {
+          "animation": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerAnimation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "body": {
+            "$ref": "#/$defs/PlayerTransform"
+          },
+          "equipment": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerEquipmentPose"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gear": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerGear"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gesture": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerPointGesture"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gestures": {
+            "items": {
+              "$ref": "#/$defs/PlayerPointGesture"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "hands": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PlayerTransform"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "head": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerTransform"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "$ref": "#/$defs/PlayerMode"
+          },
+          "sampleAt": {
+            "format": "double",
+            "type": "number"
+          },
+          "seq": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stance": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerSnowboardStance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "teleport": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "velocity": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "version": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "vr": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "version",
+          "seq",
+          "sampleAt",
+          "teleport",
+          "mode",
+          "vr",
+          "avatar",
+          "body",
+          "velocity"
+        ],
+        "type": "object"
+      },
+      "PlayerSnowboardStance": {
+        "enum": [
+          "standard",
+          "goofy"
+        ],
+        "type": "string"
+      },
+      "PlayerTransform": {
+        "properties": {
+          "p": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "q": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
+          }
+        },
+        "required": [
+          "p",
+          "q"
+        ],
+        "type": "object"
+      },
+      "PointKind": {
+        "enum": [
+          "point"
+        ],
+        "type": "string"
+      },
+      "RaceMode": {
+        "enum": [
+          "race",
+          "showoff",
+          "freeride"
+        ],
+        "type": "string"
+      },
+      "RideContact": {
+        "properties": {
+          "normal": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "point": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          }
+        },
+        "required": [
+          "point",
+          "normal"
+        ],
+        "type": "object"
+      },
+      "RideEventKind": {
+        "enum": [
+          "collision",
+          "trigger",
+          "cracked",
+          "cracked-heal",
+          "cracked-break"
+        ],
+        "type": "string"
+      },
+      "RideEventMessage": {
+        "properties": {
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RideContact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/RideEventKind"
+          },
+          "mode": {
+            "$ref": "#/$defs/RaceMode"
+          },
+          "riderSpeed": {
+            "format": "double",
+            "type": "number"
+          },
+          "sentAt": {
+            "format": "double",
+            "type": "number"
+          },
+          "target": {
+            "$ref": "#/$defs/RideEventTarget"
+          }
+        },
+        "required": [
+          "target",
+          "mode",
+          "kind",
+          "key",
+          "id",
+          "riderSpeed",
+          "sentAt"
+        ],
+        "type": "object"
+      },
+      "RideEventTarget": {
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "authored",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "reference",
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "level"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "oneOf": [
+      {
+        "properties": {
+          "protocol": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "t": {
+            "const": "hello",
+            "type": "string"
+          },
+          "ticket": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "protocol",
+          "ticket"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "t": {
+            "const": "renew",
+            "type": "string"
+          },
+          "ticket": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "ticket"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "player": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerPose"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "t": {
+            "const": "pose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "event": {
+            "$ref": "#/$defs/RideEventMessage"
+          },
+          "t": {
+            "const": "ride-event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "event"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "t": {
+            "const": "chat",
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "text"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "at": {
+            "format": "double",
+            "type": "number"
+          },
+          "t": {
+            "const": "ping",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "at"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "PlayClientMessage"
+  },
+  "PlayConfig": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "socketPath": {
+        "type": "string"
+      },
+      "ticketPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "enabled",
+      "socketPath",
+      "ticketPath"
+    ],
+    "title": "PlayConfig",
+    "type": "object"
+  },
+  "PlayControlMessage": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "oneOf": [
+      {
+        "properties": {
+          "t": {
+            "const": "revoke-user",
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "userId"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "accountSessionId": {
+            "type": "string"
+          },
+          "t": {
+            "const": "revoke-session",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "accountSessionId"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "courseId": {
+            "type": "string"
+          },
+          "t": {
+            "const": "remove-course",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "courseId"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "PlayControlMessage"
+  },
+  "PlayServerMessage": {
+    "$defs": {
+      "Hand": {
+        "enum": [
+          "left",
+          "right"
+        ],
+        "type": "string"
+      },
+      "MemberRole": {
+        "enum": [
+          "admin",
+          "moderator",
+          "editor",
+          "viewer"
+        ],
+        "type": "string"
+      },
+      "PeerPose": {
+        "properties": {
+          "player": {
+            "$ref": "#/$defs/PlayerPose"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "player"
+        ],
+        "type": "object"
+      },
+      "PlayChatLine": {
+        "properties": {
+          "at": {
+            "format": "double",
+            "type": "number"
+          },
+          "id": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "member": {
+            "$ref": "#/$defs/PlayMember"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "sessionId",
+          "member",
+          "text"
+        ],
+        "type": "object"
+      },
+      "PlayMember": {
+        "properties": {
+          "equipmentEdgeColor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/MemberRole"
+          },
+          "skiTextureUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snowboardTextureUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role"
+        ],
+        "type": "object"
+      },
+      "PlayPeer": {
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "deviceLabel": {
+            "type": "string"
+          },
+          "member": {
+            "$ref": "#/$defs/PlayMember"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "clientId",
+          "deviceLabel",
+          "member",
+          "color"
+        ],
+        "type": "object"
+      },
+      "PlayerAnimation": {
+        "properties": {
+          "bank": {
+            "format": "double",
+            "type": "number"
+          },
+          "crouch": {
+            "format": "double",
+            "type": "number"
+          },
+          "flying": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "grounded": {
+            "type": "boolean"
+          },
+          "lead": {
+            "format": "int8",
+            "maximum": 127,
+            "minimum": -128,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lean": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "grounded",
+          "crouch",
+          "lean",
+          "bank"
+        ],
+        "type": "object"
+      },
+      "PlayerEquipmentPose": {
+        "properties": {
+          "state": {
+            "$ref": "#/$defs/PlayerEquipmentState"
+          },
+          "teleport": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transform": {
+            "$ref": "#/$defs/PlayerTransform"
+          },
+          "velocity": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          }
+        },
+        "required": [
+          "state",
+          "transform",
+          "velocity",
+          "teleport"
+        ],
+        "type": "object"
+      },
+      "PlayerEquipmentState": {
+        "enum": [
+          "mounted",
+          "loose",
+          "held"
+        ],
+        "type": "string"
+      },
+      "PlayerGear": {
+        "enum": [
+          "snowboard",
+          "skis"
+        ],
+        "type": "string"
+      },
+      "PlayerMode": {
+        "enum": [
+          "edit",
+          "walk",
+          "ride"
+        ],
+        "type": "string"
+      },
+      "PlayerPointGesture": {
+        "properties": {
+          "direction": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "hand": {
+            "$ref": "#/$defs/Hand"
+          },
+          "id": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/$defs/PointKind"
+          },
+          "target": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "hand",
+          "direction",
+          "id"
+        ],
+        "type": "object"
+      },
+      "PlayerPose": {
+        "properties": {
+          "animation": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerAnimation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "body": {
+            "$ref": "#/$defs/PlayerTransform"
+          },
+          "equipment": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerEquipmentPose"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gear": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerGear"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gesture": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerPointGesture"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gestures": {
+            "items": {
+              "$ref": "#/$defs/PlayerPointGesture"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "hands": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PlayerTransform"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "head": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerTransform"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "$ref": "#/$defs/PlayerMode"
+          },
+          "sampleAt": {
+            "format": "double",
+            "type": "number"
+          },
+          "seq": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stance": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlayerSnowboardStance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "teleport": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "velocity": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "version": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "vr": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "version",
+          "seq",
+          "sampleAt",
+          "teleport",
+          "mode",
+          "vr",
+          "avatar",
+          "body",
+          "velocity"
+        ],
+        "type": "object"
+      },
+      "PlayerSnowboardStance": {
+        "enum": [
+          "standard",
+          "goofy"
+        ],
+        "type": "string"
+      },
+      "PlayerTransform": {
+        "properties": {
+          "p": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "q": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
+          }
+        },
+        "required": [
+          "p",
+          "q"
+        ],
+        "type": "object"
+      },
+      "PointKind": {
+        "enum": [
+          "point"
+        ],
+        "type": "string"
+      },
+      "RaceMode": {
+        "enum": [
+          "race",
+          "showoff",
+          "freeride"
+        ],
+        "type": "string"
+      },
+      "RideContact": {
+        "properties": {
+          "normal": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "point": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          }
+        },
+        "required": [
+          "point",
+          "normal"
+        ],
+        "type": "object"
+      },
+      "RideEventKind": {
+        "enum": [
+          "collision",
+          "trigger",
+          "cracked",
+          "cracked-heal",
+          "cracked-break"
+        ],
+        "type": "string"
+      },
+      "RideEventMessage": {
+        "properties": {
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RideContact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/RideEventKind"
+          },
+          "mode": {
+            "$ref": "#/$defs/RaceMode"
+          },
+          "riderSpeed": {
+            "format": "double",
+            "type": "number"
+          },
+          "sentAt": {
+            "format": "double",
+            "type": "number"
+          },
+          "target": {
+            "$ref": "#/$defs/RideEventTarget"
+          }
+        },
+        "required": [
+          "target",
+          "mode",
+          "kind",
+          "key",
+          "id",
+          "riderSpeed",
+          "sentAt"
+        ],
+        "type": "object"
+      },
+      "RideEventTarget": {
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "authored",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "reference",
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "level"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "oneOf": [
+      {
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "courseId": {
+            "type": "string"
+          },
+          "member": {
+            "$ref": "#/$defs/PlayMember"
+          },
+          "protocol": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "publishMs": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "roomId": {
+            "type": "string"
+          },
+          "serverTime": {
+            "format": "double",
+            "type": "number"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "t": {
+            "const": "welcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "protocol",
+          "sessionId",
+          "member",
+          "color",
+          "serverTime",
+          "courseId",
+          "roomId",
+          "publishMs"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "courseId": {
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "$ref": "#/$defs/PlayPeer"
+            },
+            "type": "array"
+          },
+          "t": {
+            "const": "presence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "courseId",
+          "peers"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "courseId": {
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "$ref": "#/$defs/PeerPose"
+            },
+            "type": "array"
+          },
+          "t": {
+            "const": "poses",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "courseId",
+          "peers"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "courseId": {
+            "type": "string"
+          },
+          "event": {
+            "$ref": "#/$defs/RideEventMessage"
+          },
+          "fromSessionId": {
+            "type": "string"
+          },
+          "serverAt": {
+            "format": "double",
+            "type": "number"
+          },
+          "t": {
+            "const": "ride-event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "courseId",
+          "fromSessionId",
+          "serverAt",
+          "event"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "line": {
+            "$ref": "#/$defs/PlayChatLine"
+          },
+          "t": {
+            "const": "chat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "line"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/$defs/PlayChatLine"
+            },
+            "type": "array"
+          },
+          "t": {
+            "const": "chat-history",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "lines"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "echo": {
+            "format": "double",
+            "type": "number"
+          },
+          "serverTime": {
+            "format": "double",
+            "type": "number"
+          },
+          "t": {
+            "const": "pong",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "echo",
+          "serverTime"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "t": {
+            "const": "error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "message"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "code": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "t": {
+            "const": "closed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "code",
+          "reason"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "PlayServerMessage"
+  },
+  "TicketClaims": {
+    "$defs": {
+      "MemberRole": {
+        "enum": [
+          "admin",
+          "moderator",
+          "editor",
+          "viewer"
+        ],
+        "type": "string"
+      },
+      "PlayMember": {
+        "properties": {
+          "equipmentEdgeColor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/MemberRole"
+          },
+          "skiTextureUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snowboardTextureUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "accountSessionId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "clientId": {
+        "type": "string"
+      },
+      "color": {
+        "type": "string"
+      },
+      "courseId": {
+        "type": "string"
+      },
+      "deviceLabel": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "format": "double",
+        "type": "number"
+      },
+      "member": {
+        "$ref": "#/$defs/PlayMember"
+      },
+      "nonce": {
+        "type": "string"
+      },
+      "origin": {
+        "type": "string"
+      },
+      "protocol": {
+        "format": "uint8",
+        "maximum": 255,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "publicPlay": {
+        "type": "boolean"
+      },
+      "roomId": {
+        "type": "string"
+      },
+      "sessionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocol",
+      "nonce",
+      "expiresAt",
+      "sessionId",
+      "clientId",
+      "deviceLabel",
+      "member",
+      "color",
+      "courseId",
+      "roomId",
+      "publicPlay",
+      "origin"
+    ],
+    "title": "TicketClaims",
+    "type": "object"
+  },
+  "TicketRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "clientId": {
+        "type": "string"
+      },
+      "courseId": {
+        "type": "string"
+      },
+      "deviceLabel": {
+        "type": "string"
+      },
+      "editorSessionId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "previousTicket": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "publicPlay": {
+        "type": "boolean"
+      },
+      "roomId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "courseId",
+      "roomId",
+      "clientId",
+      "deviceLabel",
+      "publicPlay"
+    ],
+    "title": "TicketRequest",
+    "type": "object"
+  },
+  "TicketResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "expiresAt": {
+        "format": "double",
+        "type": "number"
+      },
+      "ticket": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "ticket",
+      "expiresAt"
+    ],
+    "title": "TicketResponse",
+    "type": "object"
+  }
+}

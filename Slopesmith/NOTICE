@@ -129,6 +129,8 @@ not include them in dist/ or dist-server/:
     npm-development-only: @eslint/js — MIT License
     npm-development-only: @types/node — MIT License
     npm-development-only: @types/three — MIT License
+    npm-development-only: ajv — MIT License
+
     npm-development-only: c8 — ISC License
     npm-development-only: esbuild — MIT License
     npm-development-only: eslint — MIT License
@@ -139,6 +141,13 @@ not include them in dist/ or dist-server/:
     npm-development-only: typescript — Apache License 2.0
     npm-development-only: typescript-eslint — MIT License
     npm-development-only: vite — MIT License
+
+AJV emits the standalone validation code under src/core/session/play-validators.generated.js.
+Its MIT notice is reproduced in ThirdPartyNotices/Ajv-LICENSE.txt.
+
+Rust DTO binding generation uses ts-rs 12.0.1 (MIT). Its published crates omit their workspace license;
+ThirdPartyNotices/TsRs-LICENSE.txt reproduces LICENSE from their recorded source commit
+7182ad8289596097235406b715fa04506443b4ad at https://github.com/Aleph-Alpha/ts-rs.
 
 A DEPLOYED build is not this repository, and its two halves differ:
 

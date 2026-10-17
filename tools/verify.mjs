@@ -30,6 +30,7 @@ const nativeSteps = [
   ['Native C++ conformance', process.execPath, ['tools/native-tests.mjs'], 15 * 60_000],
 ];
 const slopesmithSteps = [
+  npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),
   npmStep('Slopesmith lint', 'lint'),
   npmStep('Slopesmith deterministic tests and coverage', 'coverage'),

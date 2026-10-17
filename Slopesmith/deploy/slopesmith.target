@@ -1,0 +1,8 @@
+# repo-hygiene: allow[config-listing] -- authored systemd application group
+[Unit]
+Description=Slopesmith API and multiplayer services
+Wants=slopesmith.service slopesmith-multiplayer.service
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target
