@@ -137,6 +137,30 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "HTTPS"):
             release.HttpsRedirects().redirect_request(None, None, 302, "Found", {}, "http://insecure.example.com/payload")
 
+    @unittest.skipIf(os.name == "nt", "Linux service-account preflight is tested on Linux")
+    def test_preflight_isolates_storage_and_cleans_scratch(self):
+        identity = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid())
+        scratch = []
+        def cli(args, **kwargs):
+            env = kwargs["env"]
+            workspace = Path(env["SLOPESMITH_WORKSPACE_ROOT"])
+            scratch.append(workspace.parent)
+            self.assertEqual(args[:4], ["runuser", "-u", "slopesmith", "--"])
+            self.assertEqual(env["SLOPESMITH_APP_ROOT"], str(self.tree))
+            self.assertEqual(workspace.parent.parent, self.root)
+            self.assertEqual(Path(kwargs["cwd"]), workspace.parent)
+            self.assertEqual(env["SLOPESMITH_MAPS_ROOT"], str(workspace / "maps"))
+            # Older signed CLIs may initialize storage even for help. They may write only into this scratch.
+            workspace.mkdir()
+            (workspace / "fixture").write_text("temporary state")
+        with patch("pwd.getpwnam", return_value=identity), patch.object(release.os, "chown"), \
+             patch.object(release, "run", side_effect=cli), \
+             patch.dict(os.environ, {"SLOPESMITH_WORKSPACE_ROOT": "/srv/live-private", "SLOPESMITH_MAPS_ROOT": "/srv/live-maps"}):
+            release.preflight(self.tree, self.root)
+        self.assertEqual(len(scratch), 1)
+        self.assertFalse(scratch[0].exists())
+        self.assertFalse((self.tree / "workspace").exists())
+
     def evil_archive(self, kind):
         archive = self.root / (kind + ".tar.gz")
         with tarfile.open(archive, "w:gz") as tar:

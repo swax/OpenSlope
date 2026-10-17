@@ -84,6 +84,23 @@ jobs:
           release.unpack(manifest_path.parent/manifest['archive']['name'], manifest, destination)
           subprocess.run([str(destination/'runtime/bin/node'), 'scripts/smoke-release.mjs', str(destination)],check=True)
           PY
+      - name: Exercise preflight as the service account against immutable files
+        working-directory: Slopesmith
+        run: |
+          sudo useradd --system --user-group --no-create-home slopesmith
+          sudo install -d -m 0755 /opt/slopesmith-ci
+          sudo cp -a temp/packaged-smoke /opt/slopesmith-ci/release
+          sudo chown -R root:root /opt/slopesmith-ci
+          sudo python3 - <<'PY'
+          import importlib.util, pathlib
+          spec=importlib.util.spec_from_file_location('release', 'deploy/release_manager.py')
+          release=importlib.util.module_from_spec(spec); spec.loader.exec_module(release)
+          destination=pathlib.Path('/opt/slopesmith-ci/release')
+          release.preflight(destination, destination.parent)
+          assert not (destination/'workspace').exists()
+          release.verify_installed(destination, __import__('json').loads((destination/'release.json').read_text()))
+          print('SERVICE-ACCOUNT PREFLIGHT PASS: root-owned release, isolated storage, payload unchanged')
+          PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: slopesmith-linux-x64

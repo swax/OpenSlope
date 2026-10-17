@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,17 @@ import { playSocket } from '../test/play-socket.ts';
 const root = resolve(process.argv[2]);
 const manifest = JSON.parse(await readFile(join(root, 'release.json'), 'utf8'));
 const fixture = await mkdtemp(join(tmpdir(), 'slopesmith-packaged-smoke-'));
+const helpWorkspace = join(fixture, 'help-must-not-create');
+execFileSync(join(root, 'runtime/bin/node'), [join(root, 'dist-server/main.js'), 'help'], {
+  env: {
+    ...process.env,
+    SLOPESMITH_APP_ROOT: root,
+    SLOPESMITH_WORKSPACE_ROOT: helpWorkspace,
+    SLOPESMITH_MAPS_ROOT: join(helpWorkspace, 'maps'),
+  },
+  stdio: 'pipe',
+});
+assert(!existsSync(helpWorkspace), 'Packaged CLI help must not initialize workspace state.');
 await mkdir(join(fixture, 'maps'));
 Object.assign(process.env, {
   SLOPESMITH_APP_ROOT: root,

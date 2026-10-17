@@ -437,6 +437,19 @@ def verify_installed(target, manifest):
         raise ValueError("Installed release payload differs from publisher")
 
 
+def preflight(tree, parent):
+    """Run the signed CLI without root privileges or access to a live workspace configuration."""
+    import pwd
+    identity = pwd.getpwnam("slopesmith")
+    with tempfile.TemporaryDirectory(prefix=".preflight-", dir=parent) as scratch:
+        os.chown(scratch, identity.pw_uid, identity.pw_gid)
+        workspace = Path(scratch) / "workspace"
+        run(["runuser", "-u", "slopesmith", "--", Path(tree) / "runtime/bin/node", "--enable-source-maps",
+             Path(tree) / "dist-server/main.js", "help"], cwd=scratch,
+            env={**os.environ, "SLOPESMITH_APP_ROOT": str(tree), "SLOPESMITH_WORKSPACE_ROOT": str(workspace),
+                 "SLOPESMITH_MAPS_ROOT": str(workspace / "maps")}, stdout=subprocess.DEVNULL)
+
+
 def deploy(layout, revision, adopt=False):
     if not SHA.fullmatch(revision):
         raise ValueError("Deployment accepts exactly one full lowercase source commit")
@@ -461,8 +474,7 @@ def deploy(layout, revision, adopt=False):
             tree = Path(scratch) / "tree"
             unpack(archive, manifest, tree)
             # Only a signature-verified payload is executed, and only as the unprivileged application user.
-            run(["runuser", "-u", "slopesmith", "--", tree / "runtime/bin/node", "--enable-source-maps",
-                 tree / "dist-server/main.js", "help"], env={**os.environ, "SLOPESMITH_APP_ROOT": str(tree)}, stdout=subprocess.DEVNULL)
+            preflight(tree, layout.releases)
             os.rename(tree, target)
         activate(layout, target, manifest, adopt=adopt)
     print("Active Slopesmith release: " + revision)

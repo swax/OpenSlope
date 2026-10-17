@@ -344,8 +344,12 @@ const USAGE = `Slopesmith server
   delete-map <id|name>              delete a map and retire its name`;
 
 async function runCommand(command: string, argv: readonly string[]): Promise<number> {
+  if (command === 'help' || command === '--help' || command === '-h') {
+    print(USAGE);
+    return 0;
+  }
   const { values, rest } = flags(argv);
-  // Every command works against the workspace record, so the layout has to exist before one writes into it.
+  // Management commands work against the workspace record; help above must remain read-only.
   await ensureWorkspace();
   forgetAccounts();
 
