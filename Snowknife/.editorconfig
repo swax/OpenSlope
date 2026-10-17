@@ -1,8 +1,7 @@
-# Snowknife's conventions, written down from the code as it stands so an editor stops second-guessing them.
-# Nothing here reformats existing code on its own: there is no EnforceCodeStyleInBuild, so the C# style
-# entries stay editor hints rather than build errors. Line endings are deliberately not set: the repository's
-# .gitattributes already declares them per extension, and the working tree carries a mix that the next
-# normalising commit settles. No `root = true`, so a repository-wide file can still add to these.
+# Snowknife's editor and formatter conventions. `npm run format:snowknife` applies whitespace formatting
+# with the dotnet format bundled in the SDK selected by ../global.json; `format:snowknife:check` verifies it.
+# C# style suggestions remain editor hints rather than build errors (no EnforceCodeStyleInBuild).
+# No `root = true`, so a repository-wide file can still add to these.
 
 [*]
 charset = utf-8
@@ -12,7 +11,9 @@ insert_final_newline = true
 trim_trailing_whitespace = true
 
 [*.cs]
-# File-scoped namespaces everywhere (84 of 84 files), usings above the namespace with System first.
+# Match .gitattributes on every platform, including Linux formatter runs.
+end_of_line = crlf
+# File-scoped namespaces, usings above the namespace with System first.
 csharp_style_namespace_declarations = file_scoped:suggestion
 csharp_using_directive_placement = outside_namespace:suggestion
 dotnet_sort_system_directives_first = true
@@ -28,7 +29,7 @@ csharp_new_line_before_catch = true
 csharp_new_line_before_finally = true
 csharp_preserve_single_line_blocks = true
 csharp_preserve_single_line_statements = true
-# Comment blocks wrap around 110 columns; code is allowed to run longer.
+# Advisory for editors: dotnet format does not wrap long code or comments to this width.
 max_line_length = 120
 
 # Snowknife.csproj builds with AnalysisLevel latest-recommended under TreatWarningsAsErrors. Three of that

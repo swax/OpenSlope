@@ -60,8 +60,10 @@ public static class RailGateBundle
 
             info.Gates.Add(new BundleManifest.RailGateInfo
             {
-                Index = inst, Name = it.InstanceName ?? "",
-                Center = BundleSpace.Xyz(center), Size = BundleSpace.Xyz(size),
+                Index = inst,
+                Name = it.InstanceName ?? "",
+                Center = BundleSpace.Xyz(center),
+                Size = BundleSpace.Xyz(size),
                 Rails = commands.Select(c => splineToRail[c.Node.Spline!.SplineIndex]).ToArray(),
                 Delays = commands.Select(c => c.Delay).ToArray(),
                 Enabled = commands.Select(c => c.Node.Spline!.Effect != 0).ToArray(),

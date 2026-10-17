@@ -39,7 +39,11 @@ public class EffectLifecycleTests
     }
 
     [Theory]
-    [InlineData(0)] [InlineData(1)] [InlineData(2)] [InlineData(3)] [InlineData(4)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
     public void ASeparateTriggerPreservesTargetAndLifecycleMode(int mode)
     {
         using var temp = new TempDir();

@@ -351,7 +351,7 @@ internal sealed class LevelPipelineService
         // the `Shared` sibling of dest (i.e. <project>/Assets/OpenSlope/Maps/Shared) - so OpenSlope/Load finds boards + announcer. This
         // is the ONLY Unity-aware step: `shared` itself just decodes neutral assets into Maps. Copy-ONCE: skip if
         // the project already has Shared, so staging a SECOND map doesn't recopy it. --no-shared opts out (level only).
-        string sharedSrc  = Path.Combine(Path.GetDirectoryName(src)  ?? src,  "Shared");
+        string sharedSrc = Path.Combine(Path.GetDirectoryName(src) ?? src, "Shared");
         if (noShared)
             Log.Info(publicTarget
                 ? "  shared: skipped (public target; the disc-derived shared asset pack is local-only)."

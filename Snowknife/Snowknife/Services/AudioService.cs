@@ -483,7 +483,10 @@ internal sealed class AudioService
     private static readonly Dictionary<string, string> AudioBigAlias =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["SNOW"] = "SNOWDRM", ["PIPE"] = "PIPEDRM", ["MEGAPLE"] = "MEGAPLEX", ["MERQUER"] = "MERQURY",
+            ["SNOW"] = "SNOWDRM",
+            ["PIPE"] = "PIPEDRM",
+            ["MEGAPLE"] = "MEGAPLEX",
+            ["MERQUER"] = "MERQURY",
         };
 
     private DiscUtils.DiscFileInfo? FindAudioBig(CDReader cd, string levelName)

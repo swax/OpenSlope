@@ -147,22 +147,22 @@ internal static class BillboardsExporter
     };
 
     // Every threshold is SSX centimetres (the metre figure each was calibrated at is in the comment).
-    const float FindRadius   = 1800f;    // 18 m column radius around the instance to look for its screen
-    const float MaxTilt      = 0.6f;     // |normal.Z| ceiling for "near-vertical" - a screen face, not ground/roof
-    const float UvSpanMin    = 0.40f;    // below this is a flip-book cell (crowd cells sit near 0.33) or an atlas sliver
-    const float UvSpanMax    = 1.20f;    // above this the page is TILED (a structural face), not a single ad image
-    const float Inset        = 1.0f;     // match the ad face exactly (the fitted rect IS the ad-face extent)
-    const float Proud        = 10f;      // 0.1 m off the face: covers the ad, gap not noticeable, no z-fight
-    const float MinSize      = 300f;     // 3 m - reject degenerate fits
-    const float MaxSize      = 4000f;    // 40 m - reject oversized ones
-    const float MinAdArea    = 700_000f; // 70 m2 - a real ad face is bigger; below this is a UV-passing sliver
-    const float DedupDist    = 250f;     // 2.5 m - quads this close and ~coplanar are the same screen
-    const float SplitGap     = 60f;      // 0.6 m gap along an axis separates a stack / row / depth step into cells
+    const float FindRadius = 1800f;    // 18 m column radius around the instance to look for its screen
+    const float MaxTilt = 0.6f;     // |normal.Z| ceiling for "near-vertical" - a screen face, not ground/roof
+    const float UvSpanMin = 0.40f;    // below this is a flip-book cell (crowd cells sit near 0.33) or an atlas sliver
+    const float UvSpanMax = 1.20f;    // above this the page is TILED (a structural face), not a single ad image
+    const float Inset = 1.0f;     // match the ad face exactly (the fitted rect IS the ad-face extent)
+    const float Proud = 10f;      // 0.1 m off the face: covers the ad, gap not noticeable, no z-fight
+    const float MinSize = 300f;     // 3 m - reject degenerate fits
+    const float MaxSize = 4000f;    // 40 m - reject oversized ones
+    const float MinAdArea = 700_000f; // 70 m2 - a real ad face is bigger; below this is a UV-passing sliver
+    const float DedupDist = 250f;     // 2.5 m - quads this close and ~coplanar are the same screen
+    const float SplitGap = 60f;      // 0.6 m gap along an axis separates a stack / row / depth step into cells
     const float JumboScreenFrac = 0.42f; // the LCD display is the top ~42% of the tower; the rest is the post column
     const float TiledMaxSize = 6000f;    // 60 m - a tiled/jumbotron face can be wider than a single-image board
-    const float OrientSkip   = 50f;      // 0.5 m - ignore ~coplanar panel tris when weighing which side is open
+    const float OrientSkip = 50f;      // 0.5 m - ignore ~coplanar panel tris when weighing which side is open
     const float OrientFootprint = 0.4f;  // fraction of the panel half-extent sampled behind it (excludes neighbours)
-    const float OrientDepth  = 400f;     // 4 m - how far behind the panel to look for its backing
+    const float OrientDepth = 400f;     // 4 m - how far behind the panel to look for its backing
     const float FlipMajority = 1.3f;     // only flip the front when the structure clearly sits on the winding side
 
     /// <summary>Mesh space is Z up (the glTF/Unity Y-up swap happens downstream).</summary>

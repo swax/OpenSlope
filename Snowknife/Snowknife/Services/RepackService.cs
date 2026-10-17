@@ -210,9 +210,17 @@ internal sealed class RepackService
         bool aip = args.Contains("--aip"), sop = args.Contains("--sop"), ltg = args.Contains("--ltg");
         var lvl = new TrickyLevelInterface
         {
-            PBDGenerate = true, SSHGenerate = ssh, LSSHGenerate = lssh, MAPGenerate = map,
-            LTGGenerate = ltg, SkyPBDGenerate = false, SkySSHGenerate = false,
-            ADLGenerate = false, SSFGenerate = false, AIPGenerate = aip, SOPGenerate = sop,
+            PBDGenerate = true,
+            SSHGenerate = ssh,
+            LSSHGenerate = lssh,
+            MAPGenerate = map,
+            LTGGenerate = ltg,
+            SkyPBDGenerate = false,
+            SkySSHGenerate = false,
+            ADLGenerate = false,
+            SSFGenerate = false,
+            AIPGenerate = aip,
+            SOPGenerate = sop,
             SeedImageFiles = seed,
         };
         lvl.BuildTrickyLevelFiles(loadDir, outPbd);
@@ -822,12 +830,18 @@ internal sealed class RepackService
             {
                 new TrickyLevelInterface
                 {
-                    PBDGenerate = true, SSHGenerate = false, LSSHGenerate = haveLightmaps, LTGGenerate = false,
+                    PBDGenerate = true,
+                    SSHGenerate = false,
+                    LSSHGenerate = haveLightmaps,
+                    LTGGenerate = false,
                     MAPGenerate = haveAuthoredGems || haveCustomProps,     // instance/model/material counts changed
-                    SkyPBDGenerate = false, SkySSHGenerate = false,
+                    SkyPBDGenerate = false,
+                    SkySSHGenerate = false,
                     ADLGenerate = haveAuthoredSounds,                        // authored hit/ambient sounds -> instance rows rebuilt
                     SSFGenerate = haveAuthoredGems || haveCustomProps,     // per-instance state + collision models grew
-                    AIPGenerate = haveAuthoredPaths, SOPGenerate = haveAuthoredPaths, SeedImageFiles = seed,
+                    AIPGenerate = haveAuthoredPaths,
+                    SOPGenerate = haveAuthoredPaths,
+                    SeedImageFiles = seed,
                 }.BuildTrickyLevelFiles(work, pbd);
             }
 
@@ -1690,21 +1704,21 @@ internal sealed class RepackService
         long mPatch = 0, mLight = 0, mCross = 0, mSpline = 0, nPatch = 0, nLight = 0, nCross = 0, nSpline = 0, nInst = 0, nGem = 0;
         int mCrossMax = 0, nCrossMax = 0, cells = 0, nodes = 0;
         for (int y = 0; y < mh; y++) for (int x = 0; x < mw; x++)
-        {
-            var m = ltg.mainBboxes[x, y];
-            cells++;
-            mPatch += m.totalPatchCount; mLight += m.totalLightCount; mCross += m.totalLightsCrossingCount; mSpline += m.totalSplineCount;
-            if (m.totalLightsCrossingCount > mCrossMax) mCrossMax = m.totalLightsCrossingCount;
-            if (m.nodeBBoxes == null) continue;
-            for (int y1 = 0; y1 < m.nodeBBoxes.GetLength(1); y1++) for (int x1 = 0; x1 < m.nodeBBoxes.GetLength(0); x1++)
             {
-                var nb = m.nodeBBoxes[x1, y1];
-                nodes++;
-                nPatch += nb.patchCount; nLight += nb.lightCount; nCross += nb.lightsCrossingCount; nSpline += nb.splineCount;
-                nInst += nb.InstanceIndex?.Count ?? 0; nGem += nb.GemIndex?.Count ?? 0;
-                if (nb.lightsCrossingCount > nCrossMax) nCrossMax = nb.lightsCrossingCount;
+                var m = ltg.mainBboxes[x, y];
+                cells++;
+                mPatch += m.totalPatchCount; mLight += m.totalLightCount; mCross += m.totalLightsCrossingCount; mSpline += m.totalSplineCount;
+                if (m.totalLightsCrossingCount > mCrossMax) mCrossMax = m.totalLightsCrossingCount;
+                if (m.nodeBBoxes == null) continue;
+                for (int y1 = 0; y1 < m.nodeBBoxes.GetLength(1); y1++) for (int x1 = 0; x1 < m.nodeBBoxes.GetLength(0); x1++)
+                    {
+                        var nb = m.nodeBBoxes[x1, y1];
+                        nodes++;
+                        nPatch += nb.patchCount; nLight += nb.lightCount; nCross += nb.lightsCrossingCount; nSpline += nb.splineCount;
+                        nInst += nb.InstanceIndex?.Count ?? 0; nGem += nb.GemIndex?.Count ?? 0;
+                        if (nb.lightsCrossingCount > nCrossMax) nCrossMax = nb.lightsCrossingCount;
+                    }
             }
-        }
         Log.Info($"{Path.GetFileName(args[1])}: grid {mw}x{mh} ({cells} cells, {nodes} nodes)");
         Log.Info($"  main:  patches {mPatch}  splines {mSpline}  lights {mLight}  lightsCrossing {mCross} (max/cell {mCrossMax})");
         Log.Info($"  nodes: patches {nPatch}  splines {nSpline}  lights {nLight}  lightsCrossing {nCross} (max/node {nCrossMax})");
@@ -1733,25 +1747,25 @@ internal sealed class RepackService
         Log.Info($"  grid origin: X {o.X:F1}  Y {o.Y:F1}");
         int found = 0;
         for (int y = 0; y < mh; y++) for (int x = 0; x < mw; x++)
-        {
-            var m = ltg.mainBboxes[x, y];
-            if (m.nodeBBoxes == null) continue;
-            for (int y1 = 0; y1 < m.nodeBBoxes.GetLength(1); y1++) for (int x1 = 0; x1 < m.nodeBBoxes.GetLength(0); x1++)
             {
-                var nb = m.nodeBBoxes[x1, y1];
-                string list = (nb.InstanceIndex?.Contains(want) ?? false) ? "InstanceIndex"
-                            : (nb.RaceInstanceIndex?.Contains(want) ?? false) ? "RaceInstanceIndex"
-                            : (nb.GemIndex?.Contains(want) ?? false) ? "GemIndex" : null!;
-                if (list == null) continue;
-                found++;
-                float nx = o.X + x * ltg.mainBboxSize + x1 * ltg.nodeBoxSize;
-                float ny = o.Y + y * ltg.mainBboxSize + y1 * ltg.nodeBoxSize;
-                Log.Info($"  main[{x},{y}] node[{x1},{y1}] {list}  ({nb.instanceCount} inst, {nb.patchCount} patches)");
-                Log.Info($"      nominal square: X {nx:F1}..{nx + ltg.nodeBoxSize:F1}  Y {ny:F1}..{ny + ltg.nodeBoxSize:F1}");
-                Log.Info($"      stored bounds:  X {nb.WorldBounds1.X:F1}..{nb.WorldBounds2.X:F1}  " +
-                                  $"Y {nb.WorldBounds1.Y:F1}..{nb.WorldBounds2.Y:F1}");
+                var m = ltg.mainBboxes[x, y];
+                if (m.nodeBBoxes == null) continue;
+                for (int y1 = 0; y1 < m.nodeBBoxes.GetLength(1); y1++) for (int x1 = 0; x1 < m.nodeBBoxes.GetLength(0); x1++)
+                    {
+                        var nb = m.nodeBBoxes[x1, y1];
+                        string list = (nb.InstanceIndex?.Contains(want) ?? false) ? "InstanceIndex"
+                                    : (nb.RaceInstanceIndex?.Contains(want) ?? false) ? "RaceInstanceIndex"
+                                    : (nb.GemIndex?.Contains(want) ?? false) ? "GemIndex" : null!;
+                        if (list == null) continue;
+                        found++;
+                        float nx = o.X + x * ltg.mainBboxSize + x1 * ltg.nodeBoxSize;
+                        float ny = o.Y + y * ltg.mainBboxSize + y1 * ltg.nodeBoxSize;
+                        Log.Info($"  main[{x},{y}] node[{x1},{y1}] {list}  ({nb.instanceCount} inst, {nb.patchCount} patches)");
+                        Log.Info($"      nominal square: X {nx:F1}..{nx + ltg.nodeBoxSize:F1}  Y {ny:F1}..{ny + ltg.nodeBoxSize:F1}");
+                        Log.Info($"      stored bounds:  X {nb.WorldBounds1.X:F1}..{nb.WorldBounds2.X:F1}  " +
+                                          $"Y {nb.WorldBounds1.Y:F1}..{nb.WorldBounds2.Y:F1}");
+                    }
             }
-        }
         Log.Info(found == 0
             ? "  listed in NO node cell - it can never be a collision candidate."
             : $"  listed in {found} node cell(s).");

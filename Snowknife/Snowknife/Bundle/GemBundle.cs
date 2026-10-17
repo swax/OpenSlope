@@ -78,7 +78,10 @@ public static class GemBundle
                 cur.Prims.Add(new GltfMeshWriter.Prim
                 {
                     Material = kv.Key,
-                    Positions = wPos, Normals = nList, Uv0 = wUv, Indices = kv.Value,
+                    Positions = wPos,
+                    Normals = nList,
+                    Uv0 = wUv,
+                    Indices = kv.Value,
                 });
             nodes.Add(cur);
             tierNodes[curTier] = cur.Name;

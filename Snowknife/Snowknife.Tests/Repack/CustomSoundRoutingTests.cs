@@ -393,8 +393,14 @@ public class CustomSoundRoutingTests
                 // A donor prop --bare-slot hid: no sound of its own to protect.
                 new JObject { ["IncludeSound"] = false, ["Sounds"] = new JObject { ["CollisonSound"] = 63 } },
                 // An authored prop on a RETAIL event, which does pin its slot...
-                new JObject { ["Sounds"] = new JObject { ["ExternalSounds"] = new JArray(
-                    new JObject { ["SoundIndex"] = 26 }) } },
+                new JObject
+                {
+                    ["Sounds"] = new JObject
+                    {
+                        ["ExternalSounds"] = new JArray(
+                    new JObject { ["SoundIndex"] = 26 })
+                    }
+                },
                 // ...and one on its own custom event, which is the thing being moved.
                 new JObject { ["Sounds"] = new JObject { ["CollisonSound"] = 179 } }),
         }.ToString());
@@ -427,8 +433,14 @@ public class CustomSoundRoutingTests
             ["Instances"] = new JArray(
                 new JObject { ["Sounds"] = new JObject { ["CollisonSound"] = 179 } },
                 new JObject { ["Sounds"] = new JObject { ["CollisonSound"] = 179 } },
-                new JObject { ["Sounds"] = new JObject { ["ExternalSounds"] = new JArray(
-                    new JObject { ["SoundIndex"] = 179 }) } }),
+                new JObject
+                {
+                    ["Sounds"] = new JObject
+                    {
+                        ["ExternalSounds"] = new JArray(
+                    new JObject { ["SoundIndex"] = 179 })
+                    }
+                }),
         }.ToString());
 
         int rewritten = CustomSoundRouting.RewriteInstances(path, new Dictionary<int, int> { [179] = 63 },

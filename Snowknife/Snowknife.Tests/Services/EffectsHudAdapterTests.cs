@@ -13,7 +13,10 @@ public sealed class EffectsHudAdapterTests
             MainType = 12,
             hudTextEffect = new SSFHandler.HUDTextEffect
             {
-                HudText = text, HudRed = 0.25f, HudGreen = 0.5f, HudBlue = 0.75f,
+                HudText = text,
+                HudRed = 0.25f,
+                HudGreen = 0.5f,
+                HudBlue = 0.75f,
             },
         };
         var wait = new SSFHandler.Effect { MainType = 4, WaitTime = 2f };

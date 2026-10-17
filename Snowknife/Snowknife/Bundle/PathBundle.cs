@@ -256,7 +256,7 @@ public static class PathBundle
     // with Mdl_Finish_Stage/Screen/Coral. So we ship the arch's AABB and let the importer size its finish trigger
     // from the course's own geometry instead of a constant fitted to one level.
     const string ArchName = "FinnishGate";
-    const float  ArchRadius = 6000f;   // SSX cm (60 m) around DTF=0: a decorative arch elsewhere can't be picked up
+    const float ArchRadius = 6000f;   // SSX cm (60 m) around DTF=0: a decorative arch elsewhere can't be picked up
 
     static BundleManifest.BoxInfo? BuildFinishArch(string levelDir, BundleManifest.PolyInfo course)
     {

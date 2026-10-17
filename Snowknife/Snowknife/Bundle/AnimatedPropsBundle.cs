@@ -407,7 +407,10 @@ public static class AnimatedPropsBundle
             node.Prims.Add(new GltfMeshWriter.Prim
             {
                 Material = "mat_" + md.MaterialID,
-                Positions = pos, Normals = nrm, Uv0 = uv, Indices = tris,
+                Positions = pos,
+                Normals = nrm,
+                Uv0 = uv,
+                Indices = tris,
             });
         }
         return node.Prims.Count > 0 ? node : null;

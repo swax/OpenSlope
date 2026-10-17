@@ -292,142 +292,144 @@ public static class PropsBundle
                 instOrdinal++;
                 curCol = new Vector4(1, 1, 1, 1); curVisible = true; curShowoff = false; curRace = false; curDiv = null; curInst = null;
                 int us = line.IndexOf("inst", System.StringComparison.Ordinal);
-                    if (us >= 0)
+                if (us >= 0)
+                {
+                    int s = us + 4, e = s;
+                    while (e < line.Length && line[e] >= '0' && line[e] <= '9') e++;
+                    if (e > s && int.TryParse(line.AsSpan(s, e - s), out int n) && n >= 0 && n < instances.Count)
                     {
-                        int s = us + 4, e = s;
-                        while (e < line.Length && line[e] >= '0' && line[e] <= '9') e++;
-                        if (e > s && int.TryParse(line.AsSpan(s, e - s), out int n) && n >= 0 && n < instances.Count)
+                        var inst = instances[n];
+                        curInst = inst;
+                        curVisible = inst.Visable;
+                        string model = (e + 1) < line.Length ? line.Substring(e + 1).Trim() : "";
+
+                        // Animated props (AnimatedPropsBundle) ship as their own MODEL-LOCAL segment nodes -
+                        // the merged Props.obj group bakes the rest pose into world space, so merging it too
+                        // would draw the bridge twice. Keep them out of the merge and the divert kinds.
+                        if (animSet.Contains(n)) { curVisible = false; animSkipped++; continue; }
+
+                        // Classify. Breakable takes precedence (a screen/fence is never a spinner/body) and matches
+                        // REGARDLESS of Visable - the broken _Junk twin ships invisible and is force-emitted. Spin /
+                        // physics only when visible. This is the single authority; the importer reads the result.
+                        // LCD logos stay NAME-matched (LogoRole, the proven path); every OTHER breakable (fences,
+                        // hole covers, tree branches) comes from the SSF break classifier (Unity docs/036), keyed by
+                        // instance index, consulted only when the name match misses so logos are untouched.
+                        // Pose-only LOCATOR for a designated prop (the start gate): record its authored pose so
+                        // the importer can place an empty anchor the post row aligns to. The prop STAYS in the
+                        // merged mesh (no divert); skip the Cover/Light overlays so the locator takes the gate
+                        // STRUCTURE's pose. MeshPt/MirrorQuat apply the same X-negation the geometry gets, so the
+                        // anchor lands on the gate with its true yaw.
+                        if (IsLocator(model, o, out string? locKey)
+                            && model.IndexOf("Cover", System.StringComparison.Ordinal) < 0
+                            && model.IndexOf("Light", System.StringComparison.Ordinal) < 0)
+                            locators.Add(new BundleManifest.LocatorInfo
+                            {
+                                Key = locKey!,
+                                Center = BundleSpace.Xyz(BundleSpace.MeshPt(inst.Location)),
+                                Rotation = MirrorQuat(inst.Rotation),
+                            });
+
+                        bool isSpin = curVisible && o.AnimateSpinners && gemInstances != null && gemInstances.Contains(n);
+                        bool isPhys = curVisible && o.BuildPhysicsProps
+                                      && rollerPhysics != null && rollerPhysics.Contains(n)
+                                      && !PhysicsModelExcluded(model, o);
+                        bool isMover = splineMovers != null && splineMovers.Contains(n);   // spline mover: divert even when INVISIBLE (the subway template)
+                        bool isFlag = softFlags != null && softFlags.Contains(n);         // soft-prop wind: pull out of the merge into the combined wind mesh
+                        bool isFence = softFences != null && softFences.Contains(n);
+                        // Scripted-break obstacles - fences/hole-covers/branches (inline M7) AND LCD jumbotrons
+                        // (MainType-21 BreakLogo function) - all come from the SSF break classifier, keyed by
+                        // instance index. Yields to spinner/physics: a trick-gem also "hides the source" on pickup
+                        // (so the classifier flags it), but it's a SPINNER pickup, not a breakable.
+                        string? role = null;
+                        string? cluster = null;
+                        float[]? throwParams = null;
+                        float[]? burstColor = null;
+                        float breakDelay = 0f;
+                        int breakSound = -1;
+                        float crackStrength = 0f, crackLifetime = 0f;
+                        int crackSound = -1;
+                        if (o.BuildBreakableLogos && !isSpin && !isPhys && breakMap.TryGetValue(n, out var bm)
+                            // A cracked pane's "support" twin is COLLISION-ONLY (Unity docs/036): the invisible solid
+                            // slab holding the rider up until the glass gives way. It has no render job at all,
+                            // so diverting it would build a second, hidden copy of the pane inside the cluster -
+                            // and one that BuildBreakableLogos would give a renderer and hide on break. It
+                            // reaches Unity as its own collision bucket instead (CollisionBundle), keyed by the
+                            // same cluster.
+                            && bm.Role != "support")
                         {
-                            var inst = instances[n];
-                            curInst = inst;
-                            curVisible = inst.Visable;
-                            string model = (e + 1) < line.Length ? line.Substring(e + 1).Trim() : "";
-
-                            // Animated props (AnimatedPropsBundle) ship as their own MODEL-LOCAL segment nodes -
-                            // the merged Props.obj group bakes the rest pose into world space, so merging it too
-                            // would draw the bridge twice. Keep them out of the merge and the divert kinds.
-                            if (animSet.Contains(n)) { curVisible = false; animSkipped++; continue; }
-
-                            // Classify. Breakable takes precedence (a screen/fence is never a spinner/body) and matches
-                            // REGARDLESS of Visable - the broken _Junk twin ships invisible and is force-emitted. Spin /
-                            // physics only when visible. This is the single authority; the importer reads the result.
-                            // LCD logos stay NAME-matched (LogoRole, the proven path); every OTHER breakable (fences,
-                            // hole covers, tree branches) comes from the SSF break classifier (Unity docs/036), keyed by
-                            // instance index, consulted only when the name match misses so logos are untouched.
-                            // Pose-only LOCATOR for a designated prop (the start gate): record its authored pose so
-                            // the importer can place an empty anchor the post row aligns to. The prop STAYS in the
-                            // merged mesh (no divert); skip the Cover/Light overlays so the locator takes the gate
-                            // STRUCTURE's pose. MeshPt/MirrorQuat apply the same X-negation the geometry gets, so the
-                            // anchor lands on the gate with its true yaw.
-                            if (IsLocator(model, o, out string? locKey)
-                                && model.IndexOf("Cover", System.StringComparison.Ordinal) < 0
-                                && model.IndexOf("Light", System.StringComparison.Ordinal) < 0)
-                                locators.Add(new BundleManifest.LocatorInfo
-                                {
-                                    Key = locKey!,
-                                    Center = BundleSpace.Xyz(BundleSpace.MeshPt(inst.Location)),
-                                    Rotation = MirrorQuat(inst.Rotation),
-                                });
-
-                            bool isSpin = curVisible && o.AnimateSpinners && gemInstances != null && gemInstances.Contains(n);
-                            bool isPhys = curVisible && o.BuildPhysicsProps
-                                          && rollerPhysics != null && rollerPhysics.Contains(n)
-                                          && !PhysicsModelExcluded(model, o);
-                            bool isMover = splineMovers != null && splineMovers.Contains(n);   // spline mover: divert even when INVISIBLE (the subway template)
-                            bool isFlag  = softFlags != null && softFlags.Contains(n);         // soft-prop wind: pull out of the merge into the combined wind mesh
-                            bool isFence = softFences != null && softFences.Contains(n);
-                            // Scripted-break obstacles - fences/hole-covers/branches (inline M7) AND LCD jumbotrons
-                            // (MainType-21 BreakLogo function) - all come from the SSF break classifier, keyed by
-                            // instance index. Yields to spinner/physics: a trick-gem also "hides the source" on pickup
-                            // (so the classifier flags it), but it's a SPINNER pickup, not a breakable.
-                            string? role = null;
-                            string? cluster = null;
-                            float[]? throwParams = null;
-                            float[]? burstColor = null;
-                            float breakDelay = 0f;
-                            int breakSound = -1;
-                            float crackStrength = 0f, crackLifetime = 0f;
-                            int crackSound = -1;
-                            if (o.BuildBreakableLogos && !isSpin && !isPhys && breakMap.TryGetValue(n, out var bm)
-                                // A cracked pane's "support" twin is COLLISION-ONLY (Unity docs/036): the invisible solid
-                                // slab holding the rider up until the glass gives way. It has no render job at all,
-                                // so diverting it would build a second, hidden copy of the pane inside the cluster -
-                                // and one that BuildBreakableLogos would give a renderer and hide on break. It
-                                // reaches Unity as its own collision bucket instead (CollisionBundle), keyed by the
-                                // same cluster.
-                                && bm.Role != "support")
-                            {
-                                role = bm.Role; cluster = bm.ClusterKey; throwParams = bm.Throw; burstColor = bm.BurstColor;
-                                breakDelay = bm.BreakDelay; breakSound = bm.BreakSound;
-                                crackStrength = bm.CrackStrength; crackLifetime = bm.CrackLifetime; crackSound = bm.CrackSound;
-                            }
-                            bool isBreak = role != null;
-                            // A knock body whose OWN collision chain ALSO throws a hidden contents twin (a city map's
-                            // garbage cans / news boxes / mail boxes, Unity docs/036): the kind stays "physics" - it IS a
-                            // Roller body and must keep its Rigidbody, impact sound and knock - but it carries the
-                            // cluster it throws so the importer can fire those pieces off the knock. Without this the
-                            // spill is the one authored response the single-valued kind silently drops.
-                            string? spillCluster = isPhys && o.BuildBreakableLogos && spillSources.TryGetValue(n, out var sc) ? sc : null;
-                            // Speed/trick boost pads (Unity docs/040): divert the decal so the runtime can pop + regrow it
-                            // on a cross. Lowest precedence - a pad is never also a spinner/body/breakable, so this
-                            // only ever fires for a genuine pad, and it keeps the established kinds untouched.
-                            bool isPad = curVisible && !isBreak && !isSpin && !isPhys && !isMover && !isFlag && !isFence
-                                         && boostPads != null && boostPads.Contains(n);
-                            // Ride-over BUTTONS (Unity docs/008): a trigger volume's collision chain briefly pulses this
-                            // instance's two-frame material. It has to leave the merged mesh because the pulse is PER
-                            // INSTANCE - retail builds the node its own private material override table, so only the
-                            // button you crossed changes, and a merged prim has no way to address one. Lowest
-                            // precedence, like the pads: a button is never another kind.
-                            bool isButton = curVisible && !isBreak && !isSpin && !isPhys && !isMover && !isFlag && !isFence
-                                            && !isPad && pulses != null && pulses.ContainsKey(n);
-                            bool isEffect = curVisible && effectTargets != null && effectTargets.Contains(n);
-                            if (isBreak || isSpin || isPhys || isMover || isFlag || isFence || isPad || isButton || isEffect)
-                            {
-                                int modeMask = ModeMaskForInstance(inst.LTGState == 2, hiddenInstances.Contains(n), raceHiddenInstances.Contains(n));
-                                curDiv = new DivAccum
-                                {
-                                    Index = n, Model = model, Inst = inst,
-                                    ModeMask = modeMask,
-                                    Kind = isBreak ? "breakable" : isSpin ? "spinner" : isPhys ? "physics" : isMover ? "mover" : isFlag ? "softflag" : isFence ? "softfence" : isPad ? "boostpad" : isButton ? "button" : "effect",
-                                    Triggers = isButton ? PulseTriggers(pulses![n], pulseBoxes) : null,
-                                    PulseFrames = isButton && pulseTimelines != null && pulseTimelines.TryGetValue(n, out var tl) ? tl.frames : null,
-                                    PulseHolds = isButton && pulseTimelines != null && pulseTimelines.TryGetValue(n, out var tl2) ? tl2.holds : null,
-                                    Role = isBreak ? role : null,
-                                    ClusterKey = isBreak ? cluster : null,
-                                    SpillCluster = spillCluster,
-                                    Throw = isBreak ? throwParams : null,
-                                    BurstColor = isBreak ? burstColor : null,
-                                    BreakDelay = isBreak ? breakDelay : 0f,
-                                    BreakSound = isBreak ? breakSound : -1,
-                                    CrackStrength = isBreak ? crackStrength : 0f,
-                                    CrackLifetime = isBreak ? crackLifetime : 0f,
-                                    CrackSound = isBreak ? crackSound : -1,
-                                    PhysicsMass = isPhys && rollerMasses != null && rollerMasses.TryGetValue(n, out float rollerMass)
-                                        ? rollerMass : null,
-                                    SoundClip = inst.SoundClip,
-                                };
-                                diverts.Add(curDiv);
-                            }
-                            else if (curVisible)
-                            {
-                                int modeMask = ModeMaskForInstance(inst.LTGState == 2,
-                                    hiddenInstances.Contains(n), raceHiddenInstances.Contains(n));
-                                if (modeMask == 2)
-                                {
-                                    curShowoff = true; gatedOut++;
-                                    if (lighting) curCol = LightColour(inst, o);
-                                    if (doStaticDir) staticLitS.Add((wPosS.Count, inst));
-                                }
-                                else if (modeMask == 1)
-                                {
-                                    curRace = true; raceOut++;
-                                    if (lighting) curCol = LightColour(inst, o);
-                                    if (doStaticDir) staticLitR.Add((wPosR.Count, inst));
-                                }
-                                else if (modeMask == 0) curVisible = false;
-                                else if (lighting) { curCol = LightColour(inst, o); lit++; }
-                            }
+                            role = bm.Role; cluster = bm.ClusterKey; throwParams = bm.Throw; burstColor = bm.BurstColor;
+                            breakDelay = bm.BreakDelay; breakSound = bm.BreakSound;
+                            crackStrength = bm.CrackStrength; crackLifetime = bm.CrackLifetime; crackSound = bm.CrackSound;
                         }
+                        bool isBreak = role != null;
+                        // A knock body whose OWN collision chain ALSO throws a hidden contents twin (a city map's
+                        // garbage cans / news boxes / mail boxes, Unity docs/036): the kind stays "physics" - it IS a
+                        // Roller body and must keep its Rigidbody, impact sound and knock - but it carries the
+                        // cluster it throws so the importer can fire those pieces off the knock. Without this the
+                        // spill is the one authored response the single-valued kind silently drops.
+                        string? spillCluster = isPhys && o.BuildBreakableLogos && spillSources.TryGetValue(n, out var sc) ? sc : null;
+                        // Speed/trick boost pads (Unity docs/040): divert the decal so the runtime can pop + regrow it
+                        // on a cross. Lowest precedence - a pad is never also a spinner/body/breakable, so this
+                        // only ever fires for a genuine pad, and it keeps the established kinds untouched.
+                        bool isPad = curVisible && !isBreak && !isSpin && !isPhys && !isMover && !isFlag && !isFence
+                                     && boostPads != null && boostPads.Contains(n);
+                        // Ride-over BUTTONS (Unity docs/008): a trigger volume's collision chain briefly pulses this
+                        // instance's two-frame material. It has to leave the merged mesh because the pulse is PER
+                        // INSTANCE - retail builds the node its own private material override table, so only the
+                        // button you crossed changes, and a merged prim has no way to address one. Lowest
+                        // precedence, like the pads: a button is never another kind.
+                        bool isButton = curVisible && !isBreak && !isSpin && !isPhys && !isMover && !isFlag && !isFence
+                                        && !isPad && pulses != null && pulses.ContainsKey(n);
+                        bool isEffect = curVisible && effectTargets != null && effectTargets.Contains(n);
+                        if (isBreak || isSpin || isPhys || isMover || isFlag || isFence || isPad || isButton || isEffect)
+                        {
+                            int modeMask = ModeMaskForInstance(inst.LTGState == 2, hiddenInstances.Contains(n), raceHiddenInstances.Contains(n));
+                            curDiv = new DivAccum
+                            {
+                                Index = n,
+                                Model = model,
+                                Inst = inst,
+                                ModeMask = modeMask,
+                                Kind = isBreak ? "breakable" : isSpin ? "spinner" : isPhys ? "physics" : isMover ? "mover" : isFlag ? "softflag" : isFence ? "softfence" : isPad ? "boostpad" : isButton ? "button" : "effect",
+                                Triggers = isButton ? PulseTriggers(pulses![n], pulseBoxes) : null,
+                                PulseFrames = isButton && pulseTimelines != null && pulseTimelines.TryGetValue(n, out var tl) ? tl.frames : null,
+                                PulseHolds = isButton && pulseTimelines != null && pulseTimelines.TryGetValue(n, out var tl2) ? tl2.holds : null,
+                                Role = isBreak ? role : null,
+                                ClusterKey = isBreak ? cluster : null,
+                                SpillCluster = spillCluster,
+                                Throw = isBreak ? throwParams : null,
+                                BurstColor = isBreak ? burstColor : null,
+                                BreakDelay = isBreak ? breakDelay : 0f,
+                                BreakSound = isBreak ? breakSound : -1,
+                                CrackStrength = isBreak ? crackStrength : 0f,
+                                CrackLifetime = isBreak ? crackLifetime : 0f,
+                                CrackSound = isBreak ? crackSound : -1,
+                                PhysicsMass = isPhys && rollerMasses != null && rollerMasses.TryGetValue(n, out float rollerMass)
+                                    ? rollerMass : null,
+                                SoundClip = inst.SoundClip,
+                            };
+                            diverts.Add(curDiv);
+                        }
+                        else if (curVisible)
+                        {
+                            int modeMask = ModeMaskForInstance(inst.LTGState == 2,
+                                hiddenInstances.Contains(n), raceHiddenInstances.Contains(n));
+                            if (modeMask == 2)
+                            {
+                                curShowoff = true; gatedOut++;
+                                if (lighting) curCol = LightColour(inst, o);
+                                if (doStaticDir) staticLitS.Add((wPosS.Count, inst));
+                            }
+                            else if (modeMask == 1)
+                            {
+                                curRace = true; raceOut++;
+                                if (lighting) curCol = LightColour(inst, o);
+                                if (doStaticDir) staticLitR.Add((wPosR.Count, inst));
+                            }
+                            else if (modeMask == 0) curVisible = false;
+                            else if (lighting) { curCol = LightColour(inst, o); lit++; }
+                        }
+                    }
                 }
                 if (curDiv == null && !curVisible) hidden++;
                 if (doStaticDir && curDiv == null && curVisible && !curShowoff && !curRace) staticLit.Add((wPos.Count, curInst));
@@ -533,8 +535,12 @@ public static class PropsBundle
                 node.Prims.Add(new GltfMeshWriter.Prim
                 {
                     Material = kv.Key,                       // the OBJ usemtl slot (e.g. "mat_10") = MaterialID
-                    Positions = wp, Normals = nList, Uv0 = wu, Uv1 = wu1,
-                    Colors = lighting ? wc : null, Indices = kv.Value,
+                    Positions = wp,
+                    Normals = nList,
+                    Uv0 = wu,
+                    Uv1 = wu1,
+                    Colors = lighting ? wc : null,
+                    Indices = kv.Value,
                 });
         }
 
@@ -609,18 +615,28 @@ public static class PropsBundle
             foreach (var kv in d.TriBySlot)
                 node.Prims.Add(new GltfMeshWriter.Prim
                 {
-                    Material = kv.Key, Positions = d.Pos, Normals = dnList, Uv0 = d.Uv, Indices = kv.Value,
+                    Material = kv.Key,
+                    Positions = d.Pos,
+                    Normals = dnList,
+                    Uv0 = d.Uv,
+                    Indices = kv.Value,
                 });
             result.Diverted.Add(node);
 
             var rec = new BundleManifest.DivertInfo
             {
-                Index = d.Index, Kind = d.Kind, Node = node.Name, Model = d.Model,
+                Index = d.Index,
+                Kind = d.Kind,
+                Node = node.Name,
+                Model = d.Model,
                 ModeMask = d.ModeMask,
-                Role = d.Role, ClusterKey = d.ClusterKey, SpillCluster = d.SpillCluster,
+                Role = d.Role,
+                ClusterKey = d.ClusterKey,
+                SpillCluster = d.SpillCluster,
                 Center = BundleSpace.Xyz(center),
                 DynamicMass = d.Kind == "physics" ? PhysicsMass(d) : 0f,
-                Bounce = d.Inst.PlayerBounceAmmount, CollisonSound = d.Inst.CollisonSound,
+                Bounce = d.Inst.PlayerBounceAmmount,
+                CollisonSound = d.Inst.CollisonSound,
                 SoundClip = d.SoundClip,
                 BurstColor = d.BurstColor,
                 BreakDelay = d.BreakDelay,
@@ -733,11 +749,16 @@ public static class PropsBundle
             result.Diverted.Add(node);
             var rec = new BundleManifest.DivertInfo
             {
-                Index = d.Index, Kind = "breakable", Node = node.Name, Model = d.Model,
+                Index = d.Index,
+                Kind = "breakable",
+                Node = node.Name,
+                Model = d.Model,
                 ModeMask = d.ModeMask,
-                Role = "piece", ClusterKey = d.ClusterKey,
+                Role = "piece",
+                ClusterKey = d.ClusterKey,
                 Center = BundleSpace.Xyz(center),
-                Bounce = d.Inst.PlayerBounceAmmount, CollisonSound = d.Inst.CollisonSound,
+                Bounce = d.Inst.PlayerBounceAmmount,
+                CollisonSound = d.Inst.CollisonSound,
                 Throw = d.Throw,
             };
             ApplyLighting(rec, d.Inst, o);
@@ -811,12 +832,15 @@ public static class PropsBundle
 
                 var rec = new BundleManifest.DivertInfo
                 {
-                    Index = d.Index, Kind = kind, Model = d.Model,
+                    Index = d.Index,
+                    Kind = kind,
+                    Model = d.Model,
                     ModeMask = d.ModeMask,
                     SpillCluster = d.SpillCluster,   // a Roller body that also throws a contents twin (Unity docs/036)
                     Center = BundleSpace.Xyz(cd),
                     DynamicMass = kind == "physics" ? PhysicsMass(d) : 0f,
-                    Bounce = d.Inst.PlayerBounceAmmount, CollisonSound = d.Inst.CollisonSound,
+                    Bounce = d.Inst.PlayerBounceAmmount,
+                    CollisonSound = d.Inst.CollisonSound,
                     SoundClip = d.SoundClip,
                 };
                 ApplyLighting(rec, d.Inst, o);

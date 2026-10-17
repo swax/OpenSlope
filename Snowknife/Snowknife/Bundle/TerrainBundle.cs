@@ -67,8 +67,11 @@ public static class TerrainBundle
             render.Prims.Add(new GltfMeshWriter.Prim
             {
                 Material = kv.Key,
-                Positions = baseT.Verts, Normals = baseT.Norms,
-                Uv0 = baseT.Uv0, Uv1 = hasLightmap ? baseT.Uv1 : null, Colors = baseT.Colors,
+                Positions = baseT.Verts,
+                Normals = baseT.Norms,
+                Uv0 = baseT.Uv0,
+                Uv1 = hasLightmap ? baseT.Uv1 : null,
+                Colors = baseT.Colors,
                 Indices = kv.Value,
             });
         nodes.Add(render);
@@ -80,8 +83,11 @@ public static class TerrainBundle
                 hd.Prims.Add(new GltfMeshWriter.Prim
                 {
                     Material = kv.Key,
-                    Positions = hdT.Verts, Normals = hdT.Norms,
-                    Uv0 = hdT.Uv0, Uv1 = hasLightmap ? hdT.Uv1 : null, Colors = hdT.Colors,
+                    Positions = hdT.Verts,
+                    Normals = hdT.Norms,
+                    Uv0 = hdT.Uv0,
+                    Uv1 = hasLightmap ? hdT.Uv1 : null,
+                    Colors = hdT.Colors,
                     Indices = kv.Value,
                 });
             nodes.Add(hd);
@@ -134,12 +140,12 @@ public static class TerrainBundle
         var t = new Tess();
         var verts = t.Verts; verts.Capacity = cap;
         var norms = new List<Vector3>(cap);      // analytic Bezier normal (mesh space, pre-weld)
-        var gN    = new List<Vector3>(cap);      // geometric winding normal (sign authority)
-        var uv0   = t.Uv0; uv0.Capacity = cap;
-        var uv1   = t.Uv1; uv1.Capacity = cap;
-        var lmv   = new List<float>(cap);        // per-vertex luminance (pre-weld)
-        var keys  = new List<(int, int, int)>(cap);
-        var triByTex  = t.TriByTex;
+        var gN = new List<Vector3>(cap);      // geometric winding normal (sign authority)
+        var uv0 = t.Uv0; uv0.Capacity = cap;
+        var uv1 = t.Uv1; uv1.Capacity = cap;
+        var lmv = new List<float>(cap);        // per-vertex luminance (pre-weld)
+        var keys = new List<(int, int, int)>(cap);
+        var triByTex = t.TriByTex;
         var triBySurf = t.TriBySurf;
 
         var cp = new Vector3[16];
@@ -447,14 +453,14 @@ public static class TerrainBundle
     {
         switch (((mode % 8) + 8) % 8)
         {
-            case 1: ou = v;      ov = 1f - u; break;
+            case 1: ou = v; ov = 1f - u; break;
             case 2: ou = 1f - u; ov = 1f - v; break;
-            case 3: ou = 1f - v; ov = u;      break;
-            case 4: ou = 1f - u; ov = v;      break;
-            case 5: ou = u;      ov = 1f - v; break;
-            case 6: ou = v;      ov = u;      break;
+            case 3: ou = 1f - v; ov = u; break;
+            case 4: ou = 1f - u; ov = v; break;
+            case 5: ou = u; ov = 1f - v; break;
+            case 6: ou = v; ov = u; break;
             case 7: ou = 1f - v; ov = 1f - u; break;
-            default: ou = u;     ov = v;      break;
+            default: ou = u; ov = v; break;
         }
     }
 

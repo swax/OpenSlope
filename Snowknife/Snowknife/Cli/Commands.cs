@@ -27,21 +27,21 @@ internal static class Commands
 
     public static CliGroup[] Build()
     {
-        var iso       = new IsoService();
-        var big       = new BigArchiveService();
-        var refpack   = new RefpackService();
-        var ssh       = new SshTextureService();
+        var iso = new IsoService();
+        var big = new BigArchiveService();
+        var refpack = new RefpackService();
+        var ssh = new SshTextureService();
         var particles = new ParticleService(iso);
-        var elf       = new ElfPatchService(iso);
-        var audio     = new AudioService(iso);
-        var models    = new ModelService(iso);
+        var elf = new ElfPatchService(iso);
+        var audio = new AudioService(iso);
+        var models = new ModelService(iso);
         var contracts = new ContractValidationService();
-        var repack    = new RepackService(iso, big, refpack, ssh, elf, contracts);
-        var ssf       = new SsfResearchService(iso, big, refpack);
-        var effects   = new EffectsDocumentService(contracts);
-        var level     = new LevelPipelineService(iso, audio, particles, effects, contracts, elf);
-        var shared    = new SharedBootstrapService(models, audio, particles);
-        var ssx3      = new Ssx3Service(iso, contracts);
+        var repack = new RepackService(iso, big, refpack, ssh, elf, contracts);
+        var ssf = new SsfResearchService(iso, big, refpack);
+        var effects = new EffectsDocumentService(contracts);
+        var level = new LevelPipelineService(iso, audio, particles, effects, contracts, elf);
+        var shared = new SharedBootstrapService(models, audio, particles);
+        var ssx3 = new Ssx3Service(iso, contracts);
 
         return
         [

@@ -55,9 +55,13 @@ internal static class MusicExporter
                 throw new InvalidDataException("not an MPF (PFDx) file");
             var m = new MpfFile
             {
-                Version = d[4], SubVersion = d[5],
-                NumTracks = d[0x0d], NumSections = d[0x0e], NumEvents = d[0x0f],
-                NumRouters = d[0x10], NumVars = d[0x11],
+                Version = d[4],
+                SubVersion = d[5],
+                NumTracks = d[0x0d],
+                NumSections = d[0x0e],
+                NumEvents = d[0x0f],
+                NumRouters = d[0x10],
+                NumVars = d[0x11],
             };
             if (m.Version != 3)
                 throw new InvalidDataException($"MPF v{m.Version}.{m.SubVersion} - only v3 (SSX Tricky) is handled");
@@ -181,8 +185,13 @@ internal static class MusicExporter
             int frames = h.Channels > 0 ? pcm.Length / h.Channels : pcm.Length;
             sampleInfos.Add(new
             {
-                Index = i, Wav = wav, MusOffset = off, Meta = meta,
-                Samples = frames, Rate = h.SampleRate, Channels = h.Channels,
+                Index = i,
+                Wav = wav,
+                MusOffset = off,
+                Meta = meta,
+                Samples = frames,
+                Rate = h.SampleRate,
+                Channels = h.Channels,
                 Seconds = h.SampleRate > 0 ? frames / (double)h.SampleRate : 0,
             });
             written++;
@@ -201,7 +210,13 @@ internal static class MusicExporter
             Vars = mpf.Vars,
             Nodes = mpf.Nodes.Select(n => new
             {
-                n.Index, n.Sample, n.Flags, n.Word1, n.Word2, n.Links, n.LinkRaw,
+                n.Index,
+                n.Sample,
+                n.Flags,
+                n.Word1,
+                n.Word2,
+                n.Links,
+                n.LinkRaw,
             }),
             Samples = sampleInfos,
         };

@@ -36,7 +36,7 @@ public sealed class GltfMeshWriter
     {
         public string Material = "__untextured";
         public List<Vector3> Positions = new();   // mesh space
-        public List<Vector3> Normals   = new();    // mesh space, unit
+        public List<Vector3> Normals = new();    // mesh space, unit
         public List<Vector2>? Uv0;                 // top-left origin (glTF native)
         public List<Vector2>? Uv1;                 // top-left origin (lightmap atlas)
         public List<Vector4>? Colors;              // RGBA 0..1 (vertex-colour lightmap)

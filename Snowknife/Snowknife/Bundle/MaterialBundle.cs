@@ -27,16 +27,16 @@ public static class MaterialBundle
                                              // = Speed exactly. The tick was MEASURED off a megaplex button: its red
                                              // segment ends at the flip's first advance (tick 18 at Speed 3.5) and
                                              // that segment is 0.3 s, which is 18/60 - a 30 Hz list would give 0.6 s.
-        // The MaterialIDs a TRIGGERED flip pulses (TriggeredFlipClassifier): their frame list is a state pair the
-        // ride-over buttons switch, not an animation, so they must never free-run.
+                                             // The MaterialIDs a TRIGGERED flip pulses (TriggeredFlipClassifier): their frame list is a state pair the
+                                             // ride-over buttons switch, not an animation, so they must never free-run.
         public HashSet<int> PulsedMaterials = new();
         public float ScrollSpeedScale = 60f; // SSX per-tick UV-scroll -> units/sec: the scroll tick is the
                                              // 60 Hz sim rate (retail vs 30/s preview side-by-side showed 2x)
-        // U4 pause/dwell screens (LCD): the texture-flip behavior holds frame A for a
-        // per-cycle RANDOM (Speed/60)*uniform[0.25,1.0) re-arm - dwell = (1/Speed)/u sec, 1..4s at Speed 1 -
-        // then flashes frame B for a hardcoded 1/6-per-tick re-arm = 6 ticks = 0.1s. Emitted as the manifest
-        // "Dwell" law [dwellBase, flash] for the runtime to roll per cycle (dwellBase = 1/Speed). Both durations
-        // are ticks/60 on the measured 60 Hz list (see FlipSpeedScale).
+                                             // U4 pause/dwell screens (LCD): the texture-flip behavior holds frame A for a
+                                             // per-cycle RANDOM (Speed/60)*uniform[0.25,1.0) re-arm - dwell = (1/Speed)/u sec, 1..4s at Speed 1 -
+                                             // then flashes frame B for a hardcoded 1/6-per-tick re-arm = 6 ticks = 0.1s. Emitted as the manifest
+                                             // "Dwell" law [dwellBase, flash] for the runtime to roll per cycle (dwellBase = 1/Speed). Both durations
+                                             // are ticks/60 on the measured 60 Hz list (see FlipSpeedScale).
         public float U4FlashSeconds = 0.1f;
     }
 

@@ -53,10 +53,10 @@ public static class TextureBundle
             else if (matModes.TryGetValue(name, out var mm))
                 mode = mm switch
                 {
-                    MatAlpha.Blend  => Classify(px) != Alpha.Cutout ? Alpha.Blend
+                    MatAlpha.Blend => Classify(px) != Alpha.Cutout ? Alpha.Blend
                                      : IsGlowSheet(px, img.Width, img.Height) ? Alpha.Glow : Alpha.Cutout,
                     MatAlpha.Opaque => Alpha.Opaque,
-                    _               => Classify(px),   // Special (bit 0x20000) is a draw-order bit; these mark binary-mask decals -> pixels classify cutout
+                    _ => Classify(px),   // Special (bit 0x20000) is a draw-order bit; these mark binary-mask decals -> pixels classify cutout
                 };
             else mode = Classify(px);
 
@@ -166,16 +166,16 @@ public static class TextureBundle
 
         var verdict = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);   // texture -> all sheets so far
         foreach (var model in models.Models)
-        foreach (var obj in model.ModelObjects ?? new())
-        foreach (var mesh in obj.MeshData ?? new())
-        {
-            if (mesh.MaterialID < 0 || mesh.MaterialID >= materials.Count) continue;
-            string? tex = materials[mesh.MaterialID].TexturePath;
-            if (string.IsNullOrEmpty(tex)) continue;
-            if (!matModes.TryGetValue(tex, out var mode) || mode != MatAlpha.Blend) continue;   // only blend pages matter
-            if (verdict.TryGetValue(tex, out bool sofar) && !sofar) continue;                   // already disqualified
-            verdict[tex] = IsSheetObj(Path.Combine(meshDir, mesh.MeshPath ?? ""));
-        }
+            foreach (var obj in model.ModelObjects ?? new())
+                foreach (var mesh in obj.MeshData ?? new())
+                {
+                    if (mesh.MaterialID < 0 || mesh.MaterialID >= materials.Count) continue;
+                    string? tex = materials[mesh.MaterialID].TexturePath;
+                    if (string.IsNullOrEmpty(tex)) continue;
+                    if (!matModes.TryGetValue(tex, out var mode) || mode != MatAlpha.Blend) continue;   // only blend pages matter
+                    if (verdict.TryGetValue(tex, out bool sofar) && !sofar) continue;                   // already disqualified
+                    verdict[tex] = IsSheetObj(Path.Combine(meshDir, mesh.MeshPath ?? ""));
+                }
         foreach (var (tex, all) in verdict) if (all) outv.Add(tex);
         return outv;
     }
@@ -257,19 +257,19 @@ public static class TextureBundle
     {
         long vis = 0, mid = 0, gradSum = 0, pairs = 0, wSum = 0, aSum = 0;
         for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            var p = px[y * w + x];
-            if (p.A >= 8)
+            for (int x = 0; x < w; x++)
             {
-                vis++;
-                if (p.A < 250) mid++;
-                int maxC = Math.Max(p.R, Math.Max(p.G, p.B));
-                wSum += (long)maxC * p.A; aSum += p.A;
+                var p = px[y * w + x];
+                if (p.A >= 8)
+                {
+                    vis++;
+                    if (p.A < 250) mid++;
+                    int maxC = Math.Max(p.R, Math.Max(p.G, p.B));
+                    wSum += (long)maxC * p.A; aSum += p.A;
+                }
+                if (x + 1 < w) { byte a2 = px[y * w + x + 1].A; if (p.A >= 8 || a2 >= 8) { gradSum += Math.Abs(p.A - a2); pairs++; } }
+                if (y + 1 < h) { byte a2 = px[(y + 1) * w + x].A; if (p.A >= 8 || a2 >= 8) { gradSum += Math.Abs(p.A - a2); pairs++; } }
             }
-            if (x + 1 < w) { byte a2 = px[y * w + x + 1].A; if (p.A >= 8 || a2 >= 8) { gradSum += Math.Abs(p.A - a2); pairs++; } }
-            if (y + 1 < h) { byte a2 = px[(y + 1) * w + x].A; if (p.A >= 8 || a2 >= 8) { gradSum += Math.Abs(p.A - a2); pairs++; } }
-        }
         if (vis == 0 || pairs == 0 || aSum == 0) return false;
         double partialOfVisible = (double)mid / vis;
         double smoothness = (double)gradSum / pairs;

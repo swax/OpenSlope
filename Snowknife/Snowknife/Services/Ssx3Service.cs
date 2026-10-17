@@ -97,7 +97,10 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
         var collisions = new List<(string name, WorldCollision collision)>();
         var fx = new Dictionary<int, List<SSBResource>>
         {
-            [TypeParticleModel] = [], [TypeParticle] = [], [TypeLight] = [], [TypeHalo] = [],
+            [TypeParticleModel] = [],
+            [TypeParticle] = [],
+            [TypeLight] = [],
+            [TypeHalo] = [],
         };
         var models = new Dictionary<(int, int), byte[]>();
         var materials = new Dictionary<(int, int), WorldBin0>();

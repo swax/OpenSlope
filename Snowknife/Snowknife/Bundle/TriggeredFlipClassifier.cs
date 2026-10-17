@@ -85,7 +85,10 @@ public static class TriggeredFlipClassifier
             if (own != null && !exclude(i) && !pulses.ContainsKey(i))
                 pulses[i] = new Pulse
                 {
-                    Instance = i, Speed = own.Speed, Length = own.Length, Direction = own.Direction,
+                    Instance = i,
+                    Speed = own.Speed,
+                    Length = own.Length,
+                    Direction = own.Direction,
                     SelectFrame = FindSelectFrame(root.EffectHeaders[ce]),
                     Volumes = { i },
                 };
@@ -105,7 +108,10 @@ public static class TriggeredFlipClassifier
                 if (!pulses.TryGetValue(tgt, out var pulse))
                     pulses[tgt] = pulse = new Pulse
                     {
-                        Instance = tgt, Speed = flip.Speed, Length = flip.Length, Direction = flip.Direction,
+                        Instance = tgt,
+                        Speed = flip.Speed,
+                        Length = flip.Length,
+                        Direction = flip.Direction,
                         SelectFrame = FindSelectFrame(root.EffectHeaders[eh]),
                     };
                 if (!pulse.Volumes.Contains(i)) pulse.Volumes.Add(i);

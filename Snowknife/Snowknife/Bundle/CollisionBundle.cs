@@ -66,11 +66,11 @@ public static class CollisionBundle
                                             // drop them from every static path too (a retracting pillar would leave a rest-pose wall)
         physics ??= new HashSet<int>();     // knock-and-tumble roller/physics diverts (PropsBundle) own their own moving body -
                                             // a static box/bucket/doorway here would block the knock, so drop them from every static path
-        // The one breakable role that KEEPS its collision (Unity docs/036 §Cracked glass): a glass pane's invisible
-        // solid support twin, which holds the rider up until the pane gives way. It is deliberately NOT in
-        // `breakable` above - it needs a real collider - but it cannot share one either, since the break has to
-        // take this instance's collider away and leave the rest of the level's alone. So each gets its own
-        // single-instance bucket stamped with the cluster the importer hands it to.
+                                            // The one breakable role that KEEPS its collision (Unity docs/036 §Cracked glass): a glass pane's invisible
+                                            // solid support twin, which holds the rider up until the pane gives way. It is deliberately NOT in
+                                            // `breakable` above - it needs a real collider - but it cannot share one either, since the break has to
+                                            // take this instance's collider away and leave the rest of the level's alone. So each gets its own
+                                            // single-instance bucket stamped with the cluster the importer hands it to.
         breakSupports ??= new Dictionary<int, string>();
         hiddenByHideShowOff ??= new HashSet<int>();
         hiddenByHideRace ??= new HashSet<int>();
@@ -189,9 +189,15 @@ public static class CollisionBundle
             });
             info.Buckets.Add(new BundleManifest.BucketInfo
             {
-                Node = node, PlayerBounce = b.PlayerBounce, PlayerBounceAmmount = b.Amount,
-                InstanceCount = b.InstanceCount, CollisonSound = b.Sound, SurfaceType = b.SurfaceType,
-                SoundClip = b.SoundClip, BreakCluster = b.BreakCluster, ModeMask = b.ModeMask,
+                Node = node,
+                PlayerBounce = b.PlayerBounce,
+                PlayerBounceAmmount = b.Amount,
+                InstanceCount = b.InstanceCount,
+                CollisonSound = b.Sound,
+                SurfaceType = b.SurfaceType,
+                SoundClip = b.SoundClip,
+                BreakCluster = b.BreakCluster,
+                ModeMask = b.ModeMask,
                 InstanceIndex = b.InstanceIndex,
                 ResetOnContact = b.ResetOnContact,
             });
@@ -242,9 +248,19 @@ public static class CollisionBundle
                            + (soundClip != null ? "_Clip" + order.Count : "")
                            + (modeMask != 7 ? "_M" + modeMask : "");
             if (resetHost) label += "_R";   // must stay LAST: the board tests the name's tail
-            b = new Bucket { Name = label, PlayerBounce = bounce, Amount = amount, Sound = snd,
-                             SurfaceType = surface, SoundClip = soundClip, BreakCluster = supportCluster,
-                             ModeMask = modeMask, ResetOnContact = resetHost, InstanceIndex = supportCluster != null ? idx : -1 };
+            b = new Bucket
+            {
+                Name = label,
+                PlayerBounce = bounce,
+                Amount = amount,
+                Sound = snd,
+                SurfaceType = surface,
+                SoundClip = soundClip,
+                BreakCluster = supportCluster,
+                ModeMask = modeMask,
+                ResetOnContact = resetHost,
+                InstanceIndex = supportCluster != null ? idx : -1
+            };
             buckets[key] = b; order.Add(b);
         }
         return b;
@@ -564,7 +580,8 @@ public static class CollisionBundle
             string nm = string.IsNullOrEmpty(instances[i].InstanceName) ? ("inst" + i) : instances[i].InstanceName!;
             outList.Add(new BundleManifest.BoxInfo
             {
-                Name = nm, InstanceIndex = i,
+                Name = nm,
+                InstanceIndex = i,
                 Center = BundleSpace.Xyz(BundleSpace.MeshPt(instances[i].Location)),
                 // Same convention as the mode-3 body records above: the rotation is conjugated by the X mirror
                 // and a local point mirrors as M p.

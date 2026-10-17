@@ -404,20 +404,28 @@ internal sealed class SsxPhysicsBodies
                 int bestNew = minNewCells - 1;
                 (int i0, int i1, int j0, int j1, int k0, int k1) best = default;
                 bool found = false;
-                foreach (int i0 in xs) foreach (int i1 in xs) { if (i1 < i0) continue;
-                foreach (int j0 in ys) foreach (int j1 in ys) { if (j1 < j0) continue;
-                foreach (int k0 in zs) foreach (int k1 in zs) { if (k1 < k0) continue;
-                    if ((i1 - i0 + 1) * (j1 - j0 + 1) * (k1 - k0 + 1) <= bestNew) continue;
-                    int fresh = 0; bool full = true;
-                    for (int x = i0; x <= i1 && full; x++)
-                        for (int y = j0; y <= j1 && full; y++)
-                            for (int z = k0; z <= k1; z++)
+                foreach (int i0 in xs) foreach (int i1 in xs)
+                    {
+                        if (i1 < i0) continue;
+                        foreach (int j0 in ys) foreach (int j1 in ys)
                             {
-                                if (!cells.Contains((x, y, z))) { full = false; break; }
-                                if (!covered.Contains((x, y, z))) fresh++;
+                                if (j1 < j0) continue;
+                                foreach (int k0 in zs) foreach (int k1 in zs)
+                                    {
+                                        if (k1 < k0) continue;
+                                        if ((i1 - i0 + 1) * (j1 - j0 + 1) * (k1 - k0 + 1) <= bestNew) continue;
+                                        int fresh = 0; bool full = true;
+                                        for (int x = i0; x <= i1 && full; x++)
+                                            for (int y = j0; y <= j1 && full; y++)
+                                                for (int z = k0; z <= k1; z++)
+                                                {
+                                                    if (!cells.Contains((x, y, z))) { full = false; break; }
+                                                    if (!covered.Contains((x, y, z))) fresh++;
+                                                }
+                                        if (full && fresh > bestNew) { bestNew = fresh; best = (i0, i1, j0, j1, k0, k1); found = true; }
+                                    }
                             }
-                    if (full && fresh > bestNew) { bestNew = fresh; best = (i0, i1, j0, j1, k0, k1); found = true; }
-                } } }
+                    }
                 if (!found) break;
                 for (int x = best.i0; x <= best.i1; x++)
                     for (int y = best.j0; y <= best.j1; y++)

@@ -941,13 +941,13 @@ internal sealed class EffectsDocumentService
                 (int?[])persistentReceivers.Clone(), new HashSet<string>(StringComparer.Ordinal));
 
         foreach (JObject owner in graphs.Children<JObject>().Concat(functions.Children<JObject>()))
-        foreach (JObject node in owner["nodes"]?.Children<JObject>() ?? Enumerable.Empty<JObject>())
-        {
-            string? id = node.Value<string>("id");
-            if (id is null || !candidates.TryGetValue(id, out HashSet<string>? labels)) continue;
-            string[] specific = labels.Where(label => !label.StartsWith("node.control.", StringComparison.Ordinal)).ToArray();
-            if (specific.Distinct(StringComparer.Ordinal).Count() == 1) node["semanticType"] = specific[0];
-        }
+            foreach (JObject node in owner["nodes"]?.Children<JObject>() ?? Enumerable.Empty<JObject>())
+            {
+                string? id = node.Value<string>("id");
+                if (id is null || !candidates.TryGetValue(id, out HashSet<string>? labels)) continue;
+                string[] specific = labels.Where(label => !label.StartsWith("node.control.", StringComparison.Ordinal)).ToArray();
+                if (specific.Distinct(StringComparer.Ordinal).Count() == 1) node["semanticType"] = specific[0];
+            }
     }
 
     private static int? PersistentReceiver(SSFHandler h, int instanceIndex)

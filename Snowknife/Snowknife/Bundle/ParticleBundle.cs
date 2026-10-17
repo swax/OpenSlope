@@ -169,7 +169,9 @@ public static class ParticleBundle
             Vector3 center = (t.Min + t.Max) * 0.5f, size = t.Max - t.Min;
             var trig = new BundleManifest.TriggerInfo
             {
-                Index = t.Index, Name = t.Name ?? "", Slot = t.Slot,
+                Index = t.Index,
+                Name = t.Name ?? "",
+                Slot = t.Slot,
                 Center = BundleSpace.Xyz(center),
                 Size = BundleSpace.Xyz(size),
             };
@@ -857,8 +859,12 @@ public static class ParticleBundle
             bool contactOnly = contactHosts.Contains(n);
             info.Zones.Add(new BundleManifest.ResetZoneInfo
             {
-                Index = n, Name = host.InstanceName ?? "", ContactOnly = contactOnly,
-                Center = BundleSpace.Xyz(slab.Center), Rotation = slab.Rotation, Size = BundleSpace.Xyz(slab.Size),
+                Index = n,
+                Name = host.InstanceName ?? "",
+                ContactOnly = contactOnly,
+                Center = BundleSpace.Xyz(slab.Center),
+                Rotation = slab.Rotation,
+                Size = BundleSpace.Xyz(slab.Size),
             });
         }
         if (info.Zones.Count == 0) return null;
@@ -926,53 +932,56 @@ public static class ParticleBundle
 
             var rec = new BundleManifest.BoostVolumeInfo
             {
-                Index = n, Name = it.InstanceName ?? "", Kind = kind,
-                Center = BundleSpace.Xyz(center), Size = BundleSpace.Xyz(size),
+                Index = n,
+                Name = it.InstanceName ?? "",
+                Kind = kind,
+                Center = BundleSpace.Xyz(center),
+                Size = BundleSpace.Xyz(size),
             };
 
             switch (kind)
             {
                 case "directional":
-                {
-                    var b = t0.Boost!;
-                    float[] d = (b.BoostDir != null && b.BoostDir.Length >= 3) ? b.BoostDir : new[] { 0f, 0f, 1f };
-                    rec.Dir = BundleSpace.Xyz(MeshDir(d[0], d[1], d[2]));
-                    rec.Amount = b.BoostAmount; rec.Rate = b.U2; rec.Seconds = b.U1; rec.Mode = b.Mode;
-                    break;
-                }
+                    {
+                        var b = t0.Boost!;
+                        float[] d = (b.BoostDir != null && b.BoostDir.Length >= 3) ? b.BoostDir : new[] { 0f, 0f, 1f };
+                        rec.Dir = BundleSpace.Xyz(MeshDir(d[0], d[1], d[2]));
+                        rec.Amount = b.BoostAmount; rec.Rate = b.U2; rec.Seconds = b.U1; rec.Mode = b.Mode;
+                        break;
+                    }
                 case "vertical-lift":
-                {
-                    var z = t0.type0Sub18!;
-                    rec.Dir = BundleSpace.Xyz(MeshDir(z.U2, z.U3, z.U4));
-                    rec.Amount = z.U1; rec.Rate = z.U0;
-                    // Native world Z survives the mesh transform untouched (only X is negated), so the target
-                    // altitude and its tolerance carry across as authored.
-                    rec.TargetZ = z.U5; rec.SnapTolerance = z.U6;
-                    break;
-                }
+                    {
+                        var z = t0.type0Sub18!;
+                        rec.Dir = BundleSpace.Xyz(MeshDir(z.U2, z.U3, z.U4));
+                        rec.Amount = z.U1; rec.Rate = z.U0;
+                        // Native world Z survives the mesh transform untouched (only X is negated), so the target
+                        // altitude and its tolerance carry across as authored.
+                        rec.TargetZ = z.U5; rec.SnapTolerance = z.U6;
+                        break;
+                    }
                 case "lap-gated":
-                {
-                    var l = t0.type0Sub15!;
-                    rec.Dir = BundleSpace.Xyz(MeshDir(l.U2, l.U3, l.U4));
-                    rec.Amount = l.U1; rec.Rate = l.U0;
-                    // The host's own world X axis - the side of the box midpoint the rider is on along it decides
-                    // stage 1 vs 2 - and the 10 m the engine requires above the host's floor for any stage above 0.
-                    Vector3 hostX = Vector3.Transform(Vector3.UnitX, ToQuat(it.Rotation));
-                    rec.Axis = BundleSpace.Xyz(MeshDir(hostX.X, hostX.Y, hostX.Z));
-                    rec.StageFloorOffset = 1000f;
-                    break;
-                }
+                    {
+                        var l = t0.type0Sub15!;
+                        rec.Dir = BundleSpace.Xyz(MeshDir(l.U2, l.U3, l.U4));
+                        rec.Amount = l.U1; rec.Rate = l.U0;
+                        // The host's own world X axis - the side of the box midpoint the rider is on along it decides
+                        // stage 1 vs 2 - and the 10 m the engine requires above the host's floor for any stage above 0.
+                        Vector3 hostX = Vector3.Transform(Vector3.UnitX, ToQuat(it.Rotation));
+                        rec.Axis = BundleSpace.Xyz(MeshDir(hostX.X, hostX.Y, hostX.Z));
+                        rec.StageFloorOffset = 1000f;
+                        break;
+                    }
                 case "tube-end":
-                {
-                    var t = t0.type0Sub24!;
-                    rec.Dir = BundleSpace.Xyz(MeshDir(t.U4, t.U5, t.U6));
-                    // Its ctor calls sub-7's and its update IS sub-7's, so the lifetime words sit at sub-7's offsets.
-                    rec.Amount = t.U3; rec.Rate = t.U2; rec.Seconds = t.U1; rec.Mode = (int)t.U0;
-                    rec.Stages.Add(Stage(t.U7, t.U8, t.U9, t.U16));
-                    rec.Stages.Add(Stage(t.U10, t.U11, t.U12, t.U17));
-                    rec.Stages.Add(Stage(t.U13, t.U14, t.U15, t.U18));
-                    break;
-                }
+                    {
+                        var t = t0.type0Sub24!;
+                        rec.Dir = BundleSpace.Xyz(MeshDir(t.U4, t.U5, t.U6));
+                        // Its ctor calls sub-7's and its update IS sub-7's, so the lifetime words sit at sub-7's offsets.
+                        rec.Amount = t.U3; rec.Rate = t.U2; rec.Seconds = t.U1; rec.Mode = (int)t.U0;
+                        rec.Stages.Add(Stage(t.U7, t.U8, t.U9, t.U16));
+                        rec.Stages.Add(Stage(t.U10, t.U11, t.U12, t.U17));
+                        rec.Stages.Add(Stage(t.U13, t.U14, t.U15, t.U18));
+                        break;
+                    }
             }
             info.Volumes.Add(rec);
         }
@@ -1022,13 +1031,18 @@ public static class ParticleBundle
             if (path.Count < 2) continue;
             info.Movers.Add(new BundleManifest.SplineMoverInfo
             {
-                Index = n, Name = it.InstanceName ?? "",
-                Speed = sa.AnimationSpeed, Count = Math.Max(1, sa.InstanceCount),
+                Index = n,
+                Name = it.InstanceName ?? "",
+                Speed = sa.AnimationSpeed,
+                Count = Math.Max(1, sa.InstanceCount),
                 Tint = new[] { sa.R, sa.G, sa.B },
                 Path = path.Select(p => BundleSpace.Xyz(p)).ToArray(),
                 Rotation = MirrorQuat(it.Rotation),   // baked into the diverted mesh; the importer un-bakes it (the engine ignores it)
-                YawOffset = sa.U5, OrientMode = sa.U2, EndMode = sa.U1,
-                Cable = sa.U6 != 0, CableColor = new[] { sa.R, sa.G, sa.B, sa.U7 },
+                YawOffset = sa.U5,
+                OrientMode = sa.U2,
+                EndMode = sa.U1,
+                Cable = sa.U6 != 0,
+                CableColor = new[] { sa.R, sa.G, sa.B, sa.U7 },
             });
         }
         if (info.Movers.Count == 0) return null;
@@ -1299,9 +1313,13 @@ public static class ParticleBundle
 
             var rec = new BundleManifest.BoostPadInfo
             {
-                Index = n, Name = it.InstanceName ?? "", Slot = it.EffectSlotIndex,
-                Trick = trick, Value = value,
-                Center = BundleSpace.Xyz(center), Size = BundleSpace.Xyz(size),
+                Index = n,
+                Name = it.InstanceName ?? "",
+                Slot = it.EffectSlotIndex,
+                Trick = trick,
+                Value = value,
+                Center = BundleSpace.Xyz(center),
+                Size = BundleSpace.Xyz(size),
             };
             // The contact burst the engine fires on a cross, straight off the pad's own collision header. The pad
             // instance owns these inline emitters, so they bake against it exactly like a hydrant's inline spray.
@@ -1403,9 +1421,13 @@ public static class ParticleBundle
 
             info.Teleports.Add(new BundleManifest.TeleportInfo
             {
-                Index = n, Name = it.InstanceName ?? "", Slot = it.EffectSlotIndex,
-                Center = BundleSpace.Xyz(center), Size = BundleSpace.Xyz(size),
-                Target = target, TargetName = exit.InstanceName ?? "",
+                Index = n,
+                Name = it.InstanceName ?? "",
+                Slot = it.EffectSlotIndex,
+                Center = BundleSpace.Xyz(center),
+                Size = BundleSpace.Xyz(size),
+                Target = target,
+                TargetName = exit.InstanceName ?? "",
                 Dest = BundleSpace.Xyz(BundleSpace.MeshPt(exit.Location)),
                 Sound = sound,
             });
@@ -1473,9 +1495,15 @@ public static class ParticleBundle
             }
             foreach (var message in bySlot[it.EffectSlotIndex]) info.Messages.Add(new BundleManifest.HudMessageInfo
             {
-                Index = n, Name = it.InstanceName ?? "", Slot = it.EffectSlotIndex,
-                Text = message.Text, Color = message.Color, Duration = 2.5f, Delay = message.Delay,
-                Center = BundleSpace.Xyz(center), Size = BundleSpace.Xyz(size),
+                Index = n,
+                Name = it.InstanceName ?? "",
+                Slot = it.EffectSlotIndex,
+                Text = message.Text,
+                Color = message.Color,
+                Duration = 2.5f,
+                Delay = message.Delay,
+                Center = BundleSpace.Xyz(center),
+                Size = BundleSpace.Xyz(size),
             });
         }
         Log.Info($"  HUD messages: {info.Messages.Count} collision-triggered banner(s).");

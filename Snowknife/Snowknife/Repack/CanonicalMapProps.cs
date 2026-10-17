@@ -60,19 +60,19 @@ internal static class CanonicalMapProps
         // response and placement semantics already live on the canonical instance itself.
         string effectsPath = Path.Combine(mapDir, "Effects.json");
         if (File.Exists(effectsPath)) try
-        {
-            var ext = JObject.Parse(File.ReadAllText(effectsPath))["extensions"]?["slopesmith"] as JObject;
-            if (ext?["nativeCollisions"] is JObject native && ext["bakedGroups"] is JObject baked)
-                foreach (var property in native.Properties())
-                {
-                    string? level = (string?)property.Value["physicsSource"]?["level"];
-                    if (string.IsNullOrEmpty(level) || baked[property.Name] is not JArray groups) continue;
-                    foreach (var token in groups)
-                        if ((string?)token is { Length: > 0 } group)
-                            source.PhysicsSourceLevels[AuthoredEffects.SanitizeGroupName(group)] = level;
-                }
-        }
-        catch { /* Effects validation reports malformed authoring metadata; canonical props still load. */ }
+            {
+                var ext = JObject.Parse(File.ReadAllText(effectsPath))["extensions"]?["slopesmith"] as JObject;
+                if (ext?["nativeCollisions"] is JObject native && ext["bakedGroups"] is JObject baked)
+                    foreach (var property in native.Properties())
+                    {
+                        string? level = (string?)property.Value["physicsSource"]?["level"];
+                        if (string.IsNullOrEmpty(level) || baked[property.Name] is not JArray groups) continue;
+                        foreach (var token in groups)
+                            if ((string?)token is { Length: > 0 } group)
+                                source.PhysicsSourceLevels[AuthoredEffects.SanitizeGroupName(group)] = level;
+                    }
+            }
+            catch { /* Effects validation reports malformed authoring metadata; canonical props still load. */ }
         return models.Count > 0 ? source : null;
     }
 

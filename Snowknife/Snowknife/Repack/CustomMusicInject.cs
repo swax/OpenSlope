@@ -453,7 +453,10 @@ internal static class CustomMusicInject
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["ASYNCLEVEL"] = "0", ["DELAYCOUNT"] = "0", ["DELAYLEVEL"] = "0", ["DELAYFEEDBACK"] = "0",
+            ["ASYNCLEVEL"] = "0",
+            ["DELAYCOUNT"] = "0",
+            ["DELAYLEVEL"] = "0",
+            ["DELAYFEEDBACK"] = "0",
             ["BPM"] = arrangement.Bpm.ToString("0.###", CultureInfo.InvariantCulture),
         };
         string current = "";

@@ -84,7 +84,7 @@ internal sealed class SsfResearchService
                 JToken actual = SemanticSnapshot(rebuilt);
                 if (!JToken.DeepEquals(expected, actual))
                 {
-                    (string path, string left, string right) = FirstDifference(expected, actual, "$" );
+                    (string path, string left, string right) = FirstDifference(expected, actual, "$");
                     Log.Error($"FAIL {file}: semantic round-trip differs at {path}: {left} != {right}");
                     failed++;
                     continue;

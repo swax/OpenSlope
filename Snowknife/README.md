@@ -33,6 +33,25 @@ The default test suite uses synthetic fixtures and needs no disc. From the repos
 `npm run verify` runs the normal cross-project gate; `npm run verify:full` also enables tests that
 use your local disc-derived fixtures. See [Testing Snowknife](docs/testing.md).
 
+## Formatting
+
+[`Snowknife/.editorconfig`](.editorconfig) sets the C# whitespace style for the CLI and tests:
+four spaces, Allman braces, preserved single-line blocks, and CRLF line endings matching `.gitattributes`.
+The formatter is the SDK's built-in [`dotnet format whitespace`](https://learn.microsoft.com/dotnet/core/tools/dotnet-format#whitespace),
+using the .NET version selected by [`global.json`](../global.json); no extra tool install is needed.
+Run from the repository root:
+
+```text
+npm run format:snowknife        # apply formatting
+npm run format:snowknife:check  # check without writing; exits nonzero on differences
+```
+
+Both commands cover hand-written C# in `Snowknife/` and `Snowknife.Tests/`. Folder mode needs no
+restore or build and leaves the SSX-Library submodule, linked Unity sources, generated code, and
+`bin/` and `obj/` output alone. Style suggestions such as `var` and namespace preferences remain
+editor hints; these commands only apply whitespace formatting. Like the native formatter, this
+is an explicit local command rather than an additional CI gate.
+
 ## Core workflow
 
 For **browser play**, Slopesmith reads the `import` output directly; `gltf` and `unity` are unnecessary.

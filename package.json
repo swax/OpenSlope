@@ -24,6 +24,8 @@
     "verify": "node tools/verify.mjs",
     "verify:full": "node tools/verify.mjs --full",
     "verify:snowknife": "node tools/snowknife-tests.mjs",
+    "format:snowknife": "node tools/format-snowknife.mjs",
+    "format:snowknife:check": "node tools/format-snowknife.mjs --check",
     "verify:native": "node tools/native-tests.mjs",
     "verify:slopesmith": "node tools/verify.mjs --slopesmith",
     "hooks:install": "git config core.hooksPath .githooks",

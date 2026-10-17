@@ -91,9 +91,9 @@ internal static class PropsCollisionExporter
         }
 
         Log.Info($"PropsCollision: placed {placed} collision instances -> {emittedTris:n0} triangles ({emittedVerts:n0} verts).");
-        if (skippedNoCol > 0)    Log.Warn($"  ({skippedNoCol} instances skipped: no collision model.)");
+        if (skippedNoCol > 0) Log.Warn($"  ({skippedNoCol} instances skipped: no collision model.)");
         if (skippedNoPlayer > 0) Log.Warn($"  ({skippedNoPlayer} instances skipped: PlayerCollision off.)");
-        if (missing > 0)         Log.Warn($"  ({missing} collision meshes not found in Collision/.)");
+        if (missing > 0) Log.Warn($"  ({missing} collision meshes not found in Collision/.)");
         Log.Info($"  -> {objPath}");
         return 0;
     }

@@ -15,7 +15,10 @@ public class HudMessageBundleTests
             Node(SsfMainType.Wait, new JObject { ["WaitTime"] = 1.25f }),
             Node(SsfMainType.HudText, new JObject
             {
-                ["HudText"] = "  cell-hud-text  ", ["HudRed"] = 2f, ["HudGreen"] = .4f, ["HudBlue"] = -.2f,
+                ["HudText"] = "  cell-hud-text  ",
+                ["HudRed"] = 2f,
+                ["HudGreen"] = .4f,
+                ["HudBlue"] = -.2f,
             }));
         var slot = new JObject
         {
@@ -27,7 +30,8 @@ public class HudMessageBundleTests
         {
             ["Instances"] = new JArray(new JObject
             {
-                ["InstanceName"] = "EffectTrigger_Hud", ["EffectSlotIndex"] = 0,
+                ["InstanceName"] = "EffectTrigger_Hud",
+                ["EffectSlotIndex"] = 0,
                 ["Location"] = new JArray(100f, 200f, 300f),
             }),
         }.ToString());

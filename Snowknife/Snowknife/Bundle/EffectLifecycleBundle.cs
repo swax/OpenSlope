@@ -21,13 +21,22 @@ public static class EffectLifecycleBundle
                 && c.Node.MainType == SsfMainType.Property
                 && c.Node.type0 is { SubType: SsfType0Sub.DeadNode, DeadNodeMode: >= 0 and <= 4 }
                 && (!specialized.Contains(c.Target) || c.Node.type0.DeadNodeMode <= 1 || c.Node.type0.DeadNodeMode == 3))
-                .Select(c => new BundleManifest.EffectActionInfo { Target = c.Target, Delay = c.Delay,
-                    Mode = c.Node.type0!.DeadNodeMode }).ToList();
+                .Select(c => new BundleManifest.EffectActionInfo
+                {
+                    Target = c.Target,
+                    Delay = c.Delay,
+                    Mode = c.Node.type0!.DeadNodeMode
+                }).ToList();
             // A hidden trigger killing only itself has no visual/installed receiver to retire here.
             if (actions.Count == 0 || actions.All(a => a.Target == i && a.Mode >= 2 && !instances[i].Visable)) continue;
-            info.Triggers.Add(new BundleManifest.EffectTriggerInfo { Index = i, Name = instances[i].InstanceName ?? "",
-                Actions = actions, OneShot = commands.Any(c => c.Target == i && c.Node.MainType == SsfMainType.Property
-                    && c.Node.type0 is { SubType: SsfType0Sub.DeadNode, DeadNodeMode: >= 2 and <= 4 }) });
+            info.Triggers.Add(new BundleManifest.EffectTriggerInfo
+            {
+                Index = i,
+                Name = instances[i].InstanceName ?? "",
+                Actions = actions,
+                OneShot = commands.Any(c => c.Target == i && c.Node.MainType == SsfMainType.Property
+                    && c.Node.type0 is { SubType: SsfType0Sub.DeadNode, DeadNodeMode: >= 2 and <= 4 })
+            });
         }
         if (info.Triggers.Count == 0) return null;
         var bounds = ParticleBundle.WalkPropsGroups(levelDir, i => info.Triggers.Any(t => t.Index == i));
